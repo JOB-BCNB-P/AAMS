@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="th">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>เครื่องมือย้ายข้อมูล Google Sheets → Supabase | EMS-BCNB</title>
+  <link rel="icon" href="https://cdn.jsdelivr.net/gh/JOB-BCNB-P/LOGO/Logo%20Thai.png">
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *{font-family:'Sarabun',sans-serif;box-sizing:border-box}
+    body{background:#f6f9fe}
+    .card{background:#fff;border:1px solid #dbeafe;border-radius:1rem;box-shadow:0 2px 12px rgba(30,111,186,.06)}
+    .inp{width:100%;min-height:44px;border:1px solid #d1d5db;border-radius:.75rem;padding:.6rem .9rem;font-size:16px;outline:none}
+    .inp:focus{border-color:#1e6fba;box-shadow:0 0 0 3px rgba(30,111,186,.15)}
+    .btn{min-height:44px;border-radius:.75rem;font-weight:600;padding:.6rem 1.1rem;transition:.15s}
+    .btn-primary{background:#1e6fba;color:#fff}
+    .btn-primary:hover:not(:disabled){background:#14507f}
+    .btn:disabled{opacity:.55;cursor:not-allowed}
+    .btn-ghost{border:1px solid #d1d5db;background:#fff;color:#374151}
+    .drop{border:2px dashed #93c5fd;border-radius:1rem;background:#f0f7ff;transition:.15s}
+    .drop.hot{background:#dbeafe;border-color:#1e6fba}
+    #log{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;white-space:pre-wrap;word-break:break-word}
+    .pill{font-size:11px;padding:2px 8px;border-radius:999px}
+  </style>
+</head>
+
+<body class="min-h-screen">
+  <div class="max-w-4xl mx-auto p-4 sm:p-6 space-y-5">
+
+    <header class="flex items-center gap-3">
+      <img src="https://cdn.jsdelivr.net/gh/JOB-BCNB-P/LOGO/Logo%20Thai.png" class="w-12 h-12 object-contain" alt="">
+      <div>
+        <h1 class="text-lg sm:text-xl font-bold text-gray-800">ย้ายข้อมูลเข้า Supabase</h1>
+        <p class="text-sm text-gray-500">ระบบบริหารจัดการงานวิชาการ (EMS-BCNB) · สำหรับผู้ดูแลระบบเท่านั้น</p>
+      </div>
+    </header>
+
+    <!-- ═══ ขั้นที่ 1: เข้าสู่ระบบ ═══ -->
+    <section class="card p-5">
+      <h2 class="font-bold text-gray-800 mb-1">ขั้นที่ 1 · เข้าสู่ระบบด้วยบัญชีผู้ดูแล</h2>
+      <p class="text-sm text-gray-500 mb-4">ต้องเป็นบทบาท <b>admin</b> หรือ <b>academic</b> เท่านั้น</p>
+      <div id="authBox" class="grid sm:grid-cols-3 gap-3">
+        <input id="mEmail" class="inp sm:col-span-1" type="email" placeholder="อีเมล @bcn.ac.th" autocomplete="username">
+        <input id="mPass" class="inp sm:col-span-1" type="password" placeholder="รหัสผ่าน" autocomplete="current-password">
+        <button class="btn btn-primary sm:col-span-1" onclick="doLogin()">เข้าสู่ระบบ</button>
+      </div>
+      <div id="who" class="hidden mt-3 text-sm bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3"></div>
+    </section>
+
+    <!-- ═══ ขั้นที่ 2: อัปโหลด CSV ═══ -->
+    <section class="card p-5">
+      <h2 class="font-bold text-gray-800 mb-1">ขั้นที่ 2 · อัปโหลดไฟล์ CSV จาก Google Sheets</h2>
+      <p class="text-sm text-gray-500 mb-3">
+        ใน Google Sheets เลือกแท็บ → <b>File → Download → Comma-separated values (.csv)</b><br>
+        ตั้งชื่อไฟล์ให้ตรงกับชื่อแท็บ เช่น <code class="bg-gray-100 px-1 rounded">student.csv</code>,
+        <code class="bg-gray-100 px-1 rounded">grade.csv</code> แล้วลากมาวางพร้อมกันได้หลายไฟล์
+      </p>
+
+      <div id="drop" class="drop p-8 text-center cursor-pointer">
+        <p class="text-primary font-semibold text-gray-700">ลากไฟล์ CSV มาวางที่นี่</p>
+        <p class="text-sm text-gray-500 mt-1">หรือคลิกเพื่อเลือกไฟล์</p>
+        <input id="files" type="file" accept=".csv,text/csv" multiple class="hidden">
+      </div>
+
+      <div id="fileList" class="mt-4 space-y-2"></div>
+
+      <div class="mt-4 flex flex-wrap gap-3 items-center">
+        <label class="flex items-center gap-2 text-sm text-gray-700">
+          <input id="wipe" type="checkbox" class="w-4 h-4">
+          ล้างข้อมูลเดิมในตารางนั้นก่อนนำเข้า
+        </label>
+        <button id="btnImport" class="btn btn-primary" onclick="runImport()" disabled>เริ่มนำเข้าข้อมูล</button>
+      </div>
+    </section>
+
+    <!-- ═══ ขั้นที่ 3: สร้างบัญชีผู้ใช้ ═══ -->
+    <section class="card p-5">
+      <h2 class="font-bold text-gray-800 mb-1">ขั้นที่ 3 · สร้างบัญชีเข้าใช้ระบบ</h2>
+      <p class="text-sm text-gray-500 mb-4">
+        บุคลากรใช้อีเมลของวิทยาลัย · นักศึกษาใช้เลขบัตรประชาชนเป็นรหัสผ่านตั้งต้น
+      </p>
+      <div class="flex flex-wrap gap-3">
+        <button class="btn btn-ghost" onclick="provision('provision_staff')">สร้างบัญชีบุคลากร</button>
+        <button class="btn btn-ghost" onclick="provision('provision_students')">สร้างบัญชีนักศึกษา</button>
+        <button class="btn btn-ghost" onclick="provision('row_counts')">ตรวจนับจำนวนแถวทุกตาราง</button>
+      </div>
+      <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3 mt-3">
+        บัญชีบุคลากรจะถูกสร้างพร้อมรหัสผ่านสุ่ม — ให้แต่ละคนกด “ลืมรหัสผ่าน?” ที่หน้าเข้าสู่ระบบเพื่อตั้งรหัสของตนเอง
+        หรือเข้าสู่ระบบด้วยปุ่ม Google
+      </p>
+    </section>
+
+    <!-- ═══ บันทึกการทำงาน ═══ -->
+    <section class="card p-5">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="font-bold text-gray-800">บันทึกการทำงาน</h2>
+        <button class="btn btn-ghost text-sm" onclick="document.getElementById('log').textContent=''">ล้าง</button>
+      </div>
+      <div id="log" class="bg-gray-900 text-gray-100 rounded-xl p-4 h-72 overflow-y-auto"></div>
+    </section>
+
+    <p class="text-center text-xs text-gray-400 pb-6">
+      หน้านี้ไม่เก็บข้อมูลไว้ที่ใด ทุกอย่างทำงานในเบราว์เซอร์ของคุณ · สิทธิ์ถูกบังคับที่ฐานข้อมูล (RLS)
+    </p>
+  </div>
+
+  <script src="../config.js"></script>
+  <script>
+    /* ============================================================
+       เครื่องมือย้ายข้อมูล — อ่าน CSV แล้วเขียนลง Supabase
+       ============================================================ */
+    const CFG = window.EMS_CONFIG;
+    const sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY);
+
+    const TABLE_OF = { user: 'app_user' };
+    const KNOWN_TABS = ['student','teacher','subject','schedule','grade','eng_result','leave',
+      'tracking','result_tracking','grade_tracking','file_tracking','announcement','user',
+      'doc_request','permission','teacher_directory','directory_summary','login_log',
+      'special_teacher','alumni','password_log','survey_config','survey_question','survey_response'];
+    // คอลัมน์ที่ไม่ต้องนำเข้า (ความลับของระบบเดิม)
+    const DROP_COLS = new Set(['password','password_hash','password_salt','new_password','__rowIndex','__backendId','type']);
+
+    let SCHEMA = {};
+    let PICKED = [];   // [{name, table, rows}]
+
+    const $ = id => document.getElementById(id);
+    function log(msg, kind) {
+      const t = new Date().toLocaleTimeString('th-TH');
+      const color = kind === 'err' ? '#fca5a5' : kind === 'ok' ? '#86efac' : kind === 'warn' ? '#fcd34d' : '#e5e7eb';
+      $('log').innerHTML += `<span style="color:#64748b">[${t}]</span> <span style="color:${color}">${msg}</span>\n`;
+      $('log').scrollTop = $('log').scrollHeight;
+    }
+
+    /* ---------- เข้าสู่ระบบ ---------- */
+    async function doLogin() {
+      const email = $('mEmail').value.trim().toLowerCase();
+      const pass = $('mPass').value;
+      if (!email || !pass) return log('กรุณากรอกอีเมลและรหัสผ่าน', 'err');
+      const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+      if (error) return log('เข้าสู่ระบบไม่สำเร็จ: ' + error.message, 'err');
+      await afterLogin();
+    }
+
+    async function afterLogin() {
+      const { data: me } = await sb.rpc('ems_whoami');
+      if (!me || !me.found) { log('บัญชีนี้ยังไม่ถูกกำหนดสิทธิ์ในระบบ', 'err'); return; }
+      if (!['admin', 'academic'].includes(me.role)) {
+        log('บทบาท "' + me.role + '" ไม่มีสิทธิ์ใช้เครื่องมือนี้', 'err'); return;
+      }
+      const { data: sc } = await sb.rpc('ems_schema');
+      SCHEMA = sc || {};
+      $('authBox').classList.add('hidden');
+      $('who').classList.remove('hidden');
+      $('who').textContent = 'เข้าสู่ระบบแล้ว: ' + (me.name || me.email) + ' (' + me.role + ')';
+      log('เข้าสู่ระบบสำเร็จ — โหลดโครงสร้างตาราง ' + Object.keys(SCHEMA).length + ' ตาราง', 'ok');
+      refreshImportBtn();
+    }
+
+    sb.auth.getSession().then(({ data }) => { if (data && data.session) afterLogin(); });
+
+    /* ---------- ตัวอ่าน CSV (รองรับเครื่องหมายคำพูดและขึ้นบรรทัดในเซลล์) ---------- */
+    function parseCSV(text) {
+      text = text.replace(/^﻿/, '');                 // ตัด BOM
+      const rows = []; let row = [], cell = '', q = false;
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        if (q) {
+          if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; }
+          else cell += c;
+        } else if (c === '"') q = true;
+        else if (c === ',') { row.push(cell); cell = ''; }
+        else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+        else if (c !== '\r') cell += c;
+      }
+      if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+      if (!rows.length) return { headers: [], data: [] };
+      const headers = rows[0].map(h => String(h).trim());
+      const data = rows.slice(1)
+        .map(r => { const o = {}; headers.forEach((h, i) => { if (h) o[h] = String(r[i] === undefined ? '' : r[i]).trim(); }); return o; })
+        .filter(o => Object.values(o).some(v => v !== ''));
+      return { headers, data };
+    }
+
+    /* ---------- รับไฟล์ ---------- */
+    const drop = $('drop');
+    drop.addEventListener('click', () => $('files').click());
+    ['dragenter', 'dragover'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add('hot'); }));
+    ['dragleave', 'drop'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove('hot'); }));
+    drop.addEventListener('drop', ev => handleFiles(ev.dataTransfer.files));
+    $('files').addEventListener('change', ev => handleFiles(ev.target.files));
+
+    async function handleFiles(fileList) {
+      for (const f of fileList) {
+        const base = f.name.replace(/\.csv$/i, '').trim();
+        const table = KNOWN_TABS.includes(base) ? base : '';
+        const text = await f.text();
+        const { headers, data } = parseCSV(text);
+        PICKED.push({ name: f.name, table, rows: data, headers });
+        log(`อ่าน ${f.name} — ${data.length} แถว, ${headers.length} คอลัมน์` + (table ? '' : ' (ยังไม่ทราบตารางปลายทาง)'), table ? 'ok' : 'warn');
+      }
+      renderList();
+    }
+
+    function renderList() {
+      $('fileList').innerHTML = PICKED.map((p, i) => `
+        <div class="flex flex-wrap items-center gap-3 border border-gray-200 rounded-xl p-3">
+          <span class="font-medium text-gray-800 flex-1 min-w-0 truncate">${p.name}</span>
+          <span class="pill bg-blue-50 text-blue-700">${p.rows.length} แถว</span>
+          <select class="inp !min-h-[38px] !py-1 w-48" onchange="PICKED[${i}].table=this.value;refreshImportBtn()">
+            <option value="">— เลือกตารางปลายทาง —</option>
+            ${KNOWN_TABS.map(t => `<option value="${t}" ${p.table === t ? 'selected' : ''}>${t}</option>`).join('')}
+          </select>
+          <button class="btn btn-ghost !min-h-[38px] !py-1 text-sm" onclick="PICKED.splice(${i},1);renderList();refreshImportBtn()">นำออก</button>
+        </div>`).join('');
+      refreshImportBtn();
+    }
+
+    function refreshImportBtn() {
+      const ready = PICKED.length > 0 && PICKED.every(p => p.table) && Object.keys(SCHEMA).length > 0;
+      $('btnImport').disabled = !ready;
+    }
+    window.refreshImportBtn = refreshImportBtn;
+    window.renderList = renderList;
+    window.PICKED = PICKED;
+
+    /* ---------- แปลงแถว: แยกคอลัมน์จริง / extra ---------- */
+    function shape(table, row) {
+      const known = SCHEMA[table] || [];
+      const cols = {}, extra = {};
+      Object.keys(row).forEach(k => {
+        if (DROP_COLS.has(k)) return;
+        const v = row[k] === null || row[k] === undefined ? '' : String(row[k]);
+        if (known.includes(k)) cols[k] = v; else extra[k] = v;
+      });
+      if (Object.keys(extra).length) cols.extra = extra;
+      return cols;
+    }
+
+    /* ---------- นำเข้า ---------- */
+    async function runImport() {
+      $('btnImport').disabled = true;
+      const wipe = $('wipe').checked;
+
+      for (const p of PICKED) {
+        const table = TABLE_OF[p.table] || p.table;
+        log(`── เริ่มนำเข้า ${p.name} → ${table} (${p.rows.length} แถว)`);
+
+        if (wipe) {
+          const { error } = await sb.from(table).delete().gt('id', 0);
+          if (error) log('  ล้างข้อมูลเดิมไม่สำเร็จ: ' + error.message, 'err');
+          else log('  ล้างข้อมูลเดิมแล้ว', 'warn');
+        }
+
+        // เก็บเลขบัตรประชาชนไว้ก่อน แล้วค่อยเขียนลงตารางแยกหลังนำเข้านักศึกษา
+        const nidMap = [];
+        const payload = p.rows.map(r => {
+          if (table === 'student' && r.national_id) nidMap.push({ sid: String(r.student_id || '').trim(), nid: String(r.national_id).replace(/\D/g, '') });
+          const copy = Object.assign({}, r);
+          delete copy.national_id;
+          return shape(table, copy);
+        });
+
+        let ok = 0, fail = 0;
+        for (let i = 0; i < payload.length; i += 400) {
+          const chunk = payload.slice(i, i + 400);
+          const { error } = await sb.from(table).insert(chunk);
+          if (error) { fail += chunk.length; log(`  แถว ${i + 1}-${i + chunk.length} ไม่สำเร็จ: ${error.message}`, 'err'); }
+          else { ok += chunk.length; log(`  บันทึกแล้ว ${ok}/${payload.length}`); }
+        }
+        log(`  สรุป ${table}: สำเร็จ ${ok} แถว, ไม่สำเร็จ ${fail} แถว`, fail ? 'warn' : 'ok');
+
+        // ---- เลขบัตรประชาชนนักศึกษา ----
+        if (table === 'student' && nidMap.length) {
+          log(`  กำลังบันทึกเลขบัตรประชาชน ${nidMap.length} รายการลงตารางแยก (student_private)`);
+          const { data: stus } = await sb.from('student').select('id, student_id');
+          const byId = {}; (stus || []).forEach(s => { byId[String(s.student_id || '').trim()] = s.id; });
+          const priv = nidMap.filter(m => byId[m.sid] && m.nid.length === 13)
+                             .map(m => ({ student_ref: byId[m.sid], national_id: m.nid }));
+          for (let i = 0; i < priv.length; i += 400) {
+            const { error } = await sb.from('student_private').upsert(priv.slice(i, i + 400), { onConflict: 'student_ref' });
+            if (error) log('  บันทึกเลขบัตรไม่สำเร็จ: ' + error.message, 'err');
+          }
+          log(`  บันทึกเลขบัตรประชาชนแล้ว ${priv.length} รายการ`, 'ok');
+        }
+      }
+      log('เสร็จสิ้นการนำเข้าทั้งหมด', 'ok');
+      $('btnImport').disabled = false;
+    }
+    window.runImport = runImport;
+    window.doLogin = doLogin;
+
+    /* ---------- เรียก Edge Function ems-admin ---------- */
+    async function provision(action) {
+      const { data: s } = await sb.auth.getSession();
+      if (!s || !s.session) return log('กรุณาเข้าสู่ระบบก่อน', 'err');
+      log('เรียกใช้: ' + action + ' ...');
+      const resp = await fetch(CFG.SUPABASE_URL + '/functions/v1/ems-admin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: CFG.SUPABASE_KEY,
+          Authorization: 'Bearer ' + s.session.access_token
+        },
+        body: JSON.stringify({ action })
+      });
+      const out = await resp.json();
+      if (!out.isOk) return log('ไม่สำเร็จ: ' + out.error, 'err');
+      log(JSON.stringify(out, null, 2), 'ok');
+    }
+    window.provision = provision;
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,68 @@
+# ================================================================
+# นำเว็บขึ้น GitHub Pages อัตโนมัติทุกครั้งที่ push ขึ้น branch main
+#
+# ตั้งค่าครั้งเดียวที่ GitHub:
+#   Settings → Pages → Build and deployment → Source = "GitHub Actions"
+# ================================================================
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: เช็คเอาต์โค้ด
+        uses: actions/checkout@v4
+
+      - name: ตรวจว่าไม่มี service_role key หลุดเข้ามาใน repo
+        run: |
+          if grep -rIn --include='*.js' --include='*.html' --include='*.css' \
+               --exclude-dir=.git --exclude-dir=.github \
+               -e 'service_role' -e 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9' . ; then
+            echo "::error::พบคำว่า service_role ในไฟล์ที่จะเผยแพร่ — กรุณาลบออกก่อน deploy"
+            exit 1
+          fi
+          echo "ผ่าน: ไม่พบคีย์ลับ"
+
+      - name: ตรวจไวยากรณ์ JavaScript
+        run: |
+          for f in config.js supabase-db.js auth.js app-patch.js app.js grad-images.js; do
+            node --check "$f" && echo "OK  $f"
+          done
+
+      - name: เตรียมไฟล์สำหรับเผยแพร่
+        run: |
+          mkdir -p _site
+          rsync -av --exclude '.git' --exclude '.github' --exclude '_site' \
+                    --exclude 'supabase' --exclude 'node_modules' \
+                    ./ _site/
+          touch _site/.nojekyll
+
+      - name: อัปโหลด artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: เผยแพร่ขึ้น GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

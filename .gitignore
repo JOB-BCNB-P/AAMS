@@ -1,0 +1,18 @@
+# ===== ห้าม commit ความลับเด็ดขาด =====
+.env
+.env.*
+*service_role*
+*secret*
+supabase/.temp/
+supabase/.branches/
+
+# ===== ไฟล์ระบบ / เครื่องมือ =====
+node_modules/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+
+# ===== ไฟล์สำรองจากระบบเดิม =====
+*.backup-*.js
+*.backup-*.css
