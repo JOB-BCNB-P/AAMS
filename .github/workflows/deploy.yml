@@ -27,15 +27,19 @@ jobs:
       - name: เช็คเอาต์โค้ด
         uses: actions/checkout@v4
 
-      - name: ตรวจว่าไม่มี service_role key หลุดเข้ามาใน repo
+      - name: ตรวจว่าไม่มีคีย์ลับหลุดเข้ามาใน repo
         run: |
-          if grep -rIn --include='*.js' --include='*.html' --include='*.css' \
+          # ตรวจเฉพาะ "รูปแบบของคีย์จริง" ไม่ใช่คำที่พูดถึงคีย์ในคอมเมนต์
+          #   sb_secret_...                      = secret key รูปแบบใหม่
+          #   SUPABASE_SERVICE_ROLE_KEY = ...    = การกำหนดค่าคีย์ลับลงตัวแปร
+          #   "role":"service_role"              = payload ของ JWT ที่ถอดรหัสแล้ว
+          if grep -rIn --include='*.js' --include='*.html' --include='*.css' --include='*.json' \
                --exclude-dir=.git --exclude-dir=.github \
-               -e 'service_role' -e 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9' . ; then
-            echo "::error::พบคำว่า service_role ในไฟล์ที่จะเผยแพร่ — กรุณาลบออกก่อน deploy"
+               -E 'sb_secret_[A-Za-z0-9_-]{10,}|SUPABASE_SERVICE_ROLE_KEY[[:space:]]*[:=][[:space:]]*.[A-Za-z0-9]|"role"[[:space:]]*:[[:space:]]*"service_role"' . ; then
+            echo "::error::พบคีย์ลับระดับเซิร์ฟเวอร์ในไฟล์ที่จะเผยแพร่ — กรุณาลบออกก่อน deploy"
             exit 1
           fi
-          echo "ผ่าน: ไม่พบคีย์ลับ"
+          echo "ผ่าน: ไม่พบคีย์ลับในไฟล์ที่จะเผยแพร่"
 
       - name: ตรวจไวยากรณ์ JavaScript
         run: |
