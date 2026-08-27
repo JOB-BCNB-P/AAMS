@@ -51,15 +51,26 @@ Supabase
 
 ### 3.1 push โค้ดขึ้น repo
 
-เปิด Command Prompt / PowerShell ที่โฟลเดอร์นี้ แล้วรัน
+repo ในเครื่องถูกเตรียมไว้ให้เรียบร้อยแล้ว — **commit แรกเสร็จ และตั้ง remote ไว้แล้ว**
+เหลือแค่ push เปิด Command Prompt / PowerShell ที่โฟลเดอร์นี้ แล้วรัน
 
 ```bash
-git init
-git add .
-git commit -m "ระบบ AAMS: ย้ายฐานข้อมูลไป Supabase + ปรับเป็น responsive web app"
-git branch -M main
-git remote add origin https://github.com/JOB-BCNB-P/AAMS.git
 git push -u origin main
+```
+
+GitHub จะถามชื่อผู้ใช้และรหัสผ่าน ให้ใส่
+
+- Username: `JOB-BCNB-P`
+- Password: **Personal Access Token** (ไม่ใช่รหัสผ่านบัญชี)
+  สร้างที่ GitHub → Settings → Developer settings → Personal access tokens →
+  Tokens (classic) → Generate new token → ติ๊กสิทธิ์ `repo` และ `workflow`
+
+ถ้าต้องการแก้ไขอะไรก่อน push ให้ใช้
+
+```bash
+git add -A
+git commit -m "ข้อความอธิบายการแก้ไข"
+git push
 ```
 
 ### 3.2 เปิด GitHub Pages
