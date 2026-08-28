@@ -90,6 +90,16 @@
       </div>
 
       <div class="mt-4 border-t border-gray-200 pt-4">
+        <p class="text-sm font-semibold text-gray-800 mb-1">ตั้งรหัสผ่านให้บุคลากรรายคน</p>
+        <p class="text-sm text-gray-500 mb-3">ใช้ระหว่างที่ยังไม่ได้ตั้งค่าอีเมลของวิทยาลัย — แจ้งรหัสให้เจ้าตัวแล้วให้เปลี่ยนเองภายหลัง</p>
+        <div class="grid sm:grid-cols-3 gap-3">
+          <input id="pwEmail" class="inp" type="email" placeholder="อีเมล @bcn.ac.th">
+          <input id="pwValue" class="inp" type="text" placeholder="รหัสผ่านใหม่ (อย่างน้อย 8 ตัว)">
+          <button class="btn btn-primary" onclick="setUserPassword()">ตั้งรหัสผ่าน</button>
+        </div>
+      </div>
+
+      <div class="mt-4 border-t border-gray-200 pt-4">
         <p class="text-sm font-semibold text-gray-800 mb-1">เพิ่มเลขบัตรประชาชนให้นักศึกษารายคน</p>
         <p class="text-sm text-gray-500 mb-3">ใช้กับนักศึกษาที่ตกหล่นจากการนำเข้า ระบบจะสร้างบัญชีเข้าใช้งานให้ทันที</p>
         <div class="grid sm:grid-cols-3 gap-3">
@@ -304,6 +314,16 @@
     window.doLogin = doLogin;
 
     /* ---------- เรียก Edge Function ems-admin ---------- */
+    async function setUserPassword() {
+      const email = document.getElementById('pwEmail').value.trim().toLowerCase();
+      const password = document.getElementById('pwValue').value;
+      if (!email) return log('กรุณากรอกอีเมล', 'err');
+      if (password.length < 8) return log('รหัสผ่านต้องยาวอย่างน้อย 8 ตัวอักษร', 'err');
+      await provision('set_password', { email, password });
+      document.getElementById('pwValue').value = '';
+    }
+    window.setUserPassword = setUserPassword;
+
     async function setNationalId() {
       const student_id = document.getElementById('nidStudent').value.trim();
       const national_id = document.getElementById('nidValue').value.replace(/\D/g, '');
