@@ -250,9 +250,25 @@ const EMSDB = (() => {
       if (Object.keys(extra).length) p.extra = extra;
       return p;
     });
+    // ทำให้ทุกแถวมีคอลัมน์ครบชุดเดียวกัน — PostgREST รวมชื่อคอลัมน์จากทุกแถวเป็นชุดเดียว
+    // แถวที่ขาดคอลัมน์จะกลายเป็น NULL แทนที่จะได้ค่าเริ่มต้นของตาราง
+    const allKeys = new Set();
+    rows.forEach(r => Object.keys(r).forEach(k => allKeys.add(k)));
+    const nowIso = new Date().toISOString();
+    const normalized = rows.map(r => {
+      const o = {};
+      allKeys.forEach(k => {
+        if (Object.prototype.hasOwnProperty.call(r, k)) o[k] = r[k];
+        else if (k === 'created_at' || k === 'updated_at') o[k] = nowIso;
+        else if (k === 'extra') o[k] = {};
+        else o[k] = '';
+      });
+      return o;
+    });
+
     let ok = 0, fail = 0, lastErr = '';
-    for (let i = 0; i < rows.length; i += 500) {          // แบ่งชุดละ 500 แถว
-      const chunk = rows.slice(i, i + 500);
+    for (let i = 0; i < normalized.length; i += 500) {    // แบ่งชุดละ 500 แถว
+      const chunk = normalized.slice(i, i + 500);
       const { error } = await client().from(table).insert(chunk);
       if (error) { fail += chunk.length; lastErr = friendly(error); }
       else ok += chunk.length;
