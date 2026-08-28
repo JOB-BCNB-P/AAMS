@@ -86,6 +86,17 @@
         <button class="btn btn-ghost" onclick="provision('provision_staff')">สร้างบัญชีบุคลากร</button>
         <button class="btn btn-ghost" onclick="provision('provision_students')">สร้างบัญชีนักศึกษา</button>
         <button class="btn btn-ghost" onclick="provision('row_counts')">ตรวจนับจำนวนแถวทุกตาราง</button>
+        <button class="btn btn-ghost" onclick="provision('students_without_nid')">ตรวจนักศึกษาที่ยังไม่มีเลขบัตร</button>
+      </div>
+
+      <div class="mt-4 border-t border-gray-200 pt-4">
+        <p class="text-sm font-semibold text-gray-800 mb-1">เพิ่มเลขบัตรประชาชนให้นักศึกษารายคน</p>
+        <p class="text-sm text-gray-500 mb-3">ใช้กับนักศึกษาที่ตกหล่นจากการนำเข้า ระบบจะสร้างบัญชีเข้าใช้งานให้ทันที</p>
+        <div class="grid sm:grid-cols-3 gap-3">
+          <input id="nidStudent" class="inp" placeholder="รหัสนักศึกษา 11 หลัก" inputmode="numeric">
+          <input id="nidValue" class="inp" placeholder="เลขบัตรประชาชน 13 หลัก" inputmode="numeric" maxlength="13">
+          <button class="btn btn-primary" onclick="setNationalId()">บันทึกและสร้างบัญชี</button>
+        </div>
       </div>
       <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3 mt-3">
         บัญชีบุคลากรจะถูกสร้างพร้อมรหัสผ่านสุ่ม — ให้แต่ละคนกด “ลืมรหัสผ่าน?” ที่หน้าเข้าสู่ระบบเพื่อตั้งรหัสของตนเอง
@@ -293,7 +304,18 @@
     window.doLogin = doLogin;
 
     /* ---------- เรียก Edge Function ems-admin ---------- */
-    async function provision(action) {
+    async function setNationalId() {
+      const student_id = document.getElementById('nidStudent').value.trim();
+      const national_id = document.getElementById('nidValue').value.replace(/\D/g, '');
+      if (!student_id) return log('กรุณากรอกรหัสนักศึกษา', 'err');
+      if (national_id.length !== 13) return log('เลขบัตรประชาชนต้องมี 13 หลัก', 'err');
+      await provision('set_national_id', { student_id, national_id });
+      document.getElementById('nidStudent').value = '';
+      document.getElementById('nidValue').value = '';
+    }
+    window.setNationalId = setNationalId;
+
+    async function provision(action, extra) {
       const { data: s } = await sb.auth.getSession();
       if (!s || !s.session) return log('กรุณาเข้าสู่ระบบก่อน', 'err');
       log('เรียกใช้: ' + action + ' ...');
@@ -304,7 +326,7 @@
           apikey: CFG.SUPABASE_KEY,
           Authorization: 'Bearer ' + s.session.access_token
         },
-        body: JSON.stringify({ action })
+        body: JSON.stringify(Object.assign({ action }, extra || {}))
       });
       const out = await resp.json();
       if (!out.isOk) return log('ไม่สำเร็จ: ' + out.error, 'err');
