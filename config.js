@@ -18,7 +18,7 @@ window.EMS_CONFIG = {
   STUDENT_EMAIL_DOMAIN: 'student.bcnb.local',
 
   // --- ข้อความหัวระบบ ---
-  SYSTEM_TITLE: 'ระบบบริหารจัดการงานวิชาการ (EMS-BCNB)',
+  SYSTEM_TITLE: 'ระบบบริหารจัดการงานวิชาการ (AAMs)',
   COLLEGE_NAME: 'วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ',
 
   // --- โลโก้/รูป ---

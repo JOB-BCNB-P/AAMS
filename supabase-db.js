@@ -138,13 +138,37 @@ const EMSDB = (() => {
     return rows.map(r => toRow(tableName, r));
   }
 
+  // ดึงหลายตารางในคำขอเดียวผ่านฟังก์ชัน ems_fetch บนเซิร์ฟเวอร์
+  // (เพดาน 1,000 แถวต่อคำขอไม่มีผลกับ RPC — ตาราง 12,000 แถวจึงมาในรอบเดียว)
+  // ถ้าเรียกไม่สำเร็จด้วยเหตุใดก็ตาม จะถอยไปใช้วิธีเดิมทีละตารางโดยอัตโนมัติ
   async function _loadTabs(tabs, replace) {
-    const settled = await Promise.allSettled(tabs.map(t => fetchTable(tbl(t))));
-    const out = [];
-    settled.forEach((res, i) => {
-      if (res.status === 'fulfilled') out.push(...res.value);
-      else console.warn('[EMSDB] อ่านตาราง "' + tabs[i] + '" ไม่สำเร็จ:', res.reason && res.reason.message);
-    });
+    const tableNames = tabs.map(tbl);
+    let out = null;
+
+    try {
+      const { data, error } = await client().rpc('ems_fetch', { tabs: tableNames });
+      if (!error && data && typeof data === 'object') {
+        out = [];
+        tableNames.forEach(tn => {
+          const rows = data[tn];
+          if (Array.isArray(rows)) rows.forEach(r => out.push(toRow(tn, r)));
+        });
+      } else if (error) {
+        console.warn('[EMSDB] ems_fetch ใช้ไม่ได้ — ถอยไปใช้วิธีเดิม:', error.message);
+      }
+    } catch (err) {
+      console.warn('[EMSDB] ems_fetch ผิดพลาด — ถอยไปใช้วิธีเดิม:', err && err.message);
+    }
+
+    if (out === null) {
+      const settled = await Promise.allSettled(tabs.map(t => fetchTable(tbl(t))));
+      out = [];
+      settled.forEach((res, i) => {
+        if (res.status === 'fulfilled') out.push(...res.value);
+        else console.warn('[EMSDB] อ่านตาราง "' + tabs[i] + '" ไม่สำเร็จ:', res.reason && res.reason.message);
+      });
+    }
+
     if (replace) _allData = out;
     else _allData = _allData.concat(out);
     if (_onDataChanged) _onDataChanged(_allData);
@@ -162,11 +186,11 @@ const EMSDB = (() => {
     const t0 = (window.performance && performance.now) ? performance.now() : Date.now();
     await _loadTabs(light, true);
     const t1 = (window.performance && performance.now) ? performance.now() : Date.now();
-    console.log('[EMSDB] ระลอกที่ 1 (' + light.length + ' ตาราง) ' + Math.round(t1 - t0) + ' ms · ' + _allData.length + ' แถว');
+    console.log('[EMSDB] ระลอกที่ 1 — ' + light.length + ' ตาราง ใน 1 คำขอ · ' + Math.round(t1 - t0) + ' ms · ' + _allData.length + ' แถว');
 
     _heavyPromise = _loadTabs(heavy, false).then(rows => {
       const t2 = (window.performance && performance.now) ? performance.now() : Date.now();
-      console.log('[EMSDB] ระลอกที่ 2 (' + heavy.length + ' ตาราง) ' + Math.round(t2 - t1) + ' ms · +' + rows.length + ' แถว');
+      console.log('[EMSDB] ระลอกที่ 2 — ' + heavy.length + ' ตาราง ใน 1 คำขอ · ' + Math.round(t2 - t1) + ' ms · +' + rows.length + ' แถว');
       return rows;
     }).catch(err => { console.warn('[EMSDB] ระลอกที่ 2 ไม่สำเร็จ:', err); return []; });
 
@@ -177,8 +201,14 @@ const EMSDB = (() => {
   async function whenFullyLoaded() { try { await _heavyPromise; } catch (e) { } return _allData; }
 
   async function refreshTab(t) {
-    const rows = await fetchTable(tbl(t));
-    _allData = _allData.filter(d => d.type !== type(tbl(t)));
+    const table = tbl(t);
+    let rows = null;
+    try {
+      const { data, error } = await client().rpc('ems_fetch', { tabs: [table] });
+      if (!error && data && Array.isArray(data[table])) rows = data[table].map(r => toRow(table, r));
+    } catch (err) { /* ถอยไปใช้วิธีเดิม */ }
+    if (rows === null) rows = await fetchTable(table);
+    _allData = _allData.filter(d => d.type !== type(table));
     _allData.push(...rows);
     if (_onDataChanged) _onDataChanged(_allData);
   }

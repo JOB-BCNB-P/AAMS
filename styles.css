@@ -562,10 +562,72 @@ details[open]>summary .chev {
 }
 
 /* ================================================================
-   ให้คลาส .hidden ของ Tailwind ชนะสไตล์ที่กำหนด display ไว้เองเสมอ
-   (เช่น .ems-icon-btn ที่เป็น inline-flex — ไม่งั้นปุ่ม lg:hidden
-   จะยังโผล่บนจอใหญ่ เพราะ styles.css โหลดทีหลัง Tailwind)
+   หมายเหตุ: เดิมเคยบังคับ .hidden ด้วย !important เพื่อกันปุ่มที่ตั้ง
+   display เองไม่ให้ทับคลาส lg:hidden ของ Tailwind
+   ตอนนี้ย้าย display ไปไว้ในคลาสของ Tailwind บนตัวปุ่มโดยตรงแล้ว
+   จึงไม่ต้องใช้ !important อีก — และทำให้ md:block / sm:flex
+   (เช่น บรรทัดชื่อวิทยาลัยบนแถบหัวเรื่อง) กลับมาทำงานได้ตามปกติ
    ================================================================ */
-.hidden {
-  display: none !important;
+
+/* ================================================================
+   ชื่อระบบต้องอยู่บรรทัดเดียวเสมอ ไม่ตกลงบรรทัดที่สอง
+   ใช้ clamp() ย่อขนาดตัวอักษรตามความกว้างจอแทนการตัดขึ้นบรรทัดใหม่
+   (ชื่อวิทยาลัยไม่บังคับ ปล่อยให้ตัดบรรทัดได้ตามปกติ)
+   ================================================================ */
+.ems-title-1line {
+  white-space: nowrap;
+  font-size: clamp(0.95rem, 4.2vw, 1.32rem);
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+
+.ems-title-header {
+  white-space: nowrap;
+  font-size: clamp(0.72rem, 2.6vw, 0.9rem);
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- การจัดวางแถบหัวเรื่อง ----------
+   จอกว้าง : [เมนู+โลโก้]  [ชื่อระบบ]  [ปุ่มต่าง ๆ]   อยู่แถวเดียวกัน
+   จอแคบ   : แถวบน = [เมนู+โลโก้] [ปุ่มต่าง ๆ]
+             แถวล่าง = ชื่อระบบเต็มบรรทัด ไม่ถูกตัดและไม่ตกบรรทัด   */
+.ems-header { flex-wrap: wrap; }
+
+.ems-header-left {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-shrink: 0;
+  order: 1;
+}
+
+.ems-header-actions {
+  display: flex;
+  align-items: center;
+  gap: .25rem;
+  flex-shrink: 0;
+  order: 2;
+  margin-left: auto;
+}
+
+.ems-header-title {
+  min-width: 0;
+  order: 3;
+  flex: 0 0 100%;
+  padding-top: .15rem;
+}
+
+@media (min-width: 640px) {
+  .ems-header { flex-wrap: nowrap; }
+  .ems-header-left { gap: .75rem; }
+  .ems-header-actions { gap: .5rem; order: 3; }
+  .ems-header-title {
+    order: 2;
+    flex: 1 1 auto;
+    padding-top: 0;
+    margin-right: .75rem;
+  }
 }

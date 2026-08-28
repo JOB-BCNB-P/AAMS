@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#1e6fba">
   <meta name="description" content="ระบบบริหารจัดการงานวิชาการ วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ">
-  <title>ระบบบริหารจัดการงานวิชาการ (EMS-BCNB)</title>
+  <title>ระบบบริหารจัดการงานวิชาการ (AAMs)</title>
   <link rel="icon" href="https://cdn.jsdelivr.net/gh/JOB-BCNB-P/LOGO/Logo%20Thai.png">
 
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
@@ -59,8 +59,7 @@
         <div class="text-center mb-6 sm:mb-8">
           <img src="https://cdn.jsdelivr.net/gh/JOB-BCNB-P/LOGO/Logo%20Thai.png" alt="โลโก้วิทยาลัย"
             class="w-20 h-20 sm:w-24 sm:h-24 object-contain mx-auto mb-3">
-          <h1 class="text-lg sm:text-2xl font-bold text-gray-800 leading-snug" id="loginTitle">
-            ระบบบริหารจัดการงานวิชาการ (EMS-BCNB)</h1>
+          <h1 class="ems-title-1line font-bold text-gray-800" id="loginTitle">ระบบบริหารจัดการงานวิชาการ (AAMs)</h1>
           <p class="text-sm text-gray-500 mt-1" id="loginCollege">วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ</p>
         </div>
 
@@ -127,20 +126,20 @@
     <div id="mainApp" class="ems-screen hidden flex-col">
 
       <header class="ems-header">
-        <div class="flex items-center gap-2 sm:gap-3 min-w-0">
+        <div class="ems-header-left">
           <button onclick="toggleSidebar()" class="lg:hidden ems-icon-btn inline-flex items-center justify-center" aria-label="เปิดเมนู">
             <i data-lucide="menu" class="w-5 h-5"></i>
           </button>
           <img src="https://cdn.jsdelivr.net/gh/JOB-BCNB-P/LOGO/Logo%20Thai.png" alt=""
             class="w-9 h-9 object-contain rounded-lg border border-blue-100 bg-white flex-shrink-0">
-          <div class="min-w-0">
-            <h1 class="text-xs sm:text-sm font-bold text-gray-800 leading-tight truncate" id="headerTitle">
-              ระบบบริหารจัดการงานวิชาการ (EMS-BCNB)</h1>
-            <p class="text-xs text-gray-500 hidden md:block truncate" id="headerCollege">วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ</p>
-          </div>
         </div>
 
-        <div class="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+        <div class="ems-header-title">
+          <h1 class="ems-title-header font-bold text-gray-800" id="headerTitle">ระบบบริหารจัดการงานวิชาการ (AAMs)</h1>
+          <p class="text-xs text-gray-500 hidden md:block truncate" id="headerCollege">วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ</p>
+        </div>
+
+        <div class="ems-header-actions">
           <button onclick="refreshData()" class="ems-icon-btn inline-flex items-center justify-center" title="รีเฟรชข้อมูล" aria-label="รีเฟรชข้อมูล">
             <i data-lucide="refresh-cw" class="w-5 h-5 text-gray-600"></i>
           </button>

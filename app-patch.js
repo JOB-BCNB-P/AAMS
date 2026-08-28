@@ -334,6 +334,11 @@
      6) บูตระบบ — คืนสถานะถ้ายังมี session เดิม / กลับจาก Google
      ============================================================ */
   window.__emsBoot = async function __emsBoot() {
+    // ชื่อระบบ/ชื่อวิทยาลัยมาจาก config.js ที่เดียว (ใช้ในใบรายงานผลและหน้าพิมพ์ด้วย)
+    APP.config = APP.config || {};
+    if (CFG.SYSTEM_TITLE) APP.config.system_title = CFG.SYSTEM_TITLE;
+    if (CFG.COLLEGE_NAME) APP.config.college_name = CFG.COLLEGE_NAME;
+
     showScreen('loadingScreen');
     var r = await GSheetDB.init({}, function (data) {
       normalizeSubjectCodes(data);
