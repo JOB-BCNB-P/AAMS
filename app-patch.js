@@ -56,7 +56,11 @@
         '    class="ems-input" placeholder="กรอกเลขบัตรประชาชน 13 หลัก"' +
         '    onkeypress="if(event.key===\'Enter\')handleLogin()">' +
         '</div>' +
-        '<p class="text-xs text-gray-500 -mt-2 mb-1">ระบบจะสร้างบัญชีให้อัตโนมัติในการเข้าใช้ครั้งแรก</p>';
+        '<div class="bg-blue-50 border border-blue-100 rounded-xl p-3 -mt-1 mb-1">' +
+        '  <p class="text-xs text-gray-600">ระบบจะสร้างบัญชีให้อัตโนมัติในการเข้าใช้ครั้งแรก</p>' +
+        '  <p class="text-xs text-gray-600 mt-1">หรือกดปุ่ม <b>เข้าสู่ระบบด้วย Google</b> ด้านล่าง ' +
+        '     ถ้ามีบัญชีของวิทยาลัย (<b>รหัสนักศึกษา@' + (CFG.ALLOWED_DOMAIN || 'bcn.ac.th') + '</b>)</p>' +
+        '</div>';
     } else {
       f.innerHTML =
         '<div class="mb-4">' +
