@@ -376,8 +376,15 @@ const EMSDB = (() => {
   /* -------- ลืม/เปลี่ยนรหัสผ่านด้วย OTP ทางอีเมล -------- */
   async function requestPasswordOtp(email) {
     try {
+      if (_profile && _profile.role === 'student') {
+        return { isOk: false, error: 'นักศึกษาไม่สามารถเปลี่ยนรหัสผ่านได้ — ใช้เลขบัตรประชาชนในการเข้าสู่ระบบ' };
+      }
       const addr = String(email || '').trim().toLowerCase();
       if (!addr) return { isOk: false, error: 'กรุณากรอกอีเมล' };
+      // อีเมลของบัญชีนักศึกษาเป็นโดเมนภายใน ไม่ใช่อีเมลจริง — ไม่ให้ขอลิงก์
+      if (addr.indexOf('@' + (CFG.STUDENT_EMAIL_DOMAIN || 'student.bcnb.local')) > -1) {
+        return { isOk: false, error: 'บัญชีนักศึกษาไม่สามารถตั้งรหัสผ่านใหม่ได้' };
+      }
       await client().auth.resetPasswordForEmail(addr);
       // ตอบเหมือนกันเสมอ เพื่อไม่ให้เดาได้ว่าอีเมลใดมีอยู่จริง
       return { isOk: true, message: 'หากอีเมลนี้มีอยู่ในระบบ ระบบได้ส่งรหัสยืนยันไปแล้ว' };
@@ -411,7 +418,11 @@ const EMSDB = (() => {
   }
 
   // เปลี่ยนรหัสผ่านขณะล็อกอินอยู่ (ไม่ต้องใช้ OTP)
+  // นักศึกษาเปลี่ยนไม่ได้ — ใช้เลขบัตรประชาชนเป็นรหัสผ่านตายตัวตามนโยบายของวิทยาลัย
   async function changePassword(newPw) {
+    if (_profile && _profile.role === 'student') {
+      return { isOk: false, error: 'นักศึกษาไม่สามารถเปลี่ยนรหัสผ่านได้ — ใช้เลขบัตรประชาชนในการเข้าสู่ระบบ' };
+    }
     if (String(newPw || '').length < 8) return { isOk: false, error: 'รหัสผ่านใหม่ต้องยาวอย่างน้อย 8 ตัวอักษร' };
     const { error } = await client().auth.updateUser({ password: String(newPw) });
     return error ? { isOk: false, error: error.message } : { isOk: true, message: 'เปลี่ยนรหัสผ่านสำเร็จ' };

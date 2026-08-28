@@ -237,6 +237,13 @@
      ผู้ใช้กดลิงก์ → กลับมาที่หน้านี้พร้อมสิทธิ์ตั้งรหัสใหม่ชั่วคราว
      ============================================================ */
   window.showPasswordOtpModal = function showPasswordOtpModal(mode) {
+    // นักศึกษาเปลี่ยน/ตั้งรหัสผ่านใหม่ไม่ได้ (ใช้เลขบัตรประชาชนเป็นรหัสผ่าน)
+    if (APP.currentRole === 'student') {
+      if (typeof showToast === 'function') {
+        showToast('นักศึกษาเข้าสู่ระบบด้วยเลขบัตรประชาชน จึงไม่มีรหัสผ่านให้เปลี่ยน', 'error');
+      }
+      return;
+    }
     if (mode === 'change') {
       showModal('เปลี่ยนรหัสผ่าน',
         '<div class="space-y-3">' +

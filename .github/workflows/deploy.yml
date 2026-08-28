@@ -41,6 +41,19 @@ jobs:
           fi
           echo "ผ่าน: ไม่พบคีย์ลับในไฟล์ที่จะเผยแพร่"
 
+      - name: ตรวจว่าไม่มีไฟล์ข้อมูลส่วนบุคคลหลุดเข้ามาใน repo
+        run: |
+          # repo นี้เป็นสาธารณะ — ไฟล์ CSV/Excel จากชีตมีข้อมูลส่วนบุคคล ห้ามเผยแพร่
+          FOUND=$(find . -path ./.git -prune -o \
+                    \( -iname '*.csv' -o -iname '*.xlsx' -o -iname '*.xls' \) -print)
+          if [ -n "$FOUND" ]; then
+            echo "::error::พบไฟล์ข้อมูลในโฟลเดอร์ที่จะเผยแพร่:"
+            echo "$FOUND"
+            echo "::error::กรุณาย้ายไฟล์เหล่านี้ออกนอกโฟลเดอร์ AAMS แล้ว commit ใหม่"
+            exit 1
+          fi
+          echo "ผ่าน: ไม่พบไฟล์ข้อมูลส่วนบุคคล"
+
       - name: ตรวจไวยากรณ์ JavaScript
         run: |
           for f in config.js supabase-db.js auth.js app-patch.js app.js grad-images.js; do
@@ -52,8 +65,20 @@ jobs:
           mkdir -p _site
           rsync -av --exclude '.git' --exclude '.github' --exclude '_site' \
                     --exclude 'supabase' --exclude 'node_modules' \
+                    --exclude 'ข้อมูล' --exclude 'data' \
+                    --exclude '*.csv' --exclude '*.xlsx' --exclude '*.xls' \
                     ./ _site/
           touch _site/.nojekyll
+
+      - name: ประทับหมายเลขรุ่นลงลิงก์ไฟล์ (กันเบราว์เซอร์ใช้ไฟล์เก่าค้าง)
+        run: |
+          # เปลี่ยน ?v=... ในทุกไฟล์ HTML ให้เป็นรหัส commit
+          # ทำให้ทุกครั้งที่ deploy เบราว์เซอร์มองเห็นเป็นไฟล์ใหม่และโหลดใหม่เสมอ
+          VER="${GITHUB_SHA::7}"
+          find _site -name '*.html' -print0 | xargs -0 --no-run-if-empty \
+            sed -i "s/v=20260827[^\"']*/v=$VER/g"
+          echo "ประทับหมายเลขรุ่น: $VER"
+          grep -o 'v=[0-9a-f]\{7\}' _site/index.html | head -3
 
       - name: อัปโหลด artifact
         uses: actions/upload-pages-artifact@v3
