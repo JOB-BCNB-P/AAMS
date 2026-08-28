@@ -142,7 +142,7 @@
       'doc_request','permission','teacher_directory','directory_summary','login_log',
       'special_teacher','alumni','password_log','survey_config','survey_question','survey_response'];
     // คอลัมน์ที่ไม่ต้องนำเข้า (ความลับของระบบเดิม)
-    const DROP_COLS = new Set(['password','password_hash','password_salt','new_password','__rowIndex','__backendId','type']);
+    const DROP_COLS = new Set(['password','password_hash','password_salt','new_password','__rowIndex','__backendId','type','id','extra','auth_user_id']);
 
     let SCHEMA = {};
     let PICKED = [];   // [{name, table, rows}]
@@ -254,6 +254,10 @@
       Object.keys(row).forEach(k => {
         if (DROP_COLS.has(k)) return;
         const v = row[k] === null || row[k] === undefined ? '' : String(row[k]);
+        // คอลัมน์เวลาของฐานข้อมูล (created_at / updated_at):
+        // ถ้าในชีตเป็นช่องว่าง ต้องไม่ส่งไปเลย เพราะ Postgres แปลง "" เป็นวันที่ไม่ได้
+        // (ปล่อยว่างไว้ ฐานข้อมูลจะเติมเวลาปัจจุบันให้เอง)
+        if (k === 'created_at' || k === 'updated_at') { if (v.trim()) cols[k] = v.trim(); return; }
         if (known.includes(k)) cols[k] = v; else extra[k] = v;
       });
       if (Object.keys(extra).length) cols.extra = extra;

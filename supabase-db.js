@@ -35,6 +35,10 @@ const EMSDB = (() => {
     'survey_config', 'survey_question', 'survey_response'
   ];
 
+  // ระลอกที่ 2 — ตารางใหญ่ที่ไม่จำเป็นต้องมีตอนเปิดหน้าแรก
+  // โหลดต่อเป็นเบื้องหลังหลังหน้าจอขึ้นแล้ว (grade มีหมื่นกว่าแถว)
+  const HEAVY_TABS = new Set(['grade', 'eng_result', 'survey_response', 'login_log', 'password_log']);
+
   // ตารางที่นักศึกษาไม่มีสิทธิ์อ่าน — ข้ามไปเลยเพื่อไม่ให้เสียเวลาเรียกฟรี
   const STUDENT_SKIP = new Set([
     'teacher', 'teacher_directory', 'directory_summary', 'special_teacher',
@@ -50,6 +54,7 @@ const EMSDB = (() => {
   let _allData = [];
   let _onDataChanged = null;
   let _profile = null;           // ผลจาก ems_whoami()
+  let _heavyPromise = null;      // การโหลดตารางใหญ่ในเบื้องหลัง
 
   /* ---------------- utils ---------------- */
   const s = v => (v === null || v === undefined) ? '' : String(v);
@@ -84,9 +89,12 @@ const EMSDB = (() => {
     const known = _schema[tableName] || [];
     const cols = {}, extra = {};
     Object.keys(obj || {}).forEach(k => {
-      if (k === 'type' || k === '__backendId' || k === '__rowIndex' || k === 'id') return;
-      if (known.includes(k) && !META.includes(k)) cols[k] = (obj[k] === null || obj[k] === undefined) ? '' : String(obj[k]);
-      else extra[k] = (obj[k] === null || obj[k] === undefined) ? '' : String(obj[k]);
+      if (k === 'type' || k === '__backendId' || k === '__rowIndex' || k === 'id' || k === 'extra') return;
+      const raw = (obj[k] === null || obj[k] === undefined) ? '' : String(obj[k]);
+      // คอลัมน์เวลาของฐานข้อมูล: ค่าว่างต้องไม่ถูกส่งไป (Postgres แปลง "" เป็นวันที่ไม่ได้)
+      if (k === 'created_at' || k === 'updated_at') { if (raw.trim()) cols[k] = raw.trim(); return; }
+      if (known.includes(k) && !META.includes(k)) cols[k] = raw;
+      else extra[k] = raw;
     });
     return { cols, extra };
   }
@@ -97,35 +105,76 @@ const EMSDB = (() => {
     return Object.assign({}, (data && data.extra) || {}, extra);
   }
 
-  /* ---------------- READ ---------------- */
+  /* ---------------- READ ----------------
+     อ่านหน้าแรกพร้อมนับจำนวนแถวทั้งหมดในคำขอเดียว
+     ถ้ามีมากกว่า 1 หน้า จึงยิงหน้าที่เหลือ "พร้อมกันทุกหน้า"
+     (เดิมอ่านทีละหน้าเรียงกัน — ตาราง 12,000 แถว = รอ 13 รอบต่อกัน)     */
   async function fetchTable(tableName) {
-    const rows = [];
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await client()
-        .from(tableName).select('*').order('id', { ascending: true }).range(from, from + PAGE - 1);
-      if (error) {
-        // ไม่มีสิทธิ์อ่าน = ไม่ใช่ข้อผิดพลาดร้ายแรง (RLS ทำงานถูกต้อง)
-        if (/permission|denied|row-level/i.test(error.message)) return [];
-        throw new Error(tableName + ': ' + error.message);
-      }
-      rows.push(...(data || []));
-      if (!data || data.length < PAGE) break;
+    const first = await client()
+      .from(tableName)
+      .select('*', { count: 'exact' })
+      .order('id', { ascending: true })
+      .range(0, PAGE - 1);
+
+    if (first.error) {
+      // ไม่มีสิทธิ์อ่าน = ไม่ใช่ข้อผิดพลาดร้ายแรง (RLS ทำงานถูกต้อง)
+      if (/permission|denied|row-level/i.test(first.error.message)) return [];
+      throw new Error(tableName + ': ' + first.error.message);
     }
+
+    const rows = first.data || [];
+    const total = (first.count === null || first.count === undefined) ? rows.length : first.count;
+
+    if (total > rows.length && rows.length === PAGE) {
+      const reqs = [];
+      for (let from = PAGE; from < total; from += PAGE) {
+        reqs.push(client().from(tableName).select('*')
+          .order('id', { ascending: true }).range(from, from + PAGE - 1));
+      }
+      const rest = await Promise.all(reqs);
+      rest.forEach(r => { if (!r.error && r.data) rows.push(...r.data); });
+    }
+
     return rows.map(r => toRow(tableName, r));
   }
 
-  async function fetchAllData() {
-    const isStu = (_profile && _profile.role) === 'student';
-    const tabs = SHEET_TABS.filter(t => !(isStu && STUDENT_SKIP.has(tbl(t))));
+  async function _loadTabs(tabs, replace) {
     const settled = await Promise.allSettled(tabs.map(t => fetchTable(tbl(t))));
-    _allData = [];
+    const out = [];
     settled.forEach((res, i) => {
-      if (res.status === 'fulfilled') _allData.push(...res.value);
+      if (res.status === 'fulfilled') out.push(...res.value);
       else console.warn('[EMSDB] อ่านตาราง "' + tabs[i] + '" ไม่สำเร็จ:', res.reason && res.reason.message);
     });
+    if (replace) _allData = out;
+    else _allData = _allData.concat(out);
     if (_onDataChanged) _onDataChanged(_allData);
+    return out;
+  }
+
+  // โหลดข้อมูล 2 ระลอก: ระลอกแรกคือสิ่งที่ต้องใช้เปิดหน้าจอ (คืนค่าทันทีที่เสร็จ)
+  // ระลอกสองคือตารางใหญ่ ทำต่อเป็นเบื้องหลังแล้วสั่งวาดหน้าจอใหม่เมื่อครบ
+  async function fetchAllData() {
+    const isStu = (_profile && _profile.role) === 'student';
+    const usable = SHEET_TABS.filter(t => !(isStu && STUDENT_SKIP.has(tbl(t))));
+    const light = usable.filter(t => !HEAVY_TABS.has(tbl(t)));
+    const heavy = usable.filter(t => HEAVY_TABS.has(tbl(t)));
+
+    const t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+    await _loadTabs(light, true);
+    const t1 = (window.performance && performance.now) ? performance.now() : Date.now();
+    console.log('[EMSDB] ระลอกที่ 1 (' + light.length + ' ตาราง) ' + Math.round(t1 - t0) + ' ms · ' + _allData.length + ' แถว');
+
+    _heavyPromise = _loadTabs(heavy, false).then(rows => {
+      const t2 = (window.performance && performance.now) ? performance.now() : Date.now();
+      console.log('[EMSDB] ระลอกที่ 2 (' + heavy.length + ' ตาราง) ' + Math.round(t2 - t1) + ' ms · +' + rows.length + ' แถว');
+      return rows;
+    }).catch(err => { console.warn('[EMSDB] ระลอกที่ 2 ไม่สำเร็จ:', err); return []; });
+
     return _allData;
   }
+
+  // รอให้ตารางใหญ่โหลดครบ (ใช้ก่อนออกรายงานที่ต้องใช้ผลการเรียนทั้งหมด)
+  async function whenFullyLoaded() { try { await _heavyPromise; } catch (e) { } return _allData; }
 
   async function refreshTab(t) {
     const rows = await fetchTable(tbl(t));
@@ -442,7 +491,7 @@ const EMSDB = (() => {
     getStoredConfig, storeConfig, clearConfig, extractSheetId,
     SHEET_TABS,
     // ---- ของใหม่ที่ Supabase มีเพิ่ม ----
-    loginWithGoogle, logout, profile, currentSession, changePassword,
+    loginWithGoogle, logout, profile, currentSession, changePassword, whenFullyLoaded,
     loadProfile, loadSchema, refreshTab, client
   };
 })();

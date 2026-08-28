@@ -26,5 +26,10 @@ window.EMS_CONFIG = {
   LOADING_GIF: 'https://cdn.jsdelivr.net/gh/JOB-BCNB-P/picture/cat_pose_white.gif',
 
   // --- เปิด/ปิดปุ่มเข้าสู่ระบบด้วย Google ---
-  ENABLE_GOOGLE_LOGIN: true
+  ENABLE_GOOGLE_LOGIN: true,
+
+  // --- เมนู "ระบบการลาของนักศึกษา" ---
+  // ระบบเดิมปิดเมนูนี้ไว้เอง (แยกไปทำเป็นระบบต่างหาก)
+  // เปลี่ยนเป็น true เมื่อต้องการให้กลับมาแสดงในแถบเมนู
+  ENABLE_LEAVE_MENU: false
 };

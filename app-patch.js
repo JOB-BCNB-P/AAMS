@@ -16,6 +16,10 @@
   'use strict';
 
   var CFG = window.EMS_CONFIG || {};
+
+  // ผู้ใช้กดลิงก์ "Reset password" ในอีเมล → กลับมาที่หน้านี้พร้อม #type=recovery
+  // ต้องอ่านค่าไว้ตั้งแต่ตอนโหลดสคริปต์ เพราะไลบรารี Supabase จะล้าง hash ทิ้งหลังสร้าง session
+  var IS_RECOVERY = /[#&]type=recovery/.test(window.location.hash || '');
   var ROLE_LABEL = {
     admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'เจ้าหน้าที่งานทะเบียน',
     deptHead: 'ประธานสาขาวิชา', executive: 'ผู้บริหาร', teacher: 'อาจารย์',
@@ -227,6 +231,95 @@
   };
 
   /* ============================================================
+     5.5) ลืมรหัสผ่าน / เปลี่ยนรหัสผ่าน
+     ------------------------------------------------------------
+     Supabase ส่ง "ลิงก์" ทางอีเมล (ไม่ใช่รหัส 6 หลักแบบระบบเดิม)
+     ผู้ใช้กดลิงก์ → กลับมาที่หน้านี้พร้อมสิทธิ์ตั้งรหัสใหม่ชั่วคราว
+     ============================================================ */
+  window.showPasswordOtpModal = function showPasswordOtpModal(mode) {
+    if (mode === 'change') {
+      showModal('เปลี่ยนรหัสผ่าน',
+        '<div class="space-y-3">' +
+        '  <div><label class="block text-sm font-medium text-gray-700 mb-1">รหัสผ่านใหม่</label>' +
+        '    <input id="pwNew1" type="password" class="ems-input" placeholder="อย่างน้อย 8 ตัวอักษร" autocomplete="new-password"></div>' +
+        '  <div><label class="block text-sm font-medium text-gray-700 mb-1">ยืนยันรหัสผ่านใหม่</label>' +
+        '    <input id="pwNew2" type="password" class="ems-input" placeholder="พิมพ์ซ้ำอีกครั้ง" autocomplete="new-password"></div>' +
+        '  <div id="pwMsg" class="hidden text-sm rounded-xl p-3"></div>' +
+        '</div>',
+        window.emsSubmitNewPassword);
+      return;
+    }
+
+    showModal('ลืมรหัสผ่าน',
+      '<div class="space-y-3">' +
+      '  <p class="text-sm text-gray-600">กรอกอีเมลของวิทยาลัย ระบบจะส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปให้</p>' +
+      '  <input id="pwEmail" type="email" class="ems-input" placeholder="ชื่อผู้ใช้@' + (CFG.ALLOWED_DOMAIN || 'bcn.ac.th') + '" autocomplete="username">' +
+      '  <div id="pwMsg" class="hidden text-sm rounded-xl p-3"></div>' +
+      '  <p class="text-xs text-gray-500">เมื่อได้รับอีเมลแล้วให้กดปุ่ม <b>Reset password</b> ในอีเมล ' +
+      '     ระบบจะพากลับมาที่หน้านี้เพื่อตั้งรหัสใหม่</p>' +
+      '</div>',
+      window.emsSendRecoveryEmail);
+  };
+
+  function pwMsg(text, kind) {
+    var box = el('pwMsg');
+    if (!box) return;
+    box.textContent = text;
+    box.className = (kind === 'err')
+      ? 'text-sm rounded-xl p-3 bg-red-50 border border-red-200 text-red-700'
+      : 'text-sm rounded-xl p-3 bg-emerald-50 border border-emerald-200 text-emerald-800';
+  }
+
+  window.emsSendRecoveryEmail = async function () {
+    var email = (el('pwEmail') && el('pwEmail').value || '').trim().toLowerCase();
+    if (!email) { pwMsg('กรุณากรอกอีเมล', 'err'); return; }
+    var r = await GSheetDB.requestPasswordOtp(email);
+    if (r.isOk) pwMsg('ส่งอีเมลแล้ว — กรุณาเปิดกล่องจดหมายและกดลิงก์ในอีเมลภายใน 1 ชั่วโมง', 'ok');
+    else pwMsg(r.error || 'ส่งอีเมลไม่สำเร็จ', 'err');
+  };
+
+  window.emsSubmitNewPassword = async function () {
+    var a = (el('pwNew1') && el('pwNew1').value) || '';
+    var b = (el('pwNew2') && el('pwNew2').value) || '';
+    if (a.length < 8) { pwMsg('รหัสผ่านใหม่ต้องยาวอย่างน้อย 8 ตัวอักษร', 'err'); return; }
+    if (a !== b) { pwMsg('รหัสผ่านทั้งสองช่องไม่ตรงกัน', 'err'); return; }
+    var r = await GSheetDB.changePassword(a);
+    if (!r.isOk) { pwMsg(r.error || 'เปลี่ยนรหัสผ่านไม่สำเร็จ', 'err'); return; }
+    pwMsg('เปลี่ยนรหัสผ่านเรียบร้อยแล้ว', 'ok');
+    setTimeout(function () { closeModal(); if (typeof showToast === 'function') showToast('เปลี่ยนรหัสผ่านเรียบร้อย'); }, 900);
+  };
+
+  // หน้าตั้งรหัสผ่านใหม่ หลังกดลิงก์จากอีเมล
+  async function showRecoveryScreen() {
+    showScreen('loginScreen');
+    window.updateLoginFields();
+    setErr('');
+    showModal('ตั้งรหัสผ่านใหม่',
+      '<div class="space-y-3">' +
+      '  <p class="text-sm text-gray-600">ยืนยันตัวตนจากอีเมลเรียบร้อยแล้ว กรุณาตั้งรหัสผ่านใหม่</p>' +
+      '  <div><label class="block text-sm font-medium text-gray-700 mb-1">รหัสผ่านใหม่</label>' +
+      '    <input id="pwNew1" type="password" class="ems-input" placeholder="อย่างน้อย 8 ตัวอักษร" autocomplete="new-password"></div>' +
+      '  <div><label class="block text-sm font-medium text-gray-700 mb-1">ยืนยันรหัสผ่านใหม่</label>' +
+      '    <input id="pwNew2" type="password" class="ems-input" placeholder="พิมพ์ซ้ำอีกครั้ง" autocomplete="new-password"></div>' +
+      '  <div id="pwMsg" class="hidden text-sm rounded-xl p-3"></div>' +
+      '</div>',
+      async function () {
+        var a = (el('pwNew1') && el('pwNew1').value) || '';
+        var b = (el('pwNew2') && el('pwNew2').value) || '';
+        if (a.length < 8) { pwMsg('รหัสผ่านใหม่ต้องยาวอย่างน้อย 8 ตัวอักษร', 'err'); return; }
+        if (a !== b) { pwMsg('รหัสผ่านทั้งสองช่องไม่ตรงกัน', 'err'); return; }
+        var r = await GSheetDB.changePassword(a);
+        if (!r.isOk) { pwMsg(r.error || 'ตั้งรหัสผ่านไม่สำเร็จ', 'err'); return; }
+        pwMsg('ตั้งรหัสผ่านใหม่เรียบร้อย กำลังพาเข้าสู่ระบบ...', 'ok');
+        setTimeout(async function () {
+          closeModal();
+          var p = await GSheetDB.loadProfile();
+          if (p) await emsEnterApp(p);
+        }, 900);
+      });
+  }
+
+  /* ============================================================
      6) บูตระบบ — คืนสถานะถ้ายังมี session เดิม / กลับจาก Google
      ============================================================ */
   window.__emsBoot = async function __emsBoot() {
@@ -246,6 +339,17 @@
       return;
     }
 
+    // กลับมาจากลิงก์ตั้งรหัสผ่านใหม่ในอีเมล
+    if (IS_RECOVERY) {
+      var rsess = await GSheetDB.currentSession();
+      EMSAuth.cleanUrlHash();
+      if (rsess) { await showRecoveryScreen(); return; }
+      showScreen('loginScreen');
+      window.updateLoginFields();
+      setErr('ลิงก์ตั้งรหัสผ่านหมดอายุหรือถูกใช้ไปแล้ว กรุณากด "ลืมรหัสผ่าน?" เพื่อขอลิงก์ใหม่');
+      return;
+    }
+
     var back = await EMSAuth.handleOAuthReturn();
     EMSAuth.cleanUrlHash();
 
@@ -260,6 +364,35 @@
     showScreen('loginScreen');
     window.updateLoginFields();
   };
+
+  /* ============================================================
+     6.5) เมนู "ระบบการลาของนักศึกษา"
+     ------------------------------------------------------------
+     app.js เดิมปิดเมนูนี้ไว้ (คอมเมนต์ทิ้งไว้ในฟังก์ชัน buildSidebar)
+     ที่นี่จึงแทรกกลับเข้าไปเมื่อเปิดสวิตช์ ENABLE_LEAVE_MENU ใน config.js
+     โดยไม่ต้องแก้ app.js
+     ============================================================ */
+  (function () {
+    var original = window.buildSidebar;
+    if (typeof original !== 'function') return;
+    window.buildSidebar = function () {
+      original.apply(this, arguments);
+      if (!CFG.ENABLE_LEAVE_MENU) return;
+      var perms = (APP.permissions && APP.permissions[APP.currentRole]) || {};
+      if (!perms.leave) return;
+      var nav = el('sidebarNav');
+      if (!nav || nav.querySelector('[data-page="leave"]')) return;
+      var btn = document.createElement('button');
+      btn.setAttribute('onclick', "navigateTo('leave')");
+      btn.setAttribute('data-page', 'leave');
+      btn.className = 'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-700 hover:bg-surface hover:text-primary transition';
+      btn.innerHTML = '<i data-lucide="calendar-off" class="w-5 h-5 flex-shrink-0"></i>ระบบการลาของนักศึกษา';
+      // วางไว้ก่อนเมนู "แบบประเมินความพึงพอใจ" ถ้ามี ไม่งั้นต่อท้าย
+      var before = nav.querySelector('[data-page="survey"], [data-page="surveyManage"], [data-page="services"]');
+      if (before) nav.insertBefore(btn, before); else nav.appendChild(btn);
+      if (window.lucide) lucide.createIcons();
+    };
+  })();
 
   /* ============================================================
      7) ตัวช่วย responsive — หุ้มตารางให้เลื่อนแนวนอนได้เองบนจอเล็ก
