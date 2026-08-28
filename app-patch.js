@@ -402,6 +402,144 @@
   })();
 
   /* ============================================================
+     6.7) แนบไฟล์ PDF ในหน้าติดตามการส่ง (ใช้ร่วมกันทั้ง 4 หน้า)
+     ------------------------------------------------------------
+     เดิมเป็นการ "วางลิงก์" Google Drive — เปลี่ยนเป็น "อัปโหลดไฟล์"
+     ไฟล์เก็บใน Supabase Storage ถังปิด ตั้งชื่อตามรหัสแถว
+     อัปโหลดใหม่จึงทับไฟล์เดิมทันที ไม่ต้องลบเอง
+     ============================================================ */
+  window.promptTrackingFileLink = function promptTrackingFileLink(id) {
+    var rec = APP.allData.find(function (d) { return d.__backendId === id; });
+    if (!rec) return;
+
+    var stored = GSheetDB.isStoredFile(rec.file_link);
+    var hasLink = !!(rec.file_link || '').trim();
+    var currentHtml = '';
+    if (stored) {
+      currentHtml =
+        '<div class="flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-200 rounded-xl p-3">' +
+        '  <div class="min-w-0">' +
+        '    <p class="text-sm font-medium text-emerald-800">มีไฟล์แนบอยู่แล้ว</p>' +
+        '    <p class="text-xs text-emerald-700 truncate">' + (rec.file_name || 'ไฟล์ PDF') + '</p>' +
+        '  </div>' +
+        '  <div class="flex gap-2 flex-shrink-0">' +
+        '    <button type="button" onclick="emsOpenTrackingFile(\'' + id + '\')" class="px-3 py-1.5 bg-white border border-emerald-300 text-emerald-700 rounded-lg text-xs">เปิดดู</button>' +
+        '    <button type="button" onclick="emsRemoveTrackingFile(\'' + id + '\')" class="px-3 py-1.5 bg-white border border-red-300 text-red-600 rounded-lg text-xs">ลบไฟล์</button>' +
+        '  </div>' +
+        '</div>';
+    } else if (hasLink) {
+      currentHtml =
+        '<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm">' +
+        '  <p class="font-medium text-amber-800 mb-1">ตอนนี้เป็นลิงก์ภายนอก (ของเดิม)</p>' +
+        '  <a href="' + rec.file_link + '" target="_blank" rel="noopener" class="text-xs text-amber-700 underline break-all">' + rec.file_link + '</a>' +
+        '  <p class="text-xs text-amber-700 mt-2">อัปโหลดไฟล์ด้านล่างเพื่อเปลี่ยนมาเก็บในระบบแทน</p>' +
+        '</div>';
+    }
+
+    showModal('ไฟล์ PDF ของรายวิชา',
+      '<div class="space-y-3">' +
+      '  <div class="bg-blue-50 rounded-xl p-3 text-sm space-y-1">' +
+      '    <p><span class="text-gray-500">รายวิชา:</span> <strong>' + (rec.subject_name || '-') + '</strong></p>' +
+      '    <p><span class="text-gray-500">ภาค/ปี:</span> <strong>' + semLabel(rec.semester) + '/' + (rec.academic_year || '') + '</strong></p>' +
+      '  </div>' +
+      currentHtml +
+      '  <div>' +
+      '    <label class="block text-sm font-medium text-gray-700 mb-1">' + (stored ? 'อัปโหลดไฟล์ใหม่ทับไฟล์เดิม' : 'เลือกไฟล์ PDF') + '</label>' +
+      '    <input type="file" id="emsPdfInput" accept="application/pdf,.pdf" class="ems-input !py-2">' +
+      '    <p class="text-xs text-gray-500 mt-1">รองรับเฉพาะไฟล์ PDF ขนาดไม่เกิน 20 MB</p>' +
+      '  </div>' +
+      '  <div id="emsPdfMsg" class="hidden text-sm rounded-xl p-3"></div>' +
+      '  <button type="button" id="emsPdfBtn" onclick="emsUploadTrackingFile(\'' + id + '\')" class="ems-btn-primary w-full inline-flex items-center justify-center">' +
+      (stored ? 'อัปโหลดทับไฟล์เดิม' : 'อัปโหลดไฟล์') + '</button>' +
+      '</div>');
+    setTimeout(function () { if (window.lucide) lucide.createIcons(); }, 50);
+  };
+
+  function pdfMsg(text, kind) {
+    var box = el('emsPdfMsg');
+    if (!box) return;
+    box.textContent = text;
+    box.className = (kind === 'err')
+      ? 'text-sm rounded-xl p-3 bg-red-50 border border-red-200 text-red-700'
+      : 'text-sm rounded-xl p-3 bg-emerald-50 border border-emerald-200 text-emerald-800';
+  }
+
+  window.emsUploadTrackingFile = async function (id) {
+    var rec = APP.allData.find(function (d) { return d.__backendId === id; });
+    if (!rec) return;
+    var input = el('emsPdfInput');
+    var file = input && input.files && input.files[0];
+    if (!file) { pdfMsg('กรุณาเลือกไฟล์ PDF ก่อน', 'err'); return; }
+
+    var btn = el('emsPdfBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'กำลังอัปโหลด...'; }
+    pdfMsg('กำลังอัปโหลด ' + file.name + ' (' + (file.size / 1048576).toFixed(1) + ' MB)');
+
+    var up = await GSheetDB.uploadFile(rec.type, rec.__rowIndex, file);
+    if (!up.isOk) {
+      pdfMsg(up.error, 'err');
+      if (btn) { btn.disabled = false; btn.textContent = 'อัปโหลดไฟล์'; }
+      return;
+    }
+
+    rec.file_link = up.link;
+    rec.file_name = file.name;
+    var r = await GSheetDB.update(rec);
+    if (btn) { btn.disabled = false; btn.textContent = 'อัปโหลดไฟล์'; }
+    if (!r.isOk) { pdfMsg('อัปโหลดไฟล์สำเร็จ แต่บันทึกลงฐานข้อมูลไม่สำเร็จ: ' + r.error, 'err'); return; }
+
+    pdfMsg('อัปโหลดเรียบร้อยแล้ว');
+    setTimeout(function () {
+      closeModal();
+      if (typeof showToast === 'function') showToast('แนบไฟล์ PDF เรียบร้อย');
+      if (typeof renderCurrentPage === 'function') renderCurrentPage();
+    }, 700);
+  };
+
+  window.emsOpenTrackingFile = async function (id) {
+    var rec = APP.allData.find(function (d) { return d.__backendId === id; });
+    if (!rec) return;
+    await emsOpenStoredFile(rec.file_link);
+  };
+
+  window.emsRemoveTrackingFile = async function (id) {
+    var rec = APP.allData.find(function (d) { return d.__backendId === id; });
+    if (!rec) return;
+    if (!confirm('ยืนยันการลบไฟล์ PDF ของรายวิชานี้?')) return;
+    var d = await GSheetDB.deleteFile(rec.file_link);
+    if (!d.isOk) { pdfMsg('ลบไฟล์ไม่สำเร็จ: ' + d.error, 'err'); return; }
+    rec.file_link = '';
+    rec.file_name = '';
+    await GSheetDB.update(rec);
+    closeModal();
+    if (typeof showToast === 'function') showToast('ลบไฟล์เรียบร้อย');
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  };
+
+  // เปิดไฟล์ที่เก็บในระบบด้วยลิงก์ชั่วคราว
+  async function emsOpenStoredFile(link) {
+    if (typeof showToast === 'function') showToast('กำลังเปิดไฟล์...', 'loading');
+    var r = await GSheetDB.fileUrl(link);
+    var t = el('loadingToast'); if (t) t.remove();
+    if (!r.isOk) {
+      if (typeof showToast === 'function') showToast('เปิดไฟล์ไม่สำเร็จ: ' + r.error, 'error');
+      return;
+    }
+    window.open(r.url, '_blank', 'noopener');
+  }
+  window.emsOpenStoredFile = emsOpenStoredFile;
+
+  // ตารางในระบบเดิมสร้างลิงก์เป็น <a href="..."> ตรง ๆ
+  // ไฟล์ที่เก็บในระบบใช้ข้อความ sb:... ซึ่งเปิดตรงไม่ได้
+  // จึงดักการคลิกไว้แล้วเปลี่ยนเป็นลิงก์ชั่วคราวให้อัตโนมัติ (ไม่ต้องแก้ app.js)
+  document.addEventListener('click', function (ev) {
+    var a = ev.target && ev.target.closest ? ev.target.closest('a[href^="sb:"]') : null;
+    if (!a) return;
+    ev.preventDefault();
+    emsOpenStoredFile(a.getAttribute('href'));
+  }, true);
+
+  /* ============================================================
      7) ตัวช่วย responsive — หุ้มตารางให้เลื่อนแนวนอนได้เองบนจอเล็ก
      ============================================================ */
   function wrapTables(root) {

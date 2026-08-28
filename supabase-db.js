@@ -444,6 +444,55 @@ const EMSDB = (() => {
     return error ? { isOk: false, error: error.message } : { isOk: true, message: 'เปลี่ยนรหัสผ่านสำเร็จ' };
   }
 
+  /* -------- ไฟล์แนบ PDF ของหน้าติดตามการส่ง --------
+     เก็บใน Supabase Storage ถังปิด ชื่อไฟล์ตั้งตามรหัสแถว
+     เช่น tracking/57.pdf → อัปโหลดซ้ำทับไฟล์เดิมทันที ไม่เกิดไฟล์ค้าง
+     ในฐานข้อมูลเก็บเป็นข้อความสั้น ๆ ว่า  sb:tracking/57.pdf
+     (ลิงก์ https เดิมที่เคยกรอกไว้ยังใช้งานได้ตามปกติ)              */
+  const FILE_BUCKET = 'tracking-files';
+  const FILE_PREFIX = 'sb:';
+  const MAX_FILE_BYTES = 20 * 1024 * 1024;
+
+  function isStoredFile(link) { return typeof link === 'string' && link.indexOf(FILE_PREFIX) === 0; }
+  function filePathOf(link) { return isStoredFile(link) ? link.slice(FILE_PREFIX.length) : ''; }
+
+  async function uploadFile(tableName, rowId, file) {
+    if (!file) return { isOk: false, error: 'ยังไม่ได้เลือกไฟล์' };
+    if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name || '')) {
+      return { isOk: false, error: 'รองรับเฉพาะไฟล์ PDF เท่านั้น' };
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      return { isOk: false, error: 'ไฟล์ใหญ่เกิน 20 MB (ไฟล์นี้ ' + (file.size / 1048576).toFixed(1) + ' MB)' };
+    }
+    const path = tableName + '/' + rowId + '.pdf';
+    const { error } = await client().storage.from(FILE_BUCKET)
+      .upload(path, file, { upsert: true, contentType: 'application/pdf', cacheControl: '0' });
+    if (error) {
+      if (/row-level security|not authorized|Unauthorized/i.test(error.message)) {
+        return { isOk: false, error: 'บัญชีของคุณไม่มีสิทธิ์อัปโหลดไฟล์' };
+      }
+      return { isOk: false, error: error.message };
+    }
+    return { isOk: true, link: FILE_PREFIX + path, path };
+  }
+
+  // สร้างลิงก์ชั่วคราวสำหรับเปิดไฟล์ (อายุ 1 ชั่วโมง) — คนที่ไม่ได้ล็อกอินเปิดไม่ได้
+  async function fileUrl(link, opts) {
+    const path = filePathOf(link);
+    if (!path) return { isOk: false, error: 'ไม่ใช่ไฟล์ในระบบ' };
+    const { data, error } = await client().storage.from(FILE_BUCKET)
+      .createSignedUrl(path, 3600, (opts && opts.download) ? { download: opts.download } : undefined);
+    if (error) return { isOk: false, error: error.message };
+    return { isOk: true, url: data.signedUrl };
+  }
+
+  async function deleteFile(link) {
+    const path = filePathOf(link);
+    if (!path) return { isOk: true };
+    const { error } = await client().storage.from(FILE_BUCKET).remove([path]);
+    return error ? { isOk: false, error: error.message } : { isOk: true };
+  }
+
   /* -------- แบบประเมินความพึงพอใจ -------- */
   async function surveySubmit(payload) {
     try {
@@ -519,6 +568,7 @@ const EMSDB = (() => {
     SHEET_TABS,
     // ---- ของใหม่ที่ Supabase มีเพิ่ม ----
     loginWithGoogle, logout, profile, currentSession, changePassword, whenFullyLoaded,
+    uploadFile, fileUrl, deleteFile, isStoredFile, filePathOf, MAX_FILE_BYTES,
     loadProfile, loadSchema, refreshTab, client
   };
 })();
