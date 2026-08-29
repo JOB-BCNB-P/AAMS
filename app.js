@@ -5212,7 +5212,7 @@ function alumniPage() {
 
   return `<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
     <h2 class="text-xl font-bold text-gray-800"><i data-lucide="graduation-cap" class="w-6 h-6 inline mr-2"></i>ข้อมูลศิษย์เก่า</h2>
-    ${isAdmin ? `<div class="flex gap-2"><button onclick="showAddAlumniModal()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มศิษย์เก่า</button>${csvUploadBtn('alumni', 'name,batch,admission_date,graduation_date,alumni_status,workplace,recorded_date,student_id')}</div>` : ''}
+    ${isAdmin ? `<div class="flex gap-2"><button onclick="showAddAlumniModal()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มศิษย์เก่า</button>${csvUploadBtn('alumni', 'name,batch,admission_date,graduation_date,alumni_status,workplace,salary,recorded_date,student_id')}</div>` : ''}
   </div>
   <div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">
     <div class="flex items-center gap-3 flex-wrap">
@@ -5227,7 +5227,7 @@ function alumniPage() {
   </div>
   <div class="bg-white rounded-2xl border border-blue-100 overflow-hidden">
     <div class="overflow-x-auto"><table class="w-full text-sm">
-      <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">คำนำหน้า</th><th class="px-4 py-3 font-semibold">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold">รุ่นที่</th><th class="px-4 py-3 font-semibold">เข้าศึกษาวันที่</th><th class="px-4 py-3 font-semibold">จบการศึกษาวันที่</th><th class="px-4 py-3 font-semibold">สถานภาพ</th><th class="px-4 py-3 font-semibold">สถานที่ปฏิบัติงาน</th>${isAdmin ? '<th class="px-4 py-3"></th>' : ''}</tr></thead>
+      <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">คำนำหน้า</th><th class="px-4 py-3 font-semibold">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold">รุ่นที่</th><th class="px-4 py-3 font-semibold">เข้าศึกษาวันที่</th><th class="px-4 py-3 font-semibold">จบการศึกษาวันที่</th><th class="px-4 py-3 font-semibold">สถานภาพ</th><th class="px-4 py-3 font-semibold">สถานที่ปฏิบัติงาน</th><th class="px-4 py-3 font-semibold text-right">เงินเดือน (บาท)</th>${isAdmin ? '<th class="px-4 py-3"></th>' : ''}</tr></thead>
       <tbody>${paged.length ? paged.map(a => {
     const pp = parseTitlePrefix(a.name || '');
     return `<tr class="border-t hover:bg-gray-50">
@@ -5238,11 +5238,22 @@ function alumniPage() {
         <td class="px-4 py-3">${a.graduation_date ? toBuddhistDate(a.graduation_date) : ''}</td>
         <td class="px-4 py-3">${a.alumni_status || ''}</td>
         <td class="px-4 py-3">${a.workplace || ''}</td>
+        <td class="px-4 py-3 text-right tabular-nums">${fmtSalary(a.salary)}</td>
         ${isAdmin ? `<td class="px-4 py-3"><div class="flex gap-1"><button onclick="showEditAlumniModal('${a.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${a.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>` : ''}</tr>`;
-  }).join('') : `<tr><td colspan="${isAdmin ? 8 : 7}" class="px-4 py-8 text-center text-gray-400">ไม่มีข้อมูล</td></tr>`}</tbody>
+  }).join('') : `<tr><td colspan="${isAdmin ? 9 : 8}" class="px-4 py-8 text-center text-gray-400">ไม่มีข้อมูล</td></tr>`}</tbody>
     </table></div>
   </div>
   ${paginationHTML(total, APP.pagination.perPage, APP.pagination.page, 'changePage')}`;
+}
+
+// จัดรูปแบบเงินเดือนให้อ่านง่าย (มีคอมมาคั่นหลักพัน) — ถ้าไม่ใช่ตัวเลขให้แสดงตามที่กรอกไว้
+function fmtSalary(v) {
+  const t = String(v == null ? '' : v).trim();
+  if (!t) return '<span class="text-gray-300">-</span>';
+  const num = Number(t.replace(/,/g, ''));
+  return isFinite(num) && t.replace(/[,\s]/g, '') !== '' && /^[\d.,\s]+$/.test(t)
+    ? num.toLocaleString('th-TH')
+    : t;
 }
 
 function alumniFormBody(a) {
@@ -5257,7 +5268,10 @@ function alumniFormBody(a) {
       <div><label class="block text-xs text-gray-600 mb-1">เข้าศึกษาวันที่</label><input name="admission_date" type="date" value="${v('admission_date')}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
       <div><label class="block text-xs text-gray-600 mb-1">จบการศึกษาวันที่</label><input name="graduation_date" type="date" value="${v('graduation_date')}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
     </div>
-    <div><label class="block text-xs text-gray-600 mb-1">สถานที่ปฏิบัติงาน</label><input name="workplace" value="${v('workplace')}" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น รพ.ราชวิถี"></div>
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="block text-xs text-gray-600 mb-1">สถานที่ปฏิบัติงาน</label><input name="workplace" value="${v('workplace')}" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น รพ.ราชวิถี"></div>
+      <div><label class="block text-xs text-gray-600 mb-1">เงินเดือน (บาท)</label><input name="salary" value="${v('salary')}" inputmode="numeric" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น 18000"></div>
+    </div>
     <div><label class="block text-xs text-gray-600 mb-1">วันที่บันทึกข้อมูล</label><input name="recorded_date" type="date" value="${v('recorded_date')}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
     <input type="hidden" name="student_id" value="${v('student_id')}">`;
 }
@@ -5268,6 +5282,7 @@ function collectAlumni(form, obj) {
   obj.alumni_status = form.querySelector('[name="alumni_status"]').value;
   obj.admission_date = form.querySelector('[name="admission_date"]').value;
   obj.graduation_date = form.querySelector('[name="graduation_date"]').value;
+  obj.salary = (form.querySelector('[name="salary"]') || {}).value || '';
   obj.workplace = form.querySelector('[name="workplace"]').value;
   obj.recorded_date = form.querySelector('[name="recorded_date"]').value;
   const sid = form.querySelector('[name="student_id"]'); if (sid) obj.student_id = sid.value;
