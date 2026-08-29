@@ -223,6 +223,29 @@ const EMSDB = (() => {
               { onConflict: 'student_ref' });
   }
 
+  /* ---------------- LINE NOTIFY ---------------- */
+  // ค่าที่ถือว่า "ติ๊กให้ส่ง LINE" (รองรับรูปแบบเดิมจาก Google Sheet)
+  const LINE_YES = ['✓', '✔', 'true', 'yes', 'y', '1', 'ส่ง', 'แจ้ง'];
+  function wantsLine(v) { return LINE_YES.includes(String(v == null ? '' : v).trim().toLowerCase()); }
+
+  // เรียก Edge Function ส่งประกาศเข้ากลุ่ม LINE (ไม่ให้ล้มการบันทึกถ้าส่งไม่สำเร็จ)
+  async function notifyLine(table, id, obj) {
+    if (table !== 'announcement' || !id) return null;
+    if (!wantsLine(obj && obj.line_notify)) return null;
+    try {
+      const { data, error } = await client().functions.invoke('line-notify', { body: { announcement_id: id } });
+      if (error) {
+        let detail = (error && error.message) || 'ส่ง LINE ไม่สำเร็จ';
+        try { const j = await error.context.json(); if (j && j.error) detail = j.error; } catch (e) { }
+        return { isOk: false, error: detail };
+      }
+      if (data && data.skipped) return { isOk: true, skipped: String(data.skipped) };
+      if (data && data.isOk === false) return { isOk: false, error: data.error || 'ส่ง LINE ไม่สำเร็จ' };
+      return { isOk: true, sent: Number((data && (data['ส่งสำเร็จ'] ?? data.sent)) || 0) };
+    } catch (e) {
+      return { isOk: false, error: String((e && e.message) || e) };
+    }
+  }
   async function create(obj, opts) {
     const t = obj && obj.type;
     if (!t) return { isOk: false, error: 'ไม่ระบุประเภทข้อมูล (type)' };
@@ -237,8 +260,12 @@ const EMSDB = (() => {
     const { data, error } = await client().from(table).insert(payload).select('id').single();
     if (error) return { isOk: false, error: friendly(error) };
     if (nid) { try { await saveNationalId(data.id, nid); } catch (e) { /* ไม่ให้ล้มทั้งรายการ */ } }
+    const lineRes = await notifyLine(table, data.id, obj);
     if (!(opts && opts.noRefresh)) await refreshTab(t);
-    return { isOk: true, rowIndex: data.id, message: 'บันทึกแล้ว' };
+    let msg = 'บันทึกแล้ว';
+    if (lineRes && lineRes.isOk && !lineRes.skipped) msg += ' · ส่งเข้า LINE แล้ว (' + lineRes.sent + ' ช่องทาง)';
+    else if (lineRes && !lineRes.isOk) msg += ' · แต่ส่ง LINE ไม่สำเร็จ: ' + lineRes.error;
+    return { isOk: true, rowIndex: data.id, message: msg };
   }
 
   async function update(obj, opts) {
@@ -256,8 +283,12 @@ const EMSDB = (() => {
     const { error } = await client().from(table).update(payload).eq('id', id);
     if (error) return { isOk: false, error: friendly(error) };
     if (nid) { try { await saveNationalId(id, nid); } catch (e) { /* ignore */ } }
+    const lineRes = await notifyLine(table, id, obj);
     if (!(opts && opts.noRefresh)) await refreshTab(t);
-    return { isOk: true, rowIndex: id, message: 'แก้ไขแล้ว' };
+    let msg = 'แก้ไขแล้ว';
+    if (lineRes && lineRes.isOk && !lineRes.skipped) msg += ' · ส่งเข้า LINE แล้ว (' + lineRes.sent + ' ช่องทาง)';
+    else if (lineRes && !lineRes.isOk) msg += ' · แต่ส่ง LINE ไม่สำเร็จ: ' + lineRes.error;
+    return { isOk: true, rowIndex: id, message: msg };
   }
 
   async function remove(obj) {
@@ -599,7 +630,9 @@ const EMSDB = (() => {
     // ---- ของใหม่ที่ Supabase มีเพิ่ม ----
     loginWithGoogle, logout, profile, currentSession, changePassword, whenFullyLoaded,
     uploadFile, fileUrl, deleteFile, isStoredFile, filePathOf, MAX_FILE_BYTES,
-    loadProfile, loadSchema, refreshTab, client
+    loadProfile, loadSchema, refreshTab, client,
+    // ส่งประกาศเข้า LINE ด้วยตัวเอง (ใช้ตอนอยากส่งซ้ำ): EMSDB.sendLineNow(id)
+    sendLineNow: (id) => notifyLine('announcement', id, { line_notify: '✓' })
   };
 })();
 

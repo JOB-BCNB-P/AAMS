@@ -1594,8 +1594,7 @@ function studentRetentionAnalyticsHTML() {
   const cohortKey = s => admissionYearOf(s);
   const allCohorts = [...new Set(all.map(cohortKey))].sort((a, b) => String(b).localeCompare(String(a), undefined, { numeric: true }));
   const activeCohorts = new Set(all.filter(isActiveStudent).map(cohortKey));
-  const gradCohorts = [...new Set(all.filter(isGraduate).map(cohortKey))].sort((a, b) => String(b).localeCompare(String(a), undefined, { numeric: true }));
-  const defaultCohorts = new Set(activeCohorts); if (gradCohorts[0]) defaultCohorts.add(gradCohorts[0]);
+  const defaultCohorts = new Set(activeCohorts);
   const sel = APP.filters._retYear || '';
   const inScope = s => { const k = cohortKey(s); if (sel === '__all') return true; if (sel) return k === sel; return defaultCohorts.has(k); };
   const scoped = all.filter(inScope);
@@ -1603,11 +1602,11 @@ function studentRetentionAnalyticsHTML() {
   const yearSelector = `<div class="mb-5 flex flex-wrap items-center gap-2">
     <label class="text-sm font-medium text-gray-700"><i data-lucide="calendar" class="w-4 h-4 inline mr-1"></i>ปีการศึกษาที่รับเข้า:</label>
     <select onchange="APP.filters._retYear=this.value;renderCurrentPage()" class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
-      <option value="" ${sel === '' ? 'selected' : ''}>ค่าเริ่มต้น (กำลังศึกษา + จบล่าสุด)</option>
+      <option value="" ${sel === '' ? 'selected' : ''}>ค่าเริ่มต้น (เฉพาะรุ่นที่กำลังศึกษา)</option>
       <option value="__all" ${sel === '__all' ? 'selected' : ''}>ทุกปี/ทุกรุ่น</option>
       ${allCohorts.map(c => `<option value="${c}" ${sel === c ? 'selected' : ''}>${cohortLabel(c)}</option>`).join('')}
     </select>
-    <span class="text-xs text-gray-400">${sel === '__all' ? 'แสดงทุกปี' : sel ? ('เฉพาะ ' + cohortLabel(sel)) : 'แสดงเฉพาะรุ่นที่ยังเรียนอยู่ + จบล่าสุด'} (${scoped.length} คน)</span>
+    <span class="text-xs text-gray-400">${sel === '__all' ? 'แสดงทุกปี' : sel ? ('เฉพาะ ' + cohortLabel(sel)) : 'แสดงเฉพาะรุ่นที่ยังเรียนอยู่ (ไม่รวมรุ่นที่จบแล้ว)'} (${scoped.length} คน)</span>
   </div>`;
   // --- สัดส่วนการคงอยู่ (ไม่รวมผู้สำเร็จการศึกษา) ---
   const nonGrad = scoped.filter(s => !isGraduate(s));
@@ -1676,6 +1675,66 @@ function studentRetentionAnalyticsHTML() {
   </table></div>
   <p class="text-xs text-gray-400 mt-2"><i data-lucide="info" class="w-3 h-3 inline mr-1"></i>คงอยู่ % = (รับเข้า − ลาออก − โอนย้าย) ÷ รับเข้า (นับผู้สำเร็จการศึกษาเป็นการคงอยู่จนจบ)</p>`;
 
+  // --- ตารางการลาออกแยกตามรอบการสมัคร (ตามขอบเขตปีรับเข้าที่เลือก) ---
+  const roundKey = s => norm(s.admission_round) || 'ไม่ระบุรอบ';
+  const roundOrder = ['Portfolio', 'Quota', 'Admission', 'รับตรงอิสระ'];
+  const roundList = [...new Set(scoped.map(roundKey))].sort((a, b) => {
+    const ia = roundOrder.indexOf(a), ib = roundOrder.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || String(a).localeCompare(String(b), 'th');
+  });
+  const roundResignRows = roundList.map(r => {
+    const inR = scoped.filter(s => roundKey(s) === r);
+    const admitted = inR.length;
+    const active = inR.filter(isActiveStudent).length;
+    const resign = inR.filter(s => norm(s.status) === 'ลาออก').length;
+    const leave = inR.filter(s => norm(s.status) === 'พักการศึกษา').length;
+    const transfer = inR.filter(s => norm(s.status) === 'ขอโอนย้ายสถานศึกษา').length;
+    const pct = admitted ? Math.round(resign / admitted * 1000) / 10 : 0;
+    const barColor = pct >= 5 ? '#ef4444' : pct >= 2 ? '#f59e0b' : '#22c55e';
+    const topReason = (() => {
+      const cnt = {};
+      inR.filter(s => norm(s.status) === 'ลาออก').forEach(s => { let k = norm(s.status_reason) || 'ไม่ระบุ'; if (k !== 'ไม่ระบุ' && !STATUS_REASONS.includes(k)) k = 'อื่นๆ'; cnt[k] = (cnt[k] || 0) + 1; });
+      const top = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0];
+      return top ? top[0] + ' (' + top[1] + ')' : '-';
+    })();
+    return `<tr class="border-t hover:bg-gray-50">
+      <td class="px-3 py-2 font-medium">${r}</td>
+      <td class="px-3 py-2 text-center font-semibold text-primary">${admitted}</td>
+      <td class="px-3 py-2 text-center text-green-600 font-semibold">${active}</td>
+      <td class="px-3 py-2 text-center">${leave}</td>
+      <td class="px-3 py-2 text-center">${transfer}</td>
+      <td class="px-3 py-2 text-center font-semibold text-red-600">${resign}</td>
+      <td class="px-3 py-2">
+        <div class="flex items-center gap-2">
+          <div class="flex-1 min-w-[48px] bg-gray-100 rounded-full h-2 overflow-hidden"><div class="grow-bar" style="--tw:${Math.min(100, pct * 10)}%;height:100%;background:${barColor}"></div></div>
+          <span class="text-xs font-bold" style="color:${barColor}">${pct}%</span>
+        </div>
+      </td>
+      <td class="px-3 py-2 text-xs text-gray-500">${topReason}</td>
+    </tr>`;
+  }).join('');
+  const rTotal = scoped.length;
+  const rResign = scoped.filter(s => norm(s.status) === 'ลาออก').length;
+  const rPct = rTotal ? Math.round(rResign / rTotal * 1000) / 10 : 0;
+  const roundResignTable = `<div class="mt-6 pt-5 border-t border-gray-100">
+    <p class="text-sm font-semibold text-gray-600 mb-1"><i data-lucide="list-checks" class="w-4 h-4 inline mr-1"></i>การลาออกแยกตามรอบการสมัคร</p>
+    <p class="text-xs text-gray-400 mb-3">ขอบเขต: ${sel === '__all' ? 'ทุกปี/ทุกรุ่น' : sel ? cohortLabel(sel) : 'รุ่นที่กำลังศึกษา'} · รับเข้า ${rTotal} คน · ลาออกรวม ${rResign} คน (${rPct}%)</p>
+    <div class="overflow-x-auto"><table class="w-full text-sm">
+      <thead><tr class="bg-surface text-left">
+        <th class="px-3 py-2 font-semibold">รอบการสมัคร</th>
+        <th class="px-3 py-2 font-semibold text-center">รับเข้า</th>
+        <th class="px-3 py-2 font-semibold text-center">กำลังศึกษา</th>
+        <th class="px-3 py-2 font-semibold text-center">พักฯ</th>
+        <th class="px-3 py-2 font-semibold text-center">โอนย้าย</th>
+        <th class="px-3 py-2 font-semibold text-center">ลาออก</th>
+        <th class="px-3 py-2 font-semibold">อัตราการลาออก</th>
+        <th class="px-3 py-2 font-semibold">สาเหตุที่พบมากที่สุด</th>
+      </tr></thead>
+      <tbody>${roundResignRows || '<tr><td colspan="8" class="px-3 py-6 text-center text-gray-400">ไม่มีข้อมูลรอบการสมัคร</td></tr>'}</tbody>
+    </table></div>
+    <p class="text-[11px] text-gray-400 mt-2">* อัตราการลาออก = ลาออก ÷ รับเข้า ของรอบนั้น (แถบเต็ม = 10%)</p>
+  </div>`;
+
   // --- เพศ (ชาย/หญิง) + รายชั้นปี (นักศึกษาที่กำลังศึกษา "ทั้งหมด" — ไม่ขึ้นกับตัวกรองปีที่รับเข้า) ---
   const activeAll = activeStudents(all);
   const gc = list => ({ M: list.filter(s => studentGender(s) === 'M').length, F: list.filter(s => studentGender(s) === 'F').length, U: list.filter(s => studentGender(s) === 'U').length });
@@ -1715,6 +1774,7 @@ function studentRetentionAnalyticsHTML() {
         <div><p class="text-sm font-semibold text-gray-600 mb-3">เปรียบเทียบรับเข้า vs กำลังศึกษา (รายรุ่น)</p>${cohortTable}</div>
       </div>
       ${reasonCard}
+      ${roundResignTable}
       <div class="mt-4"><span class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-sky-50 text-sky-700 border border-sky-100 text-sm"><i data-lucide="log-in" class="w-4 h-4"></i>นักศึกษาโอนย้ายเข้า (กำลังศึกษา ในขอบเขตที่เลือก): <b>${cTransIn}</b> คน</span></div>
       <div class="mt-6 pt-5 border-t border-gray-100">
         <p class="text-sm font-semibold text-gray-600 mb-3"><i data-lucide="users" class="w-4 h-4 inline mr-1"></i>นักศึกษาที่กำลังศึกษา แยกตามเพศ <span class="font-normal text-gray-400">(ทั้งหมดทุกชั้นปี — ไม่ขึ้นกับตัวกรองปีรับเข้า)</span></p>
@@ -6823,7 +6883,7 @@ function showAddAnnouncementModal() {
       const obj = { type: 'announcement', created_at: new Date().toISOString() }; fd.forEach((v, k) => obj[k] = v);
       obj.roles = annCollectRoles();
       const r = await GSheetDB.create(obj);
-      if (r.isOk) { showToast('เพิ่มประกาศสำเร็จ'); closeModal() } else showToast('เกิดข้อผิดพลาด', 'error');
+      if (r.isOk) { showToast(r.message && r.message !== 'บันทึกแล้ว' ? r.message : 'เพิ่มประกาศสำเร็จ'); closeModal() } else showToast('เกิดข้อผิดพลาด', 'error');
     });
   };
 }
@@ -9396,7 +9456,7 @@ async function editRecord(id, formId) {
   if (form.querySelector('[name="title_prefix"]')) { rec.name = combineName(form); } // เก็บ title_prefix แยกด้วย (ถ้าชีตมีคอลัมน์นี้ — ถ้าไม่มีจะถูกละเว้นอัตโนมัติ)
   const r = await GSheetDB.update(rec);
   if (btn) { btn.disabled = false; btn.innerHTML = origText; lucide.createIcons() }
-  if (r.isOk) { showToast('แก้ไขข้อมูลสำเร็จ'); closeModal(); renderCurrentPage() } else showToast('เกิดข้อผิดพลาด: ' + (r.error || ''), 'error');
+  if (r.isOk) { showToast(r.message && r.message !== 'แก้ไขแล้ว' ? r.message : 'แก้ไขข้อมูลสำเร็จ'); closeModal(); renderCurrentPage() } else showToast('เกิดข้อผิดพลาด: ' + (r.error || ''), 'error');
 }
 
 // ======================== EDIT MODALS ========================
