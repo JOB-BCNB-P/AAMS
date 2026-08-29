@@ -549,6 +549,51 @@
   }, true);
 
   /* ============================================================
+     6.9) ย่อชื่อระบบให้พอดีบรรทัดเดียวเสมอ
+     ------------------------------------------------------------
+     การกำหนดขนาดตัวอักษรด้วย CSS ล่วงหน้าไม่แม่นพอ เพราะความกว้างจริง
+     ขึ้นกับฟอนต์ที่โหลดได้ในเครื่องนั้น ถ้าเดาพลาดข้อความจะล้นแล้วถูกตัดหาย
+     วิธีนี้จึง "วัดของจริงแล้วย่อจนพอดี" หลังฟอนต์โหลดเสร็จ
+     ============================================================ */
+  function fitOneLine(node, maxPx, minPx) {
+    if (!node || !node.offsetParent) return;
+    node.style.whiteSpace = 'nowrap';
+    var size = maxPx;
+    node.style.fontSize = size + 'px';
+    var guard = 0;
+    while (node.scrollWidth > node.clientWidth && size > minPx && guard++ < 80) {
+      size -= 0.5;
+      node.style.fontSize = size + 'px';
+    }
+  }
+
+  function fitTitles() {
+    fitOneLine(el('loginTitle'), 22, 11);
+    fitOneLine(el('headerTitle'), 15, 9);
+  }
+  window.emsFitTitles = fitTitles;
+
+  // เรียกซ้ำในทุกจังหวะที่ความกว้างหรือฟอนต์อาจเปลี่ยน
+  function scheduleFit() { requestAnimationFrame(function () { setTimeout(fitTitles, 0); }); }
+  window.addEventListener('resize', scheduleFit);
+  window.addEventListener('orientationchange', scheduleFit);
+  if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
+    document.fonts.ready.then(scheduleFit);
+  }
+  setTimeout(scheduleFit, 400);
+  setTimeout(scheduleFit, 1500);
+
+  // ทุกครั้งที่สลับหน้าจอ (โหลด → เข้าสู่ระบบ → หน้าหลัก) ต้องวัดใหม่
+  (function () {
+    var originalShowScreen = window.showScreen;
+    if (typeof originalShowScreen !== 'function') return;
+    window.showScreen = function (id) {
+      originalShowScreen.apply(this, arguments);
+      scheduleFit();
+    };
+  })();
+
+  /* ============================================================
      7) ตัวช่วย responsive — หุ้มตารางให้เลื่อนแนวนอนได้เองบนจอเล็ก
      ============================================================ */
   function wrapTables(root) {
