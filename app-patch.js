@@ -138,15 +138,12 @@
   /* ============================================================
      3) เข้าสู่หน้าหลัก — ประกอบ APP.currentUser จากบทบาทในฐานข้อมูล
      ============================================================ */
-  window.emsEnterApp = async function emsEnterApp(profile) {
-    var role = (profile && profile.role) || 'guest';
+  // ประกอบ APP.currentUser ตาม "บทบาทที่กำลังใช้งาน" — แยกออกมาเพื่อให้สลับมุมมองได้
+  function emsApplyRole(role, profile) {
     var nameL = String((profile && profile.name) || '').trim().toLowerCase();
     var email = String((profile && profile.email) || '').trim().toLowerCase();
-
-    showScreen('loadingScreen');
-    await GSheetDB.refresh();
-
     var t, dept;
+
     if (role === 'student') {
       var stu = (profile && profile.student) || {};
       APP.currentUser = { name: stu.name || profile.name || 'นักศึกษา', role: 'student', data: stu };
@@ -178,6 +175,22 @@
     }
 
     APP.currentRole = APP.currentUser.role;
+  }
+
+  window.emsEnterApp = async function emsEnterApp(profile) {
+    var role = (profile && profile.role) || 'guest';
+
+    showScreen('loadingScreen');
+    await GSheetDB.refresh();
+
+    // บทบาททั้งหมดที่ผู้ใช้คนนี้ถืออยู่ (สิทธิ์ในฐานข้อมูลเป็นผลรวมของทุกบทบาทเสมอ
+    // ส่วนตัวเลือกนี้เปลี่ยนแค่ "มุมมอง" ว่าจะทำงานในฐานะบทบาทไหน)
+    window.__emsProfile = profile;
+    APP._roles = (profile && Array.isArray(profile.roles) && profile.roles.length)
+      ? profile.roles.slice() : [role];
+    APP._roles.sort(function (a, b) { return (a === role ? -1 : 0) - (b === role ? -1 : 0); });
+
+    emsApplyRole(role, profile);
 
     try {
       var ident = (APP.currentRole === 'student' && APP.currentUser.data)
@@ -194,8 +207,45 @@
     buildSidebar();
     navigateTo('dashboard');
     updateNotifBadge();
+    emsRenderRoleSwitcher();
     if (window.lucide) lucide.createIcons();
   };
+
+  /* ---------- สลับมุมมองบทบาท (สำหรับผู้ที่มีหลายบทบาท) ----------
+     เปลี่ยนเฉพาะหน้าจอที่เห็น ไม่ได้เปลี่ยนสิทธิ์ — สิทธิ์ถูกกำหนดไว้ในฐานข้อมูล
+     เป็นผลรวมของทุกบทบาทอยู่แล้ว จึงปลอมแปลงจากฝั่งเบราว์เซอร์ไม่ได้            */
+  window.emsSwitchRole = function emsSwitchRole(r) {
+    if (!r || r === APP.currentRole || !window.__emsProfile) return;
+    emsApplyRole(r, window.__emsProfile);
+    if (el('currentUserRole')) el('currentUserRole').textContent = ROLE_LABEL[APP.currentRole] || '';
+    var cpb = el('changePwBtn');
+    if (cpb) cpb.classList.toggle('hidden', APP.currentRole === 'student');
+    buildSidebar();
+    navigateTo('dashboard');
+    emsRenderRoleSwitcher();
+    if (window.lucide) lucide.createIcons();
+    if (window.showToast) showToast('มุมมอง: ' + (ROLE_LABEL[APP.currentRole] || APP.currentRole));
+  };
+
+  function emsRenderRoleSwitcher() {
+    var host = document.querySelector('.ems-header-actions');
+    if (!host) return;
+    var sel = el('emsRoleSwitch');
+    if (!APP._roles || APP._roles.length < 2) { if (sel) sel.remove(); return; }
+    if (!sel) {
+      sel = document.createElement('select');
+      sel.id = 'emsRoleSwitch';
+      sel.title = 'สลับมุมมองบทบาท';
+      sel.setAttribute('aria-label', 'สลับมุมมองบทบาท');
+      sel.className = 'text-xs border border-gray-200 rounded-xl px-2 py-1.5 bg-white text-gray-700 max-w-[9rem] truncate';
+      sel.setAttribute('onchange', 'emsSwitchRole(this.value)');
+      host.insertBefore(sel, host.firstChild);
+    }
+    sel.innerHTML = APP._roles.map(function (r) {
+      return '<option value="' + r + '"' + (r === APP.currentRole ? ' selected' : '') +
+             '>' + (ROLE_LABEL[r] || r) + '</option>';
+    }).join('');
+  }
 
   /* ============================================================
      4) ออกจากระบบ
