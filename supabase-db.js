@@ -592,7 +592,10 @@ const EMSDB = (() => {
     _onDataChanged = onDataChanged;
     try {
       client();
-      await loadSchema();
+      // อ่านโครงสร้างตารางได้เฉพาะผู้ที่เข้าสู่ระบบแล้ว — ถ้ายังไม่ล็อกอินให้ข้ามไปก่อน
+      // (กันไม่ให้ขึ้น 401 ในคอนโซลตอนอยู่หน้าเข้าสู่ระบบ เดี๋ยวจะโหลดให้เองหลังล็อกอิน)
+      const { data: s0 } = await client().auth.getSession();
+      if (s0 && s0.session) await loadSchema();
       return { isOk: true };
     } catch (err) {
       return { isOk: false, error: String(err && err.message || err) };
