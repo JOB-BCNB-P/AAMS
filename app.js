@@ -8556,23 +8556,20 @@ function userGuidePage() {
   const li = items => `<ul class="list-disc pl-5 space-y-1">${items.map(i => `<li>${i}</li>`).join('')}</ul>`;
 
   return `<div class="max-w-4xl">
-  <div class="flex items-center gap-3 mb-2"><i data-lucide="help-circle" class="w-7 h-7 text-primary"></i><h2 class="text-2xl font-bold text-gray-800">คู่มือการใช้งานระบบ EMS-BCNB</h2></div>
+  <div class="flex items-center gap-3 mb-2"><i data-lucide="help-circle" class="w-7 h-7 text-primary"></i><h2 class="text-2xl font-bold text-gray-800">คู่มือการใช้งานระบบ AAMs</h2></div>
   <p class="text-sm text-gray-500 mb-5">ระบบบริหารจัดการงานวิชาการ · วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ</p>
 
   ${sec('info', '1. ภาพรวมระบบ', `
-    <p>EMS-BCNB เป็นระบบบริหารจัดการงานวิชาการที่ทำงานผ่านเว็บเบราว์เซอร์ โดยใช้ <b>Google Sheet</b> เป็นฐานข้อมูล (อ่านข้อมูลแบบสาธารณะ และเขียน/แก้ไขผ่าน Apps Script) ข้อมูลทั้งหมดจึงอัปเดตแบบเรียลไทม์ร่วมกัน</p>
+    <p>AAMs (ระบบบริหารจัดการงานวิชาการ) ทำงานผ่านเว็บเบราว์เซอร์ โดยใช้ <b>ฐานข้อมูล Supabase (PostgreSQL)</b> ซึ่งควบคุมสิทธิ์การเข้าถึงข้อมูลระดับแถวตามบทบาทผู้ใช้ (Row Level Security) ข้อมูลทั้งหมดอัปเดตแบบเรียลไทม์ร่วมกัน</p>
     <p>เมนูหลักแบ่งเป็นกลุ่ม: <b>หน้าหลัก</b>, <b>ระบบทะเบียน</b>, <b>ผลการศึกษา</b>, <b>ทำเนียบอาจารย์</b>, <b>ติดตามการส่ง</b>, <b>ระบบการลาของนักศึกษา</b>, <b>บริการอื่นๆ</b>, <b>ตั้งค่าระบบ</b> และ <b>บันทึกการเข้าใช้ระบบ</b> (เมนูที่เห็นขึ้นอยู่กับบทบาทผู้ใช้)</p>
-    <p>มุมขวาบนมีปุ่ม <b>รีเฟรชข้อมูล</b> (โหลดข้อมูลล่าสุดจาก Sheet), <b>แจ้งเตือน</b> (กระดิ่ง) และ <b>ออกจากระบบ</b></p>`)}
+    <p>มุมขวาบนมีปุ่ม <b>รีเฟรชข้อมูล</b> (โหลดข้อมูลล่าสุดจากฐานข้อมูล), <b>แจ้งเตือน</b> (กระดิ่ง) และ <b>ออกจากระบบ</b></p>`)}
 
-  ${sec('log-in', '2. การเข้าสู่ระบบ (6 บทบาท)', `
+  ${sec('log-in', '2. การเข้าสู่ระบบ', `
     <p>หน้าเข้าสู่ระบบให้เลือกบทบาทก่อน แล้วกรอกข้อมูลตามแต่ละบทบาท:</p>
     ${li([
-    '<b>ผู้ดูแลระบบ (Admin):</b> รหัสผ่าน 6 หลัก (ตัวเลข)',
-    '<b>เจ้าหน้าที่งานวิชาการ:</b> Email + รหัสผ่าน',
-    '<b>ผู้บริหาร:</b> Username + รหัสผ่าน',
-    '<b>อาจารย์:</b> Email + รหัสผ่าน',
-    '<b>อาจารย์ประจำชั้น:</b> Username + รหัสผ่าน',
-    '<b>นักศึกษา:</b> เลขบัตรประชาชน 13 หลัก',
+    '<b>บุคลากรทุกบทบาท</b> (ผู้ดูแลระบบ · เจ้าหน้าที่งานวิชาการ · งานทะเบียน · ประธานสาขาวิชา · ผู้บริหาร · อาจารย์ · อาจารย์ประจำชั้น): <b>อีเมลของวิทยาลัย + รหัสผ่าน</b> หรือกดปุ่ม <b>เข้าสู่ระบบด้วย Google</b>',
+    '<b>นักศึกษา:</b> เลขบัตรประชาชน 13 หลัก (ไม่ต้องใช้รหัสผ่าน)',
+    'ลืมรหัสผ่าน — กดปุ่ม "ลืมรหัสผ่าน" ระบบจะส่งลิงก์ตั้งรหัสใหม่ไปที่อีเมล (เฉพาะบุคลากร นักศึกษาไม่ต้องใช้)',
   ])}
     <p class="text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2"><b>หมายเหตุ:</b> นักศึกษาที่ <b>สำเร็จการศึกษา</b> แล้วจะไม่สามารถเข้าสู่ระบบได้อีก</p>`)}
 
@@ -8638,7 +8635,7 @@ function userGuidePage() {
   ${sec('phone', '11. ติดต่อสอบถาม', `
     <p>โทร. 02 354 2320 · งานวิชาการ (admin) ต่อ 310 · งานบริหารหลักสูตร ต่อ 311 · งานข้อสอบและวัดประเมินผล ต่อ 320 · งานดิจิทัล ต่อ 322 · งานเลขา ต่อ 330 · งานทะเบียน ต่อ 340</p>`)}
 
-  <p class="text-xs text-gray-400 mt-4">จัดทำโดยงานดิจิทัล · ระบบ EMS-BCNB</p>
+  <p class="text-xs text-gray-400 mt-4">จัดทำโดยงานดิจิทัล · ระบบบริหารจัดการงานวิชาการ (AAMs)</p>
   </div>`;
 }
 
@@ -8746,7 +8743,7 @@ function passwordLogSection() {
 
 function settingsPage() {
   const roles = ['admin', 'academic', 'registrar', 'deptHead', 'executive', 'teacher', 'classTeacher', 'student'];
-  const modules = ['dashboard', 'students', 'teachers', 'advisors', 'specialTeachers', 'alumni', 'schedule', 'subjects', 'grades', 'engResults', 'teacherDirectory', 'services', 'tracking', 'resultTracking', 'gradeTracking', 'fileTracking', 'survey'];
+  const modules = ['dashboard', 'students', 'teachers', 'advisors', 'specialTeachers', 'alumni', 'schedule', 'subjects', 'grades', 'engResults', 'teacherDirectory', 'services', 'tracking', 'resultTracking', 'gradeTracking', 'fileTracking', 'leave', 'survey'];
   const moduleLabels = { dashboard: 'หน้าหลัก', students: 'ข้อมูลนักศึกษา', teachers: 'ข้อมูลอาจารย์', advisors: 'ข้อมูลอาจารย์ที่ปรึกษา', specialTeachers: 'ข้อมูลอาจารย์พิเศษ', alumni: 'ข้อมูลศิษย์เก่า', schedule: 'ปฏิทินกิจกรรมวิชาการ', subjects: 'รายวิชาที่เปิดสอน', grades: 'ผลการเรียน', engResults: 'ผลสอบ ENG', teacherDirectory: 'ทำเนียบอาจารย์', services: 'บริการอื่นๆ', tracking: 'ติดตามการส่งรายละเอียดรายวิชา', resultTracking: 'ติดตามการส่งผลการดำเนินงานรายวิชา', gradeTracking: 'ติดตามการส่งเกรดรายวิชา', fileTracking: 'ติดตามส่งแฟ้มรายวิชา', leave: 'ระบบการลาของนักศึกษา', survey: 'แบบประเมินความพึงพอใจ' };
   const roleLabels = { admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'งานทะเบียน', deptHead: 'ประธานสาขา', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อ.ประจำชั้น', student: 'นักศึกษา' };
 
@@ -9912,7 +9909,7 @@ const SURVEY_DEFAULT_QUESTIONS = [
   { section: 'ด้านความปลอดภัยของข้อมูล', q_type: 'rating', question_text: 'การกำหนดสิทธิ์การเข้าถึงตามบทบาท ช่วยให้ข้อมูลปลอดภัยและเหมาะสม' },
   { section: 'ด้านความปลอดภัยของข้อมูล', q_type: 'rating', question_text: 'มั่นใจในความปลอดภัยของการเข้าสู่ระบบและการจัดการรหัสผ่าน' },
 
-  { section: 'ความพึงพอใจในภาพรวม', q_type: 'rating', question_text: 'โดยภาพรวม ท่านพึงพอใจต่อระบบ EMS-BCNB' },
+  { section: 'ความพึงพอใจในภาพรวม', q_type: 'rating', question_text: 'โดยภาพรวม ท่านพึงพอใจต่อระบบ AAMs' },
   { section: 'ความพึงพอใจในภาพรวม', q_type: 'rating', question_text: 'ระบบช่วยให้การทำงาน/การเข้าถึงข้อมูลสะดวกและมีประสิทธิภาพมากขึ้น' },
   { section: 'ความพึงพอใจในภาพรวม', q_type: 'rating', question_text: 'ท่านจะแนะนำให้ผู้อื่นใช้งานระบบนี้' },
 
@@ -10045,7 +10042,7 @@ function surveyPage() {
 
   let h = `<div class="flex items-center gap-3 mb-5"><i data-lucide="clipboard-check" class="w-7 h-7 text-primary"></i>
     <div><h2 class="text-xl font-bold text-gray-800">แบบประเมินความพึงพอใจการใช้งานระบบ</h2>
-    <p class="text-sm text-gray-500">ระบบบริหารจัดการงานวิชาการ (EMS-BCNB)</p></div></div>`;
+    <p class="text-sm text-gray-500">ระบบบริหารจัดการงานวิชาการ (AAMs)</p></div></div>`;
 
   if (!openYears.length) {
     return h + `<div class="bg-white rounded-2xl p-8 border border-blue-100 text-center text-gray-500">
@@ -10259,7 +10256,7 @@ function surveyConfigTabHTML(year) {
       <div class="text-right text-sm text-gray-500"><p>คำถาม: <b class="text-gray-800">${qCount}</b> ข้อ</p><p>ผู้ตอบแล้ว: <b class="text-gray-800">${respCount}</b> คน</p></div>
     </div>
     <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อแบบประเมิน (ไม่บังคับ)</label>
-    <input id="surveyCfgTitle" value="${surveyEsc(cfg ? cfg.title : '')}" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm mb-3" placeholder="แบบประเมินความพึงพอใจการใช้งานระบบ EMS-BCNB">
+    <input id="surveyCfgTitle" value="${surveyEsc(cfg ? cfg.title : '')}" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm mb-3" placeholder="แบบประเมินความพึงพอใจการใช้งานระบบ AAMs">
     <label class="block text-sm font-medium text-gray-700 mb-1">คำชี้แจง (แสดงให้ผู้ตอบเห็นด้านบนแบบประเมิน)</label>
     <textarea id="surveyCfgDesc" rows="3" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm mb-4" placeholder="คำชี้แจงการทำแบบประเมิน...">${surveyEsc(cfg ? cfg.description : '')}</textarea>
 
@@ -10394,7 +10391,7 @@ async function surveyCreateOpenAnnouncement(year, title, roles) {
     const pad = n => String(n).padStart(2, '0');
     const d = new Date();
     const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    const t = (title && norm(title)) || 'แบบประเมินความพึงพอใจการใช้งานระบบ EMS-BCNB';
+    const t = (title && norm(title)) || 'แบบประเมินความพึงพอใจการใช้งานระบบ AAMs';
     await GSheetDB.create({
       type: 'announcement',
       announcement_title: 'เปิดให้ทำแบบประเมินความพึงพอใจ ปีการศึกษา ' + year,
@@ -10847,7 +10844,7 @@ function downloadSurveyResultsPDF(year) {
   }
 
   const cfg = surveyConfigForYear(year);
-  const title = (cfg && norm(cfg.title)) || 'แบบประเมินความพึงพอใจการใช้งานระบบ EMS-BCNB';
+  const title = (cfg && norm(cfg.title)) || 'แบบประเมินความพึงพอใจการใช้งานระบบ AAMs';
   const college = (APP.config && APP.config.college_name) || 'วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ';
   let today = ''; try { today = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' }); } catch (_) { today = new Date().toLocaleDateString(); }
 
@@ -10893,7 +10890,7 @@ ${tableRows ? `<h3>ผลรายข้อ (μ, S.D., ร้อยละ, แ�
 <table><thead><tr><th>ข้อคำถาม</th><th class="c">n</th><th class="c">μ</th><th class="c">S.D.</th><th class="c">ร้อยละ</th><th class="c">แปลผล</th></tr></thead><tbody>${tableRows}</tbody></table>` : ''}
 ${choiceHTML}
 ${sugHTML}
-<div class="foot">เกณฑ์แปลผล (AUN-QA): 4.51-5.00 มากที่สุด · 3.51-4.50 มาก · 2.51-3.50 ปานกลาง · 1.51-2.50 น้อย · 1.00-1.50 น้อยที่สุด | S.D. คำนวณแบบ n-1 (sample) | ระบบบริหารจัดการงานวิชาการ EMS-BCNB</div>
+<div class="foot">เกณฑ์แปลผล (AUN-QA): 4.51-5.00 มากที่สุด · 3.51-4.50 มาก · 2.51-3.50 ปานกลาง · 1.51-2.50 น้อย · 1.00-1.50 น้อยที่สุด | S.D. คำนวณแบบ n-1 (sample) | ระบบบริหารจัดการงานวิชาการ (AAMs)</div>
 <script>window.onload=function(){window.print()}<\/script></body></html>`;
 
   const w = window.open('', '_blank');
