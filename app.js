@@ -554,6 +554,8 @@ function navigateTo(page) {
   APP.filters._gradeBatch = '';
   APP.filters._engYear = '';
   APP.filters._engYearLevel = '';
+  APP.filters._engLevel = '';
+  APP.filters._engExtType = '';
   APP.filters._gradeYearLevel = '';
   APP._directoryTab = 'all';
   APP._directoryView = 'list';
@@ -3930,7 +3932,47 @@ function engResultsPage() {
         </select>
         ${selectedAdvisor ? `<p class="text-xs text-gray-500 mt-2"><i data-lucide="info" class="w-3 h-3 inline mr-1"></i>แสดงเฉพาะนักศึกษาในความดูแลของ ${selectedAdvisor} (${studentList.length} คน)</p>` : ''}
       </div>`;
-      advisorSelector = `${yearLevelSelector}${batchSelector}${advisorDiv}`;
+      // --- กรองตามผลสอบ: ระดับ PBRI (สบช.) และชนิดการสอบภายนอกสถาบัน ---
+      const selEngLevel = APP.filters._engLevel || '';
+      const selEngExt = APP.filters._engExtType || '';
+      const pbriLevelMap = engLatestPbriLevelMap(allEng);
+      const extInData = [...new Set(allEng.map(e => norm(e.eng_type)).filter(t => t && t !== 'สบช.'))];
+      const extOptions = [...new Set(ENG_EXT_TYPES.concat(extInData))];
+      if (selEngLevel) {
+        studentList = selEngLevel === '__none'
+          ? studentList.filter(s => !pbriLevelMap[norm(s.student_id)])
+          : studentList.filter(s => pbriLevelMap[norm(s.student_id)] === selEngLevel);
+      }
+      if (selEngExt) {
+        const idsWithExt = new Set(allEng.filter(e => norm(e.eng_type) === selEngExt).map(e => norm(e.student_id)));
+        studentList = studentList.filter(s => idsWithExt.has(norm(s.student_id)));
+      }
+      const engFilterReset = "APP.filters._engStudent='';APP.filters._engSearch='';APP.pagination.page=1;renderCurrentPage()";
+      const examFilterDiv = `<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-3"><i data-lucide="filter" class="w-4 h-4 inline mr-1"></i>กรองตามผลสอบ</label>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <p class="text-xs text-gray-500 mb-1">ระดับผลสอบ PBRI (สบช.)</p>
+            <select onchange="APP.filters._engLevel=this.value;${engFilterReset}" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white">
+              <option value="">-- ทุกระดับ --</option>
+              ${ENG_LEVELS.map(lv => `<option value="${lv}" ${selEngLevel === lv ? 'selected' : ''}>${lv}</option>`).join('')}
+              <option value="__none" ${selEngLevel === '__none' ? 'selected' : ''}>ไม่มีผลสอบ สบช.</option>
+            </select>
+          </div>
+          <div>
+            <p class="text-xs text-gray-500 mb-1">สอบผ่านภายนอกสถาบัน (ชนิดการสอบ)</p>
+            <select onchange="APP.filters._engExtType=this.value;${engFilterReset}" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white">
+              <option value="">-- ทุกชนิด --</option>
+              ${extOptions.map(t => `<option value="${t}" ${selEngExt === t ? 'selected' : ''}>${t}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        ${(selEngLevel || selEngExt) ? `<div class="flex flex-wrap items-center gap-2 mt-3">
+          <span class="text-xs text-gray-500"><i data-lucide="info" class="w-3 h-3 inline mr-1"></i>${[selEngLevel ? (selEngLevel === '__none' ? 'ไม่มีผลสอบ สบช.' : 'ระดับ ' + selEngLevel) : '', selEngExt ? 'สอบ ' + selEngExt : ''].filter(Boolean).join(' · ')} — พบ ${studentList.length} คน</span>
+          <button onclick="APP.filters._engLevel='';APP.filters._engExtType='';${engFilterReset}" class="px-3 py-1 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200">ล้างตัวกรองผลสอบ</button>
+        </div>` : `<p class="text-[11px] text-gray-400 mt-3">* ระดับ PBRI ยึดจากการสอบ สบช. ครั้งล่าสุดของแต่ละคน · ชนิดการสอบภายนอกกรองจากผู้ที่มีผลสอบชนิดนั้น</p>`}
+      </div>`;
+      advisorSelector = `${yearLevelSelector}${batchSelector}${advisorDiv}${examFilterDiv}`;
     }
 
     const searchVal = APP.filters._engSearch || '';
@@ -4166,6 +4208,25 @@ function getEngLevel(score) {
   if (s >= 21) return 'Elementary';
   return 'Beginner';
 }
+// ---- ตัวช่วยกรอง "ผลการสอบภาษาอังกฤษ" (ใช้ในหน้าผลสอบ สำหรับผู้ดูแล/วิชาการ/ผู้บริหาร) ----
+const ENG_LEVELS = ['Beginner', 'Elementary', 'Intermediate', 'Upper Intermediate', 'Advanced', 'Proficiency'];
+const ENG_EXT_TYPES = ['TOEIC', 'CU-TEP', 'IELTS', 'TOEIC-ITP', 'TOEFL', 'TU-GET', 'LICMU'];
+// คืน map { รหัสนักศึกษา: ระดับ PBRI } โดยยึด "การสอบ สบช. ครั้งล่าสุด" ของแต่ละคน
+// (ใช้กติกาเดียวกับการ์ดวิเคราะห์ผลสอบ เพื่อให้ตัวเลขตรงกัน)
+function engLatestPbriLevelMap(engList) {
+  const attNum = e => parseInt(norm(e.eng_attempt), 10) || 0;
+  const isLater = (a, b) => { const aa = attNum(a), ab = attNum(b); if (aa !== ab) return aa > ab; return norm(a.eng_date) > norm(b.eng_date); };
+  const latest = {};
+  (engList || []).forEach(e => {
+    if (norm(e.eng_type) !== 'สบช.' || norm(e.eng_status) === 'ไม่เข้าสอบ') return;
+    const id = norm(e.student_id);
+    if (!latest[id] || isLater(e, latest[id])) latest[id] = e;
+  });
+  const map = {};
+  Object.keys(latest).forEach(id => { map[id] = getEngLevel(Number(latest[id].eng_score) || 0); });
+  return map;
+}
+
 function updateEngTypeForm(prefix) {
   const type = document.getElementById(prefix + 'EngType').value;
   const sbch = document.getElementById(prefix + 'EngSbch');
