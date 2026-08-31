@@ -7030,7 +7030,9 @@ function ticketWhen(t) {
 
 function servicesPage() {
   const isFull = isAdminRole();
-  const allAnn = visibleAnnouncements().slice().reverse();
+  // หน้าจัดการ: ผู้ดูแล/งานวิชาการ/งานทะเบียน เห็นประกาศ "ทุกฉบับ" เพื่อแก้ไข/ลบได้
+  // (กระดิ่งแจ้งเตือนและหน้าหลักยังคงกรองตามบทบาทผู้รับเหมือนเดิม)
+  const allAnn = (isFull ? getDataByType('announcement') : visibleAnnouncements()).slice().reverse();
   const tickets = getDataByType('support_ticket').slice().reverse();
 
   // แบ่งหน้าข่าวสาร/แจ้งเตือน หน้าละ 5 รายการ
@@ -7058,7 +7060,7 @@ function servicesPage() {
     ${announcements.length ? announcements.map(a => `<div class="p-3 bg-surface rounded-xl mb-2 flex justify-between items-start">
       <div class="min-w-0">
         <p class="font-medium text-sm">${a.announcement_title || ''}</p>
-        <p class="text-xs text-gray-500">${a.announcement_date || ''} · ${a.event_type || 'ทั่วไป'}${isFull ? ' · <span class="' + (annParseRoles(a.roles).length ? 'text-teal-600' : 'text-gray-400') + '">' + (annParseRoles(a.roles).length ? annParseRoles(a.roles).map(r => ANN_ROLE_LABEL[r] || r).join('/') : 'ทุกบทบาท') + '</span>' + (norm(a.yr) ? ' · <span class="text-indigo-600">ชั้นปี ' + norm(a.yr) + '</span>' : '') : ''}</p>
+        <p class="text-xs text-gray-500">${a.announcement_date || ''} · ${a.event_type || 'ทั่วไป'}${isFull ? ' · <span class="' + (annParseRoles(a.roles).length ? 'text-teal-600' : 'text-gray-400') + '">' + (annParseRoles(a.roles).length ? annParseRoles(a.roles).map(r => ANN_ROLE_LABEL[r] || r).join('/') : 'ทุกบทบาท') + '</span>' + (norm(a.yr) ? ' · <span class="text-indigo-600">ชั้นปี ' + annParseYears(a.yr).join(',') + '</span>' : '') + (annVisibleTo(a, APP.currentRole) ? '' : ' · <span class="text-amber-600" title="ประกาศนี้ไม่ได้ส่งถึงบทบาทที่คุณใช้อยู่ แต่แสดงให้เพื่อจัดการได้">ไม่ได้ส่งถึงคุณ</span>') : ''}</p>
         <p class="text-xs text-gray-600 mt-1">${(a.announcement_content || '').substring(0, 120)}</p>
       </div>
       ${isFull ? `<div class="flex gap-1 ml-2 flex-shrink-0"><button onclick="showEditAnnouncementModal('${a.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${a.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>` : ''}
