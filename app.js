@@ -8752,7 +8752,7 @@ function settingsPage() {
   const usersTable = paged.map(u => `<tr class="border-t hover:bg-gray-50">
     <td class="px-4 py-3">${u.name || ''}</td>
     <td class="px-4 py-3">${u.email || u.national_id || ''}</td>
-    <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs bg-surface">${roleLabels[u.role] || u.role}</span></td>
+    <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs bg-surface">${roleLabels[u.role] || u.role}</span>${String(u.extra_roles || '').split(',').map(x => x.trim()).filter(Boolean).map(r => `<span class="ml-1 px-2 py-1 rounded-full text-xs bg-blue-50 text-blue-700" title="ภาระงานเพิ่มเติม">+ ${roleLabels[r] || r}</span>`).join('')}</td>
     <td class="px-4 py-3"><div class="flex gap-1"><button onclick="showEditUserModal('${u.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${u.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>
   </tr>`).join('');
 
@@ -9799,6 +9799,35 @@ function showEditLeaveModal(id) {
   document.getElementById('editLeaveForm').onsubmit = (e) => { e.preventDefault(); editRecord(id, 'editLeaveForm') };
 }
 
+// ======================== ภาระงานเพิ่มเติม (บทบาทรอง) ========================
+// หนึ่งคนถือได้หลายบทบาท — สิทธิ์ในฐานข้อมูลจะเป็น "ผลรวม" ของบทบาทหลัก + ภาระงานเพิ่มเติม
+// และผู้ใช้จะได้ปุ่มสลับมุมมองบนหัวเว็บโดยอัตโนมัติเมื่อมีมากกว่า 1 บทบาท
+const EXTRA_ROLE_CHOICES = [
+  ['classTeacher', 'อาจารย์ประจำชั้น'],
+  ['deptHead', 'ประธานสาขาวิชา'],
+  ['executive', 'ผู้บริหาร'],
+  ['teacher', 'อาจารย์'],
+  ['academic', 'เจ้าหน้าที่งานวิชาการ'],
+  ['registrar', 'เจ้าหน้าที่งานทะเบียน'],
+  ['admin', 'ผู้ดูแลระบบ']
+];
+function extraRolesFieldHTML(u) {
+  const have = String((u && u.extra_roles) || '').split(',').map(x => x.trim()).filter(Boolean);
+  const boxes = EXTRA_ROLE_CHOICES.map(([k, label]) => `<label class="flex items-center gap-2 bg-surface rounded-lg px-2.5 py-1.5 cursor-pointer text-sm">
+    <input type="checkbox" data-extra-role="${k}" ${have.includes(k) ? 'checked' : ''} class="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary">${label}</label>`).join('');
+  return `<div>
+    <label class="block text-xs text-gray-600 mb-1">ภาระงานเพิ่มเติม <span class="text-gray-400">(เลือกได้หลายข้อ — ไม่ต้องเลือกซ้ำกับบทบาทหลัก)</span></label>
+    <div class="grid grid-cols-2 gap-2">${boxes}</div>
+    <p class="text-[11px] text-gray-400 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ผู้ใช้จะได้สิทธิ์รวมของทุกบทบาท และมีปุ่มสลับมุมมองที่หัวเว็บ</p>
+  </div>`;
+}
+function collectExtraRoles(formId) {
+  const form = document.getElementById(formId);
+  if (!form) return '';
+  return [...form.querySelectorAll('input[data-extra-role]:checked')]
+    .map(c => c.getAttribute('data-extra-role')).join(',');
+}
+
 function showEditUserModal(id) {
   const u = APP.allData.find(d => d.__backendId === id); if (!u) return;
   const roleLabels = { admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'เจ้าหน้าที่งานทะเบียน', deptHead: 'ประธานสาขาวิชา', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อาจารย์ประจำชั้น', student: 'นักศึกษา' };
@@ -9806,6 +9835,7 @@ function showEditUserModal(id) {
     <form id="editUserForm" class="space-y-3">
       <div><label class="block text-xs text-gray-600 mb-1">ชื่อ-สกุล</label><input name="name" value="${u.name || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
       <div><label class="block text-xs text-gray-600 mb-1">บทบาท</label><select name="role" class="w-full border rounded-xl px-3 py-2 text-sm"><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>ผู้ดูแลระบบ</option><option value="academic" ${u.role === 'academic' ? 'selected' : ''}>เจ้าหน้าที่งานวิชาการ</option><option value="registrar" ${u.role === 'registrar' ? 'selected' : ''}>เจ้าหน้าที่งานทะเบียน</option><option value="deptHead" ${u.role === 'deptHead' ? 'selected' : ''}>ประธานสาขาวิชา</option><option value="executive" ${u.role === 'executive' ? 'selected' : ''}>ผู้บริหาร</option><option value="teacher" ${u.role === 'teacher' ? 'selected' : ''}>อาจารย์</option><option value="classTeacher" ${u.role === 'classTeacher' ? 'selected' : ''}>อาจารย์ประจำชั้น</option><option value="student" ${u.role === 'student' ? 'selected' : ''}>นักศึกษา</option></select></div>
+      ${extraRolesFieldHTML(u)}
       <div><label class="block text-xs text-gray-600 mb-1">Username <span class="text-gray-400">(งานทะเบียน/ประธานสาขา)</span></label><input name="username" value="${u.username || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
       <div><label class="block text-xs text-gray-600 mb-1">สาขาวิชา <span class="text-gray-400">(ประธานสาขา)</span></label><input name="department" value="${u.department || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
       <div><label class="block text-xs text-gray-600 mb-1">E-mail</label><input name="email" value="${u.email || ''}" type="email" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
@@ -9815,7 +9845,12 @@ function showEditUserModal(id) {
       <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึกการแก้ไข</button>
     </form>
   `);
-  document.getElementById('editUserForm').onsubmit = (e) => { e.preventDefault(); editRecord(id, 'editUserForm') };
+  document.getElementById('editUserForm').onsubmit = (e) => {
+    e.preventDefault();
+    const rec = APP.allData.find(d => d.__backendId === id);
+    if (rec) rec.extra_roles = collectExtraRoles('editUserForm');
+    editRecord(id, 'editUserForm');
+  };
 }
 
 // Init icons
