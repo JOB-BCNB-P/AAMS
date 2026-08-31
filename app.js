@@ -557,6 +557,7 @@ function navigateTo(page) {
   APP.filters._engLevel = '';
   APP.filters._engExtType = '';
   APP.filters._gradeYearLevel = '';
+  APP.filters._gpaxBand = '';
   APP._directoryTab = 'all';
   APP._directoryView = 'list';
   APP.filters._directoryYear = '';
@@ -645,8 +646,22 @@ function applyDeptFilter(dataArr, subjArr, filterKey) {
   const isHead = APP.currentRole === 'deptHead';
   const dept = isHead ? currentDept() : (APP.filters[filterKey] || '');
   if (!isHead && !dept) return { data: dataArr, subjects: subjArr };
+
+  // จับคู่รายการติดตามกับ "รายวิชาของสาขาที่เลือก" ด้วยรหัสวิชา/ชื่อวิชาโดยตรง
+  // (เดิมไล่หาสาขาของแต่ละแถวเอง ถ้าจับคู่ไม่ได้แถวนั้นจะหายไป
+  //  ทำให้รายวิชาที่ส่งแล้วกลายเป็น "ยังไม่ส่ง" เมื่อกรองตามสาขา)
+  const deptSubjects = getDataByType('subject').filter(s => subjectHasDept(s, dept));
+  const codes = new Set(deptSubjects.map(s => norm(s.subject_code)).filter(Boolean));
+  const names = new Set(deptSubjects.map(s => norm(s.subject_name)).filter(Boolean));
+  const inDept = t => {
+    const c = norm(t.subject_code), n = norm(t.subject_name);
+    if (c && codes.has(c)) return true;
+    if (n && names.has(n)) return true;
+    return trackingHasDept(t, dept);
+  };
+
   return {
-    data: dataArr.filter(t => trackingHasDept(t, dept)),
+    data: dataArr.filter(inDept),
     subjects: subjArr.filter(s => subjectHasDept(s, dept))
   };
 }
@@ -2704,7 +2719,7 @@ function scheduleFormBody(s, isNew) {
     </div>
     <div class="grid grid-cols-2 gap-3">
       <div><label class="block text-xs text-gray-600 mb-1">วันที่ *</label><input name="schedule_date" type="date" required value="${v('schedule_date')}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
-      <div><label class="block text-xs text-gray-600 mb-1">ชั้นปี</label><select name="year_level" id="schedYearLevel" onchange="refreshSchedSubjectOptions()" class="w-full border rounded-xl px-3 py-2 text-sm"><option value="">ทุกชั้นปี</option>${['1', '2', '3', '4'].map(y => `<option ${norm(s.year_level) === y ? 'selected' : ''}>${y}</option>`).join('')}</select></div>
+      <input type="hidden" name="year_level" id="schedYearLevel" value="${v('year_level')}">
       <div><label class="block text-xs text-gray-600 mb-1">เวลา (เริ่ม)</label><input name="schedule_time" type="time" value="${fmtSchedTime(s.schedule_time)}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
       <div><label class="block text-xs text-gray-600 mb-1">ถึงเวลา</label><input name="schedule_time_end" type="time" value="${fmtSchedTime(s.schedule_time_end)}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
       <div class="col-span-2"><label class="block text-xs text-gray-600 mb-1">ห้อง <span class="font-normal text-gray-400" id="schedRoomHint">${isExam ? '(ห้องสอบที่ 1)' : ''}</span></label><input name="room" value="${v('room')}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
@@ -2748,6 +2763,9 @@ function scheduleFormBody(s, isNew) {
       <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="schedNotify" ${notifyDefault ? 'checked' : ''} onchange="toggleSchedNotify()" class="w-4 h-4"><span class="text-sm font-medium text-green-800">🔔 สร้างประกาศแจ้งเตือนจากรายการนี้</span></label>
       <div id="schedNotifyOptions" class="${notifyDefault ? '' : 'hidden'} space-y-2">
         ${annRolesFieldHTML(notifyRolesDefault)}
+        <div id="schedNotifyYears" class="${annParseRoles(notifyRolesDefault).indexOf('student') !== -1 ? '' : 'hidden'}">
+          ${annYearFieldHTML(norm(s.year_level))}
+        </div>
         <label class="flex items-center gap-2 bg-white rounded-xl px-3 py-2 cursor-pointer border border-green-100"><input type="checkbox" id="schedNotifyLine" checked class="w-4 h-4"><span class="text-sm text-green-700">📢 ส่งประกาศนี้เข้า LINE</span></label>
       </div>
     </div>`;
@@ -2756,7 +2774,29 @@ function toggleSchedNotify() {
   const c = document.getElementById('schedNotify');
   const o = document.getElementById('schedNotifyOptions');
   if (o) o.classList.toggle('hidden', !(c && c.checked));
+  syncSchedNotifyYears();
 }
+// ช่องเลือกชั้นปีจะแสดงเมื่อประกาศถึง "นักศึกษา" เท่านั้น
+function syncSchedNotifyYears() {
+  const box = document.getElementById('schedNotifyYears');
+  if (!box) return;
+  const stuCb = document.querySelector('.ann-role-cb[value="student"]');
+  const anyRole = document.querySelectorAll('.ann-role-cb:checked').length > 0;
+  // ไม่ติ๊กบทบาทเลย = ประกาศถึงทุกบทบาท (รวมนักศึกษา)
+  const toStudents = (stuCb && stuCb.checked) || !anyRole;
+  box.classList.toggle('hidden', !toStudents);
+  const hidden = document.getElementById('schedYearLevel');
+  if (hidden) hidden.value = toStudents ? annCollectYears() : '';
+  if (typeof refreshSchedSubjectOptions === 'function') { try { refreshSchedSubjectOptions(); } catch (e) { } }
+}
+// ผูกเหตุการณ์กับช่องติ๊กบทบาท/ชั้นปีในฟอร์มปฏิทิน (ใช้ event delegation ครั้งเดียว)
+document.addEventListener('change', function (ev) {
+  const t = ev.target;
+  if (t && t.classList && (t.classList.contains('ann-role-cb') || t.classList.contains('ann-yr-cb'))
+      && document.getElementById('schedNotifyYears')) {
+    syncSchedNotifyYears();
+  }
+});
 
 // สร้างประกาศแจ้งเตือนจากรายการปฏิทิน — เลือกบทบาทผู้รับ (roles) และเลือกส่ง LINE ได้
 async function createScheduleAnnouncement(s, roles, sendLine) {
@@ -2771,7 +2811,7 @@ async function createScheduleAnnouncement(s, roles, sendLine) {
   lines.push((isExam ? 'รายวิชาที่สอบ: ' : 'รายการ: ') + (subjects || '-'));
   if (type) lines.push('ประเภท: ' + type);
   if (isExam && norm(s.exam_round)) lines.push('ครั้งที่: ' + norm(s.exam_round));
-  lines.push('ชั้นปี: ' + (yr ? ('ชั้นปีที่ ' + yr) : 'ทุกชั้นปี'));
+  lines.push('ชั้นปี: ' + (yr ? ('ชั้นปีที่ ' + annParseYears(yr).join(', ')) : 'ทุกชั้นปี'));
   if (dateTh) lines.push('วันที่: ' + dateTh);
   if (timeRange.trim()) lines.push('เวลา: ' + timeRange);
   const isSplit = isExam && norm(s.exam_split) !== '';
@@ -2793,6 +2833,7 @@ async function createScheduleAnnouncement(s, roles, sendLine) {
     announcement_date: norm(s.schedule_date) || new Date().toISOString().slice(0, 10),
     event_type: isExam ? 'สอบ' : (type || 'ทั่วไป'),
     roles: roles || '',
+    yr: yr || '',
     target_names: (isExam && [norm(s.proctor), norm(s.proctor2)].filter(Boolean).join(', ')) || '',
     line_notify: sendLine ? '✓' : '',
     created_at: new Date().toISOString()
@@ -2951,30 +2992,39 @@ function gpaxAnalyticsHTML() {
 
   // 9 ช่วง GPAx (ช่วงไม่ทับซ้อน)
   const buckets = [
-    { label: '0.00 – 1.50', color: 'bg-red-600', n: withGpax.filter(r => r.gpax <= 1.50).length },
-    { label: '1.51 – 2.00', color: 'bg-red-500', n: withGpax.filter(r => r.gpax > 1.50 && r.gpax <= 2.00).length },
-    { label: '2.01 – 2.30', color: 'bg-orange-500', n: withGpax.filter(r => r.gpax > 2.00 && r.gpax <= 2.30).length },
-    { label: '2.31 – 2.50', color: 'bg-amber-500', n: withGpax.filter(r => r.gpax > 2.30 && r.gpax <= 2.50).length },
-    { label: '2.51 – 2.70', color: 'bg-yellow-500', n: withGpax.filter(r => r.gpax > 2.50 && r.gpax <= 2.70).length },
-    { label: '2.71 – 3.00', color: 'bg-lime-500', n: withGpax.filter(r => r.gpax > 2.70 && r.gpax <= 3.00).length },
-    { label: '3.01 – 3.50', color: 'bg-green-500', n: withGpax.filter(r => r.gpax > 3.00 && r.gpax <= 3.50).length },
-    { label: '3.51 – 3.99', color: 'bg-emerald-500', n: withGpax.filter(r => r.gpax > 3.50 && r.gpax < 4.00).length },
-    { label: '4.00 (เต็ม)', color: 'bg-teal-600', n: withGpax.filter(r => r.gpax >= 4.00).length }
+    { label: '0.00 – 1.50', color: 'bg-red-600', test: g => g <= 1.50 },
+    { label: '1.51 – 2.00', color: 'bg-red-500', test: g => g > 1.50 && g <= 2.00 },
+    { label: '2.01 – 2.30', color: 'bg-orange-500', test: g => g > 2.00 && g <= 2.30 },
+    { label: '2.31 – 2.50', color: 'bg-amber-500', test: g => g > 2.30 && g <= 2.50 },
+    { label: '2.51 – 2.70', color: 'bg-yellow-500', test: g => g > 2.50 && g <= 2.70 },
+    { label: '2.71 – 3.00', color: 'bg-lime-500', test: g => g > 2.70 && g <= 3.00 },
+    { label: '3.01 – 3.50', color: 'bg-green-500', test: g => g > 3.00 && g <= 3.50 },
+    { label: '3.51 – 3.99', color: 'bg-emerald-500', test: g => g > 3.50 && g < 4.00 },
+    { label: '4.00 (เต็ม)', color: 'bg-teal-600', test: g => g >= 4.00 }
   ];
-  const bucketCards = buckets.map(b => `<div class="card-stat bg-white rounded-xl border border-gray-100 p-3 text-center">
-    <div class="w-full h-1.5 rounded-full ${b.color} mb-2"></div>
-    <p class="text-2xl font-bold text-gray-800">${b.n}</p>
-    <p class="text-xs text-gray-500 mt-0.5">${b.label}</p>
-  </div>`).join('');
+  buckets.forEach(b => { b.n = withGpax.filter(r => b.test(r.gpax)).length; });
+  // คลิกการ์ดช่วงคะแนนเพื่อกรองตารางรายงานด้านล่าง (คลิกซ้ำ = ยกเลิก)
+  const selBand = APP.filters._gpaxBand || '';
+  const bucketCards = buckets.map((b, bi) => {
+    const on = selBand === String(bi);
+    return `<button type="button" onclick="APP.filters._gpaxBand='${on ? '' : bi}';renderCurrentPage()"
+      class="card-stat text-left w-full bg-white rounded-xl border p-3 text-center transition ${on ? 'border-primary ring-2 ring-primary/30 bg-primaryLight' : 'border-gray-100 hover:border-primary/40'}"
+      title="${on ? 'คลิกเพื่อยกเลิกตัวกรอง' : 'คลิกเพื่อดูเฉพาะช่วงนี้'}">
+      <div class="w-full h-1.5 rounded-full ${b.color} mb-2"></div>
+      <p class="text-2xl font-bold ${on ? 'text-primary' : 'text-gray-800'}">${b.n}</p>
+      <p class="text-xs text-gray-500 mt-0.5">${b.label}</p>
+    </button>`;
+  }).join('');
+  const bandRows = selBand !== '' && buckets[selBand] ? withGpax.filter(r => buckets[selBand].test(r.gpax)) : withGpax;
 
   const scopeLabel = sel === '__grad' ? 'ผู้สำเร็จการศึกษา' : (sel ? 'ชั้นปีที่ ' + sel : 'ทุกชั้นปี');
   // แถบกรองตามชั้นปี (ย้ายมาไว้บนการ์ดภาพรวมผลการเรียน) — ควบคุม _gradeYearLevel เดียวกับตัวเลือกนักศึกษา
-  const _yb = (val, label) => `<button onclick="APP.filters._gradeYearLevel='${val}';APP.filters._gradeStudent='';APP.filters._gradeSearch='';APP.pagination.page=1;renderCurrentPage()" class="px-4 py-2 rounded-xl text-sm font-medium ${sel === val ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">${label}</button>`;
+  const _yb = (val, label) => `<button onclick="APP.filters._gradeYearLevel='${val}';APP.filters._gradeStudent='';APP.filters._gradeSearch='';APP.filters._gpaxBand='';APP.pagination.page=1;renderCurrentPage()" class="px-4 py-2 rounded-xl text-sm font-medium ${sel === val ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">${label}</button>`;
   const gradeYearBar = `<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">
     <label class="block text-sm font-medium text-gray-700 mb-2"><i data-lucide="layers" class="w-4 h-4 inline mr-1"></i>กรองตามชั้นปี</label>
     <div class="flex flex-wrap gap-2">${_yb('', 'ทุกชั้นปี')}${['1', '2', '3', '4'].map(y => _yb(y, 'ชั้นปี ' + y)).join('')}${_yb('__grad', 'ผู้สำเร็จการศึกษา')}</div>
   </div>`;
-  const rankRows = withGpax.map((r, i) => {
+  const rankRows = bandRows.map((r, i) => {
     const g = r.gpax;
     const c = g < 2.30 ? 'text-red-600 font-bold' : g >= 3.50 ? 'text-emerald-600 font-bold' : 'text-gray-800';
     const badge = g < 2.30 ? '<span class="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-red-100 text-red-700">เฝ้าระวัง</span>' : '';
@@ -3000,7 +3050,10 @@ function gpaxAnalyticsHTML() {
     </div>
     <p class="text-sm font-semibold text-gray-600 mb-2">จำนวนนักศึกษาแยกตามช่วง GPAx</p>
     <div class="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2 mb-4">${bucketCards}</div>
-    <p class="text-sm font-semibold text-gray-600 mb-2"><i data-lucide="list-ordered" class="w-4 h-4 inline mr-1"></i>รายงาน GPAx เรียงมากไปน้อย <span class="font-normal text-gray-400">(${scopeLabel} — เลือกชั้นปีจากแถบด้านล่างเพื่อดูเฉพาะชั้นปี)</span></p>
+    <div class="flex flex-wrap items-center gap-2 mb-2">
+      <p class="text-sm font-semibold text-gray-600"><i data-lucide="list-ordered" class="w-4 h-4 inline mr-1"></i>รายงาน GPAx เรียงมากไปน้อย <span class="font-normal text-gray-400">(${scopeLabel}${selBand !== '' && buckets[selBand] ? ' · เฉพาะช่วง ' + buckets[selBand].label : ''} — ${bandRows.length} คน)</span></p>
+      ${selBand !== '' ? `<button onclick="APP.filters._gpaxBand='';renderCurrentPage()" class="px-3 py-1 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200">ล้างตัวกรองช่วงคะแนน</button>` : '<span class="text-xs text-gray-400">— คลิกการ์ดช่วงคะแนนด้านบนเพื่อดูเฉพาะช่วงนั้น</span>'}
+    </div>
     <div class="border border-gray-100 rounded-xl overflow-hidden">
       <div class="overflow-auto" style="max-height:340px"><table class="w-full text-sm">
         <thead class="sticky top-0"><tr class="bg-surface text-left">
@@ -6977,8 +7030,24 @@ function ticketWhen(t) {
 
 function servicesPage() {
   const isFull = isAdminRole();
-  const announcements = visibleAnnouncements().slice(-10).reverse();
+  const allAnn = visibleAnnouncements().slice().reverse();
   const tickets = getDataByType('support_ticket').slice().reverse();
+
+  // แบ่งหน้าข่าวสาร/แจ้งเตือน หน้าละ 5 รายการ
+  const ANN_PER_PAGE = 5;
+  const annPages = Math.max(1, Math.ceil(allAnn.length / ANN_PER_PAGE));
+  let annPage = parseInt(APP.filters._annPage || 1, 10) || 1;
+  if (annPage > annPages) annPage = annPages;
+  if (annPage < 1) annPage = 1;
+  APP.filters._annPage = annPage;
+  const announcements = allAnn.slice((annPage - 1) * ANN_PER_PAGE, annPage * ANN_PER_PAGE);
+  const annPager = annPages > 1 ? `<div class="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-gray-100">
+    <button onclick="APP.filters._annPage=${annPage - 1};renderCurrentPage()" ${annPage === 1 ? 'disabled' : ''}
+      class="px-3 py-1.5 rounded-lg text-sm ${annPage === 1 ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}"><i data-lucide="chevron-left" class="w-4 h-4 inline"></i> ก่อนหน้า</button>
+    <span class="text-xs text-gray-500">หน้า ${annPage} จาก ${annPages} · ทั้งหมด ${allAnn.length} รายการ</span>
+    <button onclick="APP.filters._annPage=${annPage + 1};renderCurrentPage()" ${annPage === annPages ? 'disabled' : ''}
+      class="px-3 py-1.5 rounded-lg text-sm ${annPage === annPages ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">ถัดไป <i data-lucide="chevron-right" class="w-4 h-4 inline"></i></button>
+  </div>` : '';
 
   // ---------- การ์ดข่าวสาร/แจ้งเตือน ----------
   const annCard = `<div class="bg-white rounded-2xl p-5 border border-blue-100">
@@ -6994,6 +7063,7 @@ function servicesPage() {
       </div>
       ${isFull ? `<div class="flex gap-1 ml-2 flex-shrink-0"><button onclick="showEditAnnouncementModal('${a.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${a.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>` : ''}
     </div>`).join('') : '<p class="text-gray-400 text-center py-6 text-sm">ไม่มีประกาศ</p>'}
+    ${annPager}
   </div>`;
 
   // ---------- การ์ดแจ้งปัญหาการใช้งาน ----------
