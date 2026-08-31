@@ -32,7 +32,8 @@ const EMSDB = (() => {
     'announcement', 'user', 'doc_request', 'permission',
     'teacher_directory', 'directory_summary', 'login_log',
     'special_teacher', 'alumni', 'password_log',
-    'survey_config', 'survey_question', 'survey_response'
+    'survey_config', 'survey_question', 'survey_response',
+    'support_ticket'
   ];
 
   // ระลอกที่ 2 — ตารางใหญ่ที่ไม่จำเป็นต้องมีตอนเปิดหน้าแรก

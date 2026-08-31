@@ -3,7 +3,7 @@ let APP = {
   currentUser: null, currentRole: null, currentPage: 'dashboard', sidebarOpen: false,
   allData: [],
   config: { system_title: 'ระบบบริหารจัดการงานวิชาการ (AAMs)', college_name: 'วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ' },
-  permissions: { admin: { dashboard: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, services: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, settings: 1, loginLog: 1, advisors: 1, surveyManage: 1 }, academic: { dashboard: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, services: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, settings: 1, advisors: 1, survey: 1 }, registrar: { dashboard: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, services: 1, leave: 1, advisors: 1, survey: 1 }, deptHead: { dashboard: 1, teacherDirectory: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, survey: 1 }, teacher: { dashboard: 1, students: 1, subjects: 1, grades: 1, engResults: 1, tracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, survey: 1 }, classTeacher: { dashboard: 1, students: 1, subjects: 1, grades: 1, engResults: 1, tracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, survey: 1 }, student: { dashboard: 1, students: 1, grades: 1, engResults: 1, leave: 1, survey: 1 }, executive: { dashboard: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, advisors: 1, survey: 1 } },
+  permissions: { admin: { dashboard: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, services: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, settings: 1, loginLog: 1, advisors: 1, surveyManage: 1 }, academic: { dashboard: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, services: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, settings: 1, advisors: 1, survey: 1 }, registrar: { dashboard: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, services: 1, leave: 1, advisors: 1, survey: 1 }, deptHead: { dashboard: 1, services: 1, teacherDirectory: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, survey: 1 }, teacher: { dashboard: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, tracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, survey: 1 }, classTeacher: { dashboard: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, tracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, survey: 1 }, student: { dashboard: 1, services: 1, students: 1, grades: 1, engResults: 1, leave: 1, survey: 1 }, executive: { dashboard: 1, services: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, advisors: 1, survey: 1 } },
   filters: { semester: '', academicYear: '', search: '', yearLevel: '' },
   pagination: { page: 1, perPage: 10 }
 };
@@ -6879,35 +6879,6 @@ function printBranchSummary(year) {
 }
 
 // ======================== SERVICES ========================
-function servicesPage() {
-  const announcements = getDataByType('announcement').slice(-10).reverse();
-  const docRequests = getDataByType('doc_request').slice(-20).reverse();
-
-  return `<h2 class="text-xl font-bold text-gray-800 mb-4"><i data-lucide="grid" class="w-6 h-6 inline mr-2"></i>บริการอื่นๆ</h2>
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-    <div class="bg-white rounded-2xl p-5 border border-blue-100">
-      <div class="flex items-center justify-between mb-4"><h3 class="font-bold">ข่าวสาร/แจ้งเตือน</h3><button onclick="showAddAnnouncementModal()" class="text-primary hover:underline text-sm">+ เพิ่มประกาศ</button></div>
-      ${announcements.length ? announcements.map(a => `<div class="p-3 bg-surface rounded-xl mb-2 flex justify-between items-start">
-        <div><p class="font-medium text-sm">${a.announcement_title || ''}</p><p class="text-xs text-gray-500">${a.announcement_date || ''} · ${a.event_type || 'ทั่วไป'} · <span class="${annParseRoles(a.roles).length ? 'text-teal-600' : 'text-gray-400'}">${annParseRoles(a.roles).length ? annParseRoles(a.roles).map(r => ANN_ROLE_LABEL[r] || r).join('/') : 'ทุกบทบาท'}</span></p><p class="text-xs text-gray-600 mt-1">${(a.announcement_content || '').substring(0, 80)}</p></div>
-        <div class="flex gap-1 ml-2"><button onclick="showEditAnnouncementModal('${a.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${a.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>
-      </div>`).join('') : '<p class="text-gray-400 text-center py-6 text-sm">ไม่มีประกาศ</p>'}
-    </div>
-    <div class="bg-white rounded-2xl p-5 border border-blue-100">
-      <h3 class="font-bold mb-4">คำร้องขอเอกสาร</h3>
-      ${docRequests.length ? docRequests.map(d => `<div class="p-3 bg-surface rounded-xl mb-2 flex justify-between items-center">
-        <div><p class="font-medium text-sm">${d.name || ''} - ${d.doc_request_type || ''}</p><p class="text-xs text-gray-500">${d.created_at ? new Date(d.created_at).toLocaleDateString('th-TH') : ''}</p></div>
-        <div class="flex items-center gap-2">
-          <select onchange="updateDocStatus('${d.__backendId}',this.value)" class="text-xs border rounded-lg px-2 py-1">
-            <option ${d.doc_status === 'รอดำเนินการ' ? 'selected' : ''}>รอดำเนินการ</option>
-            <option ${d.doc_status === 'กำลังดำเนินการ' ? 'selected' : ''}>กำลังดำเนินการ</option>
-            <option ${d.doc_status === 'เสร็จสิ้น' ? 'selected' : ''}>เสร็จสิ้น</option>
-          </select>
-        </div>
-      </div>`).join('') : '<p class="text-gray-400 text-center py-6 text-sm">ไม่มีคำร้อง</p>'}
-    </div>
-  </div>`;
-}
-
 // ======================== ANNOUNCEMENT ROLE TARGETING ========================
 const ANN_ROLES = ['admin', 'academic', 'registrar', 'deptHead', 'executive', 'teacher', 'classTeacher', 'student'];
 const ANN_ROLE_LABEL = { admin: 'ผู้ดูแลระบบ', academic: 'งานวิชาการ', registrar: 'งานทะเบียน', deptHead: 'ประธานสาขา', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อ.ประจำชั้น', student: 'นักศึกษา' };
@@ -6927,6 +6898,12 @@ function annNameKey(name) {
   }
   return n;
 }
+// ชั้นปีผู้รับ (ช่อง yr) — มีผลเฉพาะกับนักศึกษา ว่าง = ทุกชั้นปี
+function annParseYears(v) { return String(v == null ? '' : v).split(/[,;|\s]+/).map(x => x.trim()).filter(Boolean); }
+function annMyYear() {
+  const d = (APP.currentUser && APP.currentUser.data) || {};
+  return norm(d.year_level);
+}
 function annVisibleTo(a, role) {
   // ประกาศที่เจาะจงรายบุคคล (เช่น แจ้งผู้คุมสอบ) — เห็นเฉพาะคนที่มีชื่อ + ผู้ดูแล/งานวิชาการ
   const targets = annParseNames(a && a.target_names);
@@ -6936,7 +6913,13 @@ function annVisibleTo(a, role) {
     return !!myKey && targets.some(n => annNameKey(n) === myKey);
   }
   const rs = annParseRoles(a && a.roles);
-  return rs.length === 0 || rs.indexOf(role) !== -1;
+  if (rs.length && rs.indexOf(role) === -1) return false;
+  // นักศึกษา: ถ้าประกาศระบุชั้นปีไว้ ต้องตรงกับชั้นปีของตนเท่านั้น
+  if (role === 'student') {
+    const ys = annParseYears(a && a.yr);
+    if (ys.length) { const my = annMyYear(); return !!my && ys.indexOf(my) !== -1; }
+  }
+  return true;
 }
 // ประกาศที่บทบาทผู้ใช้ปัจจุบันมีสิทธิ์เห็น (ใช้กับกระดิ่ง + หน้าหลัก + badge)
 function visibleAnnouncements() { const role = APP.currentRole; return getDataByType('announcement').filter(a => annVisibleTo(a, role)); }
@@ -6960,31 +6943,166 @@ function annCollectRoles() {
   const arr = Array.prototype.map.call(document.querySelectorAll('.ann-role-cb:checked'), el => el.value);
   return (arr.length === 0 || arr.length === ANN_ROLES.length) ? '' : arr.join(',');
 }
+// ช่องเลือกชั้นปีผู้รับ (มีผลกับนักศึกษาเท่านั้น)
+function annYearFieldHTML(selected) {
+  const sel = annParseYears(selected);
+  return `<div><label class="block text-xs text-gray-600 mb-1">แจ้งเฉพาะชั้นปี <span class="text-gray-400">(มีผลกับนักศึกษาเท่านั้น — ไม่เลือกเลย = ทุกชั้นปี)</span></label>
+    <div class="flex flex-wrap gap-3 p-2 bg-gray-50 rounded-xl">
+      ${['1', '2', '3', '4'].map(y => `<label class="flex items-center gap-1.5 text-sm text-gray-700"><input type="checkbox" class="ann-yr-cb accent-primary" value="${y}" ${sel.indexOf(y) !== -1 ? 'checked' : ''}> ชั้นปี ${y}</label>`).join('')}
+    </div></div>`;
+}
+function annCollectYears() {
+  const arr = Array.prototype.map.call(document.querySelectorAll('.ann-yr-cb:checked'), el => el.value);
+  return (arr.length === 0 || arr.length === 4) ? '' : arr.join(',');
+}
 
-function showAddAnnouncementModal() {
-  showModal('เพิ่มประกาศ/แจ้งเตือน', `
-    <form id="addAnnForm" class="space-y-3">
-      <div><label class="block text-xs text-gray-600 mb-1">เรื่อง</label><input name="announcement_title" required class="w-full border rounded-xl px-3 py-2 text-sm"></div>
-      <div><label class="block text-xs text-gray-600 mb-1">เนื้อหา</label><textarea name="announcement_content" rows="3" class="w-full border rounded-xl px-3 py-2 text-sm"></textarea></div>
-      <div class="grid grid-cols-2 gap-3">
-        <div><label class="block text-xs text-gray-600 mb-1">วันที่</label><input name="announcement_date" type="date" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
-        <div><label class="block text-xs text-gray-600 mb-1">ประเภท</label><select name="event_type" class="w-full border rounded-xl px-3 py-2 text-sm"><option>ทั่วไป</option><option>สอบ</option><option>วันหยุด</option><option>กิจกรรม</option></select></div>
+// ======================== บริการอื่นๆ ========================
+// ผู้ดูแล/งานวิชาการ/งานทะเบียน: จัดการประกาศ + ดูและตอบเรื่องแจ้งปัญหาทั้งหมด
+// บทบาทอื่น: อ่านประกาศของตน + แจ้งปัญหาถึงผู้ดูแลระบบ และดูคำตอบของเรื่องตัวเอง
+const TICKET_CATEGORIES = ['เข้าสู่ระบบไม่ได้', 'ข้อมูลไม่ถูกต้อง', 'ใช้งานผิดพลาด', 'ขอสิทธิ์เพิ่ม', 'ข้อเสนอแนะ', 'อื่นๆ'];
+const TICKET_STATUSES = ['ใหม่', 'กำลังดำเนินการ', 'เสร็จสิ้น'];
+
+function ticketStatusBadge(st) {
+  const v = norm(st) || 'ใหม่';
+  const c = v === 'เสร็จสิ้น' ? 'bg-green-100 text-green-700'
+          : v === 'กำลังดำเนินการ' ? 'bg-amber-100 text-amber-700'
+          : 'bg-blue-100 text-blue-700';
+  return `<span class="px-2 py-1 rounded-full text-xs ${c}">${v}</span>`;
+}
+function ticketWhen(t) {
+  const d = t.replied_at || t.created_at;
+  if (!d) return '';
+  try { return new Date(d).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }); } catch (e) { return norm(d); }
+}
+
+function servicesPage() {
+  const isFull = isAdminRole();
+  const announcements = visibleAnnouncements().slice(-10).reverse();
+  const tickets = getDataByType('support_ticket').slice().reverse();
+
+  // ---------- การ์ดข่าวสาร/แจ้งเตือน ----------
+  const annCard = `<div class="bg-white rounded-2xl p-5 border border-blue-100">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="font-bold"><i data-lucide="megaphone" class="w-4 h-4 inline mr-1 text-primary"></i>ข่าวสาร/แจ้งเตือน</h3>
+      ${isFull ? '<button onclick="showAddAnnouncementModal()" class="text-primary hover:underline text-sm">+ เพิ่มประกาศ</button>' : ''}
+    </div>
+    ${announcements.length ? announcements.map(a => `<div class="p-3 bg-surface rounded-xl mb-2 flex justify-between items-start">
+      <div class="min-w-0">
+        <p class="font-medium text-sm">${a.announcement_title || ''}</p>
+        <p class="text-xs text-gray-500">${a.announcement_date || ''} · ${a.event_type || 'ทั่วไป'}${isFull ? ' · <span class="' + (annParseRoles(a.roles).length ? 'text-teal-600' : 'text-gray-400') + '">' + (annParseRoles(a.roles).length ? annParseRoles(a.roles).map(r => ANN_ROLE_LABEL[r] || r).join('/') : 'ทุกบทบาท') + '</span>' + (norm(a.yr) ? ' · <span class="text-indigo-600">ชั้นปี ' + norm(a.yr) + '</span>' : '') : ''}</p>
+        <p class="text-xs text-gray-600 mt-1">${(a.announcement_content || '').substring(0, 120)}</p>
       </div>
-      ${annRolesFieldHTML('')}
-      <label class="flex items-center gap-2 bg-green-50 rounded-xl px-3 py-2 cursor-pointer"><input type="checkbox" name="line_notify" value="✓" class="w-4 h-4"><span class="text-sm text-green-700">📢 ส่งประกาศนี้เข้า LINE</span></label>
-      <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึก</button>
+      ${isFull ? `<div class="flex gap-1 ml-2 flex-shrink-0"><button onclick="showEditAnnouncementModal('${a.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${a.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>` : ''}
+    </div>`).join('') : '<p class="text-gray-400 text-center py-6 text-sm">ไม่มีประกาศ</p>'}
+  </div>`;
+
+  // ---------- การ์ดแจ้งปัญหาการใช้งาน ----------
+  const ticketCard = isFull ? `<div class="bg-white rounded-2xl p-5 border border-blue-100">
+    <div class="flex items-center justify-between mb-1">
+      <h3 class="font-bold"><i data-lucide="life-buoy" class="w-4 h-4 inline mr-1 text-primary"></i>แจ้งปัญหาการใช้งาน</h3>
+      <button onclick="showAddTicketModal()" class="text-primary hover:underline text-sm">+ แจ้งปัญหา</button>
+    </div>
+    <p class="text-xs text-gray-400 mb-3">รอดำเนินการ ${tickets.filter(t => norm(t.status) !== 'เสร็จสิ้น').length} เรื่อง จากทั้งหมด ${tickets.length} เรื่อง</p>
+    ${tickets.length ? tickets.map(t => `<div class="p-3 bg-surface rounded-xl mb-3">
+      <div class="flex justify-between items-start gap-2">
+        <div class="min-w-0">
+          <p class="font-medium text-sm">${t.title || '(ไม่มีหัวข้อ)'}</p>
+          <p class="text-xs text-gray-500">${t.reporter_name || ''}${t.reporter_role ? ' · ' + (LOGIN_LOG_ROLE_LABEL[t.reporter_role] || t.reporter_role) : ''}${t.student_id ? ' · ' + t.student_id : ''} · ${ticketWhen(t)}</p>
+          <p class="text-xs text-gray-400">${t.category || ''}</p>
+        </div>
+        <div class="flex-shrink-0 flex items-center gap-1">
+          ${ticketStatusBadge(t.status)}
+          <button onclick="deleteRecord('${t.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+        </div>
+      </div>
+      <p class="text-sm text-gray-700 mt-2 whitespace-pre-line">${t.detail || ''}</p>
+      ${norm(t.admin_reply) ? `<div class="mt-2 p-2 bg-green-50 border border-green-100 rounded-lg">
+        <p class="text-xs font-semibold text-green-700">คำตอบจากผู้ดูแลระบบ${t.replied_by ? ' · ' + t.replied_by : ''}</p>
+        <p class="text-sm text-gray-700 whitespace-pre-line">${t.admin_reply}</p></div>` : ''}
+      <div class="mt-2 flex flex-col sm:flex-row gap-2">
+        <textarea id="tkReply_${t.__backendId}" rows="2" placeholder="พิมพ์คำตอบถึงผู้แจ้ง..." class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm">${norm(t.admin_reply)}</textarea>
+        <div class="flex sm:flex-col gap-2">
+          <select id="tkStatus_${t.__backendId}" class="border border-gray-200 rounded-xl px-2 py-1.5 text-xs bg-white">
+            ${TICKET_STATUSES.map(x => `<option ${norm(t.status) === x || (!norm(t.status) && x === 'ใหม่') ? 'selected' : ''}>${x}</option>`).join('')}
+          </select>
+          <button onclick="replyTicket('${t.__backendId}')" class="px-3 py-1.5 bg-primary text-white rounded-xl text-xs hover:bg-primaryDark whitespace-nowrap">ตอบกลับ</button>
+        </div>
+      </div>
+    </div>`).join('') : '<p class="text-gray-400 text-center py-6 text-sm">ยังไม่มีเรื่องแจ้งเข้ามา</p>'}
+  </div>`
+  : `<div class="bg-white rounded-2xl p-5 border border-blue-100">
+    <div class="flex items-center justify-between mb-1">
+      <h3 class="font-bold"><i data-lucide="life-buoy" class="w-4 h-4 inline mr-1 text-primary"></i>แจ้งปัญหาการใช้งาน</h3>
+      <button onclick="showAddTicketModal()" class="px-3 py-1.5 bg-primary text-white rounded-xl text-sm hover:bg-primaryDark">+ แจ้งปัญหา</button>
+    </div>
+    <p class="text-xs text-gray-400 mb-3">ส่งถึงผู้ดูแลระบบโดยตรง · คุณเห็นเฉพาะเรื่องที่ตนเองแจ้ง</p>
+    ${tickets.length ? tickets.map(t => `<div class="p-3 bg-surface rounded-xl mb-3">
+      <div class="flex justify-between items-start gap-2">
+        <div class="min-w-0"><p class="font-medium text-sm">${t.title || '(ไม่มีหัวข้อ)'}</p>
+        <p class="text-xs text-gray-500">${t.category || ''} · ${ticketWhen(t)}</p></div>
+        ${ticketStatusBadge(t.status)}
+      </div>
+      <p class="text-sm text-gray-700 mt-2 whitespace-pre-line">${t.detail || ''}</p>
+      ${norm(t.admin_reply) ? `<div class="mt-2 p-2 bg-green-50 border border-green-100 rounded-lg">
+        <p class="text-xs font-semibold text-green-700"><i data-lucide="corner-down-right" class="w-3 h-3 inline"></i> คำตอบจากผู้ดูแลระบบ</p>
+        <p class="text-sm text-gray-700 whitespace-pre-line">${t.admin_reply}</p></div>`
+        : '<p class="text-xs text-amber-600 mt-2">รอผู้ดูแลระบบตอบกลับ</p>'}
+    </div>`).join('') : '<p class="text-gray-400 text-center py-6 text-sm">คุณยังไม่เคยแจ้งปัญหา</p>'}
+  </div>`;
+
+  return `<h2 class="text-xl font-bold text-gray-800 mb-4"><i data-lucide="grid" class="w-6 h-6 inline mr-2"></i>บริการอื่นๆ</h2>
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">${annCard}${ticketCard}</div>`;
+}
+
+function showAddTicketModal() {
+  showModal('แจ้งปัญหาการใช้งาน', `
+    <form id="addTicketForm" class="space-y-3">
+      <div><label class="block text-xs text-gray-600 mb-1">หัวข้อ *</label>
+        <input name="title" required placeholder="เช่น เข้าสู่ระบบด้วย Google ไม่ได้" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
+      <div><label class="block text-xs text-gray-600 mb-1">ประเภทปัญหา</label>
+        <select name="category" class="w-full border rounded-xl px-3 py-2 text-sm">${TICKET_CATEGORIES.map(c => `<option>${c}</option>`).join('')}</select></div>
+      <div><label class="block text-xs text-gray-600 mb-1">รายละเอียด *</label>
+        <textarea name="detail" required rows="4" placeholder="อธิบายสิ่งที่เกิดขึ้น หน้าไหน กดอะไรแล้วเป็นอย่างไร" class="w-full border rounded-xl px-3 py-2 text-sm"></textarea></div>
+      <p class="text-xs text-gray-400"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ระบบจะแนบชื่อและบทบาทของคุณไปให้ผู้ดูแลระบบโดยอัตโนมัติ</p>
+      <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">ส่งเรื่อง</button>
     </form>
   `);
-  document.getElementById('addAnnForm').onsubmit = async (e) => {
+  document.getElementById('addTicketForm').onsubmit = async (e) => {
     e.preventDefault();
     await withLoading(e.target, async () => {
       const fd = new FormData(e.target);
-      const obj = { type: 'announcement', created_at: new Date().toISOString() }; fd.forEach((v, k) => obj[k] = v);
-      obj.roles = annCollectRoles();
+      const u = APP.currentUser || {};
+      const obj = {
+        type: 'support_ticket',
+        reporter_name: u.name || '',
+        reporter_role: APP.currentRole || '',
+        reporter_email: u.email || '',
+        student_id: (u.data && u.data.student_id) || '',
+        status: 'ใหม่',
+        created_at: new Date().toISOString()
+      };
+      fd.forEach((v, k) => obj[k] = v);
       const r = await GSheetDB.create(obj);
-      if (r.isOk) { showToast(r.message && r.message !== 'บันทึกแล้ว' ? r.message : 'เพิ่มประกาศสำเร็จ'); closeModal() } else showToast('เกิดข้อผิดพลาด', 'error');
+      if (r.isOk) { showToast('ส่งเรื่องถึงผู้ดูแลระบบแล้ว'); closeModal(); renderCurrentPage(); }
+      else showToast('ส่งไม่สำเร็จ: ' + (r.error || ''), 'error');
     });
   };
+}
+
+async function replyTicket(id) {
+  const rec = APP.allData.find(d => d.__backendId === id); if (!rec) return;
+  const box = document.getElementById('tkReply_' + id);
+  const stSel = document.getElementById('tkStatus_' + id);
+  const reply = box ? box.value.trim() : '';
+  const st = stSel ? stSel.value : 'กำลังดำเนินการ';
+  if (!reply && st === norm(rec.status)) { showToast('ยังไม่มีอะไรเปลี่ยนแปลง', 'error'); return; }
+  rec.admin_reply = reply;
+  rec.status = st;
+  rec.replied_by = (APP.currentUser && APP.currentUser.name) || '';
+  rec.replied_at = new Date().toISOString();
+  const r = await GSheetDB.update(rec);
+  if (r.isOk) { showToast('บันทึกคำตอบแล้ว'); renderCurrentPage(); }
+  else showToast('บันทึกไม่สำเร็จ: ' + (r.error || ''), 'error');
 }
 
 async function updateDocStatus(id, status) {
@@ -9780,6 +9898,35 @@ function showEditTeacherModal(id) {
   document.getElementById('editTeacherForm').onsubmit = (e) => { e.preventDefault(); editRecord(id, 'editTeacherForm') };
 }
 
+function showAddAnnouncementModal() {
+  showModal('เพิ่มประกาศ/แจ้งเตือน', `
+    <form id="addAnnForm" class="space-y-3">
+      <div><label class="block text-xs text-gray-600 mb-1">เรื่อง</label><input name="announcement_title" required class="w-full border rounded-xl px-3 py-2 text-sm"></div>
+      <div><label class="block text-xs text-gray-600 mb-1">เนื้อหา</label><textarea name="announcement_content" rows="3" class="w-full border rounded-xl px-3 py-2 text-sm"></textarea></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="block text-xs text-gray-600 mb-1">วันที่</label><input name="announcement_date" type="date" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
+        <div><label class="block text-xs text-gray-600 mb-1">ประเภท</label><select name="event_type" class="w-full border rounded-xl px-3 py-2 text-sm"><option>ทั่วไป</option><option>สอบ</option><option>วันหยุด</option><option>กิจกรรม</option></select></div>
+      </div>
+      ${annRolesFieldHTML('')}
+      ${annYearFieldHTML('')}
+      <label class="flex items-center gap-2 bg-green-50 rounded-xl px-3 py-2 cursor-pointer"><input type="checkbox" name="line_notify" value="✓" class="w-4 h-4"><span class="text-sm text-green-700">📢 ส่งประกาศนี้เข้า LINE</span></label>
+      <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึก</button>
+    </form>
+  `);
+  document.getElementById('addAnnForm').onsubmit = async (e) => {
+    e.preventDefault();
+    await withLoading(e.target, async () => {
+      const fd = new FormData(e.target);
+      const obj = { type: 'announcement', created_at: new Date().toISOString() }; fd.forEach((v, k) => obj[k] = v);
+      obj.roles = annCollectRoles();
+      obj.yr = annCollectYears();
+      const r = await GSheetDB.create(obj);
+      if (r.isOk) { showToast(r.message && r.message !== 'บันทึกแล้ว' ? r.message : 'เพิ่มประกาศสำเร็จ'); closeModal(); renderCurrentPage(); }
+      else showToast('เกิดข้อผิดพลาด', 'error');
+    });
+  };
+}
+
 function showEditAnnouncementModal(id) {
   const a = APP.allData.find(d => d.__backendId === id); if (!a) return;
   showModal('แก้ไขประกาศ', `
@@ -9791,11 +9938,12 @@ function showEditAnnouncementModal(id) {
         <div><label class="block text-xs text-gray-600 mb-1">ประเภท</label><select name="event_type" class="w-full border rounded-xl px-3 py-2 text-sm"><option ${a.event_type === 'ทั่วไป' ? 'selected' : ''}>ทั่วไป</option><option ${a.event_type === 'สอบ' ? 'selected' : ''}>สอบ</option><option ${a.event_type === 'วันหยุด' ? 'selected' : ''}>วันหยุด</option><option ${a.event_type === 'กิจกรรม' ? 'selected' : ''}>กิจกรรม</option></select></div>
       </div>
       ${annRolesFieldHTML(a.roles || '')}
+      ${annYearFieldHTML(a.yr || '')}
       <label class="flex items-center gap-2 bg-green-50 rounded-xl px-3 py-2 cursor-pointer"><input type="checkbox" name="line_notify" value="✓" class="w-4 h-4" ${['✓', '✔', 'true', 'yes', 'y', '1', 'ส่ง', 'แจ้ง'].includes(String(a.line_notify || '').trim().toLowerCase()) ? 'checked' : ''}><span class="text-sm text-green-700">📢 ส่งประกาศนี้เข้า LINE</span></label>
       <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึกการแก้ไข</button>
     </form>
   `);
-  document.getElementById('editAnnForm').onsubmit = (e) => { e.preventDefault(); a.line_notify = e.target.querySelector('[name="line_notify"]').checked ? '✓' : ''; a.roles = annCollectRoles(); editRecord(id, 'editAnnForm') };
+  document.getElementById('editAnnForm').onsubmit = (e) => { e.preventDefault(); a.line_notify = e.target.querySelector('[name="line_notify"]').checked ? '✓' : ''; a.roles = annCollectRoles(); a.yr = annCollectYears(); editRecord(id, 'editAnnForm') };
 }
 
 function showEditTrackingModal(id) {
