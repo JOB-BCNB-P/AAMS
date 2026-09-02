@@ -1647,7 +1647,7 @@ function studentRetentionAnalyticsHTML() {
   const reasonCount = {};
   resignStudents.forEach(s => { let k = norm(s.status_reason) || 'ไม่ระบุ'; if (k !== 'ไม่ระบุ' && !STATUS_REASONS.includes(k)) k = 'อื่นๆ'; reasonCount[k] = (reasonCount[k] || 0) + 1; });
   const reasonSegs = Object.entries(reasonCount).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ label: k, value: v, color: catPalette[k] || '#64748b' }));
-  const reasonCard = `<div class="mt-6 pt-5 border-t border-gray-100">
+  const reasonCard = `<div>
     <p class="text-sm font-semibold text-gray-600 mb-1"><i data-lucide="pie-chart" class="w-4 h-4 inline mr-1"></i>สาเหตุการลาออก (แยกตามหมวดหมู่)</p>
     <p class="text-xs text-gray-400 mb-3">ลาออก ${cResign} · พักการศึกษา ${cLeave} · โอนย้าย ${cTransfer} คน</p>
     ${resignStudents.length ? svgDonut(reasonSegs, 'ลาออก') : '<p class="text-sm text-gray-400">ยังไม่มีข้อมูลการลาออกในขอบเขตนี้</p>'}
@@ -1733,7 +1733,7 @@ function studentRetentionAnalyticsHTML() {
   const rTotal = scoped.length;
   const rResign = scoped.filter(s => norm(s.status) === 'ลาออก').length;
   const rPct = rTotal ? Math.round(rResign / rTotal * 1000) / 10 : 0;
-  const roundResignTable = `<div class="mt-6 pt-5 border-t border-gray-100">
+  const roundResignTable = `<div>
     <p class="text-sm font-semibold text-gray-600 mb-1"><i data-lucide="list-checks" class="w-4 h-4 inline mr-1"></i>การลาออกแยกตามรอบการสมัคร</p>
     <p class="text-xs text-gray-400 mb-3">ขอบเขต: ${sel === '__all' ? 'ทุกปี/ทุกรุ่น' : sel ? cohortLabel(sel) : 'รุ่นที่กำลังศึกษา'} · รับเข้า ${rTotal} คน · ลาออกรวม ${rResign} คน (${rPct}%)</p>
     <div class="overflow-x-auto"><table class="w-full text-sm">
@@ -1790,8 +1790,10 @@ function studentRetentionAnalyticsHTML() {
         <div><p class="text-sm font-semibold text-gray-600 mb-3">สัดส่วนการคงอยู่ (ไม่รวมผู้สำเร็จการศึกษา)</p>${donut}</div>
         <div><p class="text-sm font-semibold text-gray-600 mb-3">เปรียบเทียบรับเข้า vs กำลังศึกษา (รายรุ่น)</p>${cohortTable}</div>
       </div>
-      ${reasonCard}
-      ${roundResignTable}
+      <div class="mt-6 pt-5 border-t border-gray-100 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-1">${reasonCard}</div>
+        <div class="lg:col-span-2 min-w-0">${roundResignTable}</div>
+      </div>
       <div class="mt-4"><span class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-sky-50 text-sky-700 border border-sky-100 text-sm"><i data-lucide="log-in" class="w-4 h-4"></i>นักศึกษาโอนย้ายเข้า (กำลังศึกษา ในขอบเขตที่เลือก): <b>${cTransIn}</b> คน</span></div>
       <div class="mt-6 pt-5 border-t border-gray-100">
         <p class="text-sm font-semibold text-gray-600 mb-3"><i data-lucide="users" class="w-4 h-4 inline mr-1"></i>นักศึกษาที่กำลังศึกษา แยกตามเพศ <span class="font-normal text-gray-400">(ทั้งหมดทุกชั้นปี — ไม่ขึ้นกับตัวกรองปีรับเข้า)</span></p>
