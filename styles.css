@@ -634,43 +634,34 @@ details[open]>summary .chev {
 
 /* ---------------- หน้าเข้าสู่ระบบ (การ์ดแนวนอน) ---------------- */
 .ems-login-card {
-  /* สองคอลัมน์สูงเท่ากันเสมอ ไม่ว่าฝั่งไหนเนื้อหายาวกว่า */
   align-items: stretch;
 }
 
+/* แถบซ้าย: ภาพอาคารวิทยาลัยเป็นพื้นหลัง + ฟิล์มสีน้ำเงินทับให้ตัวหนังสืออ่านชัด */
 .ems-login-brand {
-  background: linear-gradient(135deg, #1e6fba 0%, #14507f 55%, #0f3f66 100%);
+  background-image:
+    linear-gradient(180deg, rgba(10, 42, 74, .88) 0%, rgba(16, 66, 108, .80) 38%, rgba(20, 80, 127, .70) 62%, rgba(10, 42, 74, .90) 100%),
+    url("assets/college-bg.jpg");
+  background-size: cover;
+  background-position: center 32%;
+  background-repeat: no-repeat;
+  min-height: 260px;
 }
 
-/* ลายวงกลมจาง ๆ ให้แถบซ้ายไม่ทึบเกินไป */
-.ems-login-brand::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at 88% 12%, rgba(255, 255, 255, .16), transparent 42%),
-    radial-gradient(circle at 6% 92%, rgba(255, 255, 255, .10), transparent 46%);
-  pointer-events: none;
+.ems-login-logo {
+  backdrop-filter: blur(2px);
 }
 
-.ems-login-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, .75);
-  flex-shrink: 0;
-  margin-top: .5rem;
-}
-
-/* จอเล็ก: แถบซ้ายกลายเป็นหัวการ์ดเตี้ย ๆ ไม่กินพื้นที่ฟอร์ม */
+/* จอเล็ก: แถบซ้ายกลายเป็นหัวการ์ด ไม่ต้องสูงมาก */
 @media (max-width: 767.98px) {
   .ems-login-brand {
-    padding-top: 1.25rem;
-    padding-bottom: 1.25rem;
+    min-height: 0;
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
   }
 
   .ems-login-logo img {
-    width: 3rem;
-    height: 3rem;
+    width: 3.5rem;
+    height: 3.5rem;
   }
 }

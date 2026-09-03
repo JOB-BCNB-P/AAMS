@@ -58,27 +58,26 @@
 
         <div class="ems-login-card bg-white rounded-2xl shadow-xl border border-blue-100 overflow-hidden grid grid-cols-1 md:grid-cols-2">
 
-          <!-- ซ้าย: แถบแนะนำระบบ -->
-          <div class="ems-login-brand relative text-white p-6 sm:p-8 flex flex-col justify-center">
-            <div class="relative">
-              <div class="flex md:block items-center gap-4">
-                <div class="ems-login-logo bg-white/95 rounded-2xl p-2 shadow-sm flex-shrink-0 md:w-max md:mb-5">
-                  <img src="https://cdn.jsdelivr.net/gh/JOB-BCNB-P/LOGO/Logo%20Thai.png" alt="โลโก้วิทยาลัย"
-                    class="w-14 h-14 sm:w-16 sm:h-16 object-contain">
-                </div>
-                <div class="min-w-0">
-                  <h1 class="ems-title-1line font-bold" id="loginTitle">ระบบบริหารจัดการงานวิชาการ (AAMs)</h1>
-                  <p class="text-sm text-white/80 mt-1" id="loginCollege">วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ</p>
+          <!-- ซ้าย: แถบแนะนำระบบ (พื้นหลังภาพอาคารวิทยาลัย) -->
+          <div class="ems-login-brand relative text-white p-6 sm:p-8 flex flex-col">
+            <div class="relative flex flex-col h-full w-full">
+
+              <!-- โลโก้: กลางด้านบน -->
+              <div class="flex justify-center">
+                <div class="ems-login-logo bg-white/95 rounded-2xl p-2.5 shadow-lg">
+                  <img src="https://cdn.jsdelivr.net/gh/JOB-BCNB-P/LOGO/Logo%20Thai.png"
+                    alt="โลโก้วิทยาลัย" class="w-16 h-16 sm:w-20 sm:h-20 object-contain">
                 </div>
               </div>
 
-              <ul class="hidden md:block mt-7 space-y-2.5 text-sm text-white/90">
-                <li class="flex items-start gap-2"><span class="ems-login-dot"></span>ข้อมูลนักศึกษา ผลการเรียน และผลสอบภาษาอังกฤษ</li>
-                <li class="flex items-start gap-2"><span class="ems-login-dot"></span>ติดตามการส่งงานรายวิชา และปฏิทินกิจกรรมวิชาการ</li>
-                <li class="flex items-start gap-2"><span class="ems-login-dot"></span>เห็นข้อมูลตามบทบาทของผู้ใช้แต่ละคน</li>
-              </ul>
+              <!-- ชื่อระบบ + ชื่อวิทยาลัย: ใต้โลโก้ ชิดซ้าย -->
+              <div class="mt-5 text-left">
+                <h1 class="ems-title-1line font-bold drop-shadow" id="loginTitle">ระบบบริหารจัดการงานวิชาการ (AAMs)</h1>
+                <p class="text-sm text-white/90 mt-1 drop-shadow" id="loginCollege">วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ</p>
+              </div>
 
-              <p class="hidden md:block text-white/60 mt-8" style="font-size:11px">พัฒนาระบบ โดย Oranit.R นักวิชาการศึกษา BCNB</p>
+              <!-- ผู้พัฒนา: ล่างสุดของแถบ -->
+              <p class="mt-auto pt-6 text-white/70 text-left" style="font-size:11px">พัฒนาระบบ โดย Oranit.R นักวิชาการศึกษา BCNB</p>
             </div>
           </div>
 
@@ -90,8 +89,8 @@
             <div class="mb-4">
               <label class="block text-sm font-medium text-gray-700 mb-2" for="loginRole">เข้าสู่ระบบในฐานะ</label>
               <select id="loginRole" class="ems-input" onchange="updateLoginFields()">
-                <option value="staff">บุคลากร / อาจารย์ (บัญชีของวิทยาลัย)</option>
-                <option value="student">นักศึกษา (เลขบัตรประชาชน)</option>
+                <option value="staff">บุคลากร/อาจารย์</option>
+                <option value="student">นักศึกษา</option>
               </select>
             </div>
 
@@ -120,7 +119,6 @@
           </div>
         </div>
 
-        <p class="md:hidden text-center text-gray-400 mt-5" style="font-size:10px;">พัฒนาระบบ โดย Oranit.R นักวิชาการศึกษา BCNB</p>
       </div>
 
       <!-- ปุ่มติดต่อสอบถาม -->
