@@ -4263,6 +4263,66 @@ function getEngLevel(score) {
   if (s >= 21) return 'Elementary';
   return 'Beginner';
 }
+// ======================== แจ้งผลสอบภาษาอังกฤษถึงอาจารย์ที่ปรึกษา ========================
+// เรียก Edge Function 'eng-report-mail' — ตรวจสิทธิ์และส่งอีเมลจากฝั่งเซิร์ฟเวอร์เท่านั้น
+async function engMailCall(mode) {
+  const { data, error } = await GSheetDB.client().functions.invoke('eng-report-mail', { body: { mode: mode } });
+  if (error) {
+    let detail = (error && error.message) || 'เรียกใช้งานไม่สำเร็จ';
+    try { const j = await error.context.json(); if (j && j.error) detail = j.error; } catch (e) { }
+    return { isOk: false, error: detail };
+  }
+  return data || { isOk: false, error: 'ไม่มีข้อมูลตอบกลับ' };
+}
+
+async function showEngMailModal() {
+  showModal('แจ้งผลสอบภาษาอังกฤษถึงอาจารย์ที่ปรึกษา', `
+    <div id="engMailBody" class="space-y-3">
+      <p class="text-sm text-gray-500">กำลังตรวจข้อมูล...</p>
+    </div>`);
+  const r = await engMailCall('preview');
+  const box = document.getElementById('engMailBody');
+  if (!box) return;
+  if (!r.isOk) { box.innerHTML = `<p class="text-sm text-red-600">${r.error || 'ตรวจข้อมูลไม่สำเร็จ'}</p>`; return; }
+
+  const skipped = r['ข้ามไป'] || [];
+  box.innerHTML = `
+    <div class="grid grid-cols-3 gap-2 text-center">
+      <div class="bg-surface rounded-xl p-3"><p class="text-2xl font-bold text-gray-800">${r['นักศึกษาที่กำลังศึกษา']}</p><p class="text-xs text-gray-500">กำลังศึกษา</p></div>
+      <div class="bg-red-50 rounded-xl p-3"><p class="text-2xl font-bold text-red-600">${r['ยังไม่ผ่าน']}</p><p class="text-xs text-gray-500">ยังไม่ผ่าน</p></div>
+      <div class="bg-emerald-50 rounded-xl p-3"><p class="text-2xl font-bold text-emerald-600">${r['อาจารย์ที่จะได้รับอีเมล']}</p><p class="text-xs text-gray-500">อาจารย์ที่จะได้รับ</p></div>
+    </div>
+    <p class="text-xs text-gray-500">อีเมลแต่ละฉบับมีเฉพาะนักศึกษาในความดูแลของอาจารย์ท่านนั้น พร้อมรหัสนักศึกษา ชื่อ-สกุล รูปแบบการสอบ คะแนน ครั้งที่สอบ วันที่สอบ ปีการศึกษา และสถานะ</p>
+    ${skipped.length ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3">
+      <p class="text-xs font-semibold text-amber-800 mb-1">ข้ามไป ${skipped.length} ท่าน</p>
+      ${skipped.map(x => `<p class="text-xs text-amber-700">• ${x.advisor} — ${x.reason} (นักศึกษา ${x.students} คน)</p>`).join('')}
+    </div>` : ''}
+    ${r['ไม่มีอาจารย์ที่ปรึกษา'] ? `<p class="text-xs text-amber-600">* นักศึกษา ${r['ไม่มีอาจารย์ที่ปรึกษา']} คนยังไม่ได้ระบุอาจารย์ที่ปรึกษา จึงไม่มีใครได้รับรายชื่อของนักศึกษากลุ่มนี้</p>` : ''}
+    <div class="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-800">
+      ส่งเฉพาะอีเมลโดเมนของวิทยาลัย · ไม่มีเลขบัตรประชาชนในอีเมล · บันทึกการส่งทุกครั้งเพื่อตรวจสอบย้อนหลัง
+    </div>
+    <div class="flex flex-col sm:flex-row gap-2">
+      <button onclick="engMailRun('test')" class="flex-1 border border-primary text-primary py-2.5 rounded-xl text-sm hover:bg-primaryLight">ส่งทดสอบถึงตัวเองก่อน</button>
+      <button onclick="engMailRun('send')" class="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl text-sm hover:bg-emerald-700">ส่งจริงถึงอาจารย์ ${r['อาจารย์ที่จะได้รับอีเมล']} ท่าน</button>
+    </div>
+    <div id="engMailResult"></div>`;
+  if (window.lucide) lucide.createIcons();
+}
+
+async function engMailRun(mode) {
+  if (mode === 'send' && !confirm('ยืนยันส่งอีเมลถึงอาจารย์ที่ปรึกษาทุกท่าน?\nอีเมลจะมีรายชื่อและคะแนนของนักศึกษาที่ยังไม่ผ่าน')) return;
+  const out = document.getElementById('engMailResult');
+  if (out) out.innerHTML = '<p class="text-sm text-gray-500 mt-2">กำลังส่ง...</p>';
+  const r = await engMailCall(mode);
+  if (!out) return;
+  if (!r.isOk) { out.innerHTML = `<p class="text-sm text-red-600 mt-2">${r.error || 'ส่งไม่สำเร็จ'}</p>`; return; }
+  const rows = r['รายละเอียด'] || [];
+  out.innerHTML = `<div class="mt-2 p-3 bg-green-50 border border-green-200 rounded-xl">
+    <p class="text-sm font-semibold text-green-700">ส่งสำเร็จ ${r['ส่งสำเร็จ']} จาก ${r['ทั้งหมด']} ฉบับ <span class="font-normal text-gray-500">(${r['ช่องทาง'] || ''})</span></p>
+    <div class="max-h-40 overflow-auto mt-2">${rows.map(x => `<p class="text-xs ${x['สำเร็จ'] ? 'text-gray-600' : 'text-red-600'}">${x['สำเร็จ'] ? '✓' : '✗'} ${x['อาจารย์']} · ${x['อีเมล']} · ${x['นักศึกษา']} คน ${x['สาเหตุ'] ? '— ' + x['สาเหตุ'] : ''}</p>`).join('')}</div>
+  </div>`;
+}
+
 // ---- ตัวช่วยกรอง "ผลการสอบภาษาอังกฤษ" (ใช้ในหน้าผลสอบ สำหรับผู้ดูแล/วิชาการ/ผู้บริหาร) ----
 const ENG_LEVELS = ['Beginner', 'Elementary', 'Intermediate', 'Upper Intermediate', 'Advanced', 'Proficiency'];
 const ENG_EXT_TYPES = ['TOEIC', 'CU-TEP', 'IELTS', 'TOEIC-ITP', 'TOEFL', 'TU-GET', 'LICMU'];
