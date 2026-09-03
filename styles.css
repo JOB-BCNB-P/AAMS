@@ -631,3 +631,46 @@ details[open]>summary .chev {
     margin-right: .75rem;
   }
 }
+
+/* ---------------- หน้าเข้าสู่ระบบ (การ์ดแนวนอน) ---------------- */
+.ems-login-card {
+  /* สองคอลัมน์สูงเท่ากันเสมอ ไม่ว่าฝั่งไหนเนื้อหายาวกว่า */
+  align-items: stretch;
+}
+
+.ems-login-brand {
+  background: linear-gradient(135deg, #1e6fba 0%, #14507f 55%, #0f3f66 100%);
+}
+
+/* ลายวงกลมจาง ๆ ให้แถบซ้ายไม่ทึบเกินไป */
+.ems-login-brand::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 88% 12%, rgba(255, 255, 255, .16), transparent 42%),
+    radial-gradient(circle at 6% 92%, rgba(255, 255, 255, .10), transparent 46%);
+  pointer-events: none;
+}
+
+.ems-login-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .75);
+  flex-shrink: 0;
+  margin-top: .5rem;
+}
+
+/* จอเล็ก: แถบซ้ายกลายเป็นหัวการ์ดเตี้ย ๆ ไม่กินพื้นที่ฟอร์ม */
+@media (max-width: 767.98px) {
+  .ems-login-brand {
+    padding-top: 1.25rem;
+    padding-bottom: 1.25rem;
+  }
+
+  .ems-login-logo img {
+    width: 3rem;
+    height: 3rem;
+  }
+}
