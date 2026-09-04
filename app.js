@@ -9105,32 +9105,44 @@ function resetToDefaultConfig() {
   location.reload();
 }
 
+// ======================== จัดการผู้ใช้งาน ========================
+// การเข้าสู่ระบบปัจจุบัน: บุคลากรใช้บัญชี Google ของวิทยาลัย (อีเมล @bcn.ac.th)
+// นักศึกษาใช้เลขบัตรประชาชนซึ่งอยู่ในทะเบียนนักศึกษา — ระบบนี้ไม่มีรหัสผ่านของตัวเอง
+const USER_ROLE_LABELS = { admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'เจ้าหน้าที่งานทะเบียน', deptHead: 'ประธานสาขาวิชา', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อาจารย์ประจำชั้น', student: 'นักศึกษา' };
+const USER_STAFF_ROLES = ['admin', 'academic', 'registrar', 'deptHead', 'executive', 'teacher', 'classTeacher'];
+function emsLoginDomain() { return (window.EMS_CONFIG && EMS_CONFIG.ALLOWED_DOMAIN) || 'bcn.ac.th'; }
+function userRoleOptionsHTML(selected) {
+  return Object.keys(USER_ROLE_LABELS)
+    .map(k => `<option value="${k}" ${selected === k ? 'selected' : ''}>${USER_ROLE_LABELS[k]}</option>`).join('');
+}
+// ตรวจว่าอีเมลนี้ถูกใช้ไปแล้วหรือยัง (กันบัญชีซ้ำที่ทำให้ผูก Google ไม่ได้)
+function userEmailTaken(email, exceptId) {
+  const e = String(email || '').trim().toLowerCase();
+  if (!e) return false;
+  return getDataByType('user').some(u =>
+    String(u.email || '').trim().toLowerCase() === e && String(u.__backendId) !== String(exceptId || ''));
+}
+
 function showAddUserModal() {
   showModal('เพิ่มผู้ใช้งาน', `
     <form id="addUserForm" class="space-y-3">
-      <div><label class="block text-xs text-gray-600 mb-1">บทบาท *</label>
+      <div class="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-gray-600">
+        <b class="text-gray-700">การเข้าสู่ระบบ:</b> บุคลากร/อาจารย์เข้าด้วย <b>บัญชี Google ของวิทยาลัย</b>
+        จึงต้องกรอกอีเมล <b>@${emsLoginDomain()}</b> ให้ถูกต้อง · นักศึกษาเข้าด้วย <b>เลขบัตรประชาชน</b>
+        ที่บันทึกไว้ในทะเบียนนักศึกษา — ระบบไม่มีรหัสผ่านแยก จึงไม่ต้องตั้งรหัสผ่านให้ผู้ใช้
+      </div>
+      <div><label class="block text-xs text-gray-600 mb-1">บทบาทหลัก *</label>
         <select name="role" required onchange="onUserRoleChange(this.value)" class="w-full border rounded-xl px-3 py-2 text-sm">
-          <option value="">เลือกบทบาท</option>
-          <option value="admin">ผู้ดูแลระบบ</option>
-          <option value="academic">เจ้าหน้าที่งานวิชาการ</option>
-          <option value="registrar">เจ้าหน้าที่งานทะเบียน</option>
-          <option value="deptHead">ประธานสาขาวิชา</option>
-          <option value="executive">ผู้บริหาร</option>
-          <option value="teacher">อาจารย์</option>
-          <option value="classTeacher">อาจารย์ประจำชั้น</option>
-          <option value="student">นักศึกษา</option>
+          <option value="">เลือกบทบาท</option>${userRoleOptionsHTML('')}
         </select>
       </div>
-      <div><label class="block text-xs text-gray-600 mb-1">ชื่อ-สกุล *</label>
-        <input name="name" required class="w-full border rounded-xl px-3 py-2 text-sm"></div>
       <div id="userCredFields" class="space-y-3"></div>
-      <div><label class="block text-xs text-gray-600 mb-1">ชั้นปีที่รับผิดชอบ (อ.ประจำชั้นเท่านั้น)</label>
+      <div id="userNameBox"><label class="block text-xs text-gray-600 mb-1">ชื่อ-สกุล *</label>
+        <input name="name" required class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น นางสาวสมหญิง ใจดี"></div>
+      ${extraRolesFieldHTML({})}
+      <div id="userRespYearBox" class="hidden"><label class="block text-xs text-gray-600 mb-1">ชั้นปีที่รับผิดชอบ <span class="text-gray-400">(อาจารย์ประจำชั้น)</span></label>
         <select name="responsible_year" class="w-full border rounded-xl px-3 py-2 text-sm">
-          <option value="">ไม่มี</option>
-          <option>1</option>
-          <option>2</option>
-          <option>3</option>
-          <option>4</option>
+          <option value="">ไม่ระบุ</option><option>1</option><option>2</option><option>3</option><option>4</option>
         </select>
       </div>
       <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึก</button>
@@ -9140,46 +9152,77 @@ function showAddUserModal() {
     e.preventDefault();
     const fd = new FormData(e.target);
     const role = fd.get('role');
-    if (!role) { showToast('กรุณาเลือกบทบาท', 'error'); return }
-    if (APP.allData.filter(d => d.type === 'user').length >= 999) { showToast('ข้อมูลเต็ม', 'error'); return }
-    const obj = { type: 'user', name: fd.get('name'), role, created_at: new Date().toISOString() };
-    if (role === 'admin') { obj.password = fd.get('password') || '123456' }
-    else if (role === 'student') { obj.national_id = fd.get('national_id') }
-    else if (role === 'registrar' || role === 'deptHead') { obj.username = fd.get('username') || fd.get('name'); obj.password = fd.get('password') || '123456'; if (role === 'deptHead' && fd.get('department')) obj.department = fd.get('department'); }
-    else { obj.email = fd.get('email'); obj.password = fd.get('password') || '123456' }
-    const resp_yr = fd.get('responsible_year');
-    if (resp_yr) obj.responsible_year = resp_yr;
+    if (!role) { showToast('กรุณาเลือกบทบาท', 'error'); return; }
+
+    const obj = { type: 'user', role, is_active: '1', created_at: new Date().toISOString() };
+
+    if (role === 'student') {
+      const sid = String(fd.get('student_id') || '').trim();
+      if (!sid) { showToast('กรุณากรอกรหัสนักศึกษา', 'error'); return; }
+      const stu = getDataByType('student').find(x => String(x.student_id || '').trim() === sid);
+      if (!stu) { showToast('ไม่พบรหัสนักศึกษา ' + sid + ' ในทะเบียนนักศึกษา', 'error'); return; }
+      if (getDataByType('user').some(u => u.role === 'student' && String(u.student_id || '').trim() === sid)) {
+        showToast('นักศึกษารายนี้มีบัญชีอยู่แล้ว', 'error'); return;
+      }
+      obj.student_id = sid;
+      obj.name = stu.name || String(fd.get('name') || '').trim();
+      obj.email = (sid + '@' + emsLoginDomain()).toLowerCase();
+    } else {
+      const name = String(fd.get('name') || '').trim();
+      if (!name) { showToast('กรุณากรอกชื่อ-สกุล', 'error'); return; }
+      const email = String(fd.get('email') || '').trim().toLowerCase();
+      if (!email) { showToast('กรุณากรอกอีเมลของวิทยาลัย', 'error'); return; }
+      if (!(window.EMSAuth && EMSAuth.domainOk(email))) {
+        showToast('ต้องเป็นอีเมล @' + emsLoginDomain() + ' ของวิทยาลัยเท่านั้น มิฉะนั้นจะเข้าสู่ระบบไม่ได้', 'error'); return;
+      }
+      if (userEmailTaken(email)) { showToast('อีเมลนี้ถูกใช้กับผู้ใช้รายอื่นแล้ว', 'error'); return; }
+      obj.name = name;
+      obj.email = email;
+      if (role === 'deptHead' && fd.get('department')) obj.department = String(fd.get('department')).trim();
+      if (role === 'classTeacher' && fd.get('responsible_year')) obj.responsible_year = fd.get('responsible_year');
+    }
+
+    const extra = collectExtraRoles('addUserForm');
+    if (extra) obj.extra_roles = extra;
 
     await withLoading(e.target, async () => {
       const r = await GSheetDB.create(obj);
-      if (r.isOk) { showToast('เพิ่มผู้ใช้สำเร็จ'); closeModal() } else showToast('เกิดข้อผิดพลาด', 'error');
+      if (r.isOk) {
+        showToast(role === 'student'
+          ? 'เพิ่มบัญชีนักศึกษาสำเร็จ — เข้าระบบด้วยเลขบัตรประชาชนในทะเบียน'
+          : 'เพิ่มผู้ใช้สำเร็จ — แจ้งให้เข้าสู่ระบบด้วยปุ่ม "เข้าสู่ระบบด้วย Google"');
+        closeModal(); renderCurrentPage();
+      } else showToast('เกิดข้อผิดพลาด: ' + (r.error || ''), 'error');
     });
   };
 }
 
+// สลับช่องกรอกตามบทบาทที่เลือก
 function onUserRoleChange(role) {
   const fieldsDiv = document.getElementById('userCredFields');
+  const nameBox = document.getElementById('userNameBox');
+  const yearBox = document.getElementById('userRespYearBox');
   if (!fieldsDiv) return;
-  fieldsDiv.innerHTML = '';
-  if (role === 'admin') {
-    fieldsDiv.innerHTML = `<div><label class="block text-xs text-gray-600 mb-1">รหัสผ่าน (6 หลัก) *</label>
-      <input name="password" maxlength="6" pattern="[0-9]{6}" required class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="6 หลัก ตัวเลข"></div>`;
-  } else if (role === 'student') {
-    fieldsDiv.innerHTML = `<div><label class="block text-xs text-gray-600 mb-1">เลขบัตรประชาชน 13 หลัก *</label>
-      <input name="national_id" maxlength="13" pattern="[0-9]{13}" required class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="13 หลัก"></div>`;
-  } else if (role === 'teacher' || role === 'classTeacher' || role === 'executive' || role === 'academic') {
-    fieldsDiv.innerHTML = `<div><label class="block text-xs text-gray-600 mb-1">E-mail *</label>
-      <input name="email" type="email" required class="w-full border rounded-xl px-3 py-2 text-sm"></div>
-      <div><label class="block text-xs text-gray-600 mb-1">รหัสผ่าน (ถ้าไม่ระบุจะเป็น 123456)</label>
-      <input name="password" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="กรุณาตั้งรหัสผ่าน"></div>`;
-  } else if (role === 'registrar' || role === 'deptHead') {
-    fieldsDiv.innerHTML = `<div><label class="block text-xs text-gray-600 mb-1">Username * <span class="text-gray-400">(ใช้ Login)</span></label>
-      <input name="username" required class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="ตั้ง Username"></div>
-      <div><label class="block text-xs text-gray-600 mb-1">รหัสผ่าน (ถ้าไม่ระบุจะเป็น 123456)</label>
-      <input name="password" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="กรุณาตั้งรหัสผ่าน"></div>
-      ${role === 'deptHead' ? `<div><label class="block text-xs text-gray-600 mb-1">สาขาวิชา <span class="text-gray-400">(เว้นว่างได้ ระบบจะอิงชื่อ-สกุลให้ตรงกับอาจารย์)</span></label>
+
+  if (yearBox) yearBox.classList.toggle('hidden', role !== 'classTeacher');
+  if (nameBox) nameBox.classList.toggle('hidden', role === 'student');
+  const nameInput = nameBox && nameBox.querySelector('[name="name"]');
+  if (nameInput) nameInput.required = (role !== 'student' && role !== '');
+
+  if (role === 'student') {
+    fieldsDiv.innerHTML = `<div><label class="block text-xs text-gray-600 mb-1">รหัสนักศึกษา *</label>
+      <input name="student_id" required inputmode="numeric" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น 68101301001">
+      <p class="text-[11px] text-gray-400 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ระบบจะดึงชื่อ-สกุลจากทะเบียนนักศึกษาให้อัตโนมัติ และผู้ใช้จะเข้าระบบด้วยเลขบัตรประชาชนที่บันทึกไว้ในทะเบียน</p></div>`;
+  } else if (USER_STAFF_ROLES.indexOf(role) !== -1) {
+    fieldsDiv.innerHTML = `<div><label class="block text-xs text-gray-600 mb-1">อีเมลของวิทยาลัย *</label>
+      <input name="email" type="email" required class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="ชื่อผู้ใช้@${emsLoginDomain()}">
+      <p class="text-[11px] text-gray-400 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ต้องตรงกับบัญชี Google ของวิทยาลัยที่ผู้ใช้ใช้จริง จึงจะเข้าสู่ระบบได้</p></div>
+      ${role === 'deptHead' ? `<div><label class="block text-xs text-gray-600 mb-1">สาขาวิชา <span class="text-gray-400">(เว้นว่างได้ ระบบจะอิงชื่อ-สกุลให้ตรงกับข้อมูลอาจารย์)</span></label>
       <input name="department" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น การพยาบาลผู้ใหญ่"></div>` : ''}`;
+  } else {
+    fieldsDiv.innerHTML = '';
   }
+  if (window.lucide) lucide.createIcons();
 }
 
 async function togglePermission(role, module, checked) {
@@ -10158,23 +10201,58 @@ function collectExtraRoles(formId) {
 
 function showEditUserModal(id) {
   const u = APP.allData.find(d => d.__backendId === id); if (!u) return;
-  const roleLabels = { admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'เจ้าหน้าที่งานทะเบียน', deptHead: 'ประธานสาขาวิชา', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อาจารย์ประจำชั้น', student: 'นักศึกษา' };
+  const isStudent = String(u.role || '') === 'student';
+  const inactive = ['0', 'false', 'ปิด'].indexOf(String(u.is_active == null ? '1' : u.is_active).trim()) !== -1;
   showModal('แก้ไขผู้ใช้งาน', `
     <form id="editUserForm" class="space-y-3">
-      <div><label class="block text-xs text-gray-600 mb-1">ชื่อ-สกุล</label><input name="name" value="${u.name || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
-      <div><label class="block text-xs text-gray-600 mb-1">บทบาท</label><select name="role" class="w-full border rounded-xl px-3 py-2 text-sm"><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>ผู้ดูแลระบบ</option><option value="academic" ${u.role === 'academic' ? 'selected' : ''}>เจ้าหน้าที่งานวิชาการ</option><option value="registrar" ${u.role === 'registrar' ? 'selected' : ''}>เจ้าหน้าที่งานทะเบียน</option><option value="deptHead" ${u.role === 'deptHead' ? 'selected' : ''}>ประธานสาขาวิชา</option><option value="executive" ${u.role === 'executive' ? 'selected' : ''}>ผู้บริหาร</option><option value="teacher" ${u.role === 'teacher' ? 'selected' : ''}>อาจารย์</option><option value="classTeacher" ${u.role === 'classTeacher' ? 'selected' : ''}>อาจารย์ประจำชั้น</option><option value="student" ${u.role === 'student' ? 'selected' : ''}>นักศึกษา</option></select></div>
+      <div><label class="block text-xs text-gray-600 mb-1">ชื่อ-สกุล</label>
+        <input name="name" value="${u.name || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
+
+      <div><label class="block text-xs text-gray-600 mb-1">บทบาทหลัก</label>
+        <select name="role" class="w-full border rounded-xl px-3 py-2 text-sm">${userRoleOptionsHTML(u.role)}</select></div>
+
       ${extraRolesFieldHTML(u)}
-      <div><label class="block text-xs text-gray-600 mb-1">Username <span class="text-gray-400">(งานทะเบียน/ประธานสาขา)</span></label><input name="username" value="${u.username || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
-      <div><label class="block text-xs text-gray-600 mb-1">สาขาวิชา <span class="text-gray-400">(ประธานสาขา)</span></label><input name="department" value="${u.department || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
-      <div><label class="block text-xs text-gray-600 mb-1">E-mail</label><input name="email" value="${u.email || ''}" type="email" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
-      <div><label class="block text-xs text-gray-600 mb-1">รหัสผ่าน</label><input name="password" value="${u.password || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
-      <div><label class="block text-xs text-gray-600 mb-1">เลขบัตรประชาชน</label><input name="national_id" value="${u.national_id || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
-      <div><label class="block text-xs text-gray-600 mb-1">ชั้นปีที่รับผิดชอบ</label><select name="responsible_year" class="w-full border rounded-xl px-3 py-2 text-sm"><option value="">ไม่มี</option><option ${norm(u.responsible_year) === '1' ? 'selected' : ''}>1</option><option ${norm(u.responsible_year) === '2' ? 'selected' : ''}>2</option><option ${norm(u.responsible_year) === '3' ? 'selected' : ''}>3</option><option ${norm(u.responsible_year) === '4' ? 'selected' : ''}>4</option></select></div>
+
+      ${isStudent ? `
+      <div><label class="block text-xs text-gray-600 mb-1">รหัสนักศึกษา</label>
+        <input name="student_id" value="${u.student_id || ''}" class="w-full border rounded-xl px-3 py-2 text-sm bg-gray-50" readonly>
+        <p class="text-[11px] text-gray-400 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>นักศึกษาเข้าระบบด้วยเลขบัตรประชาชน แก้ไขเลขบัตรได้ที่เมนู <b>ข้อมูลนักศึกษา</b></p></div>` : `
+      <div><label class="block text-xs text-gray-600 mb-1">อีเมลของวิทยาลัย <span class="text-gray-400">(ใช้เข้าสู่ระบบด้วย Google)</span></label>
+        <input name="email" value="${u.email || ''}" type="email" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="ชื่อผู้ใช้@${emsLoginDomain()}">
+        <p class="text-[11px] text-gray-400 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ต้องตรงกับบัญชี Google ของวิทยาลัยที่ผู้ใช้ใช้จริง มิฉะนั้นจะเข้าสู่ระบบไม่ได้</p></div>
+
+      <div><label class="block text-xs text-gray-600 mb-1">สาขาวิชา <span class="text-gray-400">(ประธานสาขาวิชา)</span></label>
+        <input name="department" value="${u.department || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
+
+      <div><label class="block text-xs text-gray-600 mb-1">ชั้นปีที่รับผิดชอบ <span class="text-gray-400">(อาจารย์ประจำชั้น)</span></label>
+        <select name="responsible_year" class="w-full border rounded-xl px-3 py-2 text-sm"><option value="">ไม่ระบุ</option>${[1, 2, 3, 4].map(y => `<option ${norm(u.responsible_year) === String(y) ? 'selected' : ''}>${y}</option>`).join('')}</select></div>`}
+
+      <div><label class="block text-xs text-gray-600 mb-1">สถานะการใช้งาน</label>
+        <select name="is_active" class="w-full border rounded-xl px-3 py-2 text-sm">
+          <option value="1" ${inactive ? '' : 'selected'}>เปิดใช้งาน — เข้าสู่ระบบได้</option>
+          <option value="0" ${inactive ? 'selected' : ''}>ปิดใช้งาน — เข้าสู่ระบบไม่ได้</option>
+        </select>
+        <p class="text-[11px] text-gray-400 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ระบบจะปิดให้อัตโนมัติเมื่อนักศึกษาสำเร็จการศึกษา/ลาออก หรืออาจารย์ลาออก/โอนย้าย</p></div>
+
       <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึกการแก้ไข</button>
     </form>
   `);
   document.getElementById('editUserForm').onsubmit = (e) => {
     e.preventDefault();
+    const form = e.target;
+    const roleNow = form.querySelector('[name="role"]').value;
+    const emailEl = form.querySelector('[name="email"]');
+    if (emailEl) {
+      const email = String(emailEl.value || '').trim().toLowerCase();
+      if (roleNow !== 'student') {
+        if (!email) { showToast('กรุณากรอกอีเมลของวิทยาลัย มิฉะนั้นผู้ใช้จะเข้าสู่ระบบไม่ได้', 'error'); return; }
+        if (!(window.EMSAuth && EMSAuth.domainOk(email))) {
+          showToast('ต้องเป็นอีเมล @' + emsLoginDomain() + ' ของวิทยาลัยเท่านั้น', 'error'); return;
+        }
+        if (userEmailTaken(email, id)) { showToast('อีเมลนี้ถูกใช้กับผู้ใช้รายอื่นแล้ว', 'error'); return; }
+      }
+      emailEl.value = email;
+    }
     const rec = APP.allData.find(d => d.__backendId === id);
     if (rec) rec.extra_roles = collectExtraRoles('editUserForm');
     editRecord(id, 'editUserForm');
