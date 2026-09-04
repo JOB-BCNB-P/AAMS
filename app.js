@@ -10718,6 +10718,7 @@ function surveyConfigTabHTML(year) {
     <div class="flex flex-wrap gap-2">
       <button onclick="surveyPreview('${year}')" class="px-4 py-2 bg-white border border-primary text-primary rounded-xl text-sm hover:bg-primaryLight flex items-center gap-1"><i data-lucide="eye" class="w-4 h-4"></i>แสดงตัวอย่างแบบประเมิน</button>
       <button id="surveyCfgSaveBtn" onclick="surveySaveOpenRoles('${year}')" class="px-4 py-2 bg-green-600 text-white rounded-xl text-sm hover:bg-green-700 flex items-center gap-1"><i data-lucide="save" class="w-4 h-4"></i>บันทึกการตั้งค่า (ชื่อ/คำชี้แจง/การเปิดรับ)</button>
+      ${isOpen && surveyCanInvite() ? `<button onclick="showSurveyInviteModal('${year}', [...document.querySelectorAll('.survey-open-role:checked')].map(el=>el.value))" class="px-4 py-2 bg-white border border-green-600 text-green-700 rounded-xl text-sm hover:bg-green-50 flex items-center gap-1"><i data-lucide="mail" class="w-4 h-4"></i>ส่งอีเมลเชิญทำแบบประเมิน</button>` : ''}
       ${qCount === 0 ? `<button onclick="surveyCreateDefaultQuestions('${year}')" class="px-4 py-2 bg-primary text-white rounded-xl text-sm hover:bg-primaryDark">สร้างชุดคำถามเริ่มต้น (ใช้ร่วมทุกบทบาท)</button>` : ''}
     </div>
   </div>`;
@@ -10799,7 +10800,100 @@ async function surveySaveOpenRoles(year) {
       showToast('บันทึกแล้ว — ' + openLabel, 'success');
       if (typeof updateNotifBadge === 'function') updateNotifBadge();
       renderCurrentPage();
+      // เปิดรับการประเมิน → ถามก่อนว่าจะส่งอีเมลแจ้งผู้เกี่ยวข้องด้วยหรือไม่
+      if (status === 'open' && roles.length && surveyCanInvite()) showSurveyInviteModal(year, roles);
     } else showToast((res && res.error) || 'บันทึกไม่สำเร็จ', 'error');
+  });
+}
+
+// ======================== ส่งอีเมลเชิญทำแบบประเมิน ========================
+// เรียก Edge Function "survey-invite-mail" — รายชื่อผู้รับคำนวณฝั่งเซิร์ฟเวอร์เสมอ
+// บทบาท/ชั้นปีที่เคยแจ้งไปแล้วของปีการศึกษานั้น เซิร์ฟเวอร์จะตัดออกให้เอง ไม่แจ้งซ้ำ
+function surveyCanInvite() {
+  const rs = (APP._roles && APP._roles.length) ? APP._roles : [APP.currentRole];
+  return rs.some(r => r === 'admin' || r === 'academic');
+}
+async function surveyInviteCall(mode, year, roles, years) {
+  const { data, error } = await GSheetDB.client().functions.invoke('survey-invite-mail', {
+    body: {
+      mode: mode, year: String(year),
+      roles: (roles || []).join(','), years: (years || []).join(','),
+      url: window.location.href.split('#')[0]
+    }
+  });
+  if (error) {
+    let detail = (error && error.message) || 'เรียกใช้งานไม่สำเร็จ';
+    try { const j = await error.context.json(); if (j && j.error) detail = j.error; } catch (e) { }
+    return { isOk: false, error: detail };
+  }
+  return data || { isOk: false, error: 'ไม่มีข้อมูลตอบกลับ' };
+}
+function surveyInviteSelection() {
+  return {
+    roles: [...document.querySelectorAll('.svinv-role:checked')].map(el => el.value),
+    years: [...document.querySelectorAll('.svinv-year:checked')].map(el => el.value)
+  };
+}
+async function showSurveyInviteModal(year, roles) {
+  const hasStudent = roles.indexOf('student') !== -1;
+  showModal('ส่งอีเมลเชิญทำแบบประเมิน', `
+    <div class="space-y-3">
+      <p class="text-sm text-gray-600">บันทึกการตั้งค่าเรียบร้อยแล้ว — ต้องการส่งอีเมลเชิญผู้เกี่ยวข้องด้วยหรือไม่</p>
+      <div>
+        <label class="block text-xs text-gray-600 mb-1">บทบาทที่จะส่งถึง</label>
+        <div class="grid grid-cols-2 gap-1.5">
+          ${roles.map(r => `<label class="flex items-center gap-2 text-sm text-gray-700 bg-surface rounded-lg px-2.5 py-1.5"><input type="checkbox" class="svinv-role accent-primary" value="${r}" checked onchange="surveyInviteRefresh('${year}')"> ${SURVEY_ROLE_LABEL[r] || r}</label>`).join('')}
+        </div>
+      </div>
+      ${hasStudent ? `<div>
+        <label class="block text-xs text-gray-600 mb-1">ชั้นปีของนักศึกษา <span class="text-gray-400">(ไม่เลือกเลย = ทุกชั้นปี)</span></label>
+        <div class="flex flex-wrap gap-2">
+          ${['1', '2', '3', '4'].map(y => `<label class="flex items-center gap-1.5 text-sm text-gray-700 bg-surface rounded-lg px-2.5 py-1.5"><input type="checkbox" class="svinv-year accent-primary" value="${y}" onchange="surveyInviteRefresh('${year}')"> ชั้นปีที่ ${y}</label>`).join('')}
+        </div>
+      </div>` : ''}
+      <div id="svinvSummary" class="text-sm text-gray-500 bg-surface rounded-xl p-3">กำลังตรวจจำนวนผู้รับ...</div>
+      <div class="flex flex-wrap gap-2 pt-1">
+        <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm hover:bg-gray-50">ยังไม่ส่ง</button>
+        <button type="button" onclick="surveyInviteRun('${year}','test')" class="px-4 py-2 rounded-xl border border-primary text-primary text-sm hover:bg-primaryLight">ส่งทดสอบถึงฉัน</button>
+        <button type="button" id="svinvSendBtn" onclick="surveyInviteRun('${year}','send')" class="px-4 py-2 rounded-xl bg-green-600 text-white text-sm hover:bg-green-700 flex items-center gap-1"><i data-lucide="mail" class="w-4 h-4"></i>ส่งอีเมล</button>
+      </div>
+    </div>`);
+  if (window.lucide) lucide.createIcons();
+  surveyInviteRefresh(year);
+}
+async function surveyInviteRefresh(year) {
+  const box = document.getElementById('svinvSummary');
+  if (!box) return;
+  const sel = surveyInviteSelection();
+  if (!sel.roles.length) { box.innerHTML = '<span class="text-amber-700">ยังไม่ได้เลือกบทบาทผู้รับ</span>'; return; }
+  box.textContent = 'กำลังตรวจจำนวนผู้รับ...';
+  const r = await surveyInviteCall('preview', year, sel.roles, sel.years);
+  const box2 = document.getElementById('svinvSummary');
+  if (!box2) return;
+  if (!r.isOk) { box2.innerHTML = `<span class="text-red-600">${r.error || 'ตรวจข้อมูลไม่สำเร็จ'}</span>`; return; }
+  const byRole = r['แยกตามบทบาท'] || {};
+  const byYear = r['แยกตามชั้นปี'] || {};
+  const skipR = r['บทบาทที่เคยแจ้งแล้วจึงข้าม'] || [];
+  const skipY = r['ชั้นปีที่เคยแจ้งแล้วจึงข้าม'] || [];
+  const chip = (o) => Object.keys(o).map(k => `<span class="inline-block bg-white border border-gray-200 rounded-lg px-2 py-0.5 mr-1 mb-1 text-xs">${k}: <b>${o[k]}</b></span>`).join('');
+  box2.innerHTML =
+    `<p class="mb-1">จะส่งถึงผู้รับ <b class="text-gray-800">${r['ผู้รับทั้งหมด']}</b> คน (${r['จำนวนฉบับที่จะส่ง']} ฉบับ แบบ BCC)</p>
+     <div class="mb-1">${chip(byRole) || '<span class="text-gray-400 text-xs">ไม่มีผู้รับ</span>'}</div>
+     ${Object.keys(byYear).length ? `<div class="mb-1">${chip(byYear)}</div>` : ''}
+     ${(skipR.length || skipY.length) ? `<p class="text-xs text-amber-700 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>เคยแจ้งไปแล้วในปีการศึกษานี้ จึงไม่ส่งซ้ำ: ${[...skipR, ...skipY.map(y => 'ชั้นปีที่ ' + y)].join(', ')}</p>` : ''}`;
+  if (window.lucide) lucide.createIcons();
+}
+async function surveyInviteRun(year, mode) {
+  const sel = surveyInviteSelection();
+  if (!sel.roles.length) { showToast('ยังไม่ได้เลือกบทบาทผู้รับ', 'error'); return; }
+  const btn = document.getElementById('svinvSendBtn');
+  await withLoading(btn, async () => {
+    const r = await surveyInviteCall(mode, year, sel.roles, sel.years);
+    if (!r.isOk) { showToast(r.error || 'ส่งอีเมลไม่สำเร็จ', 'error'); return; }
+    showToast(mode === 'test'
+      ? 'ส่งอีเมลทดสอบถึงคุณแล้ว กรุณาตรวจกล่องจดหมาย'
+      : 'ส่งอีเมลเรียบร้อย — ถึงผู้รับ ' + (r['ส่งถึงผู้รับสำเร็จ'] || 0) + ' คน', 'success');
+    if (mode === 'send') { closeModal(); renderCurrentPage(); }
   });
 }
 
