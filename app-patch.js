@@ -63,11 +63,13 @@
         '</div>' +
         '<div class="bg-blue-50 border border-blue-100 rounded-xl p-3 -mt-1 mb-1">' +
         '  <p class="text-xs text-gray-600">ระบบจะสร้างบัญชีให้อัตโนมัติในการเข้าใช้ครั้งแรก</p>' +
-        '  <p class="text-xs text-gray-600 mt-1">หากเข้าสู่ระบบไม่ได้ กรุณาติดต่องานทะเบียนเพื่อตรวจสอบข้อมูล</p>' +
+        '  <p class="text-xs text-gray-600 mt-1">หรือกดปุ่ม <b>เข้าสู่ระบบด้วย Google</b> ด้านล่าง ' +
+        '     ด้วยบัญชีของวิทยาลัย (<b>รหัสนักศึกษา@' + (CFG.ALLOWED_DOMAIN || 'bcn.ac.th') + '</b>)</p>' +
+        '  <p class="text-xs text-gray-500 mt-1">หากเข้าสู่ระบบไม่ได้ กรุณาติดต่องานทะเบียนเพื่อตรวจสอบข้อมูล</p>' +
         '</div>';
       if (btn) { btn.classList.remove('hidden'); btn.style.display = ''; }
-      if (divider) divider.classList.add('hidden');
-      if (gbox) gbox.classList.add('hidden');      // นักศึกษาเข้าด้วยเลขบัตรประชาชนอย่างเดียว
+      if (divider) divider.classList.remove('hidden');
+      if (gbox) gbox.classList.remove('hidden');   // นักศึกษาเลือกได้ทั้งเลขบัตรประชาชนและ Google
     } else {
       /* ---------- บุคลากร/อาจารย์: เข้าสู่ระบบด้วย Google เท่านั้น ---------- */
       f.innerHTML =
