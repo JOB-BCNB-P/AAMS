@@ -9061,6 +9061,7 @@ function settingsPage() {
   </div>`;
   if (_stab === 'pwlog') return _tabBar + passwordLogSection();
   return _tabBar + `
+  <div id="driveLinkBox" class="mb-6"></div>
   
   <div class="bg-white rounded-2xl p-5 border border-blue-100 mb-6">
     <div class="flex items-center justify-between mb-4">

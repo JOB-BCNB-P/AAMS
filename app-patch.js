@@ -593,7 +593,7 @@
     }
     console.log('Drive:', res.data);
     if (window.showToast) showToast(res.data && res.data.isOk
-      ? 'เชื่อมต่อ Google Drive สำเร็จ: ' + res.data['ไดรฟ์ที่แชร์']
+      ? 'เชื่อมต่อสำเร็จ — โฟลเดอร์ "' + (res.data['โฟลเดอร์หลัก'] || '-') + '" ผ่าน' + (res.data['ช่องทาง'] || '')
       : (res.data && res.data.error) || 'ตรวจไม่สำเร็จ', res.data && res.data.isOk ? 'success' : 'error');
     return res.data;
   };
@@ -749,6 +749,105 @@
     });
   }
   window.emsWrapTables = wrapTables;
+
+  /* ============================================================
+     9) เชื่อมต่อ Google Drive (หน้าตั้งค่าระบบ)
+     ------------------------------------------------------------
+     ผู้ดูแลระบบกดอนุญาตด้วยบัญชี Google ของวิทยาลัยครั้งเดียว
+     ระบบขอสิทธิ์แบบแคบที่สุด (drive.file) จึงเห็นเฉพาะไฟล์ที่ตัวเองสร้าง
+     ============================================================ */
+  function driveRedirectUri() {
+    return location.origin + location.pathname.replace(/[^/]*$/, '') + 'drive-connect.html';
+  }
+  async function driveOauthCall(payload) {
+    try {
+      var res = await GSheetDB.client().functions.invoke('drive-oauth', { body: payload });
+      if (res.error) {
+        var detail = (res.error && res.error.message) || 'เรียกใช้งานไม่สำเร็จ';
+        try { var j = await res.error.context.json(); if (j && j.error) detail = j.error; } catch (e) { }
+        return { isOk: false, error: detail };
+      }
+      return res.data || { isOk: false, error: 'ไม่มีข้อมูลตอบกลับ' };
+    } catch (err) { return { isOk: false, error: String(err) }; }
+  }
+
+  window.emsRenderDriveLink = async function emsRenderDriveLink() {
+    var box = el('driveLinkBox');
+    if (!box || box.dataset.filled === '1') return;
+    box.dataset.filled = '1';
+    box.innerHTML = '<div class="bg-white rounded-2xl p-5 border border-blue-100 text-sm text-gray-400">'
+      + 'กำลังตรวจสถานะการเชื่อมต่อ Google Drive...</div>';
+
+    var r = await driveOauthCall({ mode: 'status' });
+    var isAdmin = (APP._roles || [APP.currentRole]).indexOf('admin') !== -1;
+
+    if (!r.isOk) {
+      box.innerHTML = '<div class="bg-white rounded-2xl p-5 border border-red-100">'
+        + '<h3 class="font-bold mb-1">เชื่อมต่อ Google Drive</h3>'
+        + '<p class="text-sm text-red-600">' + (r.error || 'ตรวจสถานะไม่สำเร็จ') + '</p></div>';
+      return;
+    }
+
+    var linked = !!r['เชื่อมแล้ว'];
+    var ready = !!r['ตั้งค่าครบ'];
+    var head = '<div class="flex items-center justify-between gap-3 mb-3">'
+      + '<h3 class="font-bold flex items-center gap-2"><i data-lucide="hard-drive" class="w-5 h-5 text-primary"></i>เชื่อมต่อ Google Drive</h3>'
+      + '<span class="px-2.5 py-1 rounded-full text-xs font-semibold '
+      + (linked ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500') + '">'
+      + (linked ? '● เชื่อมแล้ว' : '○ ยังไม่เชื่อม') + '</span></div>';
+
+    var body;
+    if (linked) {
+      body = '<div class="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-sm space-y-1">'
+        + '<p><span class="text-gray-500">บัญชีที่ใช้เก็บไฟล์:</span> <b>' + (r['บัญชี'] || '-') + '</b></p>'
+        + '<p><span class="text-gray-500">ผู้เชื่อม:</span> ' + (r['เชื่อมโดย'] || '-') + '</p>'
+        + '</div>'
+        + '<p class="text-xs text-gray-500 mt-2">ไฟล์ PDF ที่แนบในเมนูติดตามการส่ง จะไปเก็บที่โฟลเดอร์ '
+        + '<b>AAMs — ติดตามการส่ง</b> ในไดรฟ์ของบัญชีนี้ แยกตามปีการศึกษาและหมวดเอกสารอัตโนมัติ</p>';
+    } else {
+      body = '<p class="text-sm text-gray-600">ยังไม่ได้เชื่อมบัญชี — ไฟล์ที่แนบจะเก็บไว้ในพื้นที่ของระบบไปก่อน '
+        + 'ใช้งานได้ตามปกติแต่มีเพดาน 1 GB</p>'
+        + '<p class="text-xs text-gray-500 mt-2">เมื่อกดเชื่อม ระบบจะขอสิทธิ์ '
+        + '<b>เฉพาะไฟล์ที่ตัวเองสร้างเท่านั้น</b> เอกสารอื่นในไดรฟ์ของคุณ ระบบมองไม่เห็นแม้แต่ไฟล์เดียว</p>';
+    }
+
+    var actions = '';
+    if (!isAdmin) {
+      actions = '<p class="text-xs text-gray-400 mt-3">เฉพาะผู้ดูแลระบบเท่านั้นที่ตั้งค่าส่วนนี้ได้</p>';
+    } else if (!ready) {
+      actions = '<p class="text-xs text-amber-700 mt-3">ยังไม่ได้ใส่ GDRIVE_OAUTH_CLIENT_ID และ '
+        + 'GDRIVE_OAUTH_CLIENT_SECRET ใน Supabase</p>';
+    } else {
+      actions = '<div class="flex flex-wrap gap-2 mt-3">'
+        + '<button onclick="emsDriveConnect()" class="px-4 py-2 rounded-xl text-sm '
+        + (linked ? 'bg-white border border-primary text-primary hover:bg-primaryLight' : 'bg-primary text-white hover:bg-primaryDark')
+        + '">' + (linked ? 'เชื่อมบัญชีใหม่' : 'เชื่อมบัญชี Google') + '</button>'
+        + (linked
+          ? '<button onclick="emsDriveCheck()" class="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm hover:bg-gray-50">ทดสอบการเชื่อมต่อ</button>'
+            + '<button onclick="emsDriveDisconnect()" class="px-4 py-2 rounded-xl border border-red-200 text-red-600 text-sm hover:bg-red-50">ยกเลิกการเชื่อม</button>'
+          : '')
+        + '</div>';
+    }
+
+    box.innerHTML = '<div class="bg-white rounded-2xl p-5 border border-blue-100">' + head + body + actions + '</div>';
+    if (window.lucide) lucide.createIcons();
+  };
+
+  window.emsDriveConnect = async function emsDriveConnect() {
+    if (window.showToast) showToast('กำลังเปิดหน้าขออนุญาตจาก Google...');
+    var r = await driveOauthCall({ mode: 'authurl', redirect_uri: driveRedirectUri() });
+    if (!r.isOk) { if (window.showToast) showToast(r.error || 'เปิดหน้าอนุญาตไม่สำเร็จ', 'error'); return; }
+    location.href = r.url;
+  };
+
+  window.emsDriveDisconnect = async function emsDriveDisconnect() {
+    if (!confirm('ยกเลิกการเชื่อมกับ Google Drive?\n\nไฟล์ที่เคยเก็บไว้ใน Drive ยังอยู่ครบ แต่ไฟล์ที่แนบใหม่จะกลับไปเก็บในพื้นที่ของระบบแทน')) return;
+    var r = await driveOauthCall({ mode: 'disconnect' });
+    if (window.showToast) showToast(r.isOk ? (r['ข้อความ'] || 'ยกเลิกแล้ว') : (r.error || 'ยกเลิกไม่สำเร็จ'), r.isOk ? 'success' : 'error');
+    var box = el('driveLinkBox');
+    if (box) { box.dataset.filled = ''; emsRenderDriveLink(); }
+  };
+
 
   /* ============================================================
      8) โหมด "ดูแทนผู้ใช้" (View as) — เฉพาะผู้ดูแลระบบ / อ่านอย่างเดียว
@@ -921,7 +1020,10 @@
     ['mainContent', 'modalContainer'].forEach(function (id) {
       var node = el(id);
       if (!node) return;
-      new MutationObserver(function () { wrapTables(node); }).observe(node, { childList: true, subtree: true });
+      new MutationObserver(function () {
+        wrapTables(node);
+        if (el('driveLinkBox') && typeof window.emsRenderDriveLink === 'function') emsRenderDriveLink();
+      }).observe(node, { childList: true, subtree: true });
     });
     wrapTables(document);
     if (typeof window.__emsBoot === 'function') window.__emsBoot();

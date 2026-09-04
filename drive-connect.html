@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>เชื่อมบัญชี Google Drive — AAMs</title>
+  <link rel="icon" href="https://cdn.jsdelivr.net/gh/JOB-BCNB-P/LOGO/Logo%20Thai.png">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="config.js?v=20260904"></script>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: #f4f7fa; color: #16202b; padding: 20px;
+      font-family: 'Sarabun', 'Segoe UI', Tahoma, sans-serif;
+    }
+    .card {
+      background: #fff; border: 1px solid #dbe6f0; border-radius: 16px;
+      padding: 32px 28px; max-width: 460px; width: 100%; text-align: center;
+      box-shadow: 0 10px 34px -22px rgba(22,32,43,.5);
+    }
+    img.logo { width: 56px; height: 56px; object-fit: contain; margin-bottom: 14px; }
+    h1 { font-size: 19px; margin: 0 0 6px; font-weight: 700; }
+    p { font-size: 14.5px; line-height: 1.8; color: #55677a; margin: 0 0 8px; }
+    .ok { color: #1d7a4c; font-weight: 600; }
+    .err { color: #b91c1c; font-weight: 600; }
+    .box {
+      background: #f0f7ff; border: 1px solid #dbeafe; border-radius: 10px;
+      padding: 12px 14px; font-size: 13.5px; text-align: left; margin: 16px 0; line-height: 1.8;
+      word-break: break-word;
+    }
+    a.btn {
+      display: inline-block; margin-top: 8px; background: #1e6fba; color: #fff;
+      text-decoration: none; padding: 11px 26px; border-radius: 10px; font-weight: 600; font-size: 15px;
+    }
+    .spin {
+      width: 26px; height: 26px; border: 3px solid #dbe6f0; border-top-color: #1e6fba;
+      border-radius: 50%; margin: 6px auto 14px; animation: sp .8s linear infinite;
+    }
+    @keyframes sp { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img class="logo" src="https://cdn.jsdelivr.net/gh/JOB-BCNB-P/LOGO/Logo%20Thai.png" alt="">
+    <h1>เชื่อมบัญชี Google Drive</h1>
+    <div id="state">
+      <div class="spin"></div>
+      <p>กำลังบันทึกสิทธิ์ที่คุณอนุญาต...</p>
+    </div>
+    <a class="btn" href="./" id="back">กลับสู่ระบบ</a>
+  </div>
+
+<script>
+(async function () {
+  var CFG = window.EMS_CONFIG || {};
+  var box = document.getElementById('state');
+  var qs = new URLSearchParams(location.search);
+  var code = qs.get('code');
+  var st = qs.get('state') || '';
+  var err = qs.get('error');
+
+  function show(html) { box.innerHTML = html; }
+  function fail(msg, hint) {
+    show('<p class="err">เชื่อมบัญชีไม่สำเร็จ</p><div class="box">' + msg + '</div>'
+      + (hint ? '<p>' + hint + '</p>' : ''));
+  }
+
+  if (err) {
+    return fail('Google แจ้งว่า: ' + err,
+      err === 'access_denied' ? 'คุณกดปฏิเสธการอนุญาต ลองกดเชื่อมใหม่อีกครั้งได้' : '');
+  }
+  // กันสับสนกับการเข้าสู่ระบบด้วย Google ซึ่งส่งค่ากลับมาที่หน้าหลัก
+  if (!code || st.indexOf('aams_drive_') !== 0) {
+    return fail('ไม่พบข้อมูลการอนุญาตจาก Google',
+      'กรุณาเริ่มใหม่จากเมนู ตั้งค่าระบบ → เชื่อมต่อ Google Drive');
+  }
+
+  var sb = supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY);
+  var s = await sb.auth.getSession();
+  if (!s || !s.data || !s.data.session) {
+    return fail('ยังไม่ได้เข้าสู่ระบบ AAMs ในเบราว์เซอร์นี้',
+      'กรุณากลับไปเข้าสู่ระบบก่อน แล้วเริ่มการเชื่อมบัญชีใหม่');
+  }
+
+  var redirect = location.origin + location.pathname;
+  var res = await sb.functions.invoke('drive-oauth', {
+    body: { mode: 'exchange', code: code, redirect_uri: redirect }
+  });
+
+  if (res.error) {
+    var detail = res.error.message || 'เรียกใช้งานไม่สำเร็จ';
+    try { var j = await res.error.context.json(); if (j && j.error) detail = j.error; } catch (e) { }
+    return fail(detail);
+  }
+  var d = res.data || {};
+  if (!d.isOk) return fail(d.error || 'ไม่ทราบสาเหตุ');
+
+  history.replaceState(null, '', location.pathname);
+  show('<p class="ok">เชื่อมบัญชีเรียบร้อยแล้ว</p>'
+    + '<div class="box">บัญชี: <b>' + (d['บัญชี'] || '-') + '</b><br>'
+    + 'โฟลเดอร์ที่สร้างให้: <b>' + (d['โฟลเดอร์'] || '-') + '</b><br>'
+    + 'ไฟล์ PDF ที่แนบในเมนูติดตามการส่ง จะไปเก็บที่โฟลเดอร์นี้ แยกตามปีการศึกษาและหมวดเอกสารโดยอัตโนมัติ</div>');
+})();
+</script>
+</body>
+</html>
