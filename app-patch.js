@@ -48,7 +48,12 @@
     var f = el('loginFields');
     if (!f) return;
 
+    var btn = el('loginSubmitBtn');
+    var divider = el('loginOrDivider');
+    var gnote = el('googleOnlyNote');
+
     if (mode === 'student') {
+      /* ---------- นักศึกษา: เลขบัตรประชาชน 13 หลัก ---------- */
       f.innerHTML =
         '<div class="mb-4">' +
         '  <label class="block text-sm font-medium text-gray-700 mb-2">เลขบัตรประชาชน 13 หลัก</label>' +
@@ -61,22 +66,20 @@
         '  <p class="text-xs text-gray-600 mt-1">หรือกดปุ่ม <b>เข้าสู่ระบบด้วย Google</b> ด้านล่าง ' +
         '     ถ้ามีบัญชีของวิทยาลัย (<b>รหัสนักศึกษา@' + (CFG.ALLOWED_DOMAIN || 'bcn.ac.th') + '</b>)</p>' +
         '</div>';
+      if (btn) { btn.classList.remove('hidden'); btn.style.display = ''; }
+      if (divider) divider.classList.remove('hidden');
     } else {
+      /* ---------- บุคลากร/อาจารย์: เข้าสู่ระบบด้วย Google เท่านั้น ---------- */
       f.innerHTML =
-        '<div class="mb-4">' +
-        '  <label class="block text-sm font-medium text-gray-700 mb-2">อีเมลของวิทยาลัย</label>' +
-        '  <input type="email" id="staffEmail" autocomplete="username" class="ems-input"' +
-        '    placeholder="ชื่อผู้ใช้@' + (CFG.ALLOWED_DOMAIN || 'bcn.ac.th') + '">' +
-        '</div>' +
-        '<div class="mb-3">' +
-        '  <label class="block text-sm font-medium text-gray-700 mb-2">รหัสผ่าน</label>' +
-        '  <input type="password" id="staffPass" autocomplete="current-password" class="ems-input"' +
-        '    placeholder="รหัสผ่าน" onkeypress="if(event.key===\'Enter\')handleLogin()">' +
-        '</div>' +
-        '<div class="text-right -mt-1 mb-1">' +
-        '  <button type="button" onclick="showPasswordOtpModal(\'forgot\')" class="text-sm text-primary hover:underline">ลืมรหัสผ่าน?</button>' +
+        '<div class="bg-blue-50 border border-blue-100 rounded-xl p-4">' +
+        '  <p class="text-sm text-gray-700 font-medium mb-1">เข้าสู่ระบบด้วยบัญชี Google ของวิทยาลัย</p>' +
+        '  <p class="text-xs text-gray-600">ใช้อีเมล <b>@' + (CFG.ALLOWED_DOMAIN || 'bcn.ac.th') + '</b> ' +
+        '     กดปุ่มด้านล่างเพื่อเข้าสู่ระบบ ไม่ต้องจำรหัสผ่านแยกอีกต่อไป</p>' +
         '</div>';
+      if (btn) { btn.classList.add('hidden'); btn.style.display = 'none'; }
+      if (divider) divider.classList.add('hidden');
     }
+    if (gnote) gnote.classList.toggle('hidden', mode === 'student');
   };
 
   /* ============================================================
@@ -109,7 +112,9 @@
       return;
     }
 
-    // ---------- บุคลากร ----------
+    // ---------- บุคลากร/อาจารย์: Google เท่านั้น ----------
+    if (typeof window.handleGoogleLogin === 'function') { window.handleGoogleLogin(); return; }
+
     var email = (el('staffEmail') && el('staffEmail').value || '').trim();
     var pass = (el('staffPass') && el('staffPass').value) || '';
     if (!email) { setErr('กรุณากรอกอีเมล'); return; }

@@ -373,11 +373,14 @@ const EMSDB = (() => {
     if (!error && data) _schema = data;
   }
 
+  let _authBlock = null;   // เหตุผลที่บัญชีถูกปิดกั้น (จบการศึกษา/ลาออก/ปิดใช้งาน)
   async function loadProfile() {
     const { data, error } = await client().rpc('ems_whoami');
+    _authBlock = (!error && data && data.blocked) ? (data.reason || 'บัญชีนี้ถูกปิดการใช้งาน') : null;
     _profile = (!error && data && data.found) ? data : null;
     return _profile;
   }
+  function authBlockReason() { return _authBlock; }
 
   // เข้าสู่ระบบบุคลากรด้วยอีเมล + รหัสผ่าน
   // payload = { identifier (อีเมล), password }
@@ -393,8 +396,9 @@ const EMSDB = (() => {
       await loadSchema();
       const p = await loadProfile();
       if (!p) {
+        const why = authBlockReason();
         await client().auth.signOut();
-        return { isOk: false, error: 'บัญชีนี้ยังไม่ได้ถูกกำหนดสิทธิ์ในระบบ กรุณาติดต่อผู้ดูแลระบบ' };
+        return { isOk: false, error: why || 'บัญชีนี้ยังไม่ได้ถูกกำหนดสิทธิ์ในระบบ กรุณาติดต่อผู้ดูแลระบบ' };
       }
       return { isOk: true, user: p };
     } catch (err) { return { isOk: false, error: String(err) }; }
@@ -634,7 +638,7 @@ const EMSDB = (() => {
     // ---- ของใหม่ที่ Supabase มีเพิ่ม ----
     loginWithGoogle, logout, profile, currentSession, changePassword, whenFullyLoaded,
     uploadFile, fileUrl, deleteFile, isStoredFile, filePathOf, MAX_FILE_BYTES,
-    loadProfile, loadSchema, refreshTab, client,
+    loadProfile, authBlockReason, loadSchema, refreshTab, client,
     // ส่งประกาศเข้า LINE ด้วยตัวเอง (ใช้ตอนอยากส่งซ้ำ): EMSDB.sendLineNow(id)
     sendLineNow: (id) => notifyLine('announcement', id, { line_notify: '✓' })
   };

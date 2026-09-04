@@ -74,9 +74,10 @@
     await db().loadSchema();
     var profile = await db().loadProfile();
     if (!profile) {
+      var why = (typeof db().authBlockReason === 'function') ? db().authBlockReason() : null;
       await signOut();
       return { blocked: true, email: email,
-               error: 'บัญชี ' + email + ' ยังไม่ได้ถูกกำหนดสิทธิ์ในระบบ กรุณาติดต่อผู้ดูแลระบบ' };
+               error: why || ('บัญชี ' + email + ' ยังไม่ได้ถูกกำหนดสิทธิ์ในระบบ กรุณาติดต่อผู้ดูแลระบบ') };
     }
     return { blocked: false, email: email, profile: profile };
   }
