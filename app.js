@@ -7015,6 +7015,11 @@ function annNameKey(name) {
 }
 // ชั้นปีผู้รับ (ช่อง yr) — มีผลเฉพาะกับนักศึกษา ว่าง = ทุกชั้นปี
 function annParseYears(v) { return String(v == null ? '' : v).split(/[,;|\s]+/).map(x => x.trim()).filter(Boolean); }
+// ชั้นปีที่ประกาศระบุไว้ — ข้อมูลที่นำเข้าจากระบบเดิมเก็บไว้ในคีย์ year_level จึงต้องรองรับด้วย
+function annYearsOf(a) {
+  const ys = annParseYears(a && a.yr);
+  return ys.length ? ys : annParseYears(a && a.year_level);
+}
 function annMyYear() {
   const d = (APP.currentUser && APP.currentUser.data) || {};
   return norm(d.year_level);
@@ -7031,7 +7036,7 @@ function annVisibleTo(a, role) {
   if (rs.length && rs.indexOf(role) === -1) return false;
   // นักศึกษา: ถ้าประกาศระบุชั้นปีไว้ ต้องตรงกับชั้นปีของตนเท่านั้น
   if (role === 'student') {
-    const ys = annParseYears(a && a.yr);
+    const ys = annYearsOf(a);
     if (ys.length) { const my = annMyYear(); return !!my && ys.indexOf(my) !== -1; }
   }
   return true;
@@ -7122,7 +7127,7 @@ function servicesPage() {
     ${announcements.length ? announcements.map(a => `<div class="p-3 bg-surface rounded-xl mb-2 flex justify-between items-start">
       <div class="min-w-0">
         <p class="font-medium text-sm">${a.announcement_title || ''}</p>
-        <p class="text-xs text-gray-500">${a.announcement_date || ''} · ${a.event_type || 'ทั่วไป'}${isFull ? ' · <span class="' + (annParseRoles(a.roles).length ? 'text-teal-600' : 'text-gray-400') + '">' + (annParseRoles(a.roles).length ? annParseRoles(a.roles).map(r => ANN_ROLE_LABEL[r] || r).join('/') : 'ทุกบทบาท') + '</span>' + (norm(a.yr) ? ' · <span class="text-indigo-600">ชั้นปี ' + annParseYears(a.yr).join(',') + '</span>' : '') + (annVisibleTo(a, APP.currentRole) ? '' : ' · <span class="text-amber-600" title="ประกาศนี้ไม่ได้ส่งถึงบทบาทที่คุณใช้อยู่ แต่แสดงให้เพื่อจัดการได้">ไม่ได้ส่งถึงคุณ</span>') : ''}</p>
+        <p class="text-xs text-gray-500">${a.announcement_date || ''} · ${a.event_type || 'ทั่วไป'}${isFull ? ' · <span class="' + (annParseRoles(a.roles).length ? 'text-teal-600' : 'text-gray-400') + '">' + (annParseRoles(a.roles).length ? annParseRoles(a.roles).map(r => ANN_ROLE_LABEL[r] || r).join('/') : 'ทุกบทบาท') + '</span>' + (annYearsOf(a).length ? ' · <span class="text-indigo-600">ชั้นปี ' + annYearsOf(a).join(',') + '</span>' : '') + (annVisibleTo(a, APP.currentRole) ? '' : ' · <span class="text-amber-600" title="ประกาศนี้ไม่ได้ส่งถึงบทบาทที่คุณใช้อยู่ แต่แสดงให้เพื่อจัดการได้">ไม่ได้ส่งถึงคุณ</span>') : ''}</p>
         <p class="text-xs text-gray-600 mt-1">${(a.announcement_content || '').substring(0, 120)}</p>
       </div>
       ${isFull ? `<div class="flex gap-1 ml-2 flex-shrink-0"><button onclick="showEditAnnouncementModal('${a.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${a.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>` : ''}
@@ -10074,7 +10079,7 @@ function showEditAnnouncementModal(id) {
         <div><label class="block text-xs text-gray-600 mb-1">ประเภท</label><select name="event_type" class="w-full border rounded-xl px-3 py-2 text-sm"><option ${a.event_type === 'ทั่วไป' ? 'selected' : ''}>ทั่วไป</option><option ${a.event_type === 'สอบ' ? 'selected' : ''}>สอบ</option><option ${a.event_type === 'วันหยุด' ? 'selected' : ''}>วันหยุด</option><option ${a.event_type === 'กิจกรรม' ? 'selected' : ''}>กิจกรรม</option></select></div>
       </div>
       ${annRolesFieldHTML(a.roles || '')}
-      ${annYearFieldHTML(a.yr || '')}
+      ${annYearFieldHTML(annYearsOf(a).join(','))}
       <label class="flex items-center gap-2 bg-green-50 rounded-xl px-3 py-2 cursor-pointer"><input type="checkbox" name="line_notify" value="✓" class="w-4 h-4" ${['✓', '✔', 'true', 'yes', 'y', '1', 'ส่ง', 'แจ้ง'].includes(String(a.line_notify || '').trim().toLowerCase()) ? 'checked' : ''}><span class="text-sm text-green-700">📢 ส่งประกาศนี้เข้า LINE</span></label>
       <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึกการแก้ไข</button>
     </form>
