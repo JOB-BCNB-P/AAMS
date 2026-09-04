@@ -665,3 +665,8 @@ details[open]>summary .chev {
     height: 3.5rem;
   }
 }
+
+/* ---------- โหมด "ดูแทนผู้ใช้" (View as) ---------- */
+body.ems-viewas { padding-bottom: 52px; }
+body.ems-viewas #emsViewAsBar { animation: emsViewAsIn .18s ease-out; }
+@keyframes emsViewAsIn { from { transform: translateY(100%); } to { transform: translateY(0); } }

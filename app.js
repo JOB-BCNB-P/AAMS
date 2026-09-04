@@ -8727,6 +8727,8 @@ function loginLogPage() {
     if (ev === 'login') return '<span class="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700"><i data-lucide="log-in" class="w-3 h-3 inline"></i> เข้าสู่ระบบ</span>';
     if (ev === 'logout') return '<span class="px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700"><i data-lucide="log-out" class="w-3 h-3 inline"></i> ออกจากระบบ</span>';
     if (ev === 'login_failed') return '<span class="px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700"><i data-lucide="x-circle" class="w-3 h-3 inline"></i> ล็อกอินไม่สำเร็จ</span>';
+    if (ev === 'view_as') return '<span class="px-2 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700"><i data-lucide="eye" class="w-3 h-3 inline"></i> เข้าโหมดดูแทนผู้ใช้</span>';
+    if (ev === 'view_as_exit') return '<span class="px-2 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-600"><i data-lucide="eye-off" class="w-3 h-3 inline"></i> ออกจากโหมดดูแทน</span>';
     return `<span class="px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">${ev || '-'}</span>`;
   };
 
@@ -9041,9 +9043,9 @@ function settingsPage() {
   const total = users.length; const paged = paginate(users);
   const usersTable = paged.map(u => `<tr class="border-t hover:bg-gray-50">
     <td class="px-4 py-3">${u.name || ''}</td>
-    <td class="px-4 py-3">${u.email || u.national_id || ''}</td>
+    <td class="px-4 py-3">${u.email || u.student_id || u.username || u.national_id || ''}</td>
     <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs bg-surface">${roleLabels[u.role] || u.role}</span>${String(u.extra_roles || '').split(',').map(x => x.trim()).filter(Boolean).map(r => `<span class="ml-1 px-2 py-1 rounded-full text-xs bg-blue-50 text-blue-700" title="ภาระงานเพิ่มเติม">+ ${roleLabels[r] || r}</span>`).join('')}</td>
-    <td class="px-4 py-3"><div class="flex gap-1"><button onclick="showEditUserModal('${u.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${u.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>
+    <td class="px-4 py-3"><div class="flex gap-1">${(typeof emsCanViewAs === 'function' && emsCanViewAs()) ? `<button onclick="emsViewAsUser('${u.__backendId}')" class="text-amber-500 hover:text-amber-700" title="ดูแทนผู้ใช้ (อ่านอย่างเดียว)"><i data-lucide="eye" class="w-4 h-4"></i></button>` : ''}<button onclick="showEditUserModal('${u.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${u.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>
   </tr>`).join('');
 
   const _stab = APP._settingsTab || 'users';

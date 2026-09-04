@@ -191,6 +191,8 @@
     // บทบาททั้งหมดที่ผู้ใช้คนนี้ถืออยู่ (สิทธิ์ในฐานข้อมูลเป็นผลรวมของทุกบทบาทเสมอ
     // ส่วนตัวเลือกนี้เปลี่ยนแค่ "มุมมอง" ว่าจะทำงานในฐานะบทบาทไหน)
     window.__emsProfile = profile;
+    window.__emsRealProfile = profile;   // โปรไฟล์จริง (ใช้ตอนออกจากโหมดดูแทนผู้ใช้)
+    APP._viewAs = null;
     APP._roles = (profile && Array.isArray(profile.roles) && profile.roles.length)
       ? profile.roles.slice() : [role];
     APP._roles.sort(function (a, b) { return (a === role ? -1 : 0) - (b === role ? -1 : 0); });
@@ -256,6 +258,16 @@
      4) ออกจากระบบ
      ============================================================ */
   window.handleLogout = async function handleLogout() {
+    // ออกจากโหมดดูแทนผู้ใช้ก่อนเสมอ เพื่อไม่ให้บันทึก log ในชื่อคนอื่น
+    if (APP._viewAs) {
+      logViewAs('view_as_exit', APP._viewAs);
+      APP._viewAs = null;
+      viewAsBanner();
+      if (window.__emsRealProfile) {
+        window.__emsProfile = window.__emsRealProfile;
+        emsApplyRole(window.__emsRealProfile.role, window.__emsRealProfile);
+      }
+    }
     try {
       if (APP.currentUser) {
         var ident = (APP.currentRole === 'student' && APP.currentUser.data)
@@ -661,6 +673,173 @@
     });
   }
   window.emsWrapTables = wrapTables;
+
+  /* ============================================================
+     8) โหมด "ดูแทนผู้ใช้" (View as) — เฉพาะผู้ดูแลระบบ / อ่านอย่างเดียว
+     ------------------------------------------------------------
+     ผู้ดูแลระบบเลือกผู้ใช้จากหน้า "จัดการผู้ใช้งาน" แล้วระบบจะจำลอง
+     หน้าจอ (เมนู/ตัวกรอง/ข้อมูลที่มองเห็น) ให้เหมือนที่คนนั้นเห็น
+     โดยยังใช้บัญชีของผู้ดูแลระบบเดิม ไม่มีการสร้าง session ของคนอื่น
+     ระหว่างอยู่ในโหมดนี้ ระบบจะปิดการบันทึกข้อมูลทุกชนิด
+     ============================================================ */
+  APP._viewAs = null;
+
+  function realRoles() {
+    var p = window.__emsRealProfile || window.__emsProfile;
+    return (p && Array.isArray(p.roles) && p.roles.length) ? p.roles : (p && p.role ? [p.role] : []);
+  }
+  window.emsCanViewAs = function emsCanViewAs() {
+    return realRoles().indexOf('admin') >= 0;
+  };
+
+  /* ---------- ปิดการเขียนข้อมูลทั้งหมดขณะอยู่ในโหมดดูแทน ---------- */
+  var RAW = {};
+  (function guardWrites() {
+    if (!window.GSheetDB) return;
+    ['create', 'createMany', 'update', 'updateMany', 'delete', 'appendNoRefresh',
+     'uploadFile', 'deleteFile', 'surveySubmit', 'changePassword',
+     'requestPasswordOtp', 'resetPasswordOtp', 'sendLineNow'].forEach(function (n) {
+      var orig = GSheetDB[n];
+      if (typeof orig !== 'function') return;
+      RAW[n] = orig;
+      GSheetDB[n] = function () {
+        if (APP._viewAs) {
+          if (window.showToast) showToast('โหมดดูแทนผู้ใช้: อ่านอย่างเดียว บันทึกข้อมูลไม่ได้', 'error');
+          return Promise.resolve({ isOk: false, error: 'โหมดดูแทนผู้ใช้ (อ่านอย่างเดียว)' });
+        }
+        return orig.apply(GSheetDB, arguments);
+      };
+    });
+  })();
+
+  /* ---------- บันทึกร่องรอยการใช้งาน (ใช้ฟังก์ชันดิบ เลี่ยงตัวกั้นด้านบน) ---------- */
+  function logViewAs(eventType, target) {
+    try {
+      var w = RAW.appendNoRefresh || RAW.create;
+      if (typeof w !== 'function') return;
+      var now = new Date();
+      var pad = function (n) { return String(n).padStart(2, '0'); };
+      var admin = window.__emsRealProfile || {};
+      Promise.resolve(w.call(GSheetDB, {
+        type: 'login_log',
+        event_type: eventType,                    // 'view_as' | 'view_as_exit'
+        user_name: (admin.name || '') + ' → ' + ((target && target.name) || '-'),
+        role: (target && target.role) || '-',
+        role_label: 'ดูแทนผู้ใช้',
+        identifier: (admin.email || '') + ' | ' + ((target && target.identifier) || ''),
+        user_agent: navigator && navigator.userAgent ? String(navigator.userAgent).slice(0, 250) : '',
+        timestamp: now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) + ' ' +
+                   pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds()),
+        created_at: now.toISOString()
+      })).catch(function () { });
+    } catch (e) { /* ไม่ให้ log ล้มแล้วพังทั้งฟีเจอร์ */ }
+  }
+
+  /* ---------- แถบแจ้งเตือนด้านล่างจอ ---------- */
+  function viewAsBanner() {
+    var bar = el('emsViewAsBar');
+    if (!APP._viewAs) { if (bar) bar.remove(); document.body.classList.remove('ems-viewas'); return; }
+    document.body.classList.add('ems-viewas');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'emsViewAsBar';
+      bar.className = 'fixed bottom-0 left-0 right-0 z-40 bg-amber-500 text-white px-4 py-2 ' +
+                      'flex items-center gap-3 text-sm shadow-lg';
+      document.body.appendChild(bar);
+    }
+    var v = APP._viewAs;
+    bar.innerHTML =
+      '<span class="font-semibold whitespace-nowrap">👁 กำลังดูแทนผู้ใช้</span>' +
+      '<span class="truncate">' + v.name + ' — ' + (ROLE_LABEL[v.role] || v.role) + '</span>' +
+      '<span class="hidden sm:inline text-white/80 text-xs whitespace-nowrap">(อ่านอย่างเดียว)</span>' +
+      '<button onclick="emsExitViewAs()" class="ml-auto mr-16 sm:mr-20 bg-white/20 hover:bg-white/30 ' +
+      'rounded-lg px-3 py-1 font-medium whitespace-nowrap">ออกจากโหมดดูแทน</button>';
+  }
+
+  /* ---------- ประกอบโปรไฟล์จำลองจากแถวผู้ใช้ในตาราง app_user ---------- */
+  function fakeProfileOf(u) {
+    var roles = [String(u.role || '').trim()]
+      .concat(String(u.extra_roles || '').split(',').map(function (x) { return x.trim(); }))
+      .filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+    var prof = {
+      found: true, viewAs: true,
+      role: roles[0] || 'guest', roles: roles,
+      name: u.name || '', email: u.email || '', username: u.username || '',
+      department: u.department || '', responsible_year: u.responsible_year || '',
+      student_id: u.student_id || ''
+    };
+    if (prof.role === 'student' && u.student_id) {
+      var st = getDataByType('student').find(function (s) {
+        return String(s.student_id || '').trim() === String(u.student_id).trim();
+      });
+      if (st) prof.student = st;
+    }
+    return prof;
+  }
+
+  window.emsViewAsUser = function emsViewAsUser(id) {
+    if (!window.emsCanViewAs()) {
+      if (window.showToast) showToast('เฉพาะผู้ดูแลระบบเท่านั้นที่ใช้โหมดนี้ได้', 'error');
+      return;
+    }
+    var u = getDataByType('user').find(function (x) { return String(x.__backendId) === String(id); });
+    if (!u) { if (window.showToast) showToast('ไม่พบผู้ใช้รายนี้', 'error'); return; }
+
+    var prof = fakeProfileOf(u);
+    if (!prof.role || prof.role === 'guest') {
+      if (window.showToast) showToast('ผู้ใช้รายนี้ยังไม่ได้กำหนดบทบาท', 'error');
+      return;
+    }
+
+    APP._viewAs = {
+      id: id, name: prof.name || prof.email || prof.student_id, role: prof.role,
+      identifier: prof.email || prof.student_id || ''
+    };
+    logViewAs('view_as', APP._viewAs);
+
+    window.__emsProfile = prof;
+    APP._roles = prof.roles.slice();
+    emsApplyRole(prof.role, prof);
+
+    if (el('currentUserName')) el('currentUserName').textContent = APP.currentUser.name;
+    if (el('currentUserRole')) el('currentUserRole').textContent = ROLE_LABEL[APP.currentRole] || '';
+    var cpb = el('changePwBtn');
+    if (cpb) cpb.classList.add('hidden');      // เปลี่ยนรหัสผ่านแทนคนอื่นไม่ได้
+
+    buildSidebar();
+    navigateTo('dashboard');
+    updateNotifBadge();
+    emsRenderRoleSwitcher();
+    viewAsBanner();
+    if (window.lucide) lucide.createIcons();
+    if (window.showToast) showToast('กำลังดูในมุมมองของ ' + APP._viewAs.name);
+  };
+
+  window.emsExitViewAs = function emsExitViewAs() {
+    if (!APP._viewAs) return;
+    logViewAs('view_as_exit', APP._viewAs);
+    APP._viewAs = null;
+
+    var prof = window.__emsRealProfile;
+    if (!prof) { window.location.reload(); return; }
+    window.__emsProfile = prof;
+    APP._roles = (Array.isArray(prof.roles) && prof.roles.length) ? prof.roles.slice() : [prof.role];
+    emsApplyRole(prof.role, prof);
+
+    if (el('currentUserName')) el('currentUserName').textContent = APP.currentUser.name;
+    if (el('currentUserRole')) el('currentUserRole').textContent = ROLE_LABEL[APP.currentRole] || '';
+    var cpb = el('changePwBtn');
+    if (cpb) cpb.classList.toggle('hidden', APP.currentRole === 'student');
+
+    buildSidebar();
+    navigateTo('settings');
+    updateNotifBadge();
+    emsRenderRoleSwitcher();
+    viewAsBanner();
+    if (window.lucide) lucide.createIcons();
+    if (window.showToast) showToast('กลับสู่บัญชีผู้ดูแลระบบแล้ว');
+  };
+
 
   document.addEventListener('DOMContentLoaded', function () {
     ['mainContent', 'modalContainer'].forEach(function (id) {
