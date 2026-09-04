@@ -486,11 +486,18 @@
      ไฟล์เก็บใน Supabase Storage ถังปิด ตั้งชื่อตามรหัสแถว
      อัปโหลดใหม่จึงทับไฟล์เดิมทันที ไม่ต้องลบเอง
      ============================================================ */
+  // ไฟล์ที่ย้ายไป Google Drive แล้วเก็บเป็นข้อความ  gd:<รหัสไฟล์>
+  // เก็บเป็น "รหัสไฟล์" ไม่ใช่ที่อยู่ ลิงก์จึงไม่เสียแม้มีคนเปลี่ยนชื่อหรือย้ายโฟลเดอร์ใน Drive
+  function isDriveFile(link) { return typeof link === 'string' && link.indexOf('gd:') === 0; }
+  function driveViewUrl(link) { return 'https://drive.google.com/file/d/' + String(link).slice(3) + '/view'; }
+  window.emsIsDriveFile = isDriveFile;
+  window.emsDriveViewUrl = driveViewUrl;
+
   window.promptTrackingFileLink = function promptTrackingFileLink(id) {
     var rec = APP.allData.find(function (d) { return d.__backendId === id; });
     if (!rec) return;
 
-    var stored = GSheetDB.isStoredFile(rec.file_link);
+    var stored = GSheetDB.isStoredFile(rec.file_link) || isDriveFile(rec.file_link);
     var hasLink = !!(rec.file_link || '').trim();
     var currentHtml = '';
     if (stored) {
@@ -499,6 +506,7 @@
         '  <div class="min-w-0">' +
         '    <p class="text-sm font-medium text-emerald-800">มีไฟล์แนบอยู่แล้ว</p>' +
         '    <p class="text-xs text-emerald-700 truncate">' + (rec.file_name || 'ไฟล์ PDF') + '</p>' +
+        '    <p class="text-[11px] text-emerald-600 mt-0.5">เก็บที่ ' + (isDriveFile(rec.file_link) ? 'Google Drive ของวิทยาลัย' : 'พื้นที่จัดเก็บของระบบ') + '</p>' +
         '  </div>' +
         '  <div class="flex gap-2 flex-shrink-0">' +
         '    <button type="button" onclick="emsOpenTrackingFile(\'' + id + '\')" class="px-3 py-1.5 bg-white border border-emerald-300 text-emerald-700 rounded-lg text-xs">เปิดดู</button>' +
@@ -542,6 +550,54 @@
       : 'text-sm rounded-xl p-3 bg-emerald-50 border border-emerald-200 text-emerald-800';
   }
 
+  // เรียก Edge Function "drive-sync" ให้ย้ายไฟล์จากพื้นที่พักไปยังไดรฟ์ที่แชร์ของวิทยาลัย
+  async function emsDriveSync(rec, storagePath, originalName) {
+    try {
+      var code = String(rec.subject_code || '').trim();
+      var name = String(rec.subject_name || '').trim();
+      var nice = [code, name].filter(Boolean).join(' ');
+      var sem = String(rec.semester || '').trim();
+      var yr = String(rec.academic_year || '').trim();
+      var suffix = (sem ? ' ภาค' + sem : '') + (yr ? '-' + yr : '');
+      var driveName = nice ? (nice + suffix + '.pdf') : originalName;
+      var existing = (String(rec.file_link || '').indexOf('gd:') === 0)
+        ? String(rec.file_link).slice(3) : '';
+
+      var res = await GSheetDB.client().functions.invoke('drive-sync', {
+        body: {
+          mode: 'sync', table: rec.type, storagePath: storagePath,
+          year: yr, filename: driveName, existingFileId: existing
+        }
+      });
+      if (res.error) {
+        var detail = (res.error && res.error.message) || 'เชื่อมต่อ Google Drive ไม่สำเร็จ';
+        try { var j = await res.error.context.json(); if (j && j.error) detail = j.error; } catch (e) { }
+        return { isOk: false, error: detail };
+      }
+      return res.data || { isOk: false, error: 'ไม่มีข้อมูลตอบกลับ' };
+    } catch (err) {
+      return { isOk: false, error: String(err) };
+    }
+  }
+  window.emsDriveSync = emsDriveSync;
+
+  // ตรวจการเชื่อมต่อ Google Drive (ใช้หลังตั้งค่า Secrets เสร็จ) — เรียกจาก Console ได้
+  window.emsDriveCheck = async function emsDriveCheck() {
+    var res = await GSheetDB.client().functions.invoke('drive-sync', { body: { mode: 'check' } });
+    if (res.error) {
+      var detail = (res.error && res.error.message) || 'เชื่อมต่อไม่สำเร็จ';
+      try { var j = await res.error.context.json(); if (j && j.error) detail = j.error; } catch (e) { }
+      console.error('Drive:', detail);
+      if (window.showToast) showToast(detail, 'error');
+      return { isOk: false, error: detail };
+    }
+    console.log('Drive:', res.data);
+    if (window.showToast) showToast(res.data && res.data.isOk
+      ? 'เชื่อมต่อ Google Drive สำเร็จ: ' + res.data['ไดรฟ์ที่แชร์']
+      : (res.data && res.data.error) || 'ตรวจไม่สำเร็จ', res.data && res.data.isOk ? 'success' : 'error');
+    return res.data;
+  };
+
   window.emsUploadTrackingFile = async function (id) {
     var rec = APP.allData.find(function (d) { return d.__backendId === id; });
     if (!rec) return;
@@ -562,11 +618,22 @@
 
     rec.file_link = up.link;
     rec.file_name = file.name;
+
+    // ---- ย้ายต่อไปเก็บที่ Google Drive ของวิทยาลัย (แยกปีการศึกษา/หมวดเอกสาร) ----
+    // ถ้าย้ายไม่สำเร็จ ไฟล์ยังอยู่ในพื้นที่จัดเก็บของระบบและใช้งานได้ตามปกติ
+    pdfMsg('กำลังย้ายไฟล์ไปเก็บที่ Google Drive...');
+    var sync = await emsDriveSync(rec, up.path, file.name);
+    if (sync.isOk) {
+      rec.file_link = 'gd:' + sync.fileId;
+    }
+
     var r = await GSheetDB.update(rec);
     if (btn) { btn.disabled = false; btn.textContent = 'อัปโหลดไฟล์'; }
     if (!r.isOk) { pdfMsg('อัปโหลดไฟล์สำเร็จ แต่บันทึกลงฐานข้อมูลไม่สำเร็จ: ' + r.error, 'err'); return; }
 
-    pdfMsg('อัปโหลดเรียบร้อยแล้ว');
+    pdfMsg(sync.isOk
+      ? 'เก็บไว้ที่ Google Drive แล้ว — โฟลเดอร์ ' + (sync['โฟลเดอร์'] || '')
+      : 'อัปโหลดเรียบร้อยแล้ว (เก็บในพื้นที่ของระบบ — ' + (sync.error || 'ยังไม่ได้เชื่อม Google Drive') + ')');
     setTimeout(function () {
       closeModal();
       if (typeof showToast === 'function') showToast('แนบไฟล์ PDF เรียบร้อย');
@@ -583,9 +650,14 @@
   window.emsRemoveTrackingFile = async function (id) {
     var rec = APP.allData.find(function (d) { return d.__backendId === id; });
     if (!rec) return;
-    if (!confirm('ยืนยันการลบไฟล์ PDF ของรายวิชานี้?')) return;
-    var d = await GSheetDB.deleteFile(rec.file_link);
-    if (!d.isOk) { pdfMsg('ลบไฟล์ไม่สำเร็จ: ' + d.error, 'err'); return; }
+    var onDrive = isDriveFile(rec.file_link);
+    if (!confirm(onDrive
+      ? 'นำไฟล์ออกจากรายวิชานี้?\n\nไฟล์ตัวจริงยังอยู่ใน Google Drive ของวิทยาลัย ลบได้ที่ไดรฟ์โดยตรงหากต้องการ'
+      : 'ยืนยันการลบไฟล์ PDF ของรายวิชานี้?')) return;
+    if (!onDrive) {
+      var d = await GSheetDB.deleteFile(rec.file_link);
+      if (!d.isOk) { pdfMsg('ลบไฟล์ไม่สำเร็จ: ' + d.error, 'err'); return; }
+    }
     rec.file_link = '';
     rec.file_name = '';
     await GSheetDB.update(rec);
@@ -596,6 +668,7 @@
 
   // เปิดไฟล์ที่เก็บในระบบด้วยลิงก์ชั่วคราว
   async function emsOpenStoredFile(link) {
+    if (isDriveFile(link)) { window.open(driveViewUrl(link), '_blank', 'noopener'); return; }
     if (typeof showToast === 'function') showToast('กำลังเปิดไฟล์...', 'loading');
     var r = await GSheetDB.fileUrl(link);
     var t = el('loadingToast'); if (t) t.remove();
@@ -611,7 +684,8 @@
   // ไฟล์ที่เก็บในระบบใช้ข้อความ sb:... ซึ่งเปิดตรงไม่ได้
   // จึงดักการคลิกไว้แล้วเปลี่ยนเป็นลิงก์ชั่วคราวให้อัตโนมัติ (ไม่ต้องแก้ app.js)
   document.addEventListener('click', function (ev) {
-    var a = ev.target && ev.target.closest ? ev.target.closest('a[href^="sb:"]') : null;
+    var a = ev.target && ev.target.closest
+      ? (ev.target.closest('a[href^="sb:"]') || ev.target.closest('a[href^="gd:"]')) : null;
     if (!a) return;
     ev.preventDefault();
     emsOpenStoredFile(a.getAttribute('href'));
