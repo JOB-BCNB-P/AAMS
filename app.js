@@ -3,7 +3,7 @@ let APP = {
   currentUser: null, currentRole: null, currentPage: 'dashboard', sidebarOpen: false,
   allData: [],
   config: { system_title: 'ระบบบริหารจัดการงานวิชาการ (AAMs)', college_name: 'วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ' },
-  permissions: { admin: { dashboard: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, services: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, settings: 1, loginLog: 1, advisors: 1, surveyManage: 1 }, academic: { dashboard: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, services: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, settings: 1, advisors: 1, survey: 1 }, registrar: { dashboard: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, services: 1, leave: 1, advisors: 1, survey: 1 }, deptHead: { dashboard: 1, services: 1, teacherDirectory: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, survey: 1 }, teacher: { dashboard: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, tracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, survey: 1 }, classTeacher: { dashboard: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, tracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, survey: 1 }, student: { dashboard: 1, services: 1, students: 1, grades: 1, engResults: 1, leave: 1, survey: 1 }, executive: { dashboard: 1, services: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, advisors: 1, survey: 1 } },
+  permissions: { admin: { dashboard: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, services: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, settings: 1, loginLog: 1, advisors: 1, surveyManage: 1, workload: 1 }, academic: { dashboard: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, services: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, settings: 1, advisors: 1, survey: 1, workload: 1 }, registrar: { dashboard: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, services: 1, leave: 1, advisors: 1, survey: 1 }, deptHead: { dashboard: 1, services: 1, teacherDirectory: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, survey: 1 }, teacher: { dashboard: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, tracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, survey: 1 }, classTeacher: { dashboard: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, tracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, survey: 1 }, student: { dashboard: 1, services: 1, students: 1, grades: 1, engResults: 1, leave: 1, survey: 1 }, otherStaff: { dashboard: 1, services: 1, workload: 1, survey: 1 }, executive: { dashboard: 1, services: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, advisors: 1, survey: 1, workload: 1 } },
   filters: { semester: '', academicYear: '', search: '', yearLevel: '' },
   pagination: { page: 1, perPage: 10 }
 };
@@ -43,7 +43,7 @@ function promptEditHomeroom(yr) {
 
 // ======================== LOGIN ACTIVITY LOG ========================
 // Save login/logout events to Google Sheet "login_log" tab
-const LOGIN_LOG_ROLE_LABEL = { admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', teacher: 'อาจารย์', classTeacher: 'อาจารย์ประจำชั้น', student: 'นักศึกษา', executive: 'ผู้บริหาร', registrar: 'เจ้าหน้าที่งานทะเบียน', deptHead: 'ประธานสาขาวิชา' };
+const LOGIN_LOG_ROLE_LABEL = { otherStaff: 'เจ้าหน้าที่งานอื่นๆ', admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', teacher: 'อาจารย์', classTeacher: 'อาจารย์ประจำชั้น', student: 'นักศึกษา', executive: 'ผู้บริหาร', registrar: 'เจ้าหน้าที่งานทะเบียน', deptHead: 'ประธานสาขาวิชา' };
 // บทบาทที่ใช้ฟีเจอร์ลืม/เปลี่ยนรหัสผ่านผ่านอีเมลได้
 const PWD_SELF_ROLES = ['academic', 'executive', 'teacher', 'deptHead', 'classTeacher'];
 async function logLoginEvent(eventType, userInfo) {
@@ -96,6 +96,66 @@ function studentDatalistHTML(listId) {
 function deptDatalistHTML(listId) {
   const ds = [...new Set([...getDataByType('teacher').map(t => norm(t.department)), ...getDataByType('subject').map(s => norm(s.department))].filter(Boolean))].sort();
   return `<datalist id="${listId}">${ds.map(d => `<option value="${d}"></option>`).join('')}</datalist>`;
+}
+
+// หนีอักขระพิเศษก่อนแทรกลงใน HTML (ใช้กับชื่อวิชา/ชื่อคนที่อาจมีเครื่องหมายคำพูด)
+function htmlEsc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+// ======================== ดึงข้อมูลจาก "รายวิชาที่เปิดสอน" ========================
+// ใช้ร่วมกันในหน้าติดตามการส่งทั้ง 4 หน้า และในฟอร์มเพิ่มรายวิชา
+// จัดกลุ่มตามปีการศึกษา ปีล่าสุดอยู่บนสุด เพื่อให้เลือกของปีก่อนหน้าได้ด้วย
+function subjectPickOptionsHTML(selectedId) {
+  const list = getDataByType('subject').filter(s => norm(s.subject_name));
+  const byYear = {};
+  list.forEach(s => { const y = norm(s.academic_year) || 'ไม่ระบุปี'; (byYear[y] = byYear[y] || []).push(s); });
+  const years = Object.keys(byYear).sort((a, b) => b.localeCompare(a, 'th', { numeric: true }));
+  return years.map(y => {
+    const rows = byYear[y].slice().sort((a, b) =>
+      norm(a.subject_code).localeCompare(norm(b.subject_code), 'th', { numeric: true })
+      || norm(a.subject_name).localeCompare(norm(b.subject_name), 'th'));
+    const opts = rows.map(s => {
+      const label = (norm(s.subject_code) ? norm(s.subject_code) + ' ' : '') + norm(s.subject_name)
+        + (norm(s.semester) ? '  ·  ภาค ' + semLabel(s.semester) : '')
+        + (norm(s.year_level) ? '  ·  ชั้นปี ' + norm(s.year_level) : '');
+      return `<option value="${htmlEsc(norm(s.subject_name))}" data-id="${s.__backendId}" data-code="${htmlEsc(norm(s.subject_code))}"${String(s.__backendId) === String(selectedId || '') ? ' selected' : ''}>${htmlEsc(label)}</option>`;
+    }).join('');
+    return `<optgroup label="ปีการศึกษา ${htmlEsc(y)}">${opts}</optgroup>`;
+  }).join('');
+}
+// เมื่อเลือกรายวิชา → เติมรหัสวิชา ชั้นปี ห้อง ภาค/ปี ทฤษฎี-ปฏิบัติ และผู้ประสานงานให้อัตโนมัติ
+function bindSubjectAutofill(selectId, opts) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const o = opts || {};
+  const fill = () => {
+    const id = sel.options[sel.selectedIndex] && sel.options[sel.selectedIndex].dataset.id;
+    const subj = id ? APP.allData.find(d => String(d.__backendId) === String(id)) : null;
+    if (!subj) return;
+    const form = sel.closest('form');
+    if (!form) return;
+    const set = (name, value) => {
+      if (!norm(value)) return;
+      const f = form.querySelector('[name="' + name + '"]');
+      if (!f) return;
+      if (f.tagName === 'SELECT') {
+        const hit = [...f.options].find(x => norm(x.value) === norm(value) || norm(x.textContent) === norm(value));
+        if (hit) f.value = hit.value;
+      } else f.value = value;
+    };
+    if (o.codeId) { const c = document.getElementById(o.codeId); if (c) c.value = norm(subj.subject_code); }
+    set('subject_code', subj.subject_code);
+    set('year_level', subj.year_level);
+    set('room', subj.room);
+    set('theory_practice', subj.theory_practice);
+    set('semester', normSem(subj.semester));
+    set('academic_year', subj.academic_year);
+    if (o.coordId) {
+      const c = document.getElementById(o.coordId);
+      if (c && norm(subj.coordinator)) c.value = norm(subj.coordinator);
+    }
+  };
+  sel.addEventListener('change', fill);
+  if (sel.value) fill();
 }
 
 // รายชื่ออาจารย์ (จากทะเบียนอาจารย์ + ผู้ประสานงานเดิมในรายวิชา)
@@ -2289,9 +2349,16 @@ function subjectsPage() {
 function showAddSubjectModal() {
   showModal('เพิ่มรายวิชา', `
     <form id="addSubjectForm" class="space-y-3">
+      <div class="bg-blue-50 border border-blue-100 rounded-xl p-3">
+        <label class="block text-xs font-medium text-blue-800 mb-1">คัดลอกจากรายวิชาที่เคยเปิดสอน <span class="font-normal text-blue-600">(ไม่บังคับ)</span></label>
+        <select id="copyFromSubject" onchange="subjectCopyFrom(this)" class="w-full border border-blue-200 rounded-xl px-3 py-2 text-sm bg-white">
+          <option value="">-- ไม่คัดลอก กรอกใหม่ทั้งหมด --</option>${subjectPickOptionsHTML()}
+        </select>
+        <p class="text-[11px] text-blue-700 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>เลือกรายวิชาของปีก่อนหน้าเพื่อดึงข้อมูลมาให้ครบ แล้วแก้เฉพาะที่ต่าง — <b>ปีการศึกษาจะไม่ถูกคัดลอกมา</b> เพื่อกันบันทึกซ้ำปีเดิม</p>
+      </div>
       <div><label class="block text-xs text-gray-600 mb-1">รหัสวิชา</label><input name="subject_code" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น GE 104"></div>
       <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *</label><input name="subject_name" required class="w-full border rounded-xl px-3 py-2 text-sm"></div>
-      <div><label class="block text-xs text-gray-600 mb-1">อาจารย์ผู้ประสานงาน (คั่นด้วย ,)</label><input name="coordinator" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="อ.ก, อ.ข"></div>
+      <div><label class="block text-xs text-gray-600 mb-1">อาจารย์ผู้ประสานงาน <span class="text-gray-400">(เลือกจากทะเบียนอาจารย์ · หลายคนคั่นด้วย ,)</span></label>${coordComboHTML('addSubjectCoord', '')}</div>
       <div><label class="block text-xs text-gray-600 mb-1">สาขาวิชาที่รับผิดชอบ <span class="text-gray-400">(มี 2 สาขา คั่นด้วย ,)</span></label><input name="department" list="subjectDeptList" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เลือก/พิมพ์ เช่น การพยาบาลผู้ใหญ่, การพยาบาลชุมชน">${deptDatalistHTML('subjectDeptList')}</div>
       <div class="grid grid-cols-2 gap-3">
         <div><label class="block text-xs text-gray-600 mb-1">ชั้นปี</label><select name="year_level" class="w-full border rounded-xl px-3 py-2 text-sm"><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
@@ -2315,6 +2382,37 @@ function showAddSubjectModal() {
       if (r.isOk) { showToast('เพิ่มรายวิชาสำเร็จ'); closeModal() } else showToast('เกิดข้อผิดพลาด', 'error');
     });
   };
+}
+
+// คัดลอกข้อมูลรายวิชาที่เคยเปิดสอนมาใส่ในฟอร์ม "เพิ่มรายวิชา"
+// ไม่คัดลอกปีการศึกษา เพื่อไม่ให้เผลอบันทึกซ้ำในปีเดิม
+function subjectCopyFrom(sel) {
+  const form = sel.closest('form');
+  if (!form) return;
+  const id = sel.options[sel.selectedIndex] && sel.options[sel.selectedIndex].dataset.id;
+  if (!id) return;
+  const subj = APP.allData.find(d => String(d.__backendId) === String(id));
+  if (!subj) return;
+
+  ['subject_code', 'subject_name', 'department', 'batch', 'room',
+   'credits', 'hours_theory', 'hours_lab', 'hours_self'].forEach(k => {
+    const f = form.querySelector('[name="' + k + '"]');
+    if (f) f.value = norm(subj[k]);
+  });
+  const yl = form.querySelector('[name="year_level"]');
+  if (yl && norm(subj.year_level)) yl.value = norm(subj.year_level);
+  const sm = form.querySelector('[name="semester"]');
+  if (sm && normSem(subj.semester)) sm.value = normSem(subj.semester);
+
+  const c = document.getElementById('addSubjectCoord');
+  if (c) c.value = norm(subj.coordinator);
+
+  const prev = form.querySelector('[name="credits"]');
+  if (prev && typeof updateCreditPreview === 'function') updateCreditPreview(prev);
+  if (typeof showToast === 'function') {
+    showToast('คัดลอกข้อมูลจาก ' + (norm(subj.subject_code) || norm(subj.subject_name))
+      + ' ปีการศึกษา ' + (norm(subj.academic_year) || '-') + ' แล้ว');
+  }
 }
 
 // ======================== IMPORT GRADES FROM SUBJECT ========================
@@ -6996,7 +7094,7 @@ function printBranchSummary(year) {
 // ======================== SERVICES ========================
 // ======================== ANNOUNCEMENT ROLE TARGETING ========================
 const ANN_ROLES = ['admin', 'academic', 'registrar', 'deptHead', 'executive', 'teacher', 'classTeacher', 'student'];
-const ANN_ROLE_LABEL = { admin: 'ผู้ดูแลระบบ', academic: 'งานวิชาการ', registrar: 'งานทะเบียน', deptHead: 'ประธานสาขา', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อ.ประจำชั้น', student: 'นักศึกษา' };
+const ANN_ROLE_LABEL = { otherStaff: 'เจ้าหน้าที่งานอื่นๆ', admin: 'ผู้ดูแลระบบ', academic: 'งานวิชาการ', registrar: 'งานทะเบียน', deptHead: 'ประธานสาขา', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อ.ประจำชั้น', student: 'นักศึกษา' };
 function annParseRoles(s) { return String(s == null ? '' : s).split(/[,|]/).map(x => x.trim()).filter(Boolean); }
 // ประกาศนี้ผู้ใช้บทบาท role เห็นไหม — ว่าง = ทุกบทบาท
 // แยกรายชื่อผู้รับเจาะจง (target_names) และทำ key เทียบชื่อ (ตัดช่องว่าง/คำนำหน้า)
@@ -7401,11 +7499,7 @@ function applyTrackingBackfill(obj) {
 
 function showAddTrackingModal() {
   const subjects = getDataByType('subject');
-  const subjectOptions = [...new Set(subjects.map(s => s.subject_name).filter(Boolean))].sort()
-    .map(name => {
-      const s = subjects.find(x => x.subject_name === name) || {};
-      return `<option value="${name.replace(/"/g, '&quot;')}" data-code="${(s.subject_code || '').replace(/"/g, '&quot;')}" data-year="${(s.academic_year || '').replace(/"/g, '&quot;')}">${s.subject_code ? s.subject_code + ' ' : ''}${name}</option>`;
-    }).join('');
+  const subjectOptions = subjectPickOptionsHTML();
   const teachers = getDataByType('teacher');
   const teacherList = [...new Set(teachers.map(t => (t.name || '').trim()).filter(Boolean))].sort();
   const myName = (APP.currentUser && APP.currentUser.name || '').trim();
@@ -7433,13 +7527,8 @@ function showAddTrackingModal() {
       <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึก</button>
     </form>
   `);
-  // Auto-fill subject_code เมื่อเลือกรายวิชา
-  const sel = document.getElementById('trackingSubjectSelect');
-  if (sel) sel.addEventListener('change', () => {
-    const opt = sel.options[sel.selectedIndex];
-    const codeEl = document.getElementById('trackingSubjectCode');
-    if (codeEl) codeEl.value = (opt && opt.dataset.code) || '';
-  });
+  // เลือกรายวิชาแล้วดึงข้อมูลจาก "รายวิชาที่เปิดสอน" มาเติมให้ครบ
+  bindSubjectAutofill('trackingSubjectSelect', { codeId: 'trackingSubjectCode', coordId: 'trackingCoord' });
   document.getElementById('addTrackingForm').onsubmit = async (e) => {
     e.preventDefault();
     // Ensure subject_code is populated (fallback ถ้าผู้ใช้ไม่ได้กดเปลี่ยน)
@@ -7647,11 +7736,7 @@ function resultTrackingPage() {
 
 function showAddResultTrackingModal() {
   const subjects = getDataByType('subject');
-  const subjectOptions = [...new Set(subjects.map(s => s.subject_name).filter(Boolean))].sort()
-    .map(name => {
-      const s = subjects.find(x => x.subject_name === name) || {};
-      return `<option value="${name.replace(/"/g, '&quot;')}" data-code="${(s.subject_code || '').replace(/"/g, '&quot;')}">${s.subject_code ? s.subject_code + ' ' : ''}${name}</option>`;
-    }).join('');
+  const subjectOptions = subjectPickOptionsHTML();
   const teachers = getDataByType('teacher');
   const teacherList = [...new Set(teachers.map(t => (t.name || '').trim()).filter(Boolean))].sort();
   const myName = (APP.currentUser && APP.currentUser.name || '').trim();
@@ -7678,13 +7763,7 @@ function showAddResultTrackingModal() {
       <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึก</button>
     </form>
   `);
-  // Auto-fill subject_code
-  const rSel = document.getElementById('resultTrackingSubjectSelect');
-  if (rSel) rSel.addEventListener('change', () => {
-    const opt = rSel.options[rSel.selectedIndex];
-    const codeEl = document.getElementById('resultTrackingSubjectCode');
-    if (codeEl) codeEl.value = (opt && opt.dataset.code) || '';
-  });
+  bindSubjectAutofill('resultTrackingSubjectSelect', { codeId: 'resultTrackingSubjectCode', coordId: 'resultTrackingCoord' });
   document.getElementById('addResultTrackingForm').onsubmit = async (e) => {
     e.preventDefault();
     const ss = document.getElementById('resultTrackingSubjectSelect');
@@ -7819,11 +7898,7 @@ function gradeTrackingPage() {
 }
 function showAddGradeTrackingModal() {
   const subjects = getDataByType('subject');
-  const subjectOptions = [...new Set(subjects.map(s => s.subject_name).filter(Boolean))].sort()
-    .map(name => {
-      const s = subjects.find(x => x.subject_name === name) || {};
-      return `<option value="${name.replace(/"/g, '&quot;')}" data-code="${(s.subject_code || '').replace(/"/g, '&quot;')}">${s.subject_code ? s.subject_code + ' ' : ''}${name}</option>`;
-    }).join('');
+  const subjectOptions = subjectPickOptionsHTML();
   const teachers = getDataByType('teacher');
   const teacherList = [...new Set(teachers.map(t => (t.name || '').trim()).filter(Boolean))].sort();
   const myName = (APP.currentUser && APP.currentUser.name || '').trim();
@@ -7850,13 +7925,7 @@ function showAddGradeTrackingModal() {
       <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึก</button>
     </form>
   `);
-  // Auto-fill subject_code
-  const gSel = document.getElementById('gradeTrackingSubjectSelect');
-  if (gSel) gSel.addEventListener('change', () => {
-    const opt = gSel.options[gSel.selectedIndex];
-    const codeEl = document.getElementById('gradeTrackingSubjectCode');
-    if (codeEl) codeEl.value = (opt && opt.dataset.code) || '';
-  });
+  bindSubjectAutofill('gradeTrackingSubjectSelect', { codeId: 'gradeTrackingSubjectCode', coordId: 'gradeTrackingCoord' });
   document.getElementById('addGradeTrackingForm').onsubmit = async (e) => {
     e.preventDefault();
     const ss = document.getElementById('gradeTrackingSubjectSelect');
@@ -7992,11 +8061,7 @@ function fileTrackingPage() {
 }
 function showAddFileTrackingModal() {
   const subjects = getDataByType('subject');
-  const subjectOptions = [...new Set(subjects.map(s => s.subject_name).filter(Boolean))].sort()
-    .map(name => {
-      const s = subjects.find(x => x.subject_name === name) || {};
-      return `<option value="${name.replace(/"/g, '&quot;')}" data-code="${(s.subject_code || '').replace(/"/g, '&quot;')}">${s.subject_code ? s.subject_code + ' ' : ''}${name}</option>`;
-    }).join('');
+  const subjectOptions = subjectPickOptionsHTML();
   const teachers = getDataByType('teacher');
   const teacherList = [...new Set(teachers.map(t => (t.name || '').trim()).filter(Boolean))].sort();
   const myName = (APP.currentUser && APP.currentUser.name || '').trim();
@@ -8023,13 +8088,7 @@ function showAddFileTrackingModal() {
       <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึก</button>
     </form>
   `);
-  // Auto-fill subject_code
-  const fSel = document.getElementById('fileTrackingSubjectSelect');
-  if (fSel) fSel.addEventListener('change', () => {
-    const opt = fSel.options[fSel.selectedIndex];
-    const codeEl = document.getElementById('fileTrackingSubjectCode');
-    if (codeEl) codeEl.value = (opt && opt.dataset.code) || '';
-  });
+  bindSubjectAutofill('fileTrackingSubjectSelect', { codeId: 'fileTrackingSubjectCode', coordId: 'fileTrackingCoord' });
   document.getElementById('addFileTrackingForm').onsubmit = async (e) => {
     e.preventDefault();
     const ss = document.getElementById('fileTrackingSubjectSelect');
@@ -9039,10 +9098,10 @@ function passwordLogSection() {
 }
 
 function settingsPage() {
-  const roles = ['admin', 'academic', 'registrar', 'deptHead', 'executive', 'teacher', 'classTeacher', 'student'];
-  const modules = ['dashboard', 'students', 'teachers', 'advisors', 'specialTeachers', 'alumni', 'schedule', 'subjects', 'grades', 'engResults', 'teacherDirectory', 'services', 'tracking', 'resultTracking', 'gradeTracking', 'fileTracking', 'leave', 'survey'];
-  const moduleLabels = { dashboard: 'หน้าหลัก', students: 'ข้อมูลนักศึกษา', teachers: 'ข้อมูลอาจารย์', advisors: 'ข้อมูลอาจารย์ที่ปรึกษา', specialTeachers: 'ข้อมูลอาจารย์พิเศษ', alumni: 'ข้อมูลศิษย์เก่า', schedule: 'ปฏิทินกิจกรรมวิชาการ', subjects: 'รายวิชาที่เปิดสอน', grades: 'ผลการเรียน', engResults: 'ผลสอบ ENG', teacherDirectory: 'ทำเนียบอาจารย์', services: 'บริการอื่นๆ', tracking: 'ติดตามการส่งรายละเอียดรายวิชา', resultTracking: 'ติดตามการส่งผลการดำเนินงานรายวิชา', gradeTracking: 'ติดตามการส่งเกรดรายวิชา', fileTracking: 'ติดตามส่งแฟ้มรายวิชา', leave: 'ระบบการลาของนักศึกษา', survey: 'แบบประเมินความพึงพอใจ' };
-  const roleLabels = { admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'งานทะเบียน', deptHead: 'ประธานสาขา', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อ.ประจำชั้น', student: 'นักศึกษา' };
+  const roles = ['admin', 'academic', 'registrar', 'deptHead', 'executive', 'teacher', 'classTeacher', 'otherStaff', 'student'];
+  const modules = ['dashboard', 'students', 'teachers', 'advisors', 'specialTeachers', 'alumni', 'schedule', 'subjects', 'grades', 'engResults', 'teacherDirectory', 'services', 'tracking', 'resultTracking', 'gradeTracking', 'fileTracking', 'leave', 'workload', 'survey'];
+  const moduleLabels = { dashboard: 'หน้าหลัก', students: 'ข้อมูลนักศึกษา', teachers: 'ข้อมูลอาจารย์', advisors: 'ข้อมูลอาจารย์ที่ปรึกษา', specialTeachers: 'ข้อมูลอาจารย์พิเศษ', alumni: 'ข้อมูลศิษย์เก่า', schedule: 'ปฏิทินกิจกรรมวิชาการ', subjects: 'รายวิชาที่เปิดสอน', grades: 'ผลการเรียน', engResults: 'ผลสอบ ENG', teacherDirectory: 'ทำเนียบอาจารย์', services: 'บริการอื่นๆ', tracking: 'ติดตามการส่งรายละเอียดรายวิชา', resultTracking: 'ติดตามการส่งผลการดำเนินงานรายวิชา', gradeTracking: 'ติดตามการส่งเกรดรายวิชา', fileTracking: 'ติดตามส่งแฟ้มรายวิชา', leave: 'ระบบการลาของนักศึกษา', workload: 'ภาระงานนักศึกษา (Student workload)', survey: 'แบบประเมินความพึงพอใจ' };
+  const roleLabels = { admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'งานทะเบียน', deptHead: 'ประธานสาขา', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อ.ประจำชั้น', otherStaff: 'จนท.งานอื่นๆ', student: 'นักศึกษา' };
 
   const users = applyFilters(getDataByType('user'));
   const total = users.length; const paged = paginate(users);
@@ -9109,8 +9168,8 @@ function resetToDefaultConfig() {
 // ======================== จัดการผู้ใช้งาน ========================
 // การเข้าสู่ระบบปัจจุบัน: บุคลากรใช้บัญชี Google ของวิทยาลัย (อีเมล @bcn.ac.th)
 // นักศึกษาใช้เลขบัตรประชาชนซึ่งอยู่ในทะเบียนนักศึกษา — ระบบนี้ไม่มีรหัสผ่านของตัวเอง
-const USER_ROLE_LABELS = { admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'เจ้าหน้าที่งานทะเบียน', deptHead: 'ประธานสาขาวิชา', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อาจารย์ประจำชั้น', student: 'นักศึกษา' };
-const USER_STAFF_ROLES = ['admin', 'academic', 'registrar', 'deptHead', 'executive', 'teacher', 'classTeacher'];
+const USER_ROLE_LABELS = { admin: 'ผู้ดูแลระบบ', otherStaff: 'เจ้าหน้าที่งานอื่นๆ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'เจ้าหน้าที่งานทะเบียน', deptHead: 'ประธานสาขาวิชา', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อาจารย์ประจำชั้น', student: 'นักศึกษา' };
+const USER_STAFF_ROLES = ['admin', 'academic', 'registrar', 'deptHead', 'executive', 'teacher', 'classTeacher', 'otherStaff'];
 function emsLoginDomain() { return (window.EMS_CONFIG && EMS_CONFIG.ALLOWED_DOMAIN) || 'bcn.ac.th'; }
 function userRoleOptionsHTML(selected) {
   return Object.keys(USER_ROLE_LABELS)
@@ -9899,7 +9958,7 @@ function showEditSubjectModal(id) {
     <form id="editSubjectForm" class="space-y-3">
       <div><label class="block text-xs text-gray-600 mb-1">รหัสวิชา</label><input name="subject_code" value="${s.subject_code || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
       <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา</label><input name="subject_name" value="${s.subject_name || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
-      <div><label class="block text-xs text-gray-600 mb-1">ผู้ประสานงาน</label><input name="coordinator" value="${s.coordinator || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
+      <div><label class="block text-xs text-gray-600 mb-1">ผู้ประสานงาน <span class="text-gray-400">(เลือกจากทะเบียนอาจารย์ · หลายคนคั่นด้วย ,)</span></label>${coordComboHTML('editSubjectCoord', s.coordinator || '')}</div>
       <div><label class="block text-xs text-gray-600 mb-1">สาขาวิชาที่รับผิดชอบ <span class="text-gray-400">(มี 2 สาขา คั่นด้วย ,)</span></label><input name="department" list="editSubjectDeptList" value="${(s.department || '').replace(/"/g, '&quot;')}" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เลือก/พิมพ์ คั่นด้วย , ถ้ามี 2 สาขา">${deptDatalistHTML('editSubjectDeptList')}</div>
       <div class="grid grid-cols-2 gap-3">
         <div><label class="block text-xs text-gray-600 mb-1">ชั้นปี</label><select name="year_level" class="w-full border rounded-xl px-3 py-2 text-sm"><option ${norm(s.year_level) === '1' ? 'selected' : ''}>1</option><option ${norm(s.year_level) === '2' ? 'selected' : ''}>2</option><option ${norm(s.year_level) === '3' ? 'selected' : ''}>3</option><option ${norm(s.year_level) === '4' ? 'selected' : ''}>4</option></select></div>
@@ -10181,7 +10240,8 @@ const EXTRA_ROLE_CHOICES = [
   ['teacher', 'อาจารย์'],
   ['academic', 'เจ้าหน้าที่งานวิชาการ'],
   ['registrar', 'เจ้าหน้าที่งานทะเบียน'],
-  ['admin', 'ผู้ดูแลระบบ']
+  ['admin', 'ผู้ดูแลระบบ'],
+  ['otherStaff', 'เจ้าหน้าที่งานอื่นๆ']
 ];
 function extraRolesFieldHTML(u) {
   const have = String((u && u.extra_roles) || '').split(',').map(x => x.trim()).filter(Boolean);
@@ -10309,7 +10369,7 @@ lucide.createIcons();
 const SURVEY_DEVICES = ['คอมพิวเตอร์ตั้งโต๊ะ / โน้ตบุ๊ก', 'แท็บเล็ต', 'โทรศัพท์มือถือ'];
 const SURVEY_FREQ = ['ทุกวัน', '2-3 ครั้งต่อสัปดาห์', 'สัปดาห์ละครั้ง', 'เดือนละครั้ง', 'นานๆ ครั้ง / ตามที่จำเป็น'];
 const SURVEY_RATING_LABELS = { 5: 'มากที่สุด', 4: 'มาก', 3: 'ปานกลาง', 2: 'น้อย', 1: 'น้อยที่สุด' };
-const SURVEY_ROLE_LABEL = { admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'เจ้าหน้าที่งานทะเบียน', deptHead: 'ประธานสาขาวิชา', executive: 'ผู้บริหาร', teacher: 'อาจารย์ / อาจารย์ที่ปรึกษา', classTeacher: 'อาจารย์ประจำชั้น', student: 'นักศึกษา' };
+const SURVEY_ROLE_LABEL = { otherStaff: 'เจ้าหน้าที่งานอื่นๆ', admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'เจ้าหน้าที่งานทะเบียน', deptHead: 'ประธานสาขาวิชา', executive: 'ผู้บริหาร', teacher: 'อาจารย์ / อาจารย์ที่ปรึกษา', classTeacher: 'อาจารย์ประจำชั้น', student: 'นักศึกษา' };
 
 // ชุดคำถามเริ่มต้น (อิงแบบประเมินที่ร่างไว้) — admin กดสร้างให้ปีการศึกษาที่เลือกได้
 const SURVEY_DEFAULT_QUESTIONS = [
@@ -10368,7 +10428,7 @@ function surveyParseOptions(s) { return String(s == null ? '' : s).split(/\r?\n|
 function surveyTypeLabel(q) { return q && q.q_type === 'text' ? 'ข้อความ' : (q && q.q_type === 'choice' ? 'ตัวเลือก (' + surveyParseOptions(q.options).length + ')' : 'มาตรวัด 1-5'); }
 function surveyToggleOptionsField() { const t = (document.getElementById('surveyQType') || {}).value; const w = document.getElementById('surveyQOptionsWrap'); if (w) w.classList.toggle('hidden', t !== 'choice'); }
 // บทบาทผู้ตอบที่ผูกกับคำถามได้ (ไม่รวม admin ซึ่งเป็นผู้จัดการ)
-const SURVEY_EVAL_ROLES = ['academic', 'registrar', 'deptHead', 'executive', 'teacher', 'classTeacher', 'student'];
+const SURVEY_EVAL_ROLES = ['academic', 'registrar', 'deptHead', 'executive', 'teacher', 'classTeacher', 'otherStaff', 'student'];
 
 // สีประจำแต่ละด้าน (section) ของแบบประเมิน — วนซ้ำตามลำดับด้าน
 const SURVEY_SECTION_COLORS = [

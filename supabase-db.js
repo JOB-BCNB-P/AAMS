@@ -33,7 +33,8 @@ const EMSDB = (() => {
     'teacher_directory', 'directory_summary', 'login_log',
     'special_teacher', 'alumni', 'password_log',
     'survey_config', 'survey_question', 'survey_response',
-    'support_ticket'
+    'support_ticket',
+    'workload_plan', 'workload_student', 'workload_rate'
   ];
 
   // ระลอกที่ 2 — ตารางใหญ่ที่ไม่จำเป็นต้องมีตอนเปิดหน้าแรก
@@ -45,7 +46,8 @@ const EMSDB = (() => {
     'teacher', 'teacher_directory', 'directory_summary', 'special_teacher',
     'alumni', 'app_user', 'user', 'login_log', 'password_log',
     'tracking', 'result_tracking', 'grade_tracking', 'file_tracking',
-    'doc_request'
+    'doc_request',
+    'workload_plan', 'workload_student', 'workload_rate'
   ]);
 
   const META = ['id', 'created_at', 'updated_at', 'extra', 'auth_user_id'];

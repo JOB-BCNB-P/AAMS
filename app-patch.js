@@ -21,6 +21,7 @@
   // ต้องอ่านค่าไว้ตั้งแต่ตอนโหลดสคริปต์ เพราะไลบรารี Supabase จะล้าง hash ทิ้งหลังสร้าง session
   var IS_RECOVERY = /[#&]type=recovery/.test(window.location.hash || '');
   var ROLE_LABEL = {
+    otherStaff: 'เจ้าหน้าที่งานอื่นๆ',
     admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'เจ้าหน้าที่งานทะเบียน',
     deptHead: 'ประธานสาขาวิชา', executive: 'ผู้บริหาร', teacher: 'อาจารย์',
     classTeacher: 'อาจารย์ประจำชั้น', student: 'นักศึกษา'
@@ -751,6 +752,50 @@
   window.emsWrapTables = wrapTables;
 
   /* ============================================================
+     10) ปิดกล่องหน้าต่างได้หลายทาง — ไม่ต้องเล็งปุ่มกากบาทอย่างเดียว
+     ------------------------------------------------------------
+     คลิกพื้นที่มืดนอกกล่อง หรือกดปุ่ม Esc ก็ปิดได้
+     กันปิดพลาดระหว่างกำลังบันทึก และกันปิดเมื่อคลิกโดนสิ่งที่เพิ่งถูกลบออกจากหน้าจอ
+     ============================================================ */
+  function modalIsOpen() {
+    var mc = el('modalContainer');
+    return !!(mc && !mc.classList.contains('hidden') && mc.querySelector('.modal-content'));
+  }
+  function modalBusy() {
+    var mc = el('modalContainer');
+    if (!mc) return false;
+    if (mc.querySelector('.btn-spin')) return true;                  // ปุ่มกำลังหมุน = กำลังบันทึก
+    var b = mc.querySelector('button[type="submit"]');
+    return !!(b && b.disabled);
+  }
+
+  document.addEventListener('click', function (ev) {
+    if (!modalIsOpen()) return;
+    var t = ev.target;
+    if (!t || !t.isConnected) return;                 // สิ่งที่คลิกถูกลบไปแล้ว ไม่นับ
+    if (t.closest && t.closest('.modal-content')) return;  // คลิกในกล่อง
+    var mc = el('modalContainer');
+    if (!mc.contains(t)) return;                      // คลิกนอกพื้นที่กล่องหน้าต่างทั้งหมด
+    if (modalBusy()) return;
+    if (typeof closeModal === 'function') closeModal();
+  });
+
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Escape' && ev.keyCode !== 27) return;
+    if (modalIsOpen()) {
+      if (modalBusy()) return;
+      if (typeof closeModal === 'function') closeModal();
+      return;
+    }
+    // ไม่มีกล่องเปิดอยู่ → ปิดแผงแจ้งเตือนด้านขวาแทน (ถ้าเปิดค้างไว้)
+    var np = el('notifPanel');
+    if (np && np.style.transform === 'translateX(0px)' && typeof closeNotifications === 'function') {
+      closeNotifications();
+    }
+  });
+
+
+  /* ============================================================
      9) เชื่อมต่อ Google Drive (หน้าตั้งค่าระบบ)
      ------------------------------------------------------------
      ผู้ดูแลระบบกดอนุญาตด้วยบัญชี Google ของวิทยาลัยครั้งเดียว
@@ -847,6 +892,17 @@
     var box = el('driveLinkBox');
     if (box) { box.dataset.filled = ''; emsRenderDriveLink(); }
   };
+
+  // เรนเดอร์การ์ดทุกครั้งที่เปลี่ยนหน้า (แน่นอนกว่าการรอสังเกตการเปลี่ยนแปลง DOM)
+  (function () {
+    var orig = window.renderCurrentPage;
+    if (typeof orig !== 'function') return;
+    window.renderCurrentPage = function () {
+      var out = orig.apply(this, arguments);
+      try { if (el('driveLinkBox')) emsRenderDriveLink(); } catch (e) { }
+      return out;
+    };
+  })();
 
 
   /* ============================================================
