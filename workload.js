@@ -86,8 +86,32 @@
     return '<span class="text-[11px] text-gray-400">บันทึกล่าสุดโดย ' + esc(info.by) + ' · ' + esc(info.at || '') + '</span>';
   }
 
-  function cohortStudents(level) {
-    return get('student').filter(function (s) {
+  // รหัสนักศึกษา 2 ตัวแรก คือปีการศึกษาที่เข้าเรียน
+  //   ปีการศึกษา 2568 → ชั้นปีที่ 1 คือรหัส 68, ชั้นปีที่ 2 คือ 67, ชั้นปีที่ 3 คือ 66, ชั้นปีที่ 4 คือ 65
+  // จึงคำนวณจาก (ปีการศึกษา - ชั้นปี + 1) แทนการใช้ชั้นปีปัจจุบันในทะเบียน
+  // ซึ่งจะผิดทันทีเมื่อย้อนดูปีการศึกษาก่อนหน้า
+  function cohortPrefix(year, level) {
+    var y = parseInt(String(year || '').slice(-2), 10);
+    var l = parseInt(level, 10) || 1;
+    if (isNaN(y)) return '';
+    var p = ((y - l + 1) % 100 + 100) % 100;
+    return (p < 10 ? '0' : '') + p;
+  }
+  window.wlCohortPrefix = cohortPrefix;
+
+  function cohortStudents(level, year) {
+    var yr = year || state().year;
+    var pfx = cohortPrefix(yr, level);
+    var all = get('student');
+    if (pfx) {
+      var hit = all.filter(function (s) {
+        return String(s.student_id || '').slice(0, 2) === pfx && norm(s.status) !== 'ลาออก';
+      });
+      // รุ่นที่จบไปแล้วยังต้องนับได้ เพราะตอนนั้นเขาเป็นนักศึกษาของชั้นปีนั้นจริง
+      if (hit.length) return hit;
+    }
+    // ไม่พบรหัสรุ่นนั้นในทะเบียน — ถอยไปใช้ชั้นปีปัจจุบันตามเดิม
+    return all.filter(function (s) {
       return norm(s.year_level) === norm(level) && (typeof isActiveStudent === 'function' ? isActiveStudent(s) : true);
     });
   }
@@ -234,7 +258,11 @@
     return '<div class="flex flex-wrap items-end gap-3 mb-4">'
       + '<div><label class="block text-xs text-gray-600 mb-1">ชั้นปี</label>'
       + '<select onchange="wlSet(\'level\',this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm">'
-      + ['1', '2', '3', '4'].map(function (l) { return '<option value="' + l + '" ' + (st.level === l ? 'selected' : '') + '>ชั้นปีที่ ' + l + '</option>'; }).join('')
+      + ['1', '2', '3', '4'].map(function (l) {
+          var pfx = cohortPrefix(st.year, l);
+          return '<option value="' + l + '" ' + (st.level === l ? 'selected' : '') + '>ชั้นปีที่ ' + l
+            + (pfx ? ' (รหัส ' + pfx + ')' : '') + '</option>';
+        }).join('')
       + '</select></div>'
       + '<div><label class="block text-xs text-gray-600 mb-1">ภาคการศึกษา</label>'
       + '<select onchange="wlSet(\'sem\',this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm">'
@@ -396,7 +424,8 @@
       + '<div class="bg-blue-50 border border-blue-100 rounded-2xl p-4 mb-4 flex flex-wrap items-center justify-between gap-3">'
       + '<div><p class="text-sm text-gray-600">ชั่วโมงภาระงานทั้งหมด · ชั้นปีที่ ' + esc(st.level) + ' ภาค ' + semName(st.sem) + ' ปีการศึกษา ' + esc(st.year) + '</p>'
       + '<p class="text-3xl font-bold text-primary tabular-nums" id="wlGrand">' + fx(total) + '</p>'
-      + '<p class="text-xs text-gray-500">ใช้กับนักศึกษาชั้นปีนี้ ' + cohortStudents(st.level).length + ' คน ที่ไม่ได้ปรับเฉพาะราย</p></div>'
+      + '<p class="text-xs text-gray-500">ใช้กับนักศึกษารหัส ' + esc(cohortPrefix(st.year, st.level))
+      + ' จำนวน ' + cohortStudents(st.level).length + ' คน ที่ไม่ได้ปรับเฉพาะราย</p></div>'
       + '<button onclick="wlSavePlan()" class="px-5 py-2.5 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm flex items-center gap-2 self-start"><i data-lucide="save" class="w-4 h-4"></i>บันทึกทุกพันธกิจที่ทำได้</button></div>'
       + missionScopeNote()
       + MISSIONS.map(function (m) { return missionEditor(m, d, false, planOf(st.year, st.level, st.sem)); }).join('');
