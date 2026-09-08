@@ -997,7 +997,10 @@
       role: roles[0] || 'guest', roles: roles,
       name: u.name || '', email: u.email || '', username: u.username || '',
       department: u.department || '', responsible_year: u.responsible_year || '',
-      student_id: u.student_id || ''
+      student_id: u.student_id || '',
+      // พันธกิจภาระงานนักศึกษาที่บัญชีนี้ได้รับมอบหมาย
+      // ถ้าไม่ส่งต่อไป หน้าภาระงานจะเข้าใจว่า "ไม่จำกัด" แล้วเปิดให้แก้ทุกพันธกิจ
+      workload_missions: String(u.workload_missions || '').trim()
     };
     if (prof.role === 'student' && u.student_id) {
       var st = getDataByType('student').find(function (s) {
