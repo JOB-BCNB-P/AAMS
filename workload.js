@@ -72,15 +72,44 @@
     out.total = Math.round(out.total * 100) / 100;
     return out;
   }
+  function meta(rec) {
+    if (!rec) return {};
+    try { return JSON.parse(rec.meta_json || '{}') || {}; } catch (e) { return {}; }
+  }
+  function stampNow() {
+    var d = new Date(), p = function (x) { return String(x).padStart(2, '0'); };
+    return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + (d.getFullYear() + 543) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+  function metaLine(rec, m) {
+    var info = meta(rec)[m.key];
+    if (!info || !info.by) return '<span class="text-[11px] text-gray-300">ยังไม่เคยบันทึก</span>';
+    return '<span class="text-[11px] text-gray-400">บันทึกล่าสุดโดย ' + esc(info.by) + ' · ' + esc(info.at || '') + '</span>';
+  }
+
   function cohortStudents(level) {
     return get('student').filter(function (s) {
       return norm(s.year_level) === norm(level) && (typeof isActiveStudent === 'function' ? isActiveStudent(s) : true);
     });
   }
+  function myRoles() { return (APP._roles && APP._roles.length) ? APP._roles : [APP.currentRole]; }
   function canEdit() {
-    var rs = (APP._roles && APP._roles.length) ? APP._roles : [APP.currentRole];
-    return rs.some(function (r) { return r === 'admin' || r === 'academic' || r === 'otherStaff'; });
+    return myRoles().some(function (r) { return r === 'admin' || r === 'academic' || r === 'otherStaff'; });
   }
+  // ผู้ดูแลระบบ/งานวิชาการ แก้ได้ทุกพันธกิจ
+  // เจ้าหน้าที่งานอื่นๆ แก้ได้เฉพาะพันธกิจที่ได้รับมอบหมาย และไม่รวมการเรียนการสอน
+  function myMissions() {
+    if (myRoles().some(function (r) { return r === 'admin' || r === 'academic'; })) {
+      return MISSIONS.map(function (m) { return m.key; });
+    }
+    if (myRoles().indexOf('otherStaff') === -1) return [];
+    var p = window.__emsProfile || {};
+    var list = p.workload_missions;
+    if (typeof list === 'string') list = list.split(',');
+    if (!Array.isArray(list) || !list.length) list = ['service', 'research', 'student', 'personal'];
+    return list.map(function (x) { return String(x).trim(); })
+      .filter(function (x) { return x && x !== 'teaching'; });
+  }
+  function canEditMission(key) { return myMissions().indexOf(key) !== -1; }
 
   /* ---------------- หน้าหลัก ---------------- */
   window.workloadPage = function workloadPage() {
@@ -266,7 +295,10 @@
     return '<input type="' + type + '" value="' + esc(val) + '" oninput="wlRowSet(\'' + mkey + '\',' + i + ',\'' + field + '\',this.value)" class="' + cls + ' border rounded-lg px-2 py-1.5 text-sm">';
   }
 
-  function missionEditor(m, d, readonly) {
+  function missionEditor(m, d, readonly, cur) {
+    if (!readonly && !canEditMission(m.key)) readonly = 'locked';
+    var locked = readonly === 'locked';
+    readonly = !!readonly;
     var list = d[m.key] || [];
     var raw = list.reduce(function (s, r) { return s + n(r.hours); }, 0);
     var w = d.weights[m.key];
@@ -279,7 +311,10 @@
       + ' → ถ่วงน้ำหนัก <b style="color:' + m.color + '" data-wl-w="' + m.key + '">' + fx(raw * w) + '</b></span>'
       + (readonly ? '' : '<button type="button" onclick="wlRowAdd(\'' + m.key + '\')" class="px-2 py-1 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50">+ เพิ่มแถว</button>')
       + (m.subject && !readonly ? '<button type="button" onclick="wlPullSubjects()" class="px-2 py-1 rounded-lg border border-primary text-xs text-primary hover:bg-primaryLight">ดึงรายวิชาที่เปิดสอน</button>' : '')
-      + '</div></div>';
+      + (readonly ? '' : '<button type="button" onclick="wlSaveMission(\'' + m.key + '\')" class="px-3 py-1 rounded-lg text-xs text-white hover:opacity-90" style="background:' + m.color + '"><i data-lucide="save" class="w-3 h-3 inline mr-0.5"></i>บันทึกพันธกิจนี้</button>')
+      + (locked ? '<span class="text-xs px-2 py-1 rounded-lg bg-gray-100 text-gray-500"><i data-lucide="lock" class="w-3 h-3 inline mr-0.5"></i>ไม่ได้รับมอบหมาย</span>' : '')
+      + '</div></div>'
+      + '<div class="mb-2">' + metaLine(cur, m) + '</div>';
 
     var body;
     if (!list.length) {
@@ -330,6 +365,25 @@
   };
 
   /* ---------------- แท็บ 2 : กรอกภาระงานรายชั้นปี ---------------- */
+  function missionScopeNote() {
+    var mine = myMissions();
+    var all = mine.length === MISSIONS.length;
+    var names = MISSIONS.filter(function (m) { return mine.indexOf(m.key) !== -1; })
+      .map(function (m) {
+        return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg ' + m.bg + ' ' + m.text + '">'
+          + '<span style="width:7px;height:7px;border-radius:50%;background:' + m.color + ';display:inline-block"></span>'
+          + esc(m.short) + '</span>';
+      }).join(' ');
+    return '<div class="bg-white border border-blue-100 rounded-xl px-4 py-3 mb-4 text-xs text-gray-600 flex items-start gap-2">'
+      + '<i data-lucide="info" class="w-4 h-4 text-primary flex-shrink-0 mt-0.5"></i><span>'
+      + '<b class="text-gray-700">บันทึกแยกทีละพันธกิจได้</b> — แต่ละกล่องด้านล่างมีปุ่ม "บันทึกพันธกิจนี้" ของตัวเอง '
+      + 'ต่างคนต่างเวลาก็บันทึกได้ ระบบดึงข้อมูลล่าสุดมาก่อนบันทึกทุกครั้ง จึงไม่ทับงานของคนอื่น<br>'
+      + '<b class="text-gray-700">พันธกิจที่บัญชีนี้บันทึกได้:</b> '
+      + (names || '<span class="text-red-500">ยังไม่ได้รับมอบหมายพันธกิจใด</span>')
+      + (all ? '' : ' <span class="text-gray-400">· พันธกิจอื่นจะถูกล็อกไว้ ผู้ดูแลระบบกำหนดได้ที่ ตั้งค่าระบบ → จัดการผู้ใช้งาน</span>')
+      + '</span></div>';
+  }
+
   function planTab() {
     var st = state();
     st.editSid = '';
@@ -343,8 +397,9 @@
       + '<div><p class="text-sm text-gray-600">ชั่วโมงภาระงานทั้งหมด · ชั้นปีที่ ' + esc(st.level) + ' ภาค ' + semName(st.sem) + ' ปีการศึกษา ' + esc(st.year) + '</p>'
       + '<p class="text-3xl font-bold text-primary tabular-nums" id="wlGrand">' + fx(total) + '</p>'
       + '<p class="text-xs text-gray-500">ใช้กับนักศึกษาชั้นปีนี้ ' + cohortStudents(st.level).length + ' คน ที่ไม่ได้ปรับเฉพาะราย</p></div>'
-      + '<button onclick="wlSavePlan()" class="px-5 py-2.5 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i>บันทึกภาระงานชั้นปีนี้</button></div>'
-      + MISSIONS.map(function (m) { return missionEditor(m, d, false); }).join('');
+      + '<button onclick="wlSavePlan()" class="px-5 py-2.5 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm flex items-center gap-2 self-start"><i data-lucide="save" class="w-4 h-4"></i>บันทึกทุกพันธกิจที่ทำได้</button></div>'
+      + missionScopeNote()
+      + MISSIONS.map(function (m) { return missionEditor(m, d, false, planOf(st.year, st.level, st.sem)); }).join('');
   }
 
   function readonlyPlan() {
@@ -357,17 +412,63 @@
     return '<div class="bg-blue-50 border border-blue-100 rounded-2xl p-4 mb-4">'
       + '<p class="text-sm text-gray-600">ชั่วโมงภาระงานทั้งหมด</p><p class="text-3xl font-bold text-primary tabular-nums">' + fx(c.total) + '</p>'
       + '<p class="text-xs text-gray-500 mt-1">บัญชีของคุณดูได้อย่างเดียว — แก้ไขได้โดยผู้ดูแลระบบ · งานวิชาการ · เจ้าหน้าที่งานอื่นๆ</p></div>'
-      + MISSIONS.map(function (m) { return missionEditor(m, d, true); }).join('');
+      + MISSIONS.map(function (m) { return missionEditor(m, d, true, plan); }).join('');
   }
+
+  // บันทึกเฉพาะพันธกิจเดียว — ดึงข้อมูลล่าสุดจากฐานข้อมูลก่อนเสมอ
+  // เพื่อไม่ให้ทับงานที่คนอื่นเพิ่งบันทึกในพันธกิจอื่น
+  window.wlSaveMission = async function (mkey) {
+    var st = state(), d = st.draft;
+    if (!d) return;
+    var m = MISSIONS.filter(function (x) { return x.key === mkey; })[0];
+    if (!canEditMission(mkey)) { showToast('บัญชีของคุณไม่ได้รับมอบหมายให้บันทึก' + m.short, 'error'); return; }
+    var forStudent = !!st.editSid;
+    var tab = forStudent ? 'workload_student' : 'workload_plan';
+    var who = (APP.currentUser && APP.currentUser.name) || '';
+
+    if (typeof showToast === 'function') showToast('กำลังบันทึก ' + m.short + '...');
+    try { await GSheetDB.refreshTab(tab); } catch (e) { /* ใช้ข้อมูลที่มีอยู่ */ }
+
+    var cur = forStudent ? overrideOf(st.editSid, st.year, st.sem) : planOf(st.year, st.level, st.sem);
+    var mt = meta(cur);
+    mt[mkey] = { by: who, at: stampNow() };
+
+    var payload = {
+      type: tab, academic_year: st.year, year_level: st.level, semester: st.sem,
+      updated_by: who, meta_json: JSON.stringify(mt)
+    };
+    if (forStudent) payload.student_id = st.editSid;
+    payload[m.field] = JSON.stringify(d[mkey] || []);
+
+    var r = cur ? await GSheetDB.update(Object.assign({}, cur, payload)) : await GSheetDB.create(payload);
+    if (!(r && r.isOk)) { showToast('บันทึกไม่สำเร็จ: ' + ((r && r.error) || ''), 'error'); return; }
+
+    // ซิงก์พันธกิจอื่นในหน้าจอให้เป็นค่าล่าสุดจากฐานข้อมูล (เผื่อมีคนแก้ระหว่างนี้)
+    var fresh = forStudent ? overrideOf(st.editSid, st.year, st.sem) : planOf(st.year, st.level, st.sem);
+    var basis = forStudent ? planOf(st.year, st.level, st.sem) : fresh;
+    MISSIONS.forEach(function (x) {
+      if (x.key === mkey) return;
+      var src = (forStudent && fresh && norm(fresh[x.field])) ? fresh : basis;
+      d[x.key] = rows(src, x).map(function (row) { return Object.assign({}, row); });
+    });
+
+    showToast('บันทึก ' + m.short + ' เรียบร้อย');
+    if (forStudent) wlEditStudent(st.editSid, true); else renderCurrentPage();
+  };
 
   window.wlSavePlan = async function () {
     var st = state(), d = draft();
     var plan = planOf(st.year, st.level, st.sem);
+    var who = (APP.currentUser && APP.currentUser.name) || '';
+    var mine = MISSIONS.filter(function (m) { return canEditMission(m.key); });
+    if (!mine.length) { showToast('บัญชีของคุณไม่ได้รับมอบหมายให้บันทึกพันธกิจใดเลย', 'error'); return; }
+    var mt = meta(plan);
+    mine.forEach(function (m) { mt[m.key] = { by: who, at: stampNow() }; });
     var payload = {
       type: 'workload_plan', academic_year: st.year, year_level: st.level, semester: st.sem,
-      updated_by: (APP.currentUser && APP.currentUser.name) || ''
+      updated_by: who, meta_json: JSON.stringify(mt)
     };
-    MISSIONS.forEach(function (m) { payload[m.field] = JSON.stringify(d[m.key] || []); });
+    mine.forEach(function (m) { payload[m.field] = JSON.stringify(d[m.key] || []); });
     var r = plan ? await GSheetDB.update(Object.assign({}, plan, payload)) : await GSheetDB.create(payload);
     if (r && r.isOk) { showToast('บันทึกภาระงานเรียบร้อย'); st.draft = null; renderCurrentPage(); }
     else showToast('บันทึกไม่สำเร็จ: ' + ((r && r.error) || ''), 'error');
@@ -434,9 +535,11 @@
       + '<div class="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-2 text-sm">'
       + '<p><span class="text-gray-500">นักศึกษา:</span> <b>' + esc(stu.name || '-') + '</b> (' + esc(sid) + ')</p>'
       + '<p><span class="text-gray-500">ชั้นปี/ภาค:</span> ชั้นปีที่ ' + esc(st.level) + ' ภาค ' + semName(st.sem) + ' ปีการศึกษา ' + esc(st.year) + '</p>'
-      + '<p class="mt-1 text-gray-600">รวม <b class="text-primary tabular-nums" id="wlGrand">0</b> ชั่วโมง</p></div>'
-      + MISSIONS.map(function (m) { return missionEditor(m, st.draft, false); }).join('')
-      + '<button type="button" onclick="wlSaveStudent()" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark mt-2">บันทึกเฉพาะราย</button>'
+      + '<p class="mt-1 text-gray-600">รวม <b class="text-primary tabular-nums" id="wlGrand">0</b> ชั่วโมง</p>'
+      + '<p class="text-[11px] text-gray-500 mt-1">พันธกิจที่ยังไม่เคยบันทึกเฉพาะราย จะใช้ค่ามาตรฐานของชั้นปีโดยอัตโนมัติ</p></div>'
+      + MISSIONS.map(function (m) { return missionEditor(m, st.draft, false, overrideOf(sid, st.year, st.sem)); }).join('')
+      + '<button type="button" onclick="wlSaveStudent()" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark mt-2">บันทึกทุกพันธกิจที่ทำได้ ของนักศึกษาคนนี้</button>'
+      + '<p class="text-[11px] text-gray-400 text-center mt-1">หรือกด "บันทึกพันธกิจนี้" ในแต่ละกล่องเพื่อบันทึกทีละพันธกิจ</p>'
       + '</div>', null, 'max-w-3xl');
     setTimeout(wlUpdateTotals, 30);
   };
@@ -444,12 +547,17 @@
   window.wlSaveStudent = async function () {
     var st = state(), d = st.draft, sid = st.editSid;
     var ovr = overrideOf(sid, st.year, st.sem);
+    var who = (APP.currentUser && APP.currentUser.name) || '';
+    var mine = MISSIONS.filter(function (m) { return canEditMission(m.key); });
+    if (!mine.length) { showToast('บัญชีของคุณไม่ได้รับมอบหมายให้บันทึกพันธกิจใดเลย', 'error'); return; }
+    var mt = meta(ovr);
+    mine.forEach(function (m) { mt[m.key] = { by: who, at: stampNow() }; });
     var payload = {
       type: 'workload_student', student_id: sid, academic_year: st.year,
       year_level: st.level, semester: st.sem,
-      updated_by: (APP.currentUser && APP.currentUser.name) || ''
+      updated_by: who, meta_json: JSON.stringify(mt)
     };
-    MISSIONS.forEach(function (m) { payload[m.field] = JSON.stringify(d[m.key] || []); });
+    mine.forEach(function (m) { payload[m.field] = JSON.stringify(d[m.key] || []); });
     var r = ovr ? await GSheetDB.update(Object.assign({}, ovr, payload)) : await GSheetDB.create(payload);
     if (r && r.isOk) { showToast('บันทึกภาระงานเฉพาะรายเรียบร้อย'); st.draft = null; st.editSid = ''; closeModal(); renderCurrentPage(); }
     else showToast('บันทึกไม่สำเร็จ: ' + ((r && r.error) || ''), 'error');

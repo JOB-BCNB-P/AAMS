@@ -9200,6 +9200,7 @@ function showAddUserModal() {
       <div id="userNameBox"><label class="block text-xs text-gray-600 mb-1">ชื่อ-สกุล *</label>
         <input name="name" required class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น นางสาวสมหญิง ใจดี"></div>
       ${extraRolesFieldHTML({})}
+      ${workloadMissionFieldHTML({})}
       <div id="userRespYearBox" class="hidden"><label class="block text-xs text-gray-600 mb-1">ชั้นปีที่รับผิดชอบ <span class="text-gray-400">(อาจารย์ประจำชั้น)</span></label>
         <select name="responsible_year" class="w-full border rounded-xl px-3 py-2 text-sm">
           <option value="">ไม่ระบุ</option><option>1</option><option>2</option><option>3</option><option>4</option>
@@ -9244,6 +9245,8 @@ function showAddUserModal() {
 
     const extra = collectExtraRoles('addUserForm');
     if (extra) obj.extra_roles = extra;
+    const wlm = collectWorkloadMissions('addUserForm');
+    if (wlm) obj.workload_missions = wlm;
 
     await withLoading(e.target, async () => {
       const r = await GSheetDB.create(obj);
@@ -10253,6 +10256,32 @@ function extraRolesFieldHTML(u) {
     <p class="text-[11px] text-gray-400 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ผู้ใช้จะได้สิทธิ์รวมของทุกบทบาท และมีปุ่มสลับมุมมองที่หัวเว็บ</p>
   </div>`;
 }
+// พันธกิจภาระงานนักศึกษาที่บัญชีหนึ่งได้รับมอบหมายให้บันทึก (ใช้กับบทบาท "เจ้าหน้าที่งานอื่นๆ")
+// พันธกิจการเรียนการสอนสงวนไว้ให้ผู้ดูแลระบบและงานวิชาการเท่านั้น จึงไม่มีให้เลือก
+const WORKLOAD_MISSION_CHOICES = [
+  ['service', 'พันธกิจบริการวิชาการ'],
+  ['research', 'พันธกิจวิจัย/นวัตกรรม'],
+  ['student', 'พันธกิจพัฒนานักศึกษา'],
+  ['personal', 'การใช้ชีวิตส่วนตัว']
+];
+function workloadMissionFieldHTML(u) {
+  const have = String((u && u.workload_missions) || '').split(',').map(x => x.trim()).filter(Boolean);
+  const none = have.length === 0;
+  const boxes = WORKLOAD_MISSION_CHOICES.map(([k, label]) => `<label class="flex items-center gap-2 bg-surface rounded-lg px-2.5 py-1.5 cursor-pointer text-sm">
+    <input type="checkbox" data-wl-mission="${k}" ${have.includes(k) ? 'checked' : ''} class="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary">${label}</label>`).join('');
+  return `<div>
+    <label class="block text-xs text-gray-600 mb-1">พันธกิจภาระงานนักศึกษาที่บันทึกได้ <span class="text-gray-400">(ใช้กับบทบาท “เจ้าหน้าที่งานอื่นๆ” เท่านั้น)</span></label>
+    <div class="grid grid-cols-2 gap-2">${boxes}</div>
+    <p class="text-[11px] text-gray-400 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>${none ? 'ไม่เลือกเลย = บันทึกได้ทั้ง 4 พันธกิจ' : 'บันทึกได้เฉพาะที่ติ๊กไว้'} · พันธกิจการเรียนการสอนสงวนไว้ให้ผู้ดูแลระบบและงานวิชาการ</p>
+  </div>`;
+}
+function collectWorkloadMissions(formId) {
+  const form = document.getElementById(formId);
+  if (!form) return '';
+  return [...form.querySelectorAll('input[data-wl-mission]:checked')]
+    .map(c => c.getAttribute('data-wl-mission')).join(',');
+}
+
 function collectExtraRoles(formId) {
   const form = document.getElementById(formId);
   if (!form) return '';
@@ -10273,6 +10302,8 @@ function showEditUserModal(id) {
         <select name="role" class="w-full border rounded-xl px-3 py-2 text-sm">${userRoleOptionsHTML(u.role)}</select></div>
 
       ${extraRolesFieldHTML(u)}
+
+      ${isStudent ? '' : workloadMissionFieldHTML(u)}
 
       ${isStudent ? `
       <div><label class="block text-xs text-gray-600 mb-1">รหัสนักศึกษา</label>
@@ -10315,7 +10346,10 @@ function showEditUserModal(id) {
       emailEl.value = email;
     }
     const rec = APP.allData.find(d => d.__backendId === id);
-    if (rec) rec.extra_roles = collectExtraRoles('editUserForm');
+    if (rec) {
+      rec.extra_roles = collectExtraRoles('editUserForm');
+      rec.workload_missions = collectWorkloadMissions('editUserForm');
+    }
     editRecord(id, 'editUserForm');
   };
 }
