@@ -152,10 +152,23 @@ const EMSDB = (() => {
       const { data, error } = await client().rpc('ems_fetch', { tabs: tableNames });
       if (!error && data && typeof data === 'object') {
         out = [];
+        const missing = [];
         tableNames.forEach(tn => {
           const rows = data[tn];
           if (Array.isArray(rows)) rows.forEach(r => out.push(toRow(tn, r)));
+          else missing.push(tn);
         });
+        // ตารางที่ ems_fetch ไม่รู้จัก จะไม่ถูกส่งกลับมาเลย
+        // ถ้าปล่อยผ่าน หน้าจอจะขึ้นว่า "ยังไม่มีข้อมูล" ทั้งที่ข้อมูลอยู่ครบในฐานข้อมูล
+        // จึงตามอ่านตารางที่ขาดไปทีละตารางแทน
+        if (missing.length) {
+          console.warn('[EMSDB] ems_fetch ไม่ส่งตารางเหล่านี้กลับมา — ตามอ่านทีละตาราง:', missing.join(', '));
+          const back = await Promise.allSettled(missing.map(tn => fetchTable(tn)));
+          back.forEach((res, i) => {
+            if (res.status === 'fulfilled') out.push(...res.value);
+            else console.warn('[EMSDB] อ่านตาราง "' + missing[i] + '" ไม่สำเร็จ:', res.reason && res.reason.message);
+          });
+        }
       } else if (error) {
         console.warn('[EMSDB] ems_fetch ใช้ไม่ได้ — ถอยไปใช้วิธีเดิม:', error.message);
       }
