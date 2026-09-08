@@ -9508,11 +9508,39 @@ function initPageScripts(page) {
 
       if (valEl) valEl.classList.add('hidden');
       await withLoading(leaveForm, async () => {
+        // ---- ไฟล์แนบ (ใบรับรองแพทย์ / ใบนัดแพทย์) ----
+        // อัปโหลดครั้งเดียวต่อการยื่น 1 ครั้ง แล้วผูกลิงก์เดียวกันไว้กับทุกรายวิชาในใบลาชุดนั้น
+        // เก็บที่ถัง leave-files แล้วย้ายต่อไปโฟลเดอร์ "ใบลานักศึกษา" บน Google Drive
+        const certFile = fd.get('medical_cert');
+        const apptFile = fd.get('appointment_doc');
+        const attach = (certFile && certFile.name) ? certFile : ((apptFile && apptFile.name) ? apptFile : null);
+        const myStuId = (APP.currentUser && APP.currentUser.data && APP.currentUser.data.student_id) || '';
+        let fileLink = '', fileName = '';
+        if (attach) {
+          if (typeof window.emsUploadLeaveFile !== 'function') {
+            if (valEl) { valEl.textContent = 'ระบบแนบไฟล์ยังไม่พร้อมใช้งาน กรุณารีเฟรชหน้าเว็บแล้วลองใหม่'; valEl.classList.remove('hidden'); }
+            return;
+          }
+          const up = await window.emsUploadLeaveFile(attach, {
+            student_id: myStuId, name: fd.get('name'), leave_type: type,
+            leave_date: leaveDate, academic_year: fd.get('academic_year')
+          });
+          if (!up.isOk) {
+            if (valEl) { valEl.textContent = 'แนบไฟล์ไม่สำเร็จ: ' + (up.error || ''); valEl.classList.remove('hidden'); }
+            return;
+          }
+          fileLink = up.link; fileName = up.name;
+        }
+
         let successCount = 0;
+        let firstLeaveId = 0;
         for (const subj of checkedSubjects) {
           const obj = {
             type: 'leave', created_at: new Date().toISOString(),
             name: fd.get('name'),
+            student_id: myStuId,
+            medical_cert: fileName,
+            file_link: fileLink,
             subject_name: subj.subject_name,
             coordinator: subj.coordinator,
             leave_hours: subj.leave_hours,
@@ -9529,9 +9557,13 @@ function initPageScripts(page) {
           };
           if (APP.allData.filter(d => d.type === 'leave').length >= 999) { showToast('ข้อมูลเต็ม', 'error'); break; }
           const r = await GSheetDB.create(obj);
-          if (r.isOk) successCount++;
+          if (r.isOk) { successCount++; if (!firstLeaveId) firstLeaveId = Number(r.rowIndex || 0); }
         }
         if (successCount > 0) {
+          // แจ้งเตือนขั้นที่ 1 ไปยังอาจารย์ผู้ประสานงานรายวิชา
+          if (firstLeaveId && typeof window.emsLeaveNotify === 'function') {
+            try { await window.emsLeaveNotify(firstLeaveId, 'submitted', { loud: false }); } catch (e) { }
+          }
           showToast(`ส่งใบลาสำเร็จ ${successCount} รายวิชา`);
           leaveForm.reset();
           // Uncheck all and hide hours
@@ -9741,7 +9773,14 @@ async function approveLeave(id, approvalField, extra) {
   showToast('กำลังบันทึก...', 'loading');
   const r = await GSheetDB.update(rec);
   hideLoadingToast && hideLoadingToast();
-  if (r.isOk) { showToast('อนุมัติการลาสำเร็จ'); renderCurrentPage(); updateNotifBadge(); } else showToast('เกิดข้อผิดพลาด: ' + (r.error || ''), 'error');
+  if (r.isOk) {
+    showToast('อนุมัติการลาสำเร็จ');
+    // แจ้งเตือนผู้อนุมัติลำดับถัดไป (หรือแจ้งผลกลับนักศึกษาเมื่ออนุมัติครบแล้ว)
+    if (typeof window.emsLeaveNotify === 'function') {
+      try { await window.emsLeaveNotify(id, 'approved', { loud: false }); } catch (e) { }
+    }
+    renderCurrentPage(); updateNotifBadge();
+  } else showToast('เกิดข้อผิดพลาด: ' + (r.error || ''), 'error');
 }
 
 async function rejectLeave(id, approvalField) {
@@ -9753,7 +9792,13 @@ async function rejectLeave(id, approvalField) {
   showToast('กำลังบันทึก...', 'loading');
   const r = await GSheetDB.update(rec);
   hideLoadingToast && hideLoadingToast();
-  if (r.isOk) { showToast('ปฏิเสธการลาสำเร็จ'); renderCurrentPage(); updateNotifBadge(); } else showToast('เกิดข้อผิดพลาด: ' + (r.error || ''), 'error');
+  if (r.isOk) {
+    showToast('ปฏิเสธการลาสำเร็จ');
+    if (typeof window.emsLeaveNotify === 'function') {
+      try { await window.emsLeaveNotify(id, 'rejected', { loud: false }); } catch (e) { }
+    }
+    renderCurrentPage(); updateNotifBadge();
+  } else showToast('เกิดข้อผิดพลาด: ' + (r.error || ''), 'error');
 }
 
 // Coordinator approves leave + fills in leave_percent
@@ -9766,6 +9811,7 @@ function showLeaveApprovalModal(id, currentPercent) {
         <p><span class="text-gray-500">รายวิชา:</span> <strong>${rec.subject_name || '-'}</strong></p>
         <p><span class="text-gray-500">ประเภท:</span> <strong>${rec.leave_type || '-'}</strong> | <span class="text-gray-500">วันที่:</span> <strong>${toBuddhistDateList(rec.leave_date) || '-'}</strong> | <span class="text-gray-500">ชม.:</span> <strong>${rec.leave_hours || '-'}</strong></p>
         ${rec.leave_reason ? `<p><span class="text-gray-500">เหตุผล:</span> ${rec.leave_reason}</p>` : ''}
+        ${(typeof window.emsLeaveFileButtonHTML === 'function') ? window.emsLeaveFileButtonHTML(rec) : ''}
       </div>
       <form id="leaveApprovalForm" class="space-y-3">
         <div>
@@ -9811,6 +9857,7 @@ function showClassTeacherApprovalModal(id) {
         ${rec.leave_percent ? `<p><span class="text-gray-500">% การลา:</span> <strong>${rec.leave_percent}%</strong></p>` : ''}
         ${rec.leave_reason ? `<p><span class="text-gray-500">เหตุผล:</span> ${rec.leave_reason}</p>` : ''}
         ${rec.coordinator_note ? `<p><span class="text-gray-500">บันทึก ปสน.:</span> ${rec.coordinator_note}</p>` : ''}
+        ${(typeof window.emsLeaveFileButtonHTML === 'function') ? window.emsLeaveFileButtonHTML(rec) : ''}
       </div>
       <form id="classTeacherApprovalForm" class="space-y-3">
         <div>
@@ -9847,6 +9894,7 @@ function showExecutiveApprovalModal(id) {
         ${rec.leave_reason ? `<p><span class="text-gray-500">เหตุผล:</span> ${rec.leave_reason}</p>` : ''}
         ${rec.coordinator_note ? `<p><span class="text-gray-500">บันทึก ปสน.:</span> ${rec.coordinator_note}</p>` : ''}
         ${rec.class_teacher_note ? `<p><span class="text-gray-500">บันทึก ปจช.:</span> ${rec.class_teacher_note}</p>` : ''}
+        ${(typeof window.emsLeaveFileButtonHTML === 'function') ? window.emsLeaveFileButtonHTML(rec) : ''}
       </div>
       <form id="execApprovalForm" class="space-y-3">
         <div>

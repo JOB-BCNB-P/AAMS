@@ -1085,3 +1085,180 @@
     if (typeof window.__emsBoot === 'function') window.__emsBoot();
   });
 })();
+
+
+/* ============================================================
+   11) ใบลานักศึกษา — ที่เก็บไฟล์แนบ และการแจ้งเตือนตามลำดับการอนุมัติ
+   ------------------------------------------------------------
+   ที่เก็บไฟล์  ใช้แนวเดียวกับหน้าติดตามการส่ง แต่ "แยกถังและแยกโฟลเดอร์"
+     • Supabase Storage ถังปิดชื่อ leave-files  (คนละถังกับ tracking-files)
+       เส้นทางไฟล์  <รหัสนักศึกษา>/<เวลา>-<สุ่ม>.<นามสกุล>
+       เก็บในฐานข้อมูลเป็นข้อความสั้น ๆ ว่า  sbl:<เส้นทาง>
+     • จากนั้นย้ายต่อไปเก็บถาวรที่ Google Drive ในสาย "ใบลานักศึกษา"
+       <โฟลเดอร์หลัก>/ใบลานักศึกษา/<ปีการศึกษา>/<ประเภทการลา>/
+       (สายติดตามการส่งอยู่คนละกิ่งคือ .../ติดตามการส่ง/... จึงไม่ปนกัน)
+       ย้ายสำเร็จจะเปลี่ยนลิงก์เป็น  gd:<รหัสไฟล์>  เหมือนหน้าติดตามการส่ง
+
+   การแจ้งเตือน  เรียก Edge Function "leave-notify" ซึ่งคำนวณผู้รับฝั่งเซิร์ฟเวอร์
+     ยื่นใบลา → อ.ผู้ประสานงานรายวิชา → อ.ประจำชั้น → รองผู้อำนวยการด้านวิชาการ
+     ============================================================ */
+(function () {
+  'use strict';
+
+  var LEAVE_PREFIX = 'sbl:';
+  var LEAVE_BUCKET = 'leave-files';
+  var MAX_BYTES = 20 * 1024 * 1024;
+  var OK_EXT = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'heic'];
+  var MIME = {
+    pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+    png: 'image/png', webp: 'image/webp', heic: 'image/heic'
+  };
+
+  function extOf(n) { return String(n || '').split('.').pop().toLowerCase(); }
+  function isLeaveFile(link) { return typeof link === 'string' && link.indexOf(LEAVE_PREFIX) === 0; }
+  function leavePathOf(link) { return isLeaveFile(link) ? String(link).slice(LEAVE_PREFIX.length) : ''; }
+  function isDrive(link) { return typeof link === 'string' && link.indexOf('gd:') === 0; }
+
+  window.emsIsLeaveFile = isLeaveFile;
+
+  // รหัสนักศึกษาของผู้ที่กำลังใช้งาน (ใช้เป็นชื่อโฟลเดอร์ และเป็นเงื่อนไขสิทธิ์ฝั่งฐานข้อมูล)
+  function myStudentId() {
+    var u = window.APP && APP.currentUser;
+    var d = (u && u.data) || {};
+    return String(d.student_id || d.id_card || '').trim();
+  }
+  window.emsMyStudentId = myStudentId;
+
+  /* -------- 11.1 อัปโหลดไฟล์แนบใบลา --------
+     คืนค่า { isOk, link, name, error }
+     link จะเป็น gd:<id> เมื่อย้ายขึ้น Drive สำเร็จ ไม่สำเร็จก็ยังเป็น sbl:<path> ใช้งานได้ปกติ */
+  window.emsUploadLeaveFile = async function (file, meta) {
+    meta = meta || {};
+    if (!file || !file.name) return { isOk: false, error: 'ยังไม่ได้เลือกไฟล์' };
+
+    var ext = extOf(file.name);
+    if (OK_EXT.indexOf(ext) < 0) {
+      return { isOk: false, error: 'รองรับเฉพาะไฟล์ PDF หรือรูปภาพ (.pdf .jpg .png) เท่านั้น' };
+    }
+    if (file.size > MAX_BYTES) {
+      return { isOk: false, error: 'ไฟล์ใหญ่เกิน 20 MB (ไฟล์นี้ ' + (file.size / 1048576).toFixed(1) + ' MB)' };
+    }
+
+    var sid = String(meta.student_id || myStudentId() || '').trim();
+    if (!sid) return { isOk: false, error: 'ไม่พบรหัสนักศึกษาของผู้ใช้ จึงยังแนบไฟล์ไม่ได้' };
+
+    var stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+    var rand = Math.random().toString(36).slice(2, 8);
+    var path = sid + '/' + stamp + '-' + rand + '.' + ext;
+
+    var upRes = await GSheetDB.client().storage.from(LEAVE_BUCKET)
+      .upload(path, file, { upsert: true, contentType: MIME[ext] || file.type, cacheControl: '0' });
+    if (upRes.error) {
+      var m = String(upRes.error.message || '');
+      if (/row-level security|not authorized|Unauthorized/i.test(m)) {
+        return { isOk: false, error: 'บัญชีของคุณไม่มีสิทธิ์แนบไฟล์ใบลา' };
+      }
+      return { isOk: false, error: m };
+    }
+
+    var link = LEAVE_PREFIX + path;
+
+    // ---- ย้ายต่อไปเก็บถาวรที่ Google Drive สาย "ใบลานักศึกษา" ----
+    var nice = [String(meta.name || '').trim(), String(meta.leave_type || '').trim(),
+                String(meta.leave_date || '').split(',')[0].trim()]
+      .filter(Boolean).join(' ') + '.' + ext;
+    try {
+      var res = await GSheetDB.client().functions.invoke('drive-sync', {
+        body: {
+          mode: 'sync', kind: 'leave', storagePath: path,
+          leaveType: String(meta.leave_type || ''), year: String(meta.academic_year || ''),
+          filename: nice
+        }
+      });
+      if (!res.error && res.data && res.data.isOk && res.data.fileId) {
+        link = 'gd:' + res.data.fileId;
+      }
+    } catch (e) { /* ย้ายไม่สำเร็จก็ยังอ่านไฟล์จากพื้นที่ของระบบได้ */ }
+
+    return { isOk: true, link: link, name: file.name, path: path };
+  };
+
+  /* -------- 11.2 เปิดไฟล์แนบใบลา -------- */
+  window.emsOpenLeaveFile = async function (link) {
+    if (!link) { if (window.showToast) showToast('ใบลานี้ไม่มีไฟล์แนบ', 'error'); return; }
+    if (isDrive(link)) {
+      window.open('https://drive.google.com/file/d/' + String(link).slice(3) + '/view', '_blank', 'noopener');
+      return;
+    }
+    if (!isLeaveFile(link)) {
+      if (typeof window.emsOpenStoredFile === 'function') return window.emsOpenStoredFile(link);
+      window.open(link, '_blank', 'noopener'); return;
+    }
+    if (window.showToast) showToast('กำลังเปิดไฟล์...', 'loading');
+    var r = await GSheetDB.client().storage.from(LEAVE_BUCKET).createSignedUrl(leavePathOf(link), 3600);
+    var t = document.getElementById('loadingToast'); if (t) t.remove();
+    if (r.error) {
+      if (window.showToast) showToast('เปิดไฟล์ไม่สำเร็จ: ' + r.error.message, 'error');
+      return;
+    }
+    window.open(r.data.signedUrl, '_blank', 'noopener');
+  };
+
+  // ปุ่ม/ลิงก์ในตารางที่ชี้ไปยัง sbl: ให้เปลี่ยนเป็นลิงก์ชั่วคราวอัตโนมัติ
+  document.addEventListener('click', function (ev) {
+    var a = ev.target && ev.target.closest ? ev.target.closest('a[href^="sbl:"]') : null;
+    if (!a) return;
+    ev.preventDefault();
+    window.emsOpenLeaveFile(a.getAttribute('href'));
+  }, true);
+
+  /* -------- 11.3 ปุ่มเปิดไฟล์แนบ (ใช้ในโมดัลอนุมัติและตารางใบลา) -------- */
+  window.emsLeaveFileButtonHTML = function (rec) {
+    var link = (rec && (rec.file_link || rec.medical_cert)) || '';
+    if (!link || !(isLeaveFile(link) || isDrive(link) || /^https?:/i.test(link))) return '';
+    var where = isDrive(link) ? 'Google Drive ของวิทยาลัย' : 'พื้นที่จัดเก็บของระบบ';
+    var label = String(rec.leave_type || '') === 'ลาพบแพทย์' ? 'ใบนัดแพทย์' : 'ใบรับรองแพทย์';
+    return '<div class="mt-2">' +
+      '<button type="button" onclick="emsOpenLeaveFile(\'' + String(link).replace(/'/g, "\\'") + '\')" ' +
+      'class="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-sm hover:bg-blue-100">' +
+      '<i data-lucide="paperclip" class="w-4 h-4"></i>เปิด' + label + '</button>' +
+      '<p class="text-[11px] text-gray-500 mt-1">เก็บที่ ' + where + '</p></div>';
+  };
+
+  /* -------- 11.4 แจ้งเตือนทางอีเมลตามลำดับการอนุมัติ --------
+     event: submitted | approved | rejected
+     ไม่ขวางการทำงานหลัก — ส่งไม่สำเร็จก็แค่แจ้งเตือนเบา ๆ ใบลายังบันทึกครบ */
+  window.emsLeaveNotify = async function (id, event, opts) {
+    opts = opts || {};
+    try {
+      var res = await GSheetDB.client().functions.invoke('leave-notify', {
+        body: { id: Number(id), event: String(event), dry: opts.dry === true }
+      });
+      if (res.error) {
+        var detail = (res.error && res.error.message) || 'ส่งอีเมลแจ้งเตือนไม่สำเร็จ';
+        try { var j = await res.error.context.json(); if (j && j.error) detail = j.error; } catch (e) { }
+        console.warn('leave-notify:', detail);
+        if (opts.loud && window.showToast) showToast('แจ้งเตือนทางอีเมลไม่สำเร็จ: ' + detail, 'error');
+        return { isOk: false, error: detail };
+      }
+      var d = res.data || {};
+      if (d['ข้าม']) return d;
+      if (d.isOk && window.showToast && opts.loud !== false) {
+        showToast('แจ้งเตือนทางอีเมลถึง' + (d['ขั้นตอนที่แจ้ง'] || 'ผู้อนุมัติ') + 'แล้ว');
+      } else if (!d.isOk) {
+        console.warn('leave-notify:', d.error || d);
+        if (opts.loud && window.showToast) showToast(d.error || 'แจ้งเตือนทางอีเมลไม่สำเร็จ', 'error');
+      }
+      return d;
+    } catch (err) {
+      console.warn('leave-notify:', err);
+      return { isOk: false, error: String(err) };
+    }
+  };
+
+  // ตรวจว่าใบลาใบหนึ่งจะแจ้งใครในขั้นถัดไป (ไม่ส่งจริง) — เรียกจาก Console ได้
+  window.emsLeaveNotifyCheck = function (id, event) {
+    return window.emsLeaveNotify(id, event || 'submitted', { dry: true, loud: false })
+      .then(function (d) { console.log('leave-notify (ทดลอง):', d); return d; });
+  };
+})();
