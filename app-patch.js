@@ -1265,3 +1265,71 @@
       .then(function (d) { console.log('leave-notify (ทดลอง):', d); return d; });
   };
 })();
+
+
+/* ============================================================
+   12) คงเคอร์เซอร์ไว้ในช่องค้นหาเมื่อหน้าจอวาดใหม่
+   ------------------------------------------------------------
+   ทุกช่องค้นหาในระบบสั่ง renderCurrentPage() หลังพิมพ์
+   ซึ่งสร้าง HTML ของทั้งหน้าใหม่ ช่องค้นหาเดิมจึงถูกทิ้งไปพร้อมโฟกัส
+   ผลคือพิมพ์ได้ทีละตัวแล้วต้องคลิกกลับเข้าช่องใหม่ทุกครั้ง
+
+   แก้ที่ส่วนกลางจุดเดียว: จำว่าโฟกัสอยู่ช่องไหนก่อนวาด
+   แล้วคืนโฟกัสพร้อมตำแหน่งเคอร์เซอร์ให้ช่องเดิมหลังวาดเสร็จ
+   ไม่ต้องแก้ช่องค้นหาทีละจุดทั้ง 8 แห่ง
+   ============================================================ */
+(function () {
+  'use strict';
+
+  // สร้างกุญแจระบุช่องกรอก ให้หาช่องเดิมเจอหลังหน้าจอถูกสร้างใหม่
+  function keyOf(elm) {
+    if (!elm) return null;
+    var tag = elm.tagName;
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA') return null;
+    var t = String(elm.type || 'text').toLowerCase();
+    if (t === 'file' || t === 'checkbox' || t === 'radio' || t === 'submit' || t === 'button') return null;
+    // ไม่ยุ่งกับกล่องหน้าต่าง เพราะกล่องไม่ได้ถูกวาดใหม่พร้อมหน้า
+    if (elm.closest && elm.closest('#modalContainer')) return null;
+
+    var scope = document.getElementById('mainContent') || document;
+    var sel = tag + (elm.id ? '#' + CSS.escape(elm.id) : '')
+      + (elm.name ? '[name="' + elm.name + '"]' : '')
+      + (elm.placeholder ? '[placeholder="' + elm.placeholder.replace(/"/g, '\\"') + '"]' : '');
+    var list;
+    try { list = scope.querySelectorAll(sel); } catch (e) { return null; }
+    if (!list || !list.length) return null;
+    var idx = Array.prototype.indexOf.call(list, elm);
+    if (idx < 0) return null;
+    return { sel: sel, idx: idx, start: elm.selectionStart, end: elm.selectionEnd };
+  }
+
+  function restore(k) {
+    if (!k) return;
+    var scope = document.getElementById('mainContent') || document;
+    var list;
+    try { list = scope.querySelectorAll(k.sel); } catch (e) { return; }
+    var el = list && list[k.idx];
+    if (!el || el === document.activeElement) return;
+    try {
+      el.focus({ preventScroll: true });
+      // คืนตำแหน่งเคอร์เซอร์เดิม (ช่องบางชนิดตั้งค่านี้ไม่ได้ เช่น number/email)
+      if (k.start != null && typeof el.setSelectionRange === 'function') {
+        el.setSelectionRange(k.start, k.end == null ? k.start : k.end);
+      }
+    } catch (e) { /* ตั้งเคอร์เซอร์ไม่ได้ก็ยังโฟกัสให้พิมพ์ต่อได้ */ }
+  }
+
+  var origRender = window.renderCurrentPage;
+  if (typeof origRender !== 'function') return;
+
+  window.renderCurrentPage = function () {
+    var k = keyOf(document.activeElement);
+    var out = origRender.apply(this, arguments);
+    if (k) {
+      restore(k);
+      // เผื่อบางหน้าวาดเนื้อหาต่อในจังหวะถัดไป
+      setTimeout(function () { restore(k); }, 0);
+    }
+    return out;
+  };
+})();

@@ -34,7 +34,8 @@ const EMSDB = (() => {
     'special_teacher', 'alumni', 'password_log',
     'survey_config', 'survey_question', 'survey_response',
     'support_ticket',
-    'workload_plan', 'workload_student', 'workload_rate'
+    'workload_plan', 'workload_student', 'workload_rate',
+    'curriculum', 'curriculum_course', 'curriculum_plo', 'curriculum_map'
   ];
 
   // ระลอกที่ 2 — ตารางใหญ่ที่ไม่จำเป็นต้องมีตอนเปิดหน้าแรก
