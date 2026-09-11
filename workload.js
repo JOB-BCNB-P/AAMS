@@ -59,11 +59,25 @@
     var v = plan ? norm(plan[m.wkey]) : '';
     return v === '' ? m.def : n(v);
   }
-  function calc(plan, ovr) {
+  // รายชื่อผู้เข้าร่วมของกิจกรรมหนึ่งแถว — ว่าง/ไม่ระบุ = นักศึกษาทุกคนในชั้น
+  function partOf(r) {
+    var v = r && r.students;
+    if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { v = null; } }
+    return Array.isArray(v) ? v.map(String) : [];
+  }
+  // กิจกรรมแถวนี้นับให้นักศึกษาคนนี้หรือไม่
+  //   sid ว่าง = คิดแบบค่ามาตรฐานของชั้น (นับทุกกิจกรรม)
+  function appliesTo(r, sid) {
+    if (!sid) return true;
+    var list = partOf(r);
+    return !list.length || list.indexOf(String(sid)) !== -1;
+  }
+
+  function calc(plan, ovr, sid) {
     var out = { raw: {}, weighted: {}, total: 0 };
     MISSIONS.forEach(function (m) {
       var useOvr = ovr && norm(ovr[m.field]) !== '';
-      var list = rows(useOvr ? ovr : plan, m);
+      var list = rows(useOvr ? ovr : plan, m).filter(function (r) { return appliesTo(r, sid); });
       var raw = list.reduce(function (s, r) { return s + n(r.hours); }, 0);
       out.raw[m.key] = raw;
       out.weighted[m.key] = Math.round(raw * weightOf(plan, m) * 100) / 100;
@@ -179,6 +193,130 @@
     }).join('') + '</div>';
   }
 
+  /* ---------------- ภาระงานรายคนทั้งปีการศึกษา ----------------
+     ใช้ในหน้าสรุปผล เพื่อให้เห็นว่าใครมีภาระงานต่างจากเพื่อนร่วมชั้น
+     (บางคนเข้าร่วมกิจกรรมนอกการเรียนการสอนมากกว่าคนอื่น) */
+  function studentTotals(year) {
+    var out = [];
+    ['1', '2', '3', '4'].forEach(function (lv) {
+      var plans = SEMS.map(function (sm) { return planOf(year, lv, sm); });
+      if (!plans.some(Boolean)) return;
+      cohortStudents(lv, year).forEach(function (stu) {
+        var tot = 0, per = {}, extra = false;
+        MISSIONS.forEach(function (m) { per[m.key] = 0; });
+        SEMS.forEach(function (sm, i) {
+          var plan = plans[i];
+          if (!plan) return;
+          var ovr = overrideOf(stu.student_id, year, sm);
+          if (ovr) extra = true;
+          var c = calc(plan, ovr, stu.student_id);
+          tot += c.total;
+          MISSIONS.forEach(function (m) { per[m.key] += c.weighted[m.key]; });
+        });
+        out.push({ sid: norm(stu.student_id), name: norm(stu.name), level: lv,
+                   total: Math.round(tot * 100) / 100, per: per, ovr: extra });
+      });
+    });
+    return out;
+  }
+  function median(arr) {
+    if (!arr.length) return 0;
+    var a = arr.slice().sort(function (x, y) { return x - y; });
+    var h = Math.floor(a.length / 2);
+    return a.length % 2 ? a[h] : (a[h - 1] + a[h]) / 2;
+  }
+
+  /* ---------------- การ์ด + กราฟการกระจายภาระงานรายคน ---------------- */
+  function spreadBlock() {
+    var st = state();
+    var list = studentTotals(st.year);
+    if (!list.length) return '';
+
+    var vals = list.map(function (x) { return x.total; });
+    var mid = Math.round(median(vals) * 100) / 100;
+    var max = Math.max.apply(null, vals), min = Math.min.apply(null, vals);
+    // ต่างจากค่ากลางเกิน 10% ถือว่าผิดจากกลุ่มอย่างมีนัย
+    var tol = Math.max(1, mid * 0.1);
+    var diff = list.filter(function (x) { return Math.abs(x.total - mid) > tol; });
+
+    var card = function (label, value, sub, color) {
+      return '<div class="bg-white rounded-2xl p-4 border border-blue-100">'
+        + '<p class="text-xs text-gray-500">' + esc(label) + '</p>'
+        + '<p class="text-2xl font-bold tabular-nums" style="color:' + (color || '#1f2937') + '">' + value + '</p>'
+        + '<p class="text-[11px] text-gray-400">' + sub + '</p></div>';
+    };
+
+    // ฮิสโทแกรม — ช่วงละ 10 ชั่วโมง ค่าเดียวจึงใช้สีเดียว ไม่ต้องมีคำอธิบายสี
+    var lo = Math.floor(min / 10) * 10, hi = Math.ceil((max + 0.01) / 10) * 10;
+    if (hi <= lo) hi = lo + 10;
+    var buckets = [];
+    for (var v = lo; v < hi; v += 10) buckets.push({ lo: v, hi: v + 10, n: 0 });
+    list.forEach(function (x) {
+      var i = Math.min(buckets.length - 1, Math.floor((x.total - lo) / 10));
+      if (i >= 0) buckets[i].n++;
+    });
+    var peak = Math.max.apply(null, buckets.map(function (b) { return b.n; })) || 1;
+    var bars = buckets.map(function (b) {
+      var h = Math.round(b.n / peak * 100);
+      var inMid = mid >= b.lo && mid < b.hi;
+      return '<div class="flex-1 flex flex-col items-center justify-end" style="min-width:38px">'
+        + '<span class="text-[11px] text-gray-500 mb-0.5">' + (b.n || '') + '</span>'
+        + '<div style="width:100%;height:' + Math.max(b.n ? 4 : 0, h) + 'px;'
+        + 'background:' + (inMid ? '#1e6fba' : '#93c5fd') + ';border-radius:4px 4px 0 0"></div>'
+        + '<span class="text-[10px] text-gray-400 mt-1 whitespace-nowrap">' + b.lo + '</span></div>';
+    }).join('');
+
+    var top = diff.slice().sort(function (a, b) {
+      return Math.abs(b.total - mid) - Math.abs(a.total - mid);
+    }).slice(0, 15);
+
+    var tbl = !top.length
+      ? '<div class="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 text-sm text-emerald-700 flex items-center gap-2">'
+        + '<i data-lucide="check-circle-2" class="w-4 h-4"></i>นักศึกษาทุกคนมีภาระงานใกล้เคียงกัน</div>'
+      : '<div class="overflow-x-auto"><table class="w-full text-sm">'
+        + '<thead><tr class="bg-surface text-left"><th class="px-4 py-2.5 font-semibold">รหัส</th>'
+        + '<th class="px-4 py-2.5 font-semibold">ชื่อ-สกุล</th>'
+        + '<th class="px-3 py-2.5 font-semibold text-center">ชั้นปี</th>'
+        + '<th class="px-3 py-2.5 font-semibold text-center">ชั่วโมงรวม</th>'
+        + '<th class="px-3 py-2.5 font-semibold text-center">ต่างจากค่ากลาง</th>'
+        + '<th class="px-3 py-2.5 font-semibold text-center">เหตุผล</th></tr></thead><tbody>'
+        + top.map(function (x) {
+            var d = Math.round((x.total - mid) * 100) / 100;
+            var up = d > 0;
+            return '<tr class="border-t hover:bg-gray-50">'
+              + '<td class="px-4 py-2.5 font-mono text-primary">' + esc(x.sid) + '</td>'
+              + '<td class="px-4 py-2.5">' + esc(x.name) + '</td>'
+              + '<td class="px-3 py-2.5 text-center">' + esc(x.level) + '</td>'
+              + '<td class="px-3 py-2.5 text-center tabular-nums font-semibold">' + fx(x.total) + '</td>'
+              + '<td class="px-3 py-2.5 text-center tabular-nums ' + (up ? 'text-amber-600' : 'text-sky-600') + '">'
+              + (up ? '+' : '') + fx(d) + '</td>'
+              + '<td class="px-3 py-2.5 text-center text-xs">'
+              + (x.ovr ? '<span class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">ปรับเฉพาะราย</span>'
+                       : '<span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">กิจกรรมที่เข้าร่วม</span>')
+              + '</td></tr>';
+          }).join('')
+        + '</tbody></table></div>';
+
+    return '<div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">'
+      + card('นักศึกษาทั้งหมด', list.length, 'ที่มีข้อมูลภาระงาน')
+      + card('ค่ากลางต่อคน', fx(mid), 'ชั่วโมงถ่วงน้ำหนักทั้งปี', '#1e6fba')
+      + card('สูงสุด', fx(max), 'ชั่วโมง', '#d97706')
+      + card('ต่ำสุด', fx(min), 'ชั่วโมง', '#0284c7')
+      + card('ต่างจากกลุ่ม', diff.length, 'เกิน ±10% ของค่ากลาง', diff.length ? '#d97706' : '#059669')
+      + '</div>'
+      + '<div class="bg-white rounded-2xl p-5 border border-blue-100 mb-5">'
+      + '<div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">'
+      + '<h3 class="font-bold">การกระจายภาระงานรายคน ปีการศึกษา ' + esc(st.year) + '</h3>'
+      + '<span class="text-xs text-gray-400">แกนนอนคือชั่วโมงรวมต่อคน · ตัวเลขบนแท่งคือจำนวนนักศึกษา</span></div>'
+      + '<p class="text-xs text-gray-500 mb-3">แท่งสีเข้มคือช่วงที่ค่ากลางตกอยู่ — ยิ่งแท่งกระจายกว้าง แปลว่านักศึกษาแบกภาระงานต่างกันมาก</p>'
+      + '<div class="flex items-end gap-1.5 overflow-x-auto pb-1" style="height:150px">' + bars + '</div>'
+      + '</div>'
+      + '<div class="bg-white rounded-2xl p-5 border border-blue-100 mb-5">'
+      + '<h3 class="font-bold mb-3">นักศึกษาที่ภาระงานต่างจากเพื่อนร่วมชั้นมากที่สุด'
+      + (diff.length > 15 ? ' <span class="text-xs font-normal text-gray-400">(แสดง 15 อันดับแรกจาก ' + diff.length + ' คน)</span>' : '')
+      + '</h3>' + tbl + '</div>';
+  }
+
   function summaryTab() {
     var st = state();
     var cells = [], grand = 0, cohortTotal = 0;
@@ -229,7 +367,8 @@
         + '<td class="px-4 py-3 text-center">' + (x.ovr ? '<span class="px-2 py-0.5 rounded-full text-xs bg-amber-50 text-amber-700">' + x.ovr + ' ราย</span>' : '<span class="text-gray-300">-</span>') + '</td></tr>';
     }).join('');
 
-    return '<div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">' + tiles + '</div>'
+    return spreadBlock()
+      + '<div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">' + tiles + '</div>'
       + '<div class="bg-white rounded-2xl p-5 border border-blue-100">'
       + '<div class="flex flex-wrap items-center justify-between gap-2 mb-3">'
       + '<h3 class="font-bold">สรุปชั่วโมงภาระงาน ปีการศึกษา ' + esc(st.year) + '</h3>'
@@ -372,11 +511,132 @@
           + '</div>'
           + '<div class="col-span-2">' + inp(m.key, i, 'hours', r.hours, 'number', readonly, 'w-full text-center') + '</div>'
           + (readonly ? '' : '<div class="col-span-1 pt-2"><button type="button" onclick="wlRowDel(\'' + m.key + '\',' + i + ')" class="text-red-400 hover:text-red-600"><i data-lucide="x" class="w-4 h-4"></i></button></div>')
+          + '<div class="col-span-12 -mt-1">' + partLine(m.key, i, r, readonly) + '</div>'
           + '</div>';
       }).join('') + '</div>';
     }
     return '<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-3">' + head + body + '</div>';
   }
+
+  // บรรทัดบอกว่ากิจกรรมนี้นับให้ใครบ้าง พร้อมปุ่มเลือก
+  function partLine(mkey, i, r, readonly) {
+    var list = partOf(r);
+    var total = cohortStudents(state().level).length;
+    var txt = list.length
+      ? '<span class="text-amber-700">เฉพาะ ' + list.length + ' คน</span>'
+      : '<span class="text-gray-500">นักศึกษาทุกคนในชั้น' + (total ? ' (' + total + ' คน)' : '') + '</span>';
+    return '<div class="flex items-center gap-2 text-[11px] pl-1">'
+      + '<i data-lucide="users" class="w-3.5 h-3.5 text-gray-400"></i>'
+      + '<span>ผู้เข้าร่วม: ' + txt + '</span>'
+      + (readonly ? '' :
+          '<button type="button" onclick="wlPickStudents(\'' + mkey + '\',' + i + ')" '
+          + 'class="text-primary hover:underline">เลือกนักศึกษา</button>'
+          + (list.length ? ' <button type="button" onclick="wlClearStudents(\'' + mkey + '\',' + i + ')" '
+              + 'class="text-gray-400 hover:text-gray-600">ล้าง (ให้นับทุกคน)</button>' : ''))
+      + '</div>';
+  }
+
+  /* ---------- กล่องเลือกนักศึกษาเข้าร่วมกิจกรรม ----------
+     กิจกรรมนอกการเรียนการสอนไม่ได้มีนักศึกษาเข้าร่วมทุกคน
+     จึงติ๊กเลือกได้ทีละหลายคน แทนการเพิ่มทีละคน */
+  window.wlPickStudents = function (mkey, i) {
+    var st = state();
+    var d = st.draft || draft();
+    var r = (d[mkey] || [])[i];
+    if (!r) return;
+    APP._wlPick = { mkey: mkey, i: i, sel: {}, q: '' };
+    partOf(r).forEach(function (sid) { APP._wlPick.sel[sid] = 1; });
+    showModal('เลือกนักศึกษาที่เข้าร่วมกิจกรรม', pickBody());
+    setTimeout(function () { if (window.lucide) lucide.createIcons(); }, 30);
+  };
+
+  function pickBody() {
+    var p = APP._wlPick || { sel: {}, q: '' };
+    var st = state();
+    var all = cohortStudents(st.level);
+    var q = norm(p.q).toLowerCase();
+    var list = all.filter(function (s) {
+      return !q || (norm(s.student_id) + ' ' + norm(s.name)).toLowerCase().indexOf(q) >= 0;
+    });
+    var count = Object.keys(p.sel).filter(function (k) { return p.sel[k]; }).length;
+
+    return '<div class="space-y-3">'
+      + '<div class="flex flex-wrap items-center gap-2">'
+      + '<input id="wlPickSearch" value="' + esc(p.q) + '" placeholder="ค้นหารหัส/ชื่อ..." '
+      + 'oninput="wlPickSet(\'q\',this.value)" class="flex-1 min-w-[180px] border rounded-xl px-3 py-2 text-sm">'
+      + '<button type="button" onclick="wlPickAll(1)" class="px-3 py-2 rounded-xl border text-xs text-gray-600 hover:bg-gray-50">เลือกที่แสดงทั้งหมด</button>'
+      + '<button type="button" onclick="wlPickAll(0)" class="px-3 py-2 rounded-xl border text-xs text-gray-600 hover:bg-gray-50">ไม่เลือกเลย</button>'
+      + '</div>'
+      + '<div class="text-xs text-gray-500">เลือกแล้ว <b id="wlPickCount" class="text-primary">' + count + '</b> คน '
+      + 'จากนักศึกษาชั้นปีที่ ' + esc(st.level) + ' ทั้งหมด ' + all.length + ' คน'
+      + ' · แสดง ' + list.length + ' รายการ</div>'
+      + '<div class="border rounded-xl max-h-[45vh] overflow-y-auto divide-y">'
+      + (list.length ? list.map(function (s) {
+          var on = !!p.sel[s.student_id];
+          return '<label class="flex items-center gap-3 px-3 py-2 hover:bg-surface cursor-pointer">'
+            + '<input type="checkbox" ' + (on ? 'checked' : '') + ' value="' + esc(s.student_id) + '" '
+            + 'onchange="wlPickOne(this.value,this.checked)" class="w-4 h-4">'
+            + '<span class="font-mono text-xs text-gray-400 w-28">' + esc(s.student_id) + '</span>'
+            + '<span class="text-sm">' + esc(s.name) + '</span></label>';
+        }).join('') : '<p class="px-3 py-6 text-center text-sm text-gray-400">ไม่พบนักศึกษา</p>')
+      + '</div>'
+      + '<div class="flex items-center gap-2">'
+      + '<button type="button" onclick="wlPickApply()" class="flex-1 bg-primary text-white py-2.5 rounded-xl text-sm">ใช้รายชื่อนี้</button>'
+      + '<button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl border text-sm text-gray-600">ยกเลิก</button>'
+      + '</div>'
+      + '<p class="text-[11px] text-gray-400">ถ้าไม่เลือกใครเลย ระบบจะนับกิจกรรมนี้ให้นักศึกษาทุกคนในชั้น</p>'
+      + '</div>';
+  }
+
+  window.wlPickSet = function (k, v) {
+    if (!APP._wlPick) return;
+    APP._wlPick[k] = v;
+    // วาดเฉพาะเนื้อในกล่อง ไม่ปิดกล่อง เพื่อไม่ให้เคอร์เซอร์ในช่องค้นหาหลุด
+    var wrap = document.querySelector('#modalContainer .space-y-3');
+    if (wrap) {
+      wrap.outerHTML = pickBody();
+      var inp2 = document.getElementById('wlPickSearch');
+      if (inp2) { inp2.focus(); inp2.setSelectionRange(inp2.value.length, inp2.value.length); }
+      if (window.lucide) lucide.createIcons();
+    }
+  };
+  window.wlPickOne = function (sid, on) {
+    if (!APP._wlPick) return;
+    if (on) APP._wlPick.sel[sid] = 1; else delete APP._wlPick.sel[sid];
+    var c = document.getElementById('wlPickCount');
+    if (c) c.textContent = Object.keys(APP._wlPick.sel).length;
+  };
+  window.wlPickAll = function (on) {
+    if (!APP._wlPick) return;
+    var p = APP._wlPick, st = state();
+    var q = norm(p.q).toLowerCase();
+    cohortStudents(st.level).forEach(function (s) {
+      if (q && (norm(s.student_id) + ' ' + norm(s.name)).toLowerCase().indexOf(q) < 0) return;
+      if (on) p.sel[s.student_id] = 1; else delete p.sel[s.student_id];
+    });
+    wlPickSet('q', p.q);
+  };
+  window.wlPickApply = function () {
+    var p = APP._wlPick;
+    if (!p) return;
+    var d = state().draft || draft();
+    var r = (d[p.mkey] || [])[p.i];
+    if (!r) { closeModal(); return; }
+    var all = cohortStudents(state().level).length;
+    var sel = Object.keys(p.sel).filter(function (k) { return p.sel[k]; });
+    // เลือกครบทุกคน = เท่ากับไม่เจาะจง เก็บเป็นค่าว่างจะอ่านง่ายกว่า
+    r.students = (sel.length && sel.length < all) ? sel : [];
+    APP._wlPick = null;
+    closeModal();
+    if (state().editSid) wlEditStudent(state().editSid, true); else renderCurrentPage();
+  };
+  window.wlClearStudents = function (mkey, i) {
+    var d = state().draft || draft();
+    var r = (d[mkey] || [])[i];
+    if (!r) return;
+    r.students = [];
+    if (state().editSid) wlEditStudent(state().editSid, true); else renderCurrentPage();
+  };
 
   window.wlUpdateTotals = function () {
     var d = state().draft;
@@ -516,7 +776,7 @@
 
     var body = list.slice(0, 300).map(function (s) {
       var ovr = overrideOf(s.student_id, st.year, st.sem);
-      var c = calc(plan, ovr);
+      var c = calc(plan, ovr, s.student_id);
       return '<tr class="border-t hover:bg-gray-50">'
         + '<td class="px-4 py-2.5 font-mono text-primary">' + esc(s.student_id) + '</td>'
         + '<td class="px-4 py-2.5">' + esc(s.name) + '</td>'
