@@ -13,11 +13,14 @@
 (function () {
   'use strict';
 
+  // ชื่อ ลำดับ และสัดส่วน ตามเอกสารหลักสูตร ข้อ 1.6 การกำหนดภาระงานของนักศึกษา
+  //   ด้านวิชาการ 40% · ด้านวิจัย 10% · ด้านบริการวิชาการ 15% · ด้านกิจการนักศึกษา 15% · ใช้ชีวิตส่วนตัว 20%
+  // key/field เดิมไม่เปลี่ยน ข้อมูลที่บันทึกไว้แล้วจึงใช้ต่อได้ทั้งหมด
   var MISSIONS = [
-    { key: 'teaching', field: 'teaching_json', wkey: 'w_teaching', def: 0.40, label: 'พันธกิจการเรียนการสอน', short: 'การเรียนการสอน', color: '#1e6fba', bg: 'bg-blue-50', text: 'text-blue-700', subject: true },
-    { key: 'service', field: 'service_json', wkey: 'w_service', def: 0.15, label: 'พันธกิจบริการวิชาการ', short: 'บริการวิชาการ', color: '#0e9f6e', bg: 'bg-emerald-50', text: 'text-emerald-700' },
-    { key: 'research', field: 'research_json', wkey: 'w_research', def: 0.10, label: 'พันธกิจวิจัย/นวัตกรรม', short: 'วิจัย/นวัตกรรม', color: '#9061f9', bg: 'bg-purple-50', text: 'text-purple-700' },
-    { key: 'student', field: 'student_json', wkey: 'w_student', def: 0.15, label: 'พันธกิจพัฒนานักศึกษา (กิจการนักศึกษา)', short: 'พัฒนานักศึกษา', color: '#e3a008', bg: 'bg-amber-50', text: 'text-amber-700' },
+    { key: 'teaching', field: 'teaching_json', wkey: 'w_teaching', def: 0.40, label: 'พันธกิจด้านวิชาการ', short: 'ด้านวิชาการ', color: '#1e6fba', bg: 'bg-blue-50', text: 'text-blue-700', subject: true },
+    { key: 'research', field: 'research_json', wkey: 'w_research', def: 0.10, label: 'พันธกิจด้านวิจัย', short: 'ด้านวิจัย', color: '#9061f9', bg: 'bg-purple-50', text: 'text-purple-700' },
+    { key: 'service', field: 'service_json', wkey: 'w_service', def: 0.15, label: 'พันธกิจด้านบริการวิชาการ', short: 'บริการวิชาการ', color: '#0e9f6e', bg: 'bg-emerald-50', text: 'text-emerald-700' },
+    { key: 'student', field: 'student_json', wkey: 'w_student', def: 0.15, label: 'พันธกิจด้านกิจการนักศึกษา', short: 'กิจการนักศึกษา', color: '#e3a008', bg: 'bg-amber-50', text: 'text-amber-700' },
     { key: 'personal', field: 'personal_json', wkey: 'w_personal', def: 0.20, label: 'การใช้ชีวิตส่วนตัว', short: 'ใช้ชีวิตส่วนตัว', color: '#6b7280', bg: 'bg-gray-50', text: 'text-gray-600' }
   ];
   var ACT_KINDS = ['กิจกรรมที่', 'กิจกรรมโครงการ', 'กิจกรรมพิเศษ'];
@@ -149,7 +152,7 @@
     var p = window.__emsProfile || {};
     var list = p.workload_missions;
     if (typeof list === 'string') list = list.split(',');
-    if (!Array.isArray(list) || !list.length) list = ['service', 'research', 'student', 'personal'];
+    if (!Array.isArray(list) || !list.length) list = ['research', 'service', 'student', 'personal'];
     return list.map(function (x) { return String(x).trim(); })
       .filter(function (x) { return x && x !== 'teaching'; });
   }
@@ -1214,7 +1217,8 @@
       + '</div>'
       + '<div class="bg-white rounded-2xl p-5 border border-blue-100">'
       + '<h3 class="font-bold mb-1">เกณฑ์หน่วยชั่วโมงภาระงาน</h3>'
-      + '<p class="text-xs text-gray-500 mb-3">อ้างอิงจากเอกสารการกำหนดภาระงานของนักศึกษา</p>'
+      + '<p class="text-xs text-gray-500 mb-3">อ้างอิงเอกสารหลักสูตร ข้อ 1.6 การกำหนดภาระงานของนักศึกษา '
+      + '— ตารางนี้ใช้กับ<b class="text-gray-700">พันธกิจด้านวิชาการ</b> ส่วนพันธกิจด้านอื่นคิดชั่วโมงตามจริง</p>'
       + '<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="bg-surface text-left">'
       + '<th class="px-4 py-2 font-semibold">รายการ</th><th class="px-4 py-2 font-semibold text-center">หน่วย</th>'
       + '<th class="px-4 py-2 font-semibold text-center">ชั่วโมง</th></tr></thead><tbody>' + tbl + '</tbody></table></div>'

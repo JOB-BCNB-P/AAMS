@@ -10307,11 +10307,11 @@ function extraRolesFieldHTML(u) {
   </div>`;
 }
 // พันธกิจภาระงานนักศึกษาที่บัญชีหนึ่งได้รับมอบหมายให้บันทึก (ใช้กับบทบาท "เจ้าหน้าที่งานอื่นๆ")
-// พันธกิจการเรียนการสอนสงวนไว้ให้ผู้ดูแลระบบและงานวิชาการเท่านั้น จึงไม่มีให้เลือก
+// พันธกิจด้านวิชาการสงวนไว้ให้ผู้ดูแลระบบและงานวิชาการเท่านั้น จึงไม่มีให้เลือก
 const WORKLOAD_MISSION_CHOICES = [
-  ['service', 'พันธกิจบริการวิชาการ'],
-  ['research', 'พันธกิจวิจัย/นวัตกรรม'],
-  ['student', 'พันธกิจพัฒนานักศึกษา'],
+  ['research', 'พันธกิจด้านวิจัย'],
+  ['service', 'พันธกิจด้านบริการวิชาการ'],
+  ['student', 'พันธกิจด้านกิจการนักศึกษา'],
   ['personal', 'การใช้ชีวิตส่วนตัว']
 ];
 function workloadMissionFieldHTML(u) {
@@ -10322,7 +10322,7 @@ function workloadMissionFieldHTML(u) {
   return `<div>
     <label class="block text-xs text-gray-600 mb-1">พันธกิจภาระงานนักศึกษาที่บันทึกได้ <span class="text-gray-400">(ใช้กับบทบาท “เจ้าหน้าที่งานอื่นๆ” เท่านั้น)</span></label>
     <div class="grid grid-cols-2 gap-2">${boxes}</div>
-    <p class="text-[11px] text-gray-400 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>${none ? 'ไม่เลือกเลย = บันทึกได้ทั้ง 4 พันธกิจ' : 'บันทึกได้เฉพาะที่ติ๊กไว้'} · พันธกิจการเรียนการสอนสงวนไว้ให้ผู้ดูแลระบบและงานวิชาการ</p>
+    <p class="text-[11px] text-gray-400 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>${none ? 'ไม่เลือกเลย = บันทึกได้ทั้ง 4 พันธกิจ' : 'บันทึกได้เฉพาะที่ติ๊กไว้'} · พันธกิจด้านวิชาการสงวนไว้ให้ผู้ดูแลระบบและงานวิชาการ</p>
   </div>`;
 }
 function collectWorkloadMissions(formId) {
