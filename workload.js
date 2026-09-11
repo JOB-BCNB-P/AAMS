@@ -986,10 +986,24 @@
   })();
 
   (function () {
+    // แทรกปุ่มเมนูให้ปลอดภัย
+    //   เมนูอ้างอิงบางตัวอยู่ในกลุ่มที่พับได้ จึงไม่ใช่ลูกโดยตรงของแถบเมนู
+    //   ต้องไต่ขึ้นไปหาบรรพบุรุษที่เป็นลูกของแถบเมนูก่อน ไม่งั้น insertBefore จะล้มเหลว
+    function insertNav(nav, btn, selector) {
+      var ref = nav.querySelector(selector);
+      while (ref && ref.parentNode && ref.parentNode !== nav) ref = ref.parentNode;
+      if (ref && ref.parentNode === nav) nav.insertBefore(btn, ref);
+      else nav.appendChild(btn);
+    }
+
     var orig = window.buildSidebar;
     if (typeof orig !== 'function') return;
     window.buildSidebar = function () {
       orig.apply(this, arguments);
+      try { addItem(); } catch (e) { console.warn('เพิ่มเมนู ภาระงานนักศึกษา ไม่สำเร็จ:', e); }
+    };
+
+    function addItem() {
       var perms = (APP.permissions && APP.permissions[APP.currentRole]) || {};
       if (!perms.workload) return;
       var nav = document.getElementById('sidebarNav');
@@ -999,9 +1013,8 @@
       btn.setAttribute('data-page', 'workload');
       btn.className = 'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-700 hover:bg-surface hover:text-primary transition';
       btn.innerHTML = '<i data-lucide="gauge" class="w-5 h-5 flex-shrink-0"></i>ภาระงานนักศึกษา';
-      var before = nav.querySelector('[data-page="survey"], [data-page="surveyManage"], [data-page="services"]');
-      if (before) nav.insertBefore(btn, before); else nav.appendChild(btn);
+      insertNav(nav, btn, '[data-page="survey"], [data-page="services"]');
       if (window.lucide) lucide.createIcons();
-    };
+    }
   })();
 })();

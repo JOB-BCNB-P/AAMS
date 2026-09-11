@@ -417,10 +417,24 @@
   })();
 
   (function () {
+    // แทรกปุ่มเมนูให้ปลอดภัย
+    //   เมนูอ้างอิงบางตัวอยู่ในกลุ่มที่พับได้ จึงไม่ใช่ลูกโดยตรงของแถบเมนู
+    //   ต้องไต่ขึ้นไปหาบรรพบุรุษที่เป็นลูกของแถบเมนูก่อน ไม่งั้น insertBefore จะล้มเหลว
+    function insertNav(nav, btn, selector) {
+      var ref = nav.querySelector(selector);
+      while (ref && ref.parentNode && ref.parentNode !== nav) ref = ref.parentNode;
+      if (ref && ref.parentNode === nav) nav.insertBefore(btn, ref);
+      else nav.appendChild(btn);
+    }
+
     var orig = window.buildSidebar;
     if (typeof orig !== 'function') return;
     window.buildSidebar = function () {
       orig.apply(this, arguments);
+      try { addItem(); } catch (e) { console.warn('เพิ่มเมนู ข้อมูลหลักสูตร ไม่สำเร็จ:', e); }
+    };
+
+    function addItem() {
       var perms = (APP.permissions && APP.permissions[APP.currentRole]) || {};
       if (!perms.curriculum) return;
       var nav = document.getElementById('sidebarNav');
@@ -431,9 +445,8 @@
       btn.className = 'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-700 hover:bg-surface hover:text-primary transition';
       btn.innerHTML = '<i data-lucide="graduation-cap" class="w-5 h-5 flex-shrink-0"></i>ข้อมูลหลักสูตร';
       // วางไว้ก่อนเมนูปฏิทินกิจกรรมวิชาการ ให้อยู่ต้น ๆ ของกลุ่มงานวิชาการ
-      var before = nav.querySelector('[data-page="schedule"], [data-page="subjects"], [data-page="teacherDirectory"]');
-      if (before) nav.insertBefore(btn, before); else nav.appendChild(btn);
+      insertNav(nav, btn, '[data-page="schedule"]');
       if (window.lucide) lucide.createIcons();
-    };
+    }
   })();
 })();
