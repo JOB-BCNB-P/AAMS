@@ -119,17 +119,23 @@
 
   // เป้าหมายรวมทั้งปีการศึกษาของชั้นปีหนึ่ง (รวมทุกภาคที่มีข้อมูล)
   function yearTarget(year, level) {
-    var out = { frame: 0, ok: false };
+    // รวมฐานชั่วโมงของทุกภาคก่อน แล้วค่อยคิดเป้าหมายครั้งเดียว
+    // ถ้าคิดทีละภาคแล้วเอาค่าที่ปัดทศนิยมแล้วมาบวกกัน ผลรวมจะเพี้ยนจากสูตรเล็กน้อย
+    var out = { frame: 0, ok: false, base: 0 };
     MISSIONS.forEach(function (m) { out[m.key] = 0; });
+    var ref = null, base = 0;
     SEMS.forEach(function (sm) {
       var p = planOf(year, level, sm);
       if (!p) return;
-      var t = targetOf(p);
-      if (t.frame > 0) out.ok = true;
-      MISSIONS.forEach(function (m) { out[m.key] += t[m.key]; });
-      out.frame += t.frame;
+      if (!ref) ref = p;
+      base += acadBase(p);
     });
-    out.frame = Math.round(out.frame * 100) / 100;
+    if (!ref) return out;
+    var t = targetFrom(ref, base);
+    MISSIONS.forEach(function (m) { out[m.key] = t[m.key]; });
+    out.frame = t.frame;
+    out.base = base;
+    out.ok = t.frame > 0;
     return out;
   }
   function meta(rec) {
