@@ -265,9 +265,14 @@
         + '<p class="text-sm text-gray-800 leading-relaxed flex-1">' + esc(p.statement_th) + '</p></div>'
         + (subs.length
             ? '<ul class="mt-3 ml-16 space-y-1.5">' + subs.map(function (x) {
+                var n = courseCountOf(x.plo_code);
                 return '<li class="text-sm text-gray-600 flex gap-2">'
                   + '<span class="font-mono text-xs text-gray-400 flex-shrink-0 pt-0.5">' + esc(x.plo_code) + '</span>'
-                  + '<span>' + esc(x.statement_th) + '</span></li>';
+                  + '<span class="flex-1">' + esc(x.statement_th) + '</span>'
+                  + '<span class="flex-shrink-0 text-xs px-2 py-0.5 rounded-lg '
+                  + (n ? 'bg-surface text-gray-500' : 'bg-red-50 text-red-600') + '" '
+                  + 'title="จำนวนรายวิชาที่รับผิดชอบผลลัพธ์ข้อนี้">'
+                  + (n ? n + ' วิชา' : 'ยังไม่มีรายวิชา') + '</span></li>';
               }).join('') + '</ul>'
             : '')
         + (s(p.teaching_th) || s(p.assess_th)
@@ -278,6 +283,17 @@
             : '')
         + '</div>';
     }).join('');
+  }
+
+  // นับจำนวนรายวิชาที่รับผิดชอบผลลัพธ์ข้อนั้น (จาก Curriculum Mapping)
+  function courseCountOf(ploCode) {
+    var st = state(), n = 0, seen = {};
+    mapOf(st.year).forEach(function (m) {
+      if (s(m.plo_code) !== s(ploCode)) return;
+      var c = s(m.course_code);
+      if (c && !seen[c]) { seen[c] = 1; n++; }
+    });
+    return n;
   }
 
   function block(title, text, cls) {
@@ -301,16 +317,39 @@
     var key = {};
     rows.forEach(function (m) { key[s(m.course_code) + '|' + s(m.plo_code)] = s(m.level); });
 
-    var legend = '<div class="flex flex-wrap gap-2 mb-4">'
+    var tally = {};
+    rows.forEach(function (m) { var l = s(m.level); if (l) tally[l] = (tally[l] || 0) + 1; });
+    var legend = '<div class="flex flex-wrap items-center gap-2 mb-4">'
       + Object.keys(LEVELS).map(function (k) {
           return '<span class="px-2.5 py-1 rounded-lg text-xs ' + LEVELS[k].cls + '">'
-            + '<b>' + k + '</b> ' + esc(LEVELS[k].label) + ' · ' + esc(LEVELS[k].th) + '</span>';
+            + '<b>' + k + '</b> ' + esc(LEVELS[k].label) + ' · ' + esc(LEVELS[k].th)
+            + (tally[k] ? ' <b>(' + tally[k] + ')</b>' : '') + '</span>';
         }).join('')
-      + '</div>';
+      + '<span class="text-xs text-gray-400 ml-auto">' + courses.length + ' รายวิชา × '
+      + plos.length + ' ผลลัพธ์ย่อย · เลื่อนตารางไปทางขวาเพื่อดูให้ครบ</span></div>';
 
-    var head = '<tr class="bg-surface"><th class="px-3 py-2 text-left text-xs font-semibold sticky left-0 bg-surface z-10">รายวิชา</th>'
+    // แถวบน: จัดกลุ่มตาม PLO หลัก เพื่อให้อ่านตารางกว้าง ๆ ได้ง่ายขึ้น
+    var groups = [], last = null;
+    plos.forEach(function (p) {
+      var parent = s(p.parent_code) || s(p.plo_code);
+      if (last && last.parent === parent) { last.span++; return; }
+      last = { parent: parent, span: 1 };
+      groups.push(last);
+    });
+    var mainOf = {};
+    plosOf(y).forEach(function (p) { if (!s(p.parent_code)) mainOf[s(p.plo_code)] = p; });
+
+    var head = '<tr class="bg-surface">'
+      + '<th rowspan="2" class="px-3 py-2 text-left text-xs font-semibold sticky left-0 bg-surface z-10 align-bottom">รายวิชา</th>'
+      + groups.map(function (g, i) {
+          var m = mainOf[g.parent];
+          return '<th colspan="' + g.span + '" class="px-1 py-1.5 text-center text-[10px] font-semibold whitespace-nowrap '
+            + (i % 2 ? 'bg-blue-50/60' : '') + '" title="' + esc(m ? m.statement_th : '') + '">'
+            + esc(g.parent.replace('PLO', 'PLO ')) + '</th>';
+        }).join('')
+      + '</tr><tr class="bg-surface">'
       + plos.map(function (p) {
-          return '<th class="px-1 py-2 text-center text-[10px] font-semibold whitespace-nowrap" title="'
+          return '<th class="px-1 py-1.5 text-center text-[10px] font-normal text-gray-500 whitespace-nowrap" title="'
             + esc(p.statement_th) + '">' + esc(p.plo_code) + '</th>';
         }).join('') + '</tr>';
 
