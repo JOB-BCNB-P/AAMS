@@ -81,31 +81,6 @@
     return !list.length || list.indexOf(String(sid)) !== -1;
   }
 
-  /* ---------------- ฐานชั่วโมงพันธกิจด้านวิชาการ ----------------
-     พันธกิจด้านวิชาการ = เวลาเรียน/ฝึกปฏิบัติตามตาราง + เวลาทำงานที่รายวิชามอบหมาย
-     ทุกค่าต้องกรอกเอง ระบบไม่ดึงชั่วโมงจากที่ใดมาคิดให้เอง
-     ระบุเวลาเรียนตลอดภาคได้ 2 วิธี
-       total  = กรอกชั่วโมงรวมตลอดภาคเอง — ใช้เมื่อรวมชั่วโมงที่จัดจริงมาแล้ว
-                เช่น ภาคทฤษฎี ภาคปฏิบัติ และฝึกภาคสนามมีตารางต่างกัน
-       weekly = ให้ระบบคูณให้ จากชั่วโมงต่อสัปดาห์ x จำนวนสัปดาห์ (ใช้เมื่อแต่ละสัปดาห์เรียนเท่ากัน)
-     ไม่ว่าวิธีใด ต้องไม่นับช่วงเวลาซ้ำกัน
-     ยังไม่กรอก = ชั่วโมงเวลาเรียนเป็น 0 ไม่มีตัวเลขงอกขึ้นมาเอง */
-  function acadMode(rec) {
-    var v = rec ? norm(rec.acad_mode) : '';
-    if (v === 'weekly' || v === 'total') return v;
-    // ข้อมูลเก่าที่ยังไม่มีคอลัมน์นี้ — ดูจากช่องที่เคยกรอกไว้เท่านั้น ไม่เดาจากที่อื่น
-    if (rec && !(n(rec.acad_hours) > 0) && n(rec.acad_hours_week) > 0 && n(rec.acad_weeks) > 0) return 'weekly';
-    return 'total';
-  }
-  function contactHours(plan) {
-    if (!plan) return 0;
-    if (acadMode(plan) === 'weekly') {
-      var hw = n(plan.acad_hours_week), wk = n(plan.acad_weeks);
-      return (hw > 0 && wk > 0) ? hw * wk : 0;
-    }
-    return n(plan.acad_hours);
-  }
-
   function calc(plan, ovr, sid) {
     var out = { raw: {}, weighted: {}, total: 0 };
     MISSIONS.forEach(function (m) {
@@ -116,21 +91,12 @@
       out.weighted[m.key] = Math.round(raw * weightOf(plan, m) * 100) / 100;
       out.total += out.weighted[m.key];
     });
-    // เวลาเรียน/ฝึกปฏิบัติตามตาราง นับเป็นภาระงานด้านวิชาการของนักศึกษาทุกคนในชั้น
-    var ch = contactHours(plan);
-    if (ch) {
-      var t = MISSIONS[0];
-      out.raw[t.key] += ch;
-      out.classHours = ch;
-      out.weighted[t.key] = Math.round(out.raw[t.key] * weightOf(plan, t) * 100) / 100;
-      out.total += Math.round(ch * weightOf(plan, t) * 100) / 100;
-    } else { out.classHours = 0; }
     out.total = Math.round(out.total * 100) / 100;
     return out;
   }
 
   /* ---------------- เป้าหมายชั่วโมงของแต่ละพันธกิจ ----------------
-     ฐาน = ชั่วโมงด้านวิชาการตลอดภาค ซึ่งถือเป็นร้อยละ 40 ของภาระงานทั้งหมด
+     ฐาน = ชั่วโมงพันธกิจด้านวิชาการที่กรอกไว้ในภาคนั้น ถือเป็นร้อยละ 40 ของภาระงานทั้งหมด
      ชั่วโมงรวมตามกรอบ = ฐาน ÷ 0.40
      ชั่วโมงของด้านอื่น   = ฐาน x (ร้อยละของด้านนั้น ÷ 40)
      ใช้ร้อยละของด้านวิชาการที่บันทึกไว้จริงเป็นตัวหาร เผื่อวิทยาลัยปรับสัดส่วนภายหลัง */
@@ -256,12 +222,6 @@
     var body = st.tab === 'plan' ? planTab()
       : st.tab === 'rate' ? rateTab() : summaryTab();
     return head + bar + body;
-  };
-
-  window.wlAcadSet = function (k, v) {
-    var d = state().draft || draft();
-    d[k] = v;
-    renderCurrentPage();   // วาดใหม่เพื่อให้ตารางเป้าหมายอัปเดตตาม
   };
 
   window.wlSet = function (k, v) {
@@ -540,13 +500,7 @@
     // เลือกคนเดียวในโหมดกลุ่ม = แก้เฉพาะรายคนนั้น จึงตั้งต้นจากค่าที่เคยปรับไว้
     var sel = groupSel();
     var base = (st.mode === 'group' && sel.length === 1) ? overrideOf(sel[0], st.year, st.sem) : null;
-    var d = {
-      weights: {},
-      acad_mode: acadMode(plan),
-      acad_hours: plan ? norm(plan.acad_hours) : '',
-      acad_hours_week: plan ? norm(plan.acad_hours_week) : '',
-      acad_weeks: plan ? norm(plan.acad_weeks) : ''
-    };
+    var d = { weights: {} };
     MISSIONS.forEach(function (m) {
       var src = (base && norm(base[m.field]) !== '') ? base : plan;
       d[m.key] = rows(src, m).map(function (r) { return Object.assign({}, r); });
@@ -918,94 +872,6 @@
       + '<tbody>' + body + '</tbody></table></div></div>';
   }
 
-  /* กล่องฐานชั่วโมงด้านวิชาการ + ตารางเป้าหมายของแต่ละพันธกิจ
-     ตัวเลขคำนวณจากร่างที่กำลังกรอก จึงเห็นผลทันทีก่อนกดบันทึก */
-  function acadBaseBlock(d) {
-    var st = state();
-    var plan = planOf(st.year, st.level, st.sem);
-    var mode = (d.acad_mode === 'weekly') ? 'weekly' : 'total';
-    var hw = n(d.acad_hours_week), wk = n(d.acad_weeks);
-    var cls = (mode === 'total') ? n(d.acad_hours) : ((hw > 0 && wk > 0) ? hw * wk : 0);
-    var work = (d[MISSIONS[0].key] || []).reduce(function (s, r) { return s + n(r.hours); }, 0);
-    var base = cls + work;
-    var tg = targetFrom(plan, base);
-    var acadPct = tg.acadPct;
-
-    var num = function (field, val, ph, w) {
-      return '<input type="number" min="0" step="0.5" value="' + esc(val) + '" '
-        + 'onchange="wlAcadSet(\'' + field + '\',this.value)" placeholder="' + ph + '" '
-        + 'class="' + (w || 'w-28') + ' border rounded-lg px-2 py-1.5 text-sm text-center">';
-    };
-    var tab = function (k, label) {
-      var on = mode === k;
-      return '<button type="button" onclick="wlAcadSet(\'acad_mode\',\'' + k + '\')" class="px-3 py-1.5 text-xs '
-        + (on ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50') + '">' + label + '</button>';
-    };
-
-    var fields = (mode === 'total')
-      ? '<div><label class="block text-xs text-gray-600 mb-1">ชั่วโมงเรียน/ฝึกปฏิบัติตลอดภาค</label>'
-        + num('acad_hours', d.acad_hours, 'เช่น 360') + '</div>'
-        + '<div><label class="block text-xs text-gray-600 mb-1">จำนวนสัปดาห์ <span class="text-gray-400">(ไม่บังคับ)</span></label>'
-        + num('acad_weeks', d.acad_weeks, 'เช่น 15', 'w-24') + '</div>'
-      : '<div><label class="block text-xs text-gray-600 mb-1">ชั่วโมงเรียน/ฝึกปฏิบัติต่อสัปดาห์</label>'
-        + num('acad_hours_week', d.acad_hours_week, 'เช่น 24') + '</div>'
-        + '<div><label class="block text-xs text-gray-600 mb-1">จำนวนสัปดาห์ที่เรียน</label>'
-        + num('acad_weeks', d.acad_weeks, 'เช่น 15', 'w-24') + '</div>';
-
-    var howto = (mode === 'total')
-      ? 'กรอกชั่วโมงที่จัดจริงตลอดภาคได้เลย เหมาะกับกรณีที่ภาคทฤษฎี ภาคปฏิบัติ และฝึกภาคสนามมีตารางต่างกัน '
-        + '— รวมมาให้ครบทุกส่วนโดยไม่นับช่วงเวลาซ้ำกัน · จำนวนสัปดาห์กรอกไว้เพื่อให้ระบบแสดงค่าเฉลี่ยต่อสัปดาห์เท่านั้น'
-      : 'ใช้เมื่อแต่ละสัปดาห์มีชั่วโมงเรียนเท่ากัน ระบบจะคูณให้เป็นชั่วโมงตลอดภาค';
-
-    var rowsHTML = MISSIONS.map(function (m) {
-      var p = Math.round(weightOf(plan, m) * 1000) / 10;
-      return '<tr class="border-t"><td class="px-3 py-2">'
-        + '<span style="width:9px;height:9px;border-radius:50%;background:' + m.color + ';display:inline-block" class="mr-2"></span>'
-        + esc(m.label) + '</td>'
-        + '<td class="px-3 py-2 text-center tabular-nums text-gray-500">' + p + '%</td>'
-        + '<td class="px-3 py-2 text-center text-[11px] text-gray-400 whitespace-nowrap">'
-        + fx(base) + ' × ' + p + ' ÷ ' + acadPct + '</td>'
-        + '<td class="px-3 py-2 text-center tabular-nums font-semibold" style="color:' + m.color + '">' + fx(tg[m.key]) + '</td>'
-        + '<td class="px-3 py-2 text-center tabular-nums text-gray-600">' + (wk > 0 ? fx(tg[m.key] / wk) : '-') + '</td></tr>';
-    }).join('');
-
-    return '<div class="bg-white rounded-2xl p-5 border border-blue-100 mb-4">'
-      + '<div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">'
-      + '<h3 class="font-bold">ฐานชั่วโมงพันธกิจด้านวิชาการ</h3>'
-      + '<span class="text-xs text-gray-400">ชั้นปีที่ ' + esc(st.level) + ' ภาค ' + semName(st.sem) + ' ปีการศึกษา ' + esc(st.year) + '</span></div>'
-      + '<p class="text-xs text-gray-500 mb-3">ชั่วโมงด้านวิชาการตลอดภาคถือเป็นร้อยละ ' + acadPct + ' ของภาระงานทั้งหมด '
-      + 'ระบบจะเทียบสัดส่วนหาชั่วโมงของพันธกิจอื่นให้เอง</p>'
-      + '<div class="flex flex-wrap items-end gap-3 mb-2">'
-      + '<div><label class="block text-xs text-gray-600 mb-1">วิธีระบุชั่วโมง</label>'
-      + '<div class="inline-flex rounded-xl border border-gray-200 overflow-hidden">'
-      + tab('total', 'กรอกชั่วโมงรวมเอง') + tab('weekly', 'คูณจากต่อสัปดาห์') + '</div></div>'
-      + fields
-      + '<div class="text-sm text-gray-600 pb-1.5">'
-      + '<p>เวลาเรียน/ฝึกปฏิบัติ <b class="tabular-nums">' + fx(cls) + '</b> ชม.'
-      + ' + งานที่รายวิชามอบหมาย <b class="tabular-nums">' + fx(work) + '</b> ชม.'
-      + ' = ฐานด้านวิชาการ <b class="text-primary tabular-nums">' + fx(base) + '</b> ชม.</p>'
-      + '<p class="text-xs text-gray-500">ชั่วโมงรวมตามกรอบ = ' + fx(base) + ' ÷ ' + (acadPct / 100)
-      + ' = <b class="text-primary tabular-nums">' + fx(tg.frame) + '</b> ชม.ต่อภาค'
-      + (wk > 0 ? ' (เฉลี่ย ' + fx(tg.frame / wk) + ' ชม./สัปดาห์)' : '') + '</p></div></div>'
-      + '<p class="text-[11px] text-gray-400 mb-3"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>' + howto + '</p>'
-      + (base > 0
-        ? '<div class="overflow-x-auto"><table class="w-full text-sm">'
-          + '<thead><tr class="bg-surface text-left"><th class="px-3 py-2 font-semibold">ด้าน</th>'
-          + '<th class="px-3 py-2 font-semibold text-center">สัดส่วน</th>'
-          + '<th class="px-3 py-2 font-semibold text-center">วิธีคำนวณจากชั่วโมงด้านวิชาการ</th>'
-          + '<th class="px-3 py-2 font-semibold text-center">ชั่วโมงต่อภาค</th>'
-          + '<th class="px-3 py-2 font-semibold text-center">เฉลี่ยต่อสัปดาห์</th></tr></thead>'
-          + '<tbody>' + rowsHTML + '</tbody>'
-          + '<tfoot><tr class="border-t-2 bg-surface font-semibold"><td class="px-3 py-2">รวม</td>'
-          + '<td class="px-3 py-2 text-center tabular-nums">100%</td><td></td>'
-          + '<td class="px-3 py-2 text-center tabular-nums text-primary">' + fx(tg.frame) + '</td>'
-          + '<td class="px-3 py-2 text-center tabular-nums">' + (wk > 0 ? fx(tg.frame / wk) : '-') + '</td></tr></tfoot>'
-          + '</table></div>'
-        : '<p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">'
-          + 'ระบุชั่วโมงเรียน/ฝึกปฏิบัติตลอดภาค เพื่อให้ระบบคำนวณเป้าหมายของพันธกิจอื่น</p>')
-      + '</div>';
-  }
-
   function planTab() {
     var st = state();
     if (!canEdit()) return cohortPicker() + readonlyPlan();
@@ -1027,7 +893,7 @@
       + '<button onclick="wlSavePlan()" class="px-5 py-2.5 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm flex items-center gap-2 self-start">'
       + '<i data-lucide="save" class="w-4 h-4"></i>' + (group ? 'บันทึกให้ทุกคนที่เลือก' : 'บันทึกทุกพันธกิจที่ทำได้') + '</button></div>';
 
-    return cohortPicker() + modePicker() + card + (group ? '' : acadBaseBlock(d)) + missionScopeNote()
+    return cohortPicker() + modePicker() + card + missionScopeNote()
       + MISSIONS.map(function (m) {
           var cur = group
             ? (sel.length === 1 ? overrideOf(sel[0], st.year, st.sem) : null)
@@ -1095,10 +961,7 @@
 
     var payload = {
       type: 'workload_plan', academic_year: st.year, year_level: st.level, semester: st.sem,
-      updated_by: who, meta_json: JSON.stringify(mt),
-      acad_mode: (d.acad_mode === 'weekly') ? 'weekly' : 'total',
-      acad_hours: norm(d.acad_hours),
-      acad_hours_week: norm(d.acad_hours_week), acad_weeks: norm(d.acad_weeks)
+      updated_by: who, meta_json: JSON.stringify(mt)
     };
     payload[m.field] = json;
 
@@ -1154,10 +1017,7 @@
     mine.forEach(function (m) { mt[m.key] = { by: who, at: stampNow() }; });
     var payload = {
       type: 'workload_plan', academic_year: st.year, year_level: st.level, semester: st.sem,
-      updated_by: who, meta_json: JSON.stringify(mt),
-      acad_mode: (d.acad_mode === 'weekly') ? 'weekly' : 'total',
-      acad_hours: norm(d.acad_hours),
-      acad_hours_week: norm(d.acad_hours_week), acad_weeks: norm(d.acad_weeks)
+      updated_by: who, meta_json: JSON.stringify(mt)
     };
     mine.forEach(function (m) { payload[m.field] = JSON.stringify(d[m.key] || []); });
     var r = plan ? await GSheetDB.update(Object.assign({}, plan, payload)) : await GSheetDB.create(payload);
