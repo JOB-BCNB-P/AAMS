@@ -35,7 +35,10 @@ const EMSDB = (() => {
     'survey_config', 'survey_question', 'survey_response',
     'support_ticket',
     'workload_plan', 'workload_student', 'workload_rate',
-    'curriculum', 'curriculum_course', 'curriculum_plo', 'curriculum_map'
+    'curriculum', 'curriculum_course', 'curriculum_plo', 'curriculum_map',
+    // หมายเหตุ: ไม่ใส่ plo_score เพราะเป็นคะแนนรายคน อาจมีหลายหมื่นแถว
+    // หน้าเว็บดึงเฉพาะที่ต้องใช้ผ่าน ems_plo_scores() แทน
+    'plo_setting', 'plo_band', 'plo_clo'
   ];
 
   // ระลอกที่ 2 — ตารางใหญ่ที่ไม่จำเป็นต้องมีตอนเปิดหน้าแรก
@@ -48,7 +51,8 @@ const EMSDB = (() => {
     'alumni', 'app_user', 'user', 'login_log', 'password_log',
     'tracking', 'result_tracking', 'grade_tracking', 'file_tracking',
     'doc_request',
-    'workload_plan', 'workload_student', 'workload_rate'
+    'workload_plan', 'workload_student', 'workload_rate',
+    'plo_setting', 'plo_band', 'plo_clo'
   ]);
 
   const META = ['id', 'created_at', 'updated_at', 'extra', 'auth_user_id'];
