@@ -59,6 +59,7 @@ const EMSDB = (() => {
 
   let sb = null;                 // Supabase client
   let _schema = {};              // { table: [columns] }
+  let _nonString = {};           // { table: [คอลัมน์ที่ไม่ใช่ข้อความ] } — ค่าว่างต้องส่งเป็น null
   let _allData = [];
   let _onDataChanged = null;
   let _profile = null;           // ผลจาก ems_whoami()
@@ -101,8 +102,12 @@ const EMSDB = (() => {
       const raw = (obj[k] === null || obj[k] === undefined) ? '' : String(obj[k]);
       // คอลัมน์เวลาของฐานข้อมูล: ค่าว่างต้องไม่ถูกส่งไป (Postgres แปลง "" เป็นวันที่ไม่ได้)
       if (k === 'created_at' || k === 'updated_at') { if (raw.trim()) cols[k] = raw.trim(); return; }
-      if (known.includes(k) && !META.includes(k)) cols[k] = raw;
-      else extra[k] = raw;
+      if (known.includes(k) && !META.includes(k)) {
+        // คอลัมน์ตัวเลข/วันที่/บูลีน : ค่าว่างต้องเป็น null ไม่ใช่ "" (Postgres แปลงไม่ได้)
+        cols[k] = (raw.trim() === '' && (_nonString[tableName] || []).includes(k)) ? null : raw;
+        return;
+      }
+      extra[k] = raw;
     });
     return { cols, extra };
   }
@@ -390,7 +395,11 @@ const EMSDB = (() => {
   /* ---------------- AUTH ---------------- */
   async function loadSchema() {
     const { data, error } = await client().rpc('ems_schema');
-    if (!error && data) _schema = data;
+    if (!error && data) {
+      // คีย์ "__nonstring" ไม่ใช่ตาราง แต่เป็นบัญชีคอลัมน์ที่ไม่ใช่ข้อความของแต่ละตาราง
+      _nonString = data.__nonstring || {};
+      _schema = data;
+    }
   }
 
   let _authBlock = null;   // เหตุผลที่บัญชีถูกปิดกั้น (จบการศึกษา/ลาออก/ปิดใช้งาน)
