@@ -210,14 +210,16 @@
         + '<thead><tr class="bg-surface text-left">'
         + '<th class="px-3 py-2 font-semibold whitespace-nowrap">รหัสวิชา</th>'
         + '<th class="px-3 py-2 font-semibold">ชื่อรายวิชา</th>'
-        + '<th class="px-3 py-2 font-semibold text-center whitespace-nowrap">หน่วยกิต</th></tr></thead><tbody>'
+        + '<th class="px-3 py-2 font-semibold text-center whitespace-nowrap">หน่วยกิต</th>'
+        + '<th class="px-3 py-2 font-semibold text-center whitespace-nowrap">ชั่วโมง/ภาค</th></tr></thead><tbody>'
         + rows.map(function (c) {
             return '<tr class="border-t border-gray-50 hover:bg-surface/60">'
               + '<td class="px-3 py-2.5 font-mono text-xs text-gray-600 whitespace-nowrap">' + esc(c.course_code) + '</td>'
               + '<td class="px-3 py-2.5"><div class="text-gray-800">' + esc(c.name_th) + '</div>'
               + (s(c.name_en) ? '<div class="text-xs text-gray-400 italic">' + esc(c.name_en) + '</div>' : '') + '</td>'
               + '<td class="px-3 py-2.5 text-center whitespace-nowrap text-gray-700">' + esc(c.credits)
-              + '<span class="text-xs text-gray-400">(' + esc(c.h_theory) + '-' + esc(c.h_lab) + '-' + esc(c.h_self) + ')</span></td></tr>';
+              + '<span class="text-xs text-gray-400">(' + esc(c.h_theory) + '-' + esc(c.h_lab) + '-' + esc(c.h_self) + ')</span></td>'
+              + '<td class="px-3 py-2.5 text-center whitespace-nowrap">' + termHoursCell(c) + '</td></tr>';
           }).join('')
         + '</tbody></table></div></div>';
     }).join('');
@@ -225,13 +227,36 @@
     return search + (body || empty('ไม่พบรายวิชาที่ตรงกับคำค้น'));
   }
 
+  /* ชั่วโมงต่อภาคการศึกษาตามเอกสารหลักสูตร
+     วิชาบรรยาย/ทดลอง = ชั่วโมงต่อสัปดาห์ x 15 สัปดาห์
+     วิชาภาคปฏิบัติ   = ชั่วโมงต่อสัปดาห์ x 45 (ตามที่เอกสารหลักสูตรระบุไว้) */
+  function termHours(c) {
+    var v = function (k) { var x = parseFloat(s(c[k])); return isFinite(x) ? x : 0; };
+    return { theory: v('term_theory'), lab: v('term_lab'), practice: v('term_practice'), self: v('term_self') };
+  }
+  function termHoursCell(c) {
+    var h = termHours(c);
+    var contact = h.theory + h.lab + h.practice;
+    if (!contact && !h.self) return '<span class="text-gray-300">-</span>';
+    var part = [];
+    if (h.theory) part.push('ทฤษฎี ' + h.theory);
+    if (h.lab) part.push('ทดลอง ' + h.lab);
+    if (h.practice) part.push('ปฏิบัติ ' + h.practice);
+    if (h.self) part.push('ตนเอง ' + h.self);
+    return '<span class="text-gray-800 font-semibold tabular-nums">' + contact + '</span>'
+      + '<span class="block text-[11px] text-gray-400">' + part.join(' · ') + '</span>';
+  }
+
   window.curExportCourses = function () {
     var st = state();
     var rows = coursesOf(st.year);
-    var head = ['รหัสวิชา', 'ชื่อไทย', 'ชื่ออังกฤษ', 'หน่วยกิต', 'ทฤษฎี', 'ปฏิบัติ', 'ศึกษาด้วยตนเอง', 'หมวด'];
+    var head = ['รหัสวิชา', 'ชื่อไทย', 'ชื่ออังกฤษ', 'หน่วยกิต', 'ทฤษฎี/สัปดาห์', 'ทดลอง/สัปดาห์', 'ตนเอง/สัปดาห์',
+      'ทฤษฎี/ภาค', 'ทดลอง/ภาค', 'ปฏิบัติ/ภาค', 'ตนเอง/ภาค', 'หมวด'];
     var q = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
     var lines = [head.map(q).join(',')].concat(rows.map(function (c) {
-      return [c.course_code, c.name_th, c.name_en, c.credits, c.h_theory, c.h_lab, c.h_self, c.course_group].map(q).join(',');
+      var h = termHours(c);
+      return [c.course_code, c.name_th, c.name_en, c.credits, c.h_theory, c.h_lab, c.h_self,
+        h.theory, h.lab, h.practice, h.self, c.course_group].map(q).join(',');
     }));
     var blob = new Blob([String.fromCharCode(0xFEFF) + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
     var url = URL.createObjectURL(blob);
