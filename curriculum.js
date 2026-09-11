@@ -469,8 +469,9 @@
       btn.setAttribute('data-page', 'curriculum');
       btn.className = 'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-700 hover:bg-surface hover:text-primary transition';
       btn.innerHTML = '<i data-lucide="graduation-cap" class="w-5 h-5 flex-shrink-0"></i>ข้อมูลหลักสูตร';
-      // วางไว้ก่อนเมนูปฏิทินกิจกรรมวิชาการ ให้อยู่ต้น ๆ ของกลุ่มงานวิชาการ
-      insertNav(nav, btn, '[data-page="schedule"]');
+      // วางไว้ก่อนกลุ่ม "ระบบทะเบียน" เพราะข้อมูลหลักสูตรเป็นตัวตั้งต้นของรายวิชาและทะเบียนทั้งหมด
+      // ถ้าบัญชีนั้นไม่มีเมนูระบบทะเบียน ให้ถอยไปวางก่อนปฏิทินกิจกรรมวิชาการ
+      insertNav(nav, btn, '[data-page="students"], [data-page="studentInfo"], [data-page="schedule"]');
       if (window.lucide) lucide.createIcons();
     }
   })();

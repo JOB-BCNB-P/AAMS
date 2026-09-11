@@ -49,16 +49,45 @@
     return uniq(ys).sort(function (a, b) { return b.localeCompare(a, 'th', { numeric: true }); });
   }
 
+  /* ---------------- ตัวช่วยจำผลลัพธ์ภายในการวาดหน้าหนึ่งรอบ ----------------
+     หน้าสรุปผลเรียกฟังก์ชันเดิมซ้ำหลายพันครั้ง (แปลง JSON, กรองรายชื่อนักศึกษา, ค้นหาแผน)
+     จึงเก็บผลไว้ใช้ซ้ำตลอดการวาดรอบนั้น แล้วล้างทิ้งเมื่อวาดเสร็จ
+     ทำให้ไม่มีทางได้ค่าค้างจากข้อมูลเก่า เพราะการวาดรอบใหม่เริ่มจากศูนย์เสมอ */
+  var MEMO = null;
+  function memo(key, fn) {
+    if (!MEMO) return fn();
+    if (MEMO[key] === undefined) MEMO[key] = fn();
+    return MEMO[key];
+  }
+
   function rows(rec, m) {
     if (!rec) return [];
+    var id = rec.__backendId;
+    if (id && MEMO) return memo('r|' + id + '|' + m.key, function () { return parseRows(rec, m); });
+    return parseRows(rec, m);
+  }
+  function parseRows(rec, m) {
     try { var a = JSON.parse(rec[m.field] || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; }
   }
   function planOf(year, level, sem) {
-    return get('workload_plan').find(function (p) {
-      return norm(p.academic_year) === norm(year) && norm(p.year_level) === norm(level) && norm(p.semester) === norm(sem);
-    }) || null;
+    return memo('pl|' + year + '|' + level + '|' + sem, function () {
+      return get('workload_plan').find(function (p) {
+        return norm(p.academic_year) === norm(year) && norm(p.year_level) === norm(level) && norm(p.semester) === norm(sem);
+      }) || null;
+    });
+  }
+  // ทำดัชนีค่าเฉพาะรายครั้งเดียว แทนการไล่ค้นทีละคน (นักศึกษาหลายร้อยคน x ทุกภาค)
+  function ovrIndex() {
+    return memo('ovrIdx', function () {
+      var map = {};
+      get('workload_student').forEach(function (o) {
+        map[norm(o.student_id) + '|' + norm(o.academic_year) + '|' + norm(o.semester)] = o;
+      });
+      return map;
+    });
   }
   function overrideOf(sid, year, sem) {
+    if (MEMO) return ovrIndex()[norm(sid) + '|' + norm(year) + '|' + norm(sem)] || null;
     return get('workload_student').find(function (o) {
       return norm(o.student_id) === norm(sid) && norm(o.academic_year) === norm(year) && norm(o.semester) === norm(sem);
     }) || null;
@@ -167,6 +196,9 @@
 
   function cohortStudents(level, year) {
     var yr = year || state().year;
+    return memo('co|' + yr + '|' + level, function () { return cohortStudentsRaw(level, yr); });
+  }
+  function cohortStudentsRaw(level, yr) {
     var pfx = cohortPrefix(yr, level);
     var all = get('student');
     if (pfx) {
@@ -203,6 +235,11 @@
 
   /* ---------------- หน้าหลัก ---------------- */
   window.workloadPage = function workloadPage() {
+    MEMO = {};
+    try { return buildWorkloadPage(); } finally { MEMO = null; }
+  };
+
+  function buildWorkloadPage() {
     var st = state();
     var years = wlYears();
     // แท็บรายบุคคลถูกยุบเข้าไปอยู่ใน "กรอกภาระงาน" (โหมดกรอกเป็นกลุ่ม) แล้ว
@@ -219,7 +256,7 @@
 
     var bar = '<div class="flex gap-1 mb-5 border-b overflow-x-auto">'
       + tabs.map(function (t) {
-        return '<button onclick="wlSet(\'tab\',\'' + t[0] + '\')" class="px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 '
+        return '<button data-wl-tab="' + t[0] + '" onclick="wlSet(\'tab\',\'' + t[0] + '\')" class="px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 '
           + (st.tab === t[0] ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700') + '">'
           + '<i data-lucide="' + t[2] + '" class="w-4 h-4 inline mr-1"></i>' + t[1] + '</button>';
       }).join('') + '</div>';
@@ -228,7 +265,21 @@
     var body = st.tab === 'plan' ? planTab()
       : st.tab === 'rate' ? rateTab() : summaryTab();
     return head + bar + body;
-  };
+  }
+
+  /* กดแท็บแล้วต้องเห็นผลทันที
+     ระบบวาดหน้าใหม่ทั้งหน้าเมื่อเปลี่ยนแท็บ ซึ่งใช้เวลาสั้น ๆ แต่พอให้รู้สึกหน่วง
+     จึงเปลี่ยนสีปุ่มให้ก่อนในจังหวะที่กด แล้วค่อยวาดเนื้อหาในเฟรมถัดไป */
+  function paintTab(key) {
+    try {
+      var btns = document.querySelectorAll('[data-wl-tab]');
+      Array.prototype.forEach.call(btns, function (b) {
+        var on = b.getAttribute('data-wl-tab') === key;
+        b.className = 'px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 '
+          + (on ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700');
+      });
+    } catch (e) { /* ไม่สำเร็จก็ยังวาดหน้าใหม่ตามปกติ */ }
+  }
 
   window.wlSet = function (k, v) {
     var st = state();
@@ -236,6 +287,12 @@
     // ล้างร่างเฉพาะเมื่อเปลี่ยนขอบเขตข้อมูลที่กรอก — เปลี่ยนตัวกรองของหน้าสรุปไม่ต้องล้าง
     if (['year', 'level', 'sem', 'mode'].indexOf(k) !== -1) st.draft = null;
     if (k === 'mView') st.mq = '';
+    if (k === 'tab') {
+      paintTab(v);
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(renderCurrentPage);
+      else renderCurrentPage();
+      return;
+    }
     renderCurrentPage();
   };
 
@@ -253,37 +310,68 @@
      ชั่วโมงจริงใช้ดูสัดส่วนเวลาที่นักศึกษาใช้ไปกับแต่ละพันธกิจ
      ชั่วโมงถ่วงน้ำหนักใช้แสดงปริมาณภาระงานตามสัดส่วนของวิทยาลัย */
   function studentTotals(year) {
+    return memo('tot|' + year, function () { return studentTotalsRaw(year); });
+  }
+  // ภาระงานทั้งปีของนักศึกษาหนึ่งคน
+  function oneTotal(year, lv, stu, plans) {
+    var tot = 0, rawTot = 0, per = {}, raw = {}, extra = false;
+    MISSIONS.forEach(function (m) { per[m.key] = 0; raw[m.key] = 0; });
+    SEMS.forEach(function (sm, i) {
+      var plan = plans[i];
+      if (!plan) return;
+      var ovr = overrideOf(stu.student_id, year, sm);
+      if (ovr) extra = true;
+      var c = calc(plan, ovr, stu.student_id);
+      tot += c.total;
+      MISSIONS.forEach(function (m) {
+        per[m.key] += c.weighted[m.key];
+        raw[m.key] += c.raw[m.key];
+        rawTot += c.raw[m.key];
+      });
+    });
+    return { sid: norm(stu.student_id), name: norm(stu.name), level: lv,
+             total: Math.round(tot * 100) / 100, per: per,
+             raw: raw, rawTotal: Math.round(rawTot * 100) / 100, ovr: extra };
+  }
+
+  function studentTotalsRaw(year) {
     var out = [];
     ['1', '2', '3', '4'].forEach(function (lv) {
       var plans = SEMS.map(function (sm) { return planOf(year, lv, sm); });
       if (!plans.some(Boolean)) return;
       cohortStudents(lv, year).forEach(function (stu) {
-        var tot = 0, rawTot = 0, per = {}, raw = {}, extra = false;
-        MISSIONS.forEach(function (m) { per[m.key] = 0; raw[m.key] = 0; });
-        SEMS.forEach(function (sm, i) {
-          var plan = plans[i];
-          if (!plan) return;
-          var ovr = overrideOf(stu.student_id, year, sm);
-          if (ovr) extra = true;
-          var c = calc(plan, ovr, stu.student_id);
-          tot += c.total;
-          MISSIONS.forEach(function (m) {
-            per[m.key] += c.weighted[m.key];
-            raw[m.key] += c.raw[m.key];
-            rawTot += c.raw[m.key];
-          });
-        });
-        out.push({ sid: norm(stu.student_id), name: norm(stu.name), level: lv,
-                   total: Math.round(tot * 100) / 100, per: per,
-                   raw: raw, rawTotal: Math.round(rawTot * 100) / 100, ovr: extra });
+        out.push(oneTotal(year, lv, stu, plans));
       });
     });
     return out;
   }
+
+  /* ภาระงานของนักศึกษาคนเดียว — ใช้ตอนดูมุมมองรายบุคคล
+     รหัสนักศึกษาบอกชั้นปีอยู่แล้ว จึงคิดเฉพาะคนนั้น ไม่ต้องไล่ทั้ง 600 กว่าคน */
+  function studentTotalOf(year, sid) {
+    sid = norm(sid);
+    var y = parseInt(String(year || '').slice(-2), 10);
+    var p = parseInt(sid.slice(0, 2), 10);
+    var lv = (!isNaN(y) && !isNaN(p)) ? (y - p + 1) : 0;
+    if (lv >= 1 && lv <= 4) {
+      var plans = SEMS.map(function (sm) { return planOf(year, String(lv), sm); });
+      if (plans.some(Boolean)) {
+        var stu = cohortStudents(String(lv), year).filter(function (x) {
+          return norm(x.student_id) === sid;
+        })[0];
+        if (stu) return oneTotal(year, String(lv), stu, plans);
+      }
+    }
+    // รหัสไม่เข้ารูปแบบรุ่น — ถอยไปหาในรายชื่อทั้งหมด
+    return studentTotals(year).filter(function (x) { return x.sid === sid; })[0] || null;
+  }
   /* ---------------- ตัวเลือกมุมมองของการ์ดพันธกิจ : รายชั้นปี / รายบุคคล ---------------- */
-  function missionScopeBar(tot) {
+  function missionScopeBar() {
     var st = state();
-    var levels = uniq(tot.map(function (x) { return x.level; })).sort();
+    // ชั้นปีที่มีข้อมูล อ่านจากแผนภาระงานได้เลย ไม่ต้องไล่คำนวณรายคน
+    var levels = uniq(get('workload_plan')
+      .filter(function (p) { return norm(p.academic_year) === norm(st.year); })
+      .map(function (p) { return norm(p.year_level); })).sort();
     var tab = function (k, label, icon) {
       var on = st.mView === k;
       return '<button type="button" onclick="wlSet(\'mView\',\'' + k + '\')" class="px-3 py-1.5 text-sm '
@@ -295,7 +383,7 @@
       + tab('level', 'รายชั้นปี', 'layers') + tab('person', 'รายบุคคล', 'user') + '</div>';
 
     if (st.mView === 'person') {
-      var cur = tot.filter(function (x) { return x.sid === norm(st.mSid); })[0];
+      var cur = norm(st.mSid) ? studentTotalOf(st.year, st.mSid) : null;
       bar += cur
         ? '<span class="px-3 py-1.5 rounded-xl bg-primaryLight text-primary text-sm">'
           + esc(cur.name) + ' <span class="font-mono text-xs">' + esc(cur.sid) + '</span> · ชั้นปีที่ ' + esc(cur.level) + '</span>'
@@ -314,7 +402,14 @@
 
     if (st.mView === 'person' && !norm(st.mSid)) {
       var q = norm(st.mq).toLowerCase();
-      var hit = q ? tot.filter(function (x) { return (x.sid + ' ' + x.name).toLowerCase().indexOf(q) >= 0; }) : [];
+      // ค้นหาจากทะเบียนนักศึกษาโดยตรง เร็วกว่าไล่คำนวณชั่วโมงของทุกคนก่อนค้น
+      var pool = [];
+      levels.forEach(function (l) {
+        cohortStudents(l, st.year).forEach(function (x) {
+          pool.push({ sid: norm(x.student_id), name: norm(x.name), level: l });
+        });
+      });
+      var hit = q ? pool.filter(function (x) { return (x.sid + ' ' + x.name).toLowerCase().indexOf(q) >= 0; }) : [];
       bar += q
         ? '<div class="flex flex-wrap gap-1.5 mb-3">'
           + (hit.length ? hit.slice(0, 12).map(function (x) {
@@ -354,12 +449,11 @@
     }
 
     /* ---- การ์ดพันธกิจ : เลือกดูรายชั้นปีหรือรายบุคคล ---- */
-    var tot = studentTotals(st.year);
     var sums = {}, raws = {}, scopeNote = '', haveScope = true, capLv = '1';
     MISSIONS.forEach(function (m) { sums[m.key] = 0; raws[m.key] = 0; });
 
     if (st.mView === 'person') {
-      var rec = tot.filter(function (x) { return x.sid === norm(st.mSid); })[0];
+      var rec = norm(st.mSid) ? studentTotalOf(st.year, st.mSid) : null;
       if (rec) {
         MISSIONS.forEach(function (m) { sums[m.key] = rec.per[m.key]; raws[m.key] = rec.raw[m.key]; });
         capLv = rec.level;
@@ -419,7 +513,7 @@
       + '<h3 class="font-bold">ชั่วโมงภาระงานแยกตามพันธกิจ</h3>'
       + '<span class="text-xs text-gray-400">รวมเวลาจริง ' + fx(rawTotal) + ' ชั่วโมง'
       + (tg.ok ? ' · กรอบทั้งหมด ' + fx(tg.frame) + ' ชั่วโมง' : '') + '</span></div>'
-      + missionScopeBar(tot)
+      + missionScopeBar()
       + (haveScope
           ? '<div class="grid grid-cols-2 md:grid-cols-5 gap-3">' + tiles + '</div>'
             + '<p class="text-xs text-gray-500 mt-3"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>' + scopeNote + '</p>'
