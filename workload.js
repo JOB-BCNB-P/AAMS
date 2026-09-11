@@ -83,60 +83,27 @@
 
   /* ---------------- ฐานชั่วโมงพันธกิจด้านวิชาการ ----------------
      พันธกิจด้านวิชาการ = เวลาเรียน/ฝึกปฏิบัติตามตาราง + เวลาทำงานที่รายวิชามอบหมาย
+     ทุกค่าต้องกรอกเอง ระบบไม่ดึงชั่วโมงจากที่ใดมาคิดให้เอง
      ระบุเวลาเรียนตลอดภาคได้ 2 วิธี
        total  = กรอกชั่วโมงรวมตลอดภาคเอง — ใช้เมื่อรวมชั่วโมงที่จัดจริงมาแล้ว
                 เช่น ภาคทฤษฎี ภาคปฏิบัติ และฝึกภาคสนามมีตารางต่างกัน
        weekly = ให้ระบบคูณให้ จากชั่วโมงต่อสัปดาห์ x จำนวนสัปดาห์ (ใช้เมื่อแต่ละสัปดาห์เรียนเท่ากัน)
-     ไม่ว่าวิธีใด ต้องไม่นับช่วงเวลาซ้ำกัน */
+     ไม่ว่าวิธีใด ต้องไม่นับช่วงเวลาซ้ำกัน
+     ยังไม่กรอก = ชั่วโมงเวลาเรียนเป็น 0 ไม่มีตัวเลขงอกขึ้นมาเอง */
   function acadMode(rec) {
     var v = rec ? norm(rec.acad_mode) : '';
-    if (v === 'total' || v === 'weekly' || v === 'subject' || v === 'subject_self') return v;
-    // ข้อมูลเก่าที่ยังไม่มีคอลัมน์นี้ — เดาจากช่องที่กรอกไว้ ถ้าไม่ได้กรอกเลยให้ดึงจากรายวิชา
-    if (rec && n(rec.acad_hours) > 0) return 'total';
-    if (rec && n(rec.acad_hours_week) > 0 && n(rec.acad_weeks) > 0) return 'weekly';
-    return 'subject';
+    if (v === 'weekly' || v === 'total') return v;
+    // ข้อมูลเก่าที่ยังไม่มีคอลัมน์นี้ — ดูจากช่องที่เคยกรอกไว้เท่านั้น ไม่เดาจากที่อื่น
+    if (rec && !(n(rec.acad_hours) > 0) && n(rec.acad_hours_week) > 0 && n(rec.acad_weeks) > 0) return 'weekly';
+    return 'total';
   }
-  /* ชั่วโมงตามหลักสูตรของรายวิชาที่เปิดสอนในชั้นปี/ภาคนั้น
-     จับคู่รายวิชาที่เปิดสอนกับข้อมูลหลักสูตรด้วยรหัสวิชา
-     ชั่วโมงเรียน = ทฤษฎี + ทดลอง + ฝึกปฏิบัติ ส่วนชั่วโมงเรียนรู้ด้วยตนเองเลือกรวมได้ */
-  function courseHours(year, level, sem, withSelf) {
-    var subs = get('subject').filter(function (s) {
-      var sm = (typeof normSem === 'function') ? normSem(s.semester) : norm(s.semester);
-      return norm(s.academic_year) === norm(year) && norm(s.year_level) === norm(level) && sm === norm(sem);
-    });
-    var byCode = {};
-    get('curriculum_course').forEach(function (c) {
-      var k = norm(c.course_code).replace(/\s/g, '');
-      if (k) byCode[k] = c;
-    });
-    var out = { total: 0, list: [], missing: 0 };
-    subs.forEach(function (s) {
-      var c = byCode[norm(s.subject_code).replace(/\s/g, '')];
-      if (!c) {
-        out.missing++;
-        out.list.push({ code: norm(s.subject_code), name: norm(s.subject_name), hours: null });
-        return;
-      }
-      var h = n(c.term_theory) + n(c.term_lab) + n(c.term_practice) + (withSelf ? n(c.term_self) : 0);
-      out.total += h;
-      out.list.push({
-        code: norm(s.subject_code), name: norm(s.subject_name) || norm(c.name_th), hours: h,
-        theory: n(c.term_theory), lab: n(c.term_lab), practice: n(c.term_practice), self: n(c.term_self)
-      });
-    });
-    return out;
-  }
-  window.wlCourseHours = courseHours;
-
   function contactHours(plan) {
     if (!plan) return 0;
-    var md = acadMode(plan);
-    if (md === 'subject' || md === 'subject_self') {
-      return courseHours(plan.academic_year, plan.year_level, plan.semester, md === 'subject_self').total;
+    if (acadMode(plan) === 'weekly') {
+      var hw = n(plan.acad_hours_week), wk = n(plan.acad_weeks);
+      return (hw > 0 && wk > 0) ? hw * wk : 0;
     }
-    if (md === 'total') return n(plan.acad_hours);
-    var hw = n(plan.acad_hours_week), wk = n(plan.acad_weeks);
-    return (hw > 0 && wk > 0) ? hw * wk : 0;
+    return n(plan.acad_hours);
   }
 
   function calc(plan, ovr, sid) {
@@ -956,13 +923,9 @@
   function acadBaseBlock(d) {
     var st = state();
     var plan = planOf(st.year, st.level, st.sem);
-    var mode = ['total', 'weekly', 'subject', 'subject_self'].indexOf(d.acad_mode) >= 0 ? d.acad_mode : 'subject';
-    var fromCourse = (mode === 'subject' || mode === 'subject_self');
+    var mode = (d.acad_mode === 'weekly') ? 'weekly' : 'total';
     var hw = n(d.acad_hours_week), wk = n(d.acad_weeks);
-    var ch = fromCourse ? courseHours(st.year, st.level, st.sem, mode === 'subject_self') : null;
-    var cls = fromCourse ? ch.total
-      : (mode === 'total') ? n(d.acad_hours)
-        : ((hw > 0 && wk > 0) ? hw * wk : 0);
+    var cls = (mode === 'total') ? n(d.acad_hours) : ((hw > 0 && wk > 0) ? hw * wk : 0);
     var work = (d[MISSIONS[0].key] || []).reduce(function (s, r) { return s + n(r.hours); }, 0);
     var base = cls + work;
     var tg = targetFrom(plan, base);
@@ -973,21 +936,13 @@
         + 'onchange="wlAcadSet(\'' + field + '\',this.value)" placeholder="' + ph + '" '
         + 'class="' + (w || 'w-28') + ' border rounded-lg px-2 py-1.5 text-sm text-center">';
     };
-    var tab = function (k, label, alt) {
-      var on = (mode === k) || (alt && mode === alt);
+    var tab = function (k, label) {
+      var on = mode === k;
       return '<button type="button" onclick="wlAcadSet(\'acad_mode\',\'' + k + '\')" class="px-3 py-1.5 text-xs '
         + (on ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50') + '">' + label + '</button>';
     };
 
-    var fields = fromCourse
-      ? '<div><label class="block text-xs text-gray-600 mb-1">นับชั่วโมงเรียนรู้ด้วยตนเอง</label>'
-        + '<label class="inline-flex items-center gap-2 text-sm py-1.5">'
-        + '<input type="checkbox" ' + (mode === 'subject_self' ? 'checked' : '') + ' class="w-4 h-4" '
-        + 'onchange="wlAcadSet(\'acad_mode\', this.checked ? \'subject_self\' : \'subject\')">'
-        + '<span class="text-gray-600">รวมด้วย</span></label></div>'
-        + '<div><label class="block text-xs text-gray-600 mb-1">จำนวนสัปดาห์ <span class="text-gray-400">(ไม่บังคับ)</span></label>'
-        + num('acad_weeks', d.acad_weeks, 'เช่น 15', 'w-24') + '</div>'
-      : (mode === 'total')
+    var fields = (mode === 'total')
       ? '<div><label class="block text-xs text-gray-600 mb-1">ชั่วโมงเรียน/ฝึกปฏิบัติตลอดภาค</label>'
         + num('acad_hours', d.acad_hours, 'เช่น 360') + '</div>'
         + '<div><label class="block text-xs text-gray-600 mb-1">จำนวนสัปดาห์ <span class="text-gray-400">(ไม่บังคับ)</span></label>'
@@ -997,12 +952,7 @@
         + '<div><label class="block text-xs text-gray-600 mb-1">จำนวนสัปดาห์ที่เรียน</label>'
         + num('acad_weeks', d.acad_weeks, 'เช่น 15', 'w-24') + '</div>';
 
-    var howto = fromCourse
-      ? 'รวมชั่วโมงตามหลักสูตรของรายวิชาที่เปิดสอนในชั้นปี/ภาคนี้ให้อัตโนมัติ '
-        + '(ทฤษฎี + ทดลอง + ฝึกปฏิบัติ' + (mode === 'subject_self' ? ' + เรียนรู้ด้วยตนเอง' : '') + ') '
-        + '— แก้รายวิชาที่เปิดสอนได้ที่เมนูรายวิชา และแก้ชั่วโมงของหลักสูตรได้ที่เมนูข้อมูลหลักสูตร'
-        + (mode === 'subject_self' ? ' · ระวังนับซ้ำกับงานที่รายวิชามอบหมายด้านล่าง' : '')
-      : (mode === 'total')
+    var howto = (mode === 'total')
       ? 'กรอกชั่วโมงที่จัดจริงตลอดภาคได้เลย เหมาะกับกรณีที่ภาคทฤษฎี ภาคปฏิบัติ และฝึกภาคสนามมีตารางต่างกัน '
         + '— รวมมาให้ครบทุกส่วนโดยไม่นับช่วงเวลาซ้ำกัน · จำนวนสัปดาห์กรอกไว้เพื่อให้ระบบแสดงค่าเฉลี่ยต่อสัปดาห์เท่านั้น'
       : 'ใช้เมื่อแต่ละสัปดาห์มีชั่วโมงเรียนเท่ากัน ระบบจะคูณให้เป็นชั่วโมงตลอดภาค';
@@ -1028,7 +978,6 @@
       + '<div class="flex flex-wrap items-end gap-3 mb-2">'
       + '<div><label class="block text-xs text-gray-600 mb-1">วิธีระบุชั่วโมง</label>'
       + '<div class="inline-flex rounded-xl border border-gray-200 overflow-hidden">'
-      + tab('subject', 'ดึงจากรายวิชาที่เปิดสอน', 'subject_self')
       + tab('total', 'กรอกชั่วโมงรวมเอง') + tab('weekly', 'คูณจากต่อสัปดาห์') + '</div></div>'
       + fields
       + '<div class="text-sm text-gray-600 pb-1.5">'
@@ -1039,7 +988,6 @@
       + ' = <b class="text-primary tabular-nums">' + fx(tg.frame) + '</b> ชม.ต่อภาค'
       + (wk > 0 ? ' (เฉลี่ย ' + fx(tg.frame / wk) + ' ชม./สัปดาห์)' : '') + '</p></div></div>'
       + '<p class="text-[11px] text-gray-400 mb-3"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>' + howto + '</p>'
-      + (fromCourse ? courseListHTML(ch, mode === 'subject_self') : '')
       + (base > 0
         ? '<div class="overflow-x-auto"><table class="w-full text-sm">'
           + '<thead><tr class="bg-surface text-left"><th class="px-3 py-2 font-semibold">ด้าน</th>'
@@ -1056,44 +1004,6 @@
         : '<p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">'
           + 'ระบุชั่วโมงเรียน/ฝึกปฏิบัติตลอดภาค เพื่อให้ระบบคำนวณเป้าหมายของพันธกิจอื่น</p>')
       + '</div>';
-  }
-
-  /* รายวิชาที่นำมาคิดเป็นชั่วโมงด้านวิชาการ — เปิดดูได้เพื่อตรวจทาน */
-  function courseListHTML(ch, withSelf) {
-    if (!ch.list.length) {
-      return '<div class="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-sm text-amber-800 mb-3">'
-        + 'ยังไม่มีรายวิชาที่เปิดสอนของชั้นปี/ภาคนี้ในระบบ — เพิ่มได้ที่เมนูรายวิชา '
-        + 'หรือเปลี่ยนไปใช้วิธีกรอกชั่วโมงรวมเอง</div>';
-    }
-    var body = ch.list.map(function (x) {
-      var bad = x.hours === null;
-      return '<tr class="border-t">'
-        + '<td class="px-3 py-2 font-mono text-xs text-gray-500 whitespace-nowrap">' + esc(x.code) + '</td>'
-        + '<td class="px-3 py-2">' + esc(x.name)
-        + (bad ? '<span class="block text-[11px] text-amber-700">ไม่พบรหัสวิชานี้ในข้อมูลหลักสูตร จึงยังไม่ถูกนับ</span>' : '')
-        + '</td>'
-        + '<td class="px-3 py-2 text-center text-[11px] text-gray-400 whitespace-nowrap">'
-        + (bad ? '-' : [
-            x.theory ? 'ทฤษฎี ' + fx(x.theory) : '',
-            x.lab ? 'ทดลอง ' + fx(x.lab) : '',
-            x.practice ? 'ปฏิบัติ ' + fx(x.practice) : '',
-            (withSelf && x.self) ? 'ตนเอง ' + fx(x.self) : ''
-          ].filter(Boolean).join(' · ')) + '</td>'
-        + '<td class="px-3 py-2 text-center tabular-nums ' + (bad ? 'text-amber-600' : 'font-semibold') + '">'
-        + (bad ? '-' : fx(x.hours)) + '</td></tr>';
-    }).join('');
-    return '<details class="mb-3"' + (ch.missing ? ' open' : '') + '>'
-      + '<summary class="text-sm text-primary cursor-pointer">ดูรายวิชาที่นำมาคิด (' + ch.list.length + ' วิชา'
-      + (ch.missing ? ' · ' + ch.missing + ' วิชายังจับคู่กับหลักสูตรไม่ได้' : '') + ')</summary>'
-      + '<div class="overflow-x-auto mt-2"><table class="w-full text-sm">'
-      + '<thead><tr class="bg-surface text-left"><th class="px-3 py-2 font-semibold">รหัสวิชา</th>'
-      + '<th class="px-3 py-2 font-semibold">ชื่อรายวิชา</th>'
-      + '<th class="px-3 py-2 font-semibold text-center">แยกตามประเภท</th>'
-      + '<th class="px-3 py-2 font-semibold text-center">ชั่วโมง</th></tr></thead>'
-      + '<tbody>' + body + '</tbody>'
-      + '<tfoot><tr class="border-t-2 bg-surface font-semibold"><td colspan="3" class="px-3 py-2">รวม</td>'
-      + '<td class="px-3 py-2 text-center tabular-nums text-primary">' + fx(ch.total) + '</td></tr></tfoot>'
-      + '</table></div></details>';
   }
 
   function planTab() {
@@ -1186,7 +1096,7 @@
     var payload = {
       type: 'workload_plan', academic_year: st.year, year_level: st.level, semester: st.sem,
       updated_by: who, meta_json: JSON.stringify(mt),
-      acad_mode: ['total', 'weekly', 'subject', 'subject_self'].indexOf(d.acad_mode) >= 0 ? d.acad_mode : 'subject',
+      acad_mode: (d.acad_mode === 'weekly') ? 'weekly' : 'total',
       acad_hours: norm(d.acad_hours),
       acad_hours_week: norm(d.acad_hours_week), acad_weeks: norm(d.acad_weeks)
     };
@@ -1245,7 +1155,7 @@
     var payload = {
       type: 'workload_plan', academic_year: st.year, year_level: st.level, semester: st.sem,
       updated_by: who, meta_json: JSON.stringify(mt),
-      acad_mode: ['total', 'weekly', 'subject', 'subject_self'].indexOf(d.acad_mode) >= 0 ? d.acad_mode : 'subject',
+      acad_mode: (d.acad_mode === 'weekly') ? 'weekly' : 'total',
       acad_hours: norm(d.acad_hours),
       acad_hours_week: norm(d.acad_hours_week), acad_weeks: norm(d.acad_weeks)
     };
