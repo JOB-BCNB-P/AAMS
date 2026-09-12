@@ -34,13 +34,18 @@
   function uniq(a) { var out = [], seen = {}; a.forEach(function (x) { if (x && !seen[x]) { seen[x] = 1; out.push(x); } }); return out; }
 
   function state() {
-    if (!APP._wl) APP._wl = {
+    if (!APP._wl) {
+      // เริ่มต้นยุบการ์ดไว้ทั้งหมด ให้เห็นภาพรวมก่อน แล้วค่อยกดขยายดูรายละเอียด
+      var fold0 = { sumTable: true };
+      MISSIONS.forEach(function (m) { fold0[m.key] = true; });
+      APP._wl = {
       tab: 'summary', year: '', level: '1', sem: '1', search: '', draft: null, calc: [],
       tol: 0,                       // ยอมให้เกินชั่วโมงเป้าหมายได้กี่เปอร์เซ็นต์ ก่อนถือว่าเกิน
       mView: 'level', mLevel: '', mSid: '', mq: '',  // มุมมองการ์ดพันธกิจ : รายชั้นปี / รายบุคคล
       mode: 'cohort', gsel: {},     // โหมดกรอก : ทั้งชั้นปี / เป็นกลุ่ม + รายชื่อที่เลือก
-      fold: {}                      // การ์ดพันธกิจที่ถูกยุบไว้ (จำเฉพาะระหว่างใช้งาน)
-    };
+      fold: fold0                   // การ์ดที่ถูกยุบไว้ (จำเฉพาะระหว่างใช้งาน)
+      };
+    }
     if (!APP._wl.year) APP._wl.year = wlYears()[0] || '2568';
     return APP._wl;
   }
@@ -509,6 +514,14 @@
         + '</p></div>';
     }).join('');
 
+    // เลือกรายชั้นปีแล้ว ให้เห็นข้อมูลรายบุคคลของทั้งชั้นปีนั้นต่อท้ายการ์ด
+    var perPerson = '';
+    if (st.mView === 'level' && norm(st.mLevel)) {
+      perPerson = personTable(st.year, norm(st.mLevel));
+    } else if (st.mView === 'level') {
+      perPerson = '<p class="text-xs text-gray-400 mt-3">เลือกชั้นปีเพื่อดูข้อมูลรายบุคคลของทั้งชั้นปี</p>';
+    }
+
     var missionCards = '<div class="bg-white rounded-2xl p-5 border border-blue-100 mb-5">'
       + '<div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">'
       + '<h3 class="font-bold">ชั่วโมงภาระงานแยกตามพันธกิจ</h3>'
@@ -518,6 +531,7 @@
       + (haveScope
           ? '<div class="grid grid-cols-2 md:grid-cols-5 gap-3">' + tiles + '</div>'
             + '<p class="text-xs text-gray-500 mt-3"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>' + scopeNote + '</p>'
+            + perPerson
           : '')
       + '</div>';
 
@@ -544,11 +558,17 @@
         + '<td class="px-4 py-3 text-center">' + (x.ovr ? '<span class="px-2 py-0.5 rounded-full text-xs bg-amber-50 text-amber-700">' + x.ovr + ' ราย</span>' : '<span class="text-gray-300">-</span>') + '</td></tr>';
     }).join('');
 
-    return missionCards
-      + '<div class="bg-white rounded-2xl p-5 border border-blue-100">'
-      + '<div class="flex flex-wrap items-center justify-between gap-2 mb-3">'
-      + '<h3 class="font-bold">สรุปชั่วโมงภาระงาน ปีการศึกษา ' + esc(st.year) + '</h3>'
+    var sumFolded = !!(st.fold || {}).sumTable;
+    var sumCard = '<div class="bg-white rounded-2xl p-5 border border-blue-100 mb-5">'
+      + '<div class="flex flex-wrap items-center justify-between gap-2' + (sumFolded ? '' : ' mb-3') + '">'
+      + '<button type="button" onclick="wlFold(\'sumTable\')" class="font-bold flex items-center gap-2 text-left hover:text-primary" '
+      + 'title="' + (sumFolded ? 'กดเพื่อขยาย' : 'กดเพื่อยุบ') + '">'
+      + '<i data-lucide="chevron-down" data-wl-chev="sumTable" class="w-4 h-4 text-gray-400 transition-transform"'
+      + (sumFolded ? ' style="transform:rotate(-90deg)"' : '') + '></i>'
+      + 'สรุปชั่วโมงภาระงาน ปีการศึกษา ' + esc(st.year)
+      + '<span class="text-xs font-normal text-gray-400">· ' + cells.length + ' ภาคการศึกษา · รวม ' + fx(grand) + ' ชม.ถ่วงน้ำหนัก</span></button>'
       + '<button onclick="wlExportCSV()" class="px-3 py-1.5 rounded-lg border border-emerald-500 text-emerald-600 text-sm hover:bg-emerald-50"><i data-lucide="download" class="w-4 h-4 inline mr-1"></i>ส่งออก CSV</button></div>'
+      + '<div data-wl-body="sumTable"' + (sumFolded ? ' hidden' : '') + '>'
       + missionLegend(cells[0].plan)
       + '<div class="overflow-x-auto"><table class="w-full text-sm">'
       + '<thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">ชั้นปี</th><th class="px-4 py-3 font-semibold">ภาคเรียน</th>'
@@ -568,7 +588,46 @@
       + fx(cells.reduce(function (a, x) { return a + targetOf(x.plan).frame; }, 0)) + '</td>'
       + '<td class="px-4 py-3 text-center tabular-nums">' + cohortTotal + '</td><td></td></tr></tfoot></table></div>'
       + '<p class="text-xs text-gray-500 mt-3"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>'
-      + 'ตัวเลขบนคือชั่วโมงหลังถ่วงน้ำหนักตามสัดส่วนพันธกิจ ตัวเลขสีจางด้านล่างคือชั่วโมงจริงก่อนถ่วงน้ำหนัก</p></div>';
+      + 'ตัวเลขบนคือชั่วโมงหลังถ่วงน้ำหนักตามสัดส่วนพันธกิจ ตัวเลขสีจางด้านล่างคือชั่วโมงจริงก่อนถ่วงน้ำหนัก</p></div></div>';
+
+    return sumCard + missionCards;
+  }
+
+  /* ---------------- ข้อมูลรายบุคคลของทั้งชั้นปี ----------------
+     แสดงชั่วโมงจริงรายพันธกิจของนักศึกษาทุกคนในชั้นปีที่เลือก
+     คนที่มีค่าเฉพาะรายจะมีป้ายกำกับ เพื่อให้รู้ว่าไม่ได้ใช้ค่ามาตรฐานของชั้น */
+  function personTable(year, level) {
+    var list = studentTotals(year).filter(function (x) { return x.level === level; });
+    if (!list.length) {
+      return '<p class="text-xs text-gray-400 mt-3">ยังไม่มีข้อมูลนักศึกษาของชั้นปีที่ ' + esc(level) + '</p>';
+    }
+    list.sort(function (a, b) { return a.sid.localeCompare(b.sid, 'th', { numeric: true }); });
+    var shown = list.slice(0, 300);
+    var body = shown.map(function (x) {
+      return '<tr class="border-t hover:bg-gray-50">'
+        + '<td class="px-3 py-2 font-mono text-xs text-primary whitespace-nowrap">' + esc(x.sid) + '</td>'
+        + '<td class="px-3 py-2">' + esc(x.name) + '</td>'
+        + MISSIONS.map(function (m) {
+            return '<td class="px-3 py-2 text-center tabular-nums text-gray-600">' + fx(x.raw[m.key]) + '</td>';
+          }).join('')
+        + '<td class="px-3 py-2 text-center tabular-nums font-semibold text-primary">' + fx(x.rawTotal) + '</td>'
+        + '<td class="px-3 py-2 text-center">' + (x.ovr
+            ? '<span class="px-2 py-0.5 rounded-full text-[11px] bg-amber-50 text-amber-700">ปรับเฉพาะราย</span>'
+            : '<span class="text-[11px] text-gray-400">ตามมาตรฐาน</span>') + '</td></tr>';
+    }).join('');
+    return '<div class="mt-4">'
+      + '<div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">'
+      + '<h4 class="font-semibold text-sm">ข้อมูลรายบุคคล ชั้นปีที่ ' + esc(level) + ' (' + list.length + ' คน)</h4>'
+      + '<span class="text-xs text-gray-400">ชั่วโมงจริงรวมทุกภาคการศึกษา</span></div>'
+      + '<div class="overflow-x-auto border border-blue-50 rounded-xl" style="max-height:60vh;overflow-y:auto">'
+      + '<table class="w-full text-sm"><thead class="sticky top-0"><tr class="bg-surface text-left">'
+      + '<th class="px-3 py-2 font-semibold">รหัส</th><th class="px-3 py-2 font-semibold">ชื่อ-สกุล</th>'
+      + MISSIONS.map(function (m) { return '<th class="px-3 py-2 font-semibold text-center whitespace-nowrap">' + esc(m.short) + '</th>'; }).join('')
+      + '<th class="px-3 py-2 font-semibold text-center">รวม</th>'
+      + '<th class="px-3 py-2 font-semibold text-center">สถานะ</th></tr></thead>'
+      + '<tbody>' + body + '</tbody></table></div>'
+      + (list.length > 300 ? '<p class="text-xs text-gray-400 mt-2">แสดง 300 คนแรกจาก ' + list.length + ' คน</p>' : '')
+      + '</div>';
   }
 
   /* ---------------- ตัวเลือกชั้นปี/ภาคเรียน ---------------- */
