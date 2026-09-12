@@ -36,9 +36,18 @@
   // ข้อความสั้น ๆ บอกช่วงวันเวลาของกิจกรรม ใช้ในหน้ารายละเอียดและไฟล์ส่งออก
   function spanText(r) {
     if (!r) return '';
-    var d1 = norm(r.date_from), d2 = norm(r.date_to), t1 = norm(r.time_from), t2 = norm(r.time_to);
-    var dpart = d1 && d2 && d1 !== d2 ? d1 + ' ถึง ' + d2 : (d1 || d2);
-    var tpart = t1 && t2 ? t1 + '-' + t2 + ' น.' : (t1 || t2);
+    var p1 = isoParts(r.date_from), p2 = isoParts(r.date_to);
+    var dpart = '';
+    if (p1 && p2 && norm(r.date_from) !== norm(r.date_to)) {
+      // ย่อให้อ่านง่ายเมื่ออยู่เดือนเดียวกันหรือปีเดียวกัน
+      if (p1.y === p2.y && p1.m === p2.m) dpart = p1.d + '-' + p2.d + ' ' + TH_MON[p2.m - 1] + ' ' + (p2.y + 543);
+      else if (p1.y === p2.y) dpart = p1.d + ' ' + TH_MON[p1.m - 1] + ' - ' + p2.d + ' ' + TH_MON[p2.m - 1] + ' ' + (p2.y + 543);
+      else dpart = isoToThText(r.date_from) + ' ถึง ' + isoToThText(r.date_to);
+    } else {
+      dpart = isoToThText(r.date_from) || isoToThText(r.date_to);
+    }
+    var t1 = thTime(r.time_from), t2 = thTime(r.time_to);
+    var tpart = t1 && t2 ? t1 + '-' + t2 + ' น.' : (t1 || t2 ? (t1 || t2) + ' น.' : '');
     return [dpart, tpart].filter(function (x) { return x; }).join(' · ');
   }
 
@@ -49,6 +58,47 @@
      - เวลาสิ้นสุดก่อนเวลาเริ่ม ถือว่ากิจกรรมข้ามเที่ยงคืน และบอกไว้บนหน้าจอให้เห็นชัด
      - ถ้าข้อมูลไม่พอหรือขัดกัน จะไม่เดาตัวเลขให้ แต่บอกว่าติดอะไร */
   var SPAN_FIELDS = ['date_from', 'date_to', 'time_from', 'time_to'];
+
+  /* ---------------- วันที่ : กรอกและอ่านเป็นปี พ.ศ. ----------------
+     เก็บลงฐานข้อมูลเป็น ค.ศ. รูปแบบ YYYY-MM-DD เหมือนเดิม เพื่อเรียงและคำนวณได้ถูก
+     แต่ทุกจุดที่คนอ่านหรือกรอก ใช้ปี พ.ศ. ตามที่ใช้กันในเอกสารราชการ
+     ช่องกรอกรับ 3/11/2568 · 03/11/68 · 2568-11-03 และปฏิเสธปีที่ไม่ใช่ พ.ศ. */
+  var TH_MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  function pad2(x) { return (x < 10 ? '0' : '') + x; }
+  function isoParts(v) {
+    var mm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(norm(v));
+    return mm ? { y: +mm[1], m: +mm[2], d: +mm[3] } : null;
+  }
+  // ค.ศ. -> ข้อความในช่องกรอก วว/ดด/ปปปป (พ.ศ.)
+  function isoToTh(v) {
+    var p = isoParts(v);
+    return p ? pad2(p.d) + '/' + pad2(p.m) + '/' + (p.y + 543) : '';
+  }
+  // ค.ศ. -> ข้อความอ่านง่าย 3 พ.ย. 2568
+  function isoToThText(v) {
+    var p = isoParts(v);
+    return p ? p.d + ' ' + TH_MON[p.m - 1] + ' ' + (p.y + 543) : '';
+  }
+  // ข้อความที่คนกรอก (ปี พ.ศ.) -> ค.ศ. ; อ่านไม่ออกคืนค่าว่าง ไม่เดาให้
+  function thToIso(v) {
+    var t = norm(v).replace(/[.\u2013\u2014]/g, '-').replace(/\s+/g, '');
+    var mm, y, mo, d;
+    if ((mm = /^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/.exec(t))) { y = +mm[1]; mo = +mm[2]; d = +mm[3]; }
+    else if ((mm = /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/.exec(t))) { d = +mm[1]; mo = +mm[2]; y = +mm[3]; }
+    else return '';
+    if (y < 100) y += 2500;                 // 68 หมายถึง 2568
+    if (y < 2400 || y > 2600) return '';    // ต้องเป็นปี พ.ศ.
+    y -= 543;
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return '';
+    var dt = new Date(Date.UTC(y, mo - 1, d));
+    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return '';
+    return y + '-' + pad2(mo) + '-' + pad2(d);
+  }
+  // เวลาแบบไทย 08.00
+  function thTime(v) {
+    var mm = /^(\d{1,2}):(\d{2})/.exec(norm(v));
+    return mm ? pad2(+mm[1]) + '.' + mm[2] : '';
+  }
   function dayNum(v) {
     var mm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(norm(v));
     if (!mm) return null;
@@ -70,6 +120,11 @@
     if (mins === 0) { out.err = 'เวลาเริ่มกับเวลาสิ้นสุดตรงกัน'; return out; }
     if (mins < 0) { mins += 1440; out.overnight = true; }
     out.perDay = Math.round(mins / 60 * 100) / 100;
+    // ยังกรอกวันที่ไม่ครบรูปแบบ ถือว่ายังไม่รู้จำนวนวัน จึงไม่คิดให้
+    if (norm(r.date_from_in) || norm(r.date_to_in)) {
+      out.err = 'กรอกวันที่เป็น วว/ดด/ปปปป (พ.ศ.) เช่น 3/11/2568';
+      return out;
+    }
     if (df !== null && dt !== null) {
       if (dt < df) { out.err = 'วันที่สิ้นสุดอยู่ก่อนวันที่เริ่ม'; return out; }
       out.days = Math.round((dt - df) / 86400000) + 1;
@@ -866,6 +921,29 @@
     var el = (typeof document !== 'undefined') && document.querySelector('[data-wl-hr="' + mkey + '|' + idx + '"]');
     if (el) el.value = r.hours;
   }
+  // คำอ่านใต้ช่องวันที่ ยืนยันว่าระบบเข้าใจวันที่ตรงกับที่กรอก
+  function dateEcho(r, field) {
+    var iso = norm(r[field]);
+    if (iso) return '<span class="text-gray-500">' + esc(isoToThText(iso)) + '</span>';
+    if (norm(r[field + '_in'])) return '<span class="text-amber-700">ยังอ่านวันที่นี้ไม่ออก</span>';
+    return '';
+  }
+  /* รับค่าวันที่ที่กรอกเป็น พ.ศ. แปลงเก็บเป็น ค.ศ.
+     ถ้าอ่านไม่ออก เก็บข้อความที่กรอกไว้ให้เห็น ไม่ลบทิ้งและไม่เดาวันที่ให้ */
+  window.wlRowDate = function (mkey, idx, field, text) {
+    var d = state().draft || draft();
+    var r = d[mkey] && d[mkey][idx];
+    if (!r) return;
+    var iso = thToIso(text);
+    r[field] = iso;
+    r[field + '_in'] = (norm(text) === '' || iso) ? '' : norm(text);
+    spanApply(mkey, idx, r);
+    spanPaint(mkey, idx, r);
+    var el = (typeof document !== 'undefined') && document.querySelector('[data-wl-dt="' + mkey + '|' + idx + '|' + field + '"]');
+    if (el) el.innerHTML = dateEcho(r, field);
+    wlUpdateTotals();
+  };
+
   function spanPaint(mkey, idx, r) {
     var el = (typeof document !== 'undefined') && document.querySelector('[data-wl-span="' + mkey + '|' + idx + '"]');
     if (el) el.innerHTML = spanNote(r);
@@ -921,18 +999,29 @@
 
   /* แถวช่องกรอกวันที่และเวลาของกิจกรรมหนึ่งรายการ */
   function spanFields(mkey, i, r, readonly) {
+    // วันที่กรอกเป็นปี พ.ศ. (เก็บเป็น ค.ศ. ข้างใน) ใต้ช่องมีคำอ่านกำกับให้ตรวจได้ว่าระบบเข้าใจตรงกัน
     var cells = [
-      ['date_from', 'วันที่เริ่ม', 'date'],
-      ['date_to', 'วันที่สิ้นสุด', 'date'],
+      ['date_from', 'วันที่เริ่ม (พ.ศ.)', 'date'],
+      ['date_to', 'วันที่สิ้นสุด (พ.ศ.)', 'date'],
       ['time_from', 'เวลาเริ่ม', 'time'],
       ['time_to', 'เวลาสิ้นสุด', 'time']
     ].map(function (c) {
+      var isDate = c[2] === 'date';
+      var shown = isDate ? (isoToTh(r[c[0]]) || norm(r[c[0] + '_in'])) : norm(r[c[0]]);
+      var field = isDate
+        ? '<input type="text" inputmode="numeric" maxlength="10" placeholder="วว/ดด/ปปปป" '
+          + 'value="' + esc(shown) + '" '
+          + 'oninput="wlRowDate(\'' + mkey + '\',' + i + ',\'' + c[0] + '\',this.value)" '
+          + 'class="w-full border rounded-lg px-2 py-1.5 text-sm">'
+          + '<span class="block text-[11px] mt-0.5" data-wl-dt="' + mkey + '|' + i + '|' + c[0] + '">' + dateEcho(r, c[0]) + '</span>'
+        : '<input type="time" value="' + esc(shown) + '" '
+          + 'oninput="wlRowSet(\'' + mkey + '\',' + i + ',\'' + c[0] + '\',this.value)" '
+          + 'class="w-full border rounded-lg px-2 py-1.5 text-sm">';
+      var ro = isDate
+        ? (isoToThText(r[c[0]]) || norm(r[c[0] + '_in']) || '-')
+        : (thTime(r[c[0]]) ? thTime(r[c[0]]) + ' น.' : '-');
       return '<label class="block"><span class="block text-[11px] text-gray-500 mb-0.5">' + c[1] + '</span>'
-        + (readonly
-            ? '<span class="block text-sm py-1">' + esc(norm(r[c[0]]) || '-') + '</span>'
-            : '<input type="' + c[2] + '" value="' + esc(norm(r[c[0]])) + '" '
-              + 'oninput="wlRowSet(\'' + mkey + '\',' + i + ',\'' + c[0] + '\',this.value)" '
-              + 'class="w-full border rounded-lg px-2 py-1.5 text-sm">')
+        + (readonly ? '<span class="block text-sm py-1">' + esc(ro) + '</span>' : field)
         + '</label>';
     }).join('');
     var manual = norm(r.hours_manual) === '1';
