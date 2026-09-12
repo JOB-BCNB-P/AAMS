@@ -38,7 +38,8 @@
       tab: 'summary', year: '', level: '1', sem: '1', search: '', draft: null, calc: [],
       tol: 0,                       // ยอมให้เกินชั่วโมงเป้าหมายได้กี่เปอร์เซ็นต์ ก่อนถือว่าเกิน
       mView: 'level', mLevel: '', mSid: '', mq: '',  // มุมมองการ์ดพันธกิจ : รายชั้นปี / รายบุคคล
-      mode: 'cohort', gsel: {}      // โหมดกรอก : ทั้งชั้นปี / เป็นกลุ่ม + รายชื่อที่เลือก
+      mode: 'cohort', gsel: {},     // โหมดกรอก : ทั้งชั้นปี / เป็นกลุ่ม + รายชื่อที่เลือก
+      fold: {}                      // การ์ดพันธกิจที่ถูกยุบไว้ (จำเฉพาะระหว่างใช้งาน)
     };
     if (!APP._wl.year) APP._wl.year = wlYears()[0] || '2568';
     return APP._wl;
@@ -610,13 +611,34 @@
     return d;
   }
 
+  /* ยุบ/ขยายการ์ดพันธกิจ
+     สลับที่หน้าจอโดยตรง ไม่ต้องวาดหน้าใหม่ จะได้ตอบสนองทันทีและไม่เสียตำแหน่งเลื่อนหน้า */
+  window.wlFold = function (key) {
+    var st = state();
+    if (!st.fold) st.fold = {};
+    st.fold[key] = !st.fold[key];
+    var box = document.querySelector('[data-wl-body="' + key + '"]');
+    var chev = document.querySelector('[data-wl-chev="' + key + '"]');
+    if (!box) { renderCurrentPage(); return; }
+    box.hidden = st.fold[key];
+    if (chev) chev.style.transform = st.fold[key] ? 'rotate(-90deg)' : '';
+  };
+  window.wlFoldAll = function (on) {
+    var st = state();
+    st.fold = {};
+    if (on) MISSIONS.forEach(function (m) { st.fold[m.key] = true; });
+    renderCurrentPage();
+  };
+
   window.wlRowSet = function (mkey, idx, field, value) {
     var d = state().draft || draft();
     if (d[mkey] && d[mkey][idx]) d[mkey][idx][field] = value;
     wlUpdateTotals();
   };
   window.wlRowAdd = function (mkey) {
-    var d = state().draft || draft();
+    var st0 = state();
+    if (st0.fold) st0.fold[mkey] = false;   // เพิ่มแถวแล้วต้องเห็นแถวใหม่
+    var d = st0.draft || draft();
     var m = MISSIONS.filter(function (x) { return x.key === mkey; })[0];
     d[mkey].push(m.subject ? { subject_name: '', pieces: '', hours: '' } : { kind: 'กิจกรรมที่', activity: '', hours: '' });
     renderCurrentPage();
@@ -657,10 +679,17 @@
     var list = d[m.key] || [];
     var raw = list.reduce(function (s, r) { return s + n(r.hours); }, 0);
     var w = d.weights[m.key];
-    var head = '<div class="flex flex-wrap items-center justify-between gap-2 mb-2">'
-      + '<h4 class="font-semibold text-sm flex items-center gap-2">'
+    var folded = !!(state().fold || {})[m.key];
+    // ชื่อพันธกิจเป็นปุ่มกดยุบ/ขยาย ส่วนปุ่มทำงานอื่นแยกออกไป จะได้ไม่กดชนกัน
+    var head = '<div class="flex flex-wrap items-center justify-between gap-2' + (folded ? '' : ' mb-2') + '">'
+      + '<button type="button" onclick="wlFold(\'' + m.key + '\')" '
+      + 'class="font-semibold text-sm flex items-center gap-2 text-left hover:text-primary" '
+      + 'title="' + (folded ? 'กดเพื่อขยาย' : 'กดเพื่อยุบ') + '">'
+      + '<i data-lucide="chevron-down" data-wl-chev="' + m.key + '" class="w-4 h-4 text-gray-400 transition-transform"'
+      + (folded ? ' style="transform:rotate(-90deg)"' : '') + '></i>'
       + '<span style="width:10px;height:10px;border-radius:50%;background:' + m.color + ';display:inline-block"></span>'
-      + esc(m.label) + ' <span class="text-xs font-normal text-gray-400">สัดส่วน ' + Math.round(w * 100) + '%</span></h4>'
+      + esc(m.label) + ' <span class="text-xs font-normal text-gray-400">สัดส่วน ' + Math.round(w * 100) + '%</span>'
+      + '<span class="text-xs font-normal text-gray-400">· ' + list.length + ' รายการ</span></button>'
       + '<div class="flex items-center gap-2 flex-wrap">'
       + '<span class="text-xs text-gray-500">รวม <b class="text-gray-800" data-wl-raw="' + m.key + '">' + fx(raw) + '</b> ชม.'
       + ' → ถ่วงน้ำหนัก <b style="color:' + m.color + '" data-wl-w="' + m.key + '">' + fx(raw * w) + '</b></span>'
@@ -668,8 +697,7 @@
       + (m.subject && !readonly ? '<button type="button" onclick="wlPullSubjects()" class="px-2 py-1 rounded-lg border border-primary text-xs text-primary hover:bg-primaryLight">ดึงรายวิชาที่เปิดสอน</button>' : '')
       + (readonly ? '' : '<button type="button" onclick="wlSaveMission(\'' + m.key + '\')" class="px-3 py-1 rounded-lg text-xs text-white hover:opacity-90" style="background:' + m.color + '"><i data-lucide="save" class="w-3 h-3 inline mr-0.5"></i>บันทึกพันธกิจนี้</button>')
       + (locked ? '<span class="text-xs px-2 py-1 rounded-lg bg-gray-100 text-gray-500"><i data-lucide="lock" class="w-3 h-3 inline mr-0.5"></i>ไม่ได้รับมอบหมาย</span>' : '')
-      + '</div></div>'
-      + '<div class="mb-2">' + metaLine(cur, m) + '</div>';
+      + '</div></div>';
 
     var body;
     if (!list.length) {
@@ -703,7 +731,9 @@
           + '</div>';
       }).join('') + '</div>';
     }
-    return '<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-3">' + head + body + '</div>';
+    return '<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-3">' + head
+      + '<div data-wl-body="' + m.key + '"' + (folded ? ' hidden' : '') + '>'
+      + '<div class="mb-2">' + metaLine(cur, m) + '</div>' + body + '</div></div>';
   }
 
   // บรรทัดบอกว่ากิจกรรมนี้นับให้ใครบ้าง พร้อมปุ่มเลือก
@@ -993,7 +1023,13 @@
       + '<button onclick="wlSavePlan()" class="px-5 py-2.5 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm flex items-center gap-2 self-start">'
       + '<i data-lucide="save" class="w-4 h-4"></i>' + (group ? 'บันทึกให้ทุกคนที่เลือก' : 'บันทึกทุกพันธกิจที่ทำได้') + '</button></div>';
 
-    return cohortPicker() + modePicker() + card + missionScopeNote()
+    var foldBar = '<div class="flex items-center justify-end gap-3 mb-2 text-xs">'
+      + '<button type="button" onclick="wlFoldAll(1)" class="text-gray-500 hover:text-primary">'
+      + '<i data-lucide="chevrons-down-up" class="w-3.5 h-3.5 inline mr-0.5"></i>ยุบทั้งหมด</button>'
+      + '<button type="button" onclick="wlFoldAll(0)" class="text-gray-500 hover:text-primary">'
+      + '<i data-lucide="chevrons-up-down" class="w-3.5 h-3.5 inline mr-0.5"></i>ขยายทั้งหมด</button></div>';
+
+    return cohortPicker() + modePicker() + card + missionScopeNote() + foldBar
       + MISSIONS.map(function (m) {
           var cur = group
             ? (sel.length === 1 ? overrideOf(sel[0], st.year, st.sem) : null)
