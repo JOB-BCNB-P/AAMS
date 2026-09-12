@@ -19,8 +19,9 @@
   var MISSIONS = [
     { key: 'teaching', field: 'teaching_json', wkey: 'w_teaching', def: 0.40, label: 'พันธกิจด้านวิชาการ', short: 'ด้านวิชาการ', color: '#1e6fba', bg: 'bg-blue-50', text: 'text-blue-700', subject: true },
     { key: 'research', field: 'research_json', wkey: 'w_research', def: 0.10, label: 'พันธกิจด้านวิจัย', short: 'ด้านวิจัย', color: '#9061f9', bg: 'bg-purple-50', text: 'text-purple-700' },
-    { key: 'service', field: 'service_json', wkey: 'w_service', def: 0.15, label: 'พันธกิจด้านบริการวิชาการ', short: 'บริการวิชาการ', color: '#0e9f6e', bg: 'bg-emerald-50', text: 'text-emerald-700' },
-    { key: 'student', field: 'student_json', wkey: 'w_student', def: 0.15, label: 'พันธกิจด้านกิจการนักศึกษา', short: 'กิจการนักศึกษา', color: '#e3a008', bg: 'bg-amber-50', text: 'text-amber-700' },
+    // timed : กรอกเป็นช่วงวันที่และช่วงเวลา แล้วให้ระบบคิดจำนวนชั่วโมงให้
+    { key: 'service', field: 'service_json', wkey: 'w_service', def: 0.15, label: 'พันธกิจด้านบริการวิชาการ', short: 'บริการวิชาการ', color: '#0e9f6e', bg: 'bg-emerald-50', text: 'text-emerald-700', timed: true },
+    { key: 'student', field: 'student_json', wkey: 'w_student', def: 0.15, label: 'พันธกิจด้านกิจการนักศึกษา', short: 'กิจการนักศึกษา', color: '#e3a008', bg: 'bg-amber-50', text: 'text-amber-700', timed: true },
     { key: 'personal', field: 'personal_json', wkey: 'w_personal', def: 0.20, label: 'การใช้ชีวิตส่วนตัว', short: 'ใช้ชีวิตส่วนตัว', color: '#6b7280', bg: 'bg-gray-50', text: 'text-gray-600' }
   ];
   var ACT_KINDS = ['กิจกรรมที่', 'กิจกรรมโครงการ', 'กิจกรรมพิเศษ'];
@@ -31,6 +32,66 @@
   function fx(v) { return String(Math.round(n(v) * 100) / 100); }
   function get(t) { return (typeof getDataByType === 'function' ? getDataByType(t) : []) || []; }
   function semName(s) { return String(s) === '3' ? 'ฤดูร้อน' : String(s); }
+  function missionOf(key) { return MISSIONS.filter(function (m) { return m.key === key; })[0] || null; }
+  // ข้อความสั้น ๆ บอกช่วงวันเวลาของกิจกรรม ใช้ในหน้ารายละเอียดและไฟล์ส่งออก
+  function spanText(r) {
+    if (!r) return '';
+    var d1 = norm(r.date_from), d2 = norm(r.date_to), t1 = norm(r.time_from), t2 = norm(r.time_to);
+    var dpart = d1 && d2 && d1 !== d2 ? d1 + ' ถึง ' + d2 : (d1 || d2);
+    var tpart = t1 && t2 ? t1 + '-' + t2 + ' น.' : (t1 || t2);
+    return [dpart, tpart].filter(function (x) { return x; }).join(' · ');
+  }
+
+  /* ---------------- คิดชั่วโมงจากช่วงวันที่และช่วงเวลา ----------------
+     กิจกรรมบริการวิชาการและกิจการนักศึกษามักจัดเป็นช่วง เช่น 3 วัน วันละ 08.00-12.00
+     จึงให้กรอกวันที่-วันที่ และเวลา-เวลา แล้วคิดเป็น (จำนวนวัน x ชั่วโมงต่อวัน)
+     - กรอกวันที่เดียวหรือไม่กรอกวันที่เลย ถือเป็น 1 วัน
+     - เวลาสิ้นสุดก่อนเวลาเริ่ม ถือว่ากิจกรรมข้ามเที่ยงคืน และบอกไว้บนหน้าจอให้เห็นชัด
+     - ถ้าข้อมูลไม่พอหรือขัดกัน จะไม่เดาตัวเลขให้ แต่บอกว่าติดอะไร */
+  var SPAN_FIELDS = ['date_from', 'date_to', 'time_from', 'time_to'];
+  function dayNum(v) {
+    var mm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(norm(v));
+    if (!mm) return null;
+    return Date.UTC(+mm[1], +mm[2] - 1, +mm[3]);
+  }
+  function minOfDay(v) {
+    var mm = /^(\d{1,2}):(\d{2})/.exec(norm(v));
+    if (!mm) return null;
+    var h = +mm[1], mi = +mm[2];
+    if (h > 23 || mi > 59) return null;
+    return h * 60 + mi;
+  }
+  function spanCalc(r) {
+    var out = { days: 0, perDay: 0, hours: 0, overnight: false, err: '', ready: false };
+    var tf = minOfDay(r.time_from), tt = minOfDay(r.time_to);
+    var df = dayNum(r.date_from), dt = dayNum(r.date_to);
+    if (tf === null || tt === null) { out.err = 'กรอกเวลาเริ่มและเวลาสิ้นสุดเพื่อให้คิดชั่วโมงให้'; return out; }
+    var mins = tt - tf;
+    if (mins === 0) { out.err = 'เวลาเริ่มกับเวลาสิ้นสุดตรงกัน'; return out; }
+    if (mins < 0) { mins += 1440; out.overnight = true; }
+    out.perDay = Math.round(mins / 60 * 100) / 100;
+    if (df !== null && dt !== null) {
+      if (dt < df) { out.err = 'วันที่สิ้นสุดอยู่ก่อนวันที่เริ่ม'; return out; }
+      out.days = Math.round((dt - df) / 86400000) + 1;
+    } else {
+      out.days = 1;
+    }
+    out.hours = Math.round(out.perDay * out.days * 100) / 100;
+    out.ready = true;
+    return out;
+  }
+  // คำอธิบายใต้ช่องกรอก บอกที่มาของตัวเลขให้ตรวจได้
+  function spanNote(r) {
+    var manual = norm(r.hours_manual) === '1';
+    var c = spanCalc(r);
+    if (manual) {
+      return '<span class="text-gray-500">กรอกชั่วโมงเอง ' + fx(r.hours) + ' ชม.</span>'
+        + (c.ready ? ' <span class="text-gray-400">· คิดจากวันเวลาได้ ' + fx(c.hours) + ' ชม.</span>' : '');
+    }
+    if (c.err) return '<span class="text-gray-400">' + esc(c.err) + '</span>';
+    return '<span class="text-gray-600">' + c.days + ' วัน x ' + fx(c.perDay) + ' ชม./วัน = <b>' + fx(c.hours) + '</b> ชม.'
+      + (c.overnight ? ' <span class="text-amber-700">(ข้ามเที่ยงคืน)</span>' : '') + '</span>';
+  }
   function uniq(a) { var out = [], seen = {}; a.forEach(function (x) { if (x && !seen[x]) { seen[x] = 1; out.push(x); } }); return out; }
 
   function state() {
@@ -637,7 +698,9 @@
               ? '<td class="px-3 py-1.5">' + esc(norm(r.subject_name) || '-') + '</td>'
                 + '<td class="px-3 py-1.5 text-center tabular-nums text-gray-600">' + esc(norm(r.pieces) || '-') + '</td>'
               : '<td class="px-3 py-1.5 text-xs text-gray-500 whitespace-nowrap">' + esc(norm(r.kind) || 'กิจกรรมที่') + '</td>'
-                + '<td class="px-3 py-1.5 whitespace-pre-wrap">' + esc(norm(r.activity) || '-') + '</td>')
+                + '<td class="px-3 py-1.5 whitespace-pre-wrap">' + esc(norm(r.activity) || '-')
+                  + (spanText(r) ? '<span class="block text-[11px] text-gray-400">' + esc(spanText(r)) + '</span>' : '')
+                  + '</td>')
           + '<td class="px-3 py-1.5 text-center tabular-nums font-semibold">' + fx(r.hours) + '</td></tr>';
       }).join('');
 
@@ -783,15 +846,47 @@
 
   window.wlRowSet = function (mkey, idx, field, value) {
     var d = state().draft || draft();
-    if (d[mkey] && d[mkey][idx]) d[mkey][idx][field] = value;
+    var r = d[mkey] && d[mkey][idx];
+    if (!r) return;
+    r[field] = value;
+    var m = missionOf(mkey);
+    if (m && m.timed) {
+      // พิมพ์ชั่วโมงเองถือว่าขอคุมตัวเลขด้วยมือ ลบออกจนว่างก็กลับไปคิดให้อัตโนมัติ
+      if (field === 'hours') r.hours_manual = norm(value) === '' ? '' : '1';
+      else if (SPAN_FIELDS.indexOf(field) !== -1) spanApply(mkey, idx, r);
+      spanPaint(mkey, idx, r);
+    }
     wlUpdateTotals();
+  };
+  // เขียนชั่วโมงที่คิดได้ลงในแถวและในช่องกรอก (ไม่แตะถ้าผู้ใช้กรอกเอง)
+  function spanApply(mkey, idx, r) {
+    if (norm(r.hours_manual) === '1') return;
+    var c = spanCalc(r);
+    r.hours = c.ready ? String(c.hours) : '';
+    var el = (typeof document !== 'undefined') && document.querySelector('[data-wl-hr="' + mkey + '|' + idx + '"]');
+    if (el) el.value = r.hours;
+  }
+  function spanPaint(mkey, idx, r) {
+    var el = (typeof document !== 'undefined') && document.querySelector('[data-wl-span="' + mkey + '|' + idx + '"]');
+    if (el) el.innerHTML = spanNote(r);
+  }
+  // กลับไปให้ระบบคิดชั่วโมงจากวันเวลา
+  window.wlSpanAuto = function (mkey, idx) {
+    var d = state().draft || draft();
+    var r = d[mkey] && d[mkey][idx];
+    if (!r) return;
+    r.hours_manual = '';
+    spanApply(mkey, idx, r);
+    renderCurrentPage();
   };
   window.wlRowAdd = function (mkey) {
     var st0 = state();
     if (st0.fold) st0.fold[mkey] = false;   // เพิ่มแถวแล้วต้องเห็นแถวใหม่
     var d = st0.draft || draft();
     var m = MISSIONS.filter(function (x) { return x.key === mkey; })[0];
-    d[mkey].push(m.subject ? { subject_name: '', pieces: '', hours: '' } : { kind: 'กิจกรรมที่', activity: '', hours: '' });
+    d[mkey].push(m.subject ? { subject_name: '', pieces: '', hours: '' }
+      : m.timed ? { kind: 'กิจกรรมที่', activity: '', date_from: '', date_to: '', time_from: '', time_to: '', hours: '' }
+      : { kind: 'กิจกรรมที่', activity: '', hours: '' });
     renderCurrentPage();
   };
   window.wlRowDel = function (mkey, idx) {
@@ -818,9 +913,38 @@
     renderCurrentPage();
   };
 
-  function inp(mkey, i, field, val, type, readonly, cls) {
+  function inp(mkey, i, field, val, type, readonly, cls, extra) {
     if (readonly) return '<div class="text-sm py-2 ' + (cls.indexOf('center') >= 0 ? 'text-center' : '') + '">' + esc(val) + '</div>';
-    return '<input type="' + type + '" value="' + esc(val) + '" oninput="wlRowSet(\'' + mkey + '\',' + i + ',\'' + field + '\',this.value)" class="' + cls + ' border rounded-lg px-2 py-1.5 text-sm">';
+    return '<input type="' + type + '" value="' + esc(val) + '"' + (extra || '')
+      + ' oninput="wlRowSet(\'' + mkey + '\',' + i + ',\'' + field + '\',this.value)" class="' + cls + ' border rounded-lg px-2 py-1.5 text-sm">';
+  }
+
+  /* แถวช่องกรอกวันที่และเวลาของกิจกรรมหนึ่งรายการ */
+  function spanFields(mkey, i, r, readonly) {
+    var cells = [
+      ['date_from', 'วันที่เริ่ม', 'date'],
+      ['date_to', 'วันที่สิ้นสุด', 'date'],
+      ['time_from', 'เวลาเริ่ม', 'time'],
+      ['time_to', 'เวลาสิ้นสุด', 'time']
+    ].map(function (c) {
+      return '<label class="block"><span class="block text-[11px] text-gray-500 mb-0.5">' + c[1] + '</span>'
+        + (readonly
+            ? '<span class="block text-sm py-1">' + esc(norm(r[c[0]]) || '-') + '</span>'
+            : '<input type="' + c[2] + '" value="' + esc(norm(r[c[0]])) + '" '
+              + 'oninput="wlRowSet(\'' + mkey + '\',' + i + ',\'' + c[0] + '\',this.value)" '
+              + 'class="w-full border rounded-lg px-2 py-1.5 text-sm">')
+        + '</label>';
+    }).join('');
+    var manual = norm(r.hours_manual) === '1';
+    return '<div class="col-span-12 rounded-xl bg-surface/60 border border-gray-100 p-2">'
+      + '<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">' + cells + '</div>'
+      + '<div class="flex flex-wrap items-center gap-2 text-[11px] mt-1.5">'
+      + '<i data-lucide="clock" class="w-3.5 h-3.5 text-gray-400"></i>'
+      + '<span data-wl-span="' + mkey + '|' + i + '">' + spanNote(r) + '</span>'
+      + (readonly || !manual ? '' :
+          '<button type="button" onclick="wlSpanAuto(\'' + mkey + '\',' + i + ')" class="text-primary hover:underline">'
+          + 'ให้คิดจากวันเวลาแทน</button>')
+      + '</div></div>';
   }
 
   function missionEditor(m, d, readonly, cur) {
@@ -876,8 +1000,9 @@
           + (readonly ? '<div class="text-sm py-2 whitespace-pre-wrap">' + esc(r.activity) + '</div>'
             : '<textarea rows="2" oninput="wlRowSet(\'' + m.key + '\',' + i + ',\'activity\',this.value)" placeholder="ชื่อกิจกรรม" class="w-full border rounded-lg px-2 py-1.5 text-sm">' + esc(r.activity) + '</textarea>')
           + '</div>'
-          + '<div class="col-span-2">' + inp(m.key, i, 'hours', r.hours, 'number', readonly, 'w-full text-center') + '</div>'
+          + '<div class="col-span-2">' + inp(m.key, i, 'hours', r.hours, 'number', readonly, 'w-full text-center', m.timed ? ' data-wl-hr="' + m.key + '|' + i + '"' : '') + '</div>'
           + (readonly ? '' : '<div class="col-span-1 pt-2"><button type="button" onclick="wlRowDel(\'' + m.key + '\',' + i + ')" class="text-red-400 hover:text-red-600"><i data-lucide="x" class="w-4 h-4"></i></button></div>')
+          + (m.timed ? spanFields(m.key, i, r, readonly) : '')
           + '<div class="col-span-12 -mt-1">' + partLine(m.key, i, r, readonly) + '</div>'
           + '</div>';
       }).join('') + '</div>';
