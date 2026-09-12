@@ -38,7 +38,8 @@ const EMSDB = (() => {
     'curriculum', 'curriculum_course', 'curriculum_plo', 'curriculum_map',
     // หมายเหตุ: ไม่ใส่ plo_score เพราะเป็นคะแนนรายคน อาจมีหลายหมื่นแถว
     // หน้าเว็บดึงเฉพาะที่ต้องใช้ผ่าน ems_plo_scores() แทน
-    'plo_setting', 'plo_band', 'plo_clo'
+    'plo_setting', 'plo_band', 'plo_clo',
+    'homeroom'          // ห้องเรียนประจำรายชั้นปี (เดิมเก็บในเครื่อง จึงไม่ข้ามอุปกรณ์)
   ];
 
   // ระลอกที่ 2 — ตารางใหญ่ที่ไม่จำเป็นต้องมีตอนเปิดหน้าแรก

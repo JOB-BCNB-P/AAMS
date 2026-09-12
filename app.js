@@ -15,31 +15,124 @@ function ctYear() { return APP.currentRole === 'classTeacher' ? norm((APP.curren
 // ======================== HOMEROOM NUMBERS (per year level) ========================
 // Stored in localStorage so admin/academic can configure without modifying the spreadsheet
 const DEFAULT_HOMEROOMS = { '1': '', '2': '', '3': '', '4': '' };
-function getHomeroomNumbers() {
+
+/* ห้องเรียนประจำเก็บในตาราง homeroom ของฐานข้อมูล แยกตามปีการศึกษา
+   ของเดิมเก็บไว้ใน localStorage ของเบราว์เซอร์ จึงเห็นเฉพาะเครื่องที่กรอก
+   เครื่องอื่นหรือคนอื่นเปิดดูจะขึ้นว่า "ยังไม่กำหนด"
+   ค่าเดิมที่ค้างอยู่ในเครื่องจะถูกย้ายขึ้นฐานข้อมูลให้อัตโนมัติครั้งแรกที่เปิด */
+const HOMEROOM_LS_KEY = 'homeroomNumbers';
+
+function homeroomYear() { return currentAcademicYearBE(); }
+
+// ค่าที่ยังค้างอยู่ในเครื่องนี้ (ใช้ตอนย้ายขึ้นฐานข้อมูลเท่านั้น)
+function getLocalHomerooms() {
   try {
-    const raw = localStorage.getItem('homeroomNumbers');
-    if (!raw) return { ...DEFAULT_HOMEROOMS };
+    const raw = localStorage.getItem(HOMEROOM_LS_KEY);
+    if (!raw) return {};
     const parsed = JSON.parse(raw);
-    return { ...DEFAULT_HOMEROOMS, ...parsed };
-  } catch { return { ...DEFAULT_HOMEROOMS }; }
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch { return {}; }
 }
-function setHomeroomNumber(yr, value) {
-  const all = getHomeroomNumbers();
-  all[String(yr)] = (value || '').trim();
-  localStorage.setItem('homeroomNumbers', JSON.stringify(all));
+
+function getHomeroomRow(yr, year) {
+  const y = String(year || homeroomYear());
+  return (getDataByType('homeroom') || []).find(h =>
+    norm(h.academic_year) === y && norm(h.year_level) === String(yr)) || null;
 }
+
+function getHomeroomNumbers(year) {
+  const y = String(year || homeroomYear());
+  const out = { ...DEFAULT_HOMEROOMS };
+  (getDataByType('homeroom') || []).forEach(h => {
+    if (norm(h.academic_year) !== y) return;
+    const lv = norm(h.year_level);
+    if (lv) out[lv] = norm(h.room);
+  });
+  return out;
+}
+
+function canEditHomeroom() {
+  const role = (APP.currentUser && APP.currentUser.role) || APP.currentRole;
+  return role === 'admin' || role === 'academic';
+}
+
+/* บันทึกลงฐานข้อมูล — ดึงข้อมูลล่าสุดมาก่อนทุกครั้ง จะได้ไม่ทับของคนอื่นที่เพิ่งแก้ */
+async function saveHomeroomNumber(yr, value, year) {
+  const y = String(year || homeroomYear());
+  const room = (value || '').trim();
+  const who = (APP.currentUser && APP.currentUser.name) || '';
+  try { await GSheetDB.refreshTab('homeroom'); } catch (e) { /* ใช้ข้อมูลที่มีอยู่ */ }
+  const cur = getHomeroomRow(yr, y);
+  const payload = { type: 'homeroom', academic_year: y, year_level: String(yr), room: room, updated_by: who };
+  return cur ? await GSheetDB.update(Object.assign({}, cur, payload)) : await GSheetDB.create(payload);
+}
+
+/* ย้ายค่าที่ค้างอยู่ใน localStorage ขึ้นฐานข้อมูลให้ครั้งเดียว
+   ย้ายเฉพาะชั้นปีที่ยังไม่มีข้อมูลในฐานข้อมูล จึงไม่ทับของที่คนอื่นกรอกไว้แล้ว */
+let _hrMigrating = false;
+async function migrateLocalHomerooms() {
+  if (_hrMigrating || !canEditHomeroom()) return;
+  const local = getLocalHomerooms();
+  const y = homeroomYear();
+  const todo = ['1', '2', '3', '4'].filter(lv => (local[lv] || '').trim() && !getHomeroomRow(lv, y));
+  if (!todo.length) { try { localStorage.removeItem(HOMEROOM_LS_KEY); } catch (e) { } return; }
+  _hrMigrating = true;
+  let done = 0;
+  for (const lv of todo) {
+    const r = await saveHomeroomNumber(lv, local[lv], y);
+    if (r && r.isOk) done++;
+  }
+  _hrMigrating = false;
+  if (done) {
+    try { localStorage.removeItem(HOMEROOM_LS_KEY); } catch (e) { }
+    showToast && showToast('ย้ายห้องเรียนประจำที่เคยกรอกไว้ในเครื่องนี้ขึ้นระบบแล้ว ' + done + ' ชั้นปี — ตอนนี้เปิดจากอุปกรณ์ไหนก็เห็นตรงกัน');
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  }
+}
+
+/* กล่องแก้ไขห้องเรียนประจำ — ใช้หน้าต่างของระบบ ไม่ใช้ prompt() ของเบราว์เซอร์
+   (prompt() หน้าตาไม่เข้ากับระบบ และบางเบราว์เซอร์บนมือถือบล็อกไว้) */
 function promptEditHomeroom(yr) {
-  const role = APP.currentUser && APP.currentUser.role;
-  if (role !== 'admin' && role !== 'academic') {
+  if (!canEditHomeroom()) {
     showToast && showToast('เฉพาะผู้ดูแลระบบ/งานวิชาการเท่านั้นที่แก้ไขได้', 'error');
     return;
   }
-  const current = getHomeroomNumbers()[String(yr)] || '';
-  const v = prompt(`กรอกหมายเลขห้องเรียนประจำของชั้นปี ${yr}\nถ้ามีหลายห้องย่อย คั่นด้วยจุลภาค (,) จะแสดงเป็นลำดับลงมา\nเช่น: ห้อง A 101, ห้อง B 202`, current);
-  if (v === null) return;
-  setHomeroomNumber(yr, v);
-  if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  const y = homeroomYear();
+  const cur = getHomeroomRow(yr, y);
+  const val = cur ? norm(cur.room) : '';
+  const by = cur && norm(cur.updated_by)
+    ? `<p class="text-xs text-gray-400 mt-2">แก้ไขล่าสุดโดย ${htmlEsc(norm(cur.updated_by))}</p>` : '';
+  showModal(`ห้องเรียนประจำ ชั้นปีที่ ${yr}`, `
+    <p class="text-sm text-gray-500 mb-3">ปีการศึกษา <b class="text-gray-700">${y}</b> — ข้อมูลนี้บันทึกในระบบ เปิดจากอุปกรณ์ไหนก็เห็นตรงกัน</p>
+    <label class="block text-sm font-medium mb-1">หมายเลขห้อง</label>
+    <textarea id="hrRoomInput" rows="3" placeholder="เช่น ห้อง 3-201 (จ.-พฤ.), ห้อง 3-202 (กายวิภาคฯ)"
+      class="w-full border rounded-xl px-3 py-2 text-sm">${htmlEsc(val)}</textarea>
+    <p class="text-xs text-gray-500 mt-2">มีหลายห้องย่อย ให้คั่นด้วยจุลภาค ( , ) จะแสดงเป็นรายการลงมา · เว้นว่างไว้เพื่อล้างค่า</p>
+    ${by}
+    <div class="mt-5 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+      <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl border border-gray-200 hover:bg-gray-50">ยกเลิก</button>
+      <button type="button" id="hrSaveBtn" onclick="emsSaveHomeroom('${yr}')"
+        class="px-4 py-2 rounded-xl bg-primary text-white hover:bg-primaryDark">บันทึก</button>
+    </div>`, null, 'max-w-md');
+  setTimeout(() => { const t = document.getElementById('hrRoomInput'); if (t) t.focus(); }, 60);
 }
+
+window.emsSaveHomeroom = async function (yr) {
+  const box = document.getElementById('hrRoomInput');
+  if (!box) return;
+  const v = box.value;
+  const btn = document.getElementById('hrSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'กำลังบันทึก...'; }
+  const r = await saveHomeroomNumber(yr, v);
+  if (r && r.isOk) {
+    closeModal();
+    showToast && showToast('บันทึกห้องเรียนประจำ ชั้นปีที่ ' + yr + ' แล้ว');
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  } else {
+    if (btn) { btn.disabled = false; btn.textContent = 'บันทึก'; }
+    showToast && showToast('บันทึกไม่สำเร็จ: ' + ((r && r.error) || 'ไม่ทราบสาเหตุ'), 'error');
+  }
+};
 
 // ======================== LOGIN ACTIVITY LOG ========================
 // Save login/logout events to Google Sheet "login_log" tab
@@ -1375,6 +1468,8 @@ function unassignedYearNote(students) {
 // การ์ดนักศึกษารายชั้นปี (ใช้ทั้งแดชบอร์ด admin และประธานสาขา)
 function yearLevelCardsHTML(students, engPassRecords, canEdit) {
   const _hr = getHomeroomNumbers();
+  // ค่าที่เคยกรอกไว้ในเครื่องนี้ ย้ายขึ้นระบบให้เงียบ ๆ ครั้งเดียว
+  setTimeout(() => { try { migrateLocalHomerooms(); } catch (e) { } }, 0);
   return [1, 2, 3, 4].map(yr => {
     const yrStudents = activeStudents(students).filter(s => norm(s.year_level) === String(yr));
     const yrEngPassUnique = [...new Set(engPassRecords.filter(e => yrStudents.some(s => s.student_id === e.student_id)).map(e => e.student_id))];
@@ -1390,7 +1485,7 @@ function yearLevelCardsHTML(students, engPassRecords, canEdit) {
         <div class="flex items-start gap-2 min-w-0">
           <i data-lucide="door-open" class="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5"></i>
           <div class="min-w-0">
-            <p class="text-xs text-gray-500 leading-tight">ห้องเรียนประจำ</p>
+            <p class="text-xs text-gray-500 leading-tight">ห้องเรียนประจำ <span class="text-gray-400">· ปี ${homeroomYear()}</span></p>
             <div class="text-sm font-bold text-gray-800">${renderHomeroomHTML(homeroom)}</div>
           </div>
         </div>
