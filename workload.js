@@ -668,15 +668,26 @@
     }
     list.sort(function (a, b) { return a.sid.localeCompare(b.sid, 'th', { numeric: true }); });
     var shown = list.slice(0, 300);
+    // เกณฑ์สัดส่วนของชั้นปีนี้ (40/10/15/15/20 หรือค่าที่วิทยาลัยปรับไว้) ใช้เทียบให้เห็นว่าใครเบี่ยงจากเกณฑ์
+    var refPlan = null;
+    SEMS.forEach(function (sm) { if (!refPlan) refPlan = planOf(year, level, sm); });
+    var caps = {};
+    MISSIONS.forEach(function (m) { caps[m.key] = Math.round(weightOf(refPlan, m) * 1000) / 10; });
+    var overCount = {};
+    MISSIONS.forEach(function (m) { overCount[m.key] = 0; });
     var body = shown.map(function (x) {
       return '<tr class="border-t hover:bg-gray-50">'
         + '<td class="px-3 py-2 font-mono text-xs text-primary whitespace-nowrap">' + esc(x.sid) + '</td>'
         + '<td class="px-3 py-2">' + esc(x.name) + '</td>'
-        // แสดงเป็นสัดส่วนร้อยละของเวลาทั้งหมดที่นักศึกษาคนนั้นใช้ไป
+        // สัดส่วนร้อยละของเวลาทั้งหมดที่นักศึกษาคนนั้นใช้ไป เทียบกับเกณฑ์ของพันธกิจนั้น
         + MISSIONS.map(function (m) {
             var pct = x.rawTotal ? Math.round(x.raw[m.key] / x.rawTotal * 1000) / 10 : 0;
-            return '<td class="px-3 py-2 text-center tabular-nums text-gray-600" '
-              + 'title="' + fx(x.raw[m.key]) + ' ชม.">' + pct + '%</td>';
+            var over = x.rawTotal > 0 && pct > caps[m.key];
+            if (over) overCount[m.key]++;
+            return '<td class="px-3 py-2 text-center tabular-nums '
+              + (over ? 'text-amber-700 font-semibold' : 'text-gray-600') + '" '
+              + 'title="' + fx(x.raw[m.key]) + ' ชม. · เกณฑ์ ' + caps[m.key] + '%">'
+              + pct + '%' + (over ? ' ▲' : '') + '</td>';
           }).join('')
         + '<td class="px-3 py-2 text-center tabular-nums font-semibold text-primary">' + fx(x.rawTotal) + '</td>'
         + '<td class="px-3 py-2 text-center">' + (x.ovr
@@ -690,12 +701,23 @@
       + '<div class="overflow-x-auto border border-blue-50 rounded-xl" style="max-height:60vh;overflow-y:auto">'
       + '<table class="w-full text-sm"><thead class="sticky top-0"><tr class="bg-surface text-left">'
       + '<th class="px-3 py-2 font-semibold">รหัส</th><th class="px-3 py-2 font-semibold">ชื่อ-สกุล</th>'
-      + MISSIONS.map(function (m) { return '<th class="px-3 py-2 font-semibold text-center whitespace-nowrap">' + esc(m.short) + '</th>'; }).join('')
+      + MISSIONS.map(function (m) {
+          return '<th class="px-3 py-2 font-semibold text-center whitespace-nowrap">' + esc(m.short)
+            + '<span class="block text-[10px] font-normal text-gray-400">เกณฑ์ ' + caps[m.key] + '%</span></th>';
+        }).join('')
       + '<th class="px-3 py-2 font-semibold text-center">รวม (ชม.)</th>'
       + '<th class="px-3 py-2 font-semibold text-center">สถานะ</th></tr></thead>'
-      + '<tbody>' + body + '</tbody></table></div>'
+      + '<tbody>' + body + '</tbody>'
+      + '<tfoot><tr class="border-t-2 bg-surface text-xs">'
+      + '<td class="px-3 py-2 font-semibold" colspan="2">จำนวนคนที่สัดส่วนสูงกว่าเกณฑ์</td>'
+      + MISSIONS.map(function (m) {
+          return '<td class="px-3 py-2 text-center tabular-nums '
+            + (overCount[m.key] ? 'text-amber-700 font-semibold' : 'text-gray-400') + '">'
+            + overCount[m.key] + ' คน</td>';
+        }).join('')
+      + '<td colspan="2"></td></tr></tfoot></table></div>'
       + '<p class="text-xs text-gray-400 mt-2">ตัวเลขในช่องพันธกิจคือสัดส่วนร้อยละของเวลาทั้งหมดที่นักศึกษาคนนั้นใช้ไป '
-      + '— ชี้ค้างที่ตัวเลขเพื่อดูจำนวนชั่วโมง'
+      + 'เทียบกับเกณฑ์ที่ระบุใต้ชื่อพันธกิจ · ▲ และตัวเลขสีส้มคือสูงกว่าเกณฑ์ · ชี้ค้างที่ตัวเลขเพื่อดูจำนวนชั่วโมง'
       + (list.length > 300 ? ' · แสดง 300 คนแรกจาก ' + list.length + ' คน' : '') + '</p>'
       + '</div>';
   }
