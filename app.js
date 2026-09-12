@@ -3630,102 +3630,202 @@ function buildOfficialTranscript(stu, logoSrc) {
   const grades = getDataByType('grade').filter(g => norm(g.student_id) === stuId);
   const gradeMap = { 'A': 4, 'B+': 3.5, 'B': 3, 'C+': 2.5, 'C': 2, 'D+': 1.5, 'D': 1, 'F': 0 };
   const acadOf = g => { const y = parseInt(norm(g.academic_year), 10); return isNaN(y) ? null : y; };
-  // ปีการศึกษาเริ่มต้น (ใช้ admission_date ก่อน ถ้าไม่มีใช้ปีต่ำสุดของเกรด)
+
+  /* จัดรายวิชาเข้าชั้นปี
+     ทางที่แม่นที่สุดคือดูจากตารางรายวิชาที่เปิดสอนของรุ่นนั้น (รู้ว่าวิชานี้อยู่ชั้นปีไหน)
+     ถ้าไม่พบ จึงค่อยคำนวณจากปีการศึกษาเทียบกับปีที่เข้าเรียน */
+  const batch = norm(stu.batch);
+  const subjectsOfBatch = getDataByType('subject').filter(s => !batch || norm(s.batch) === batch);
+  const levelOfSubject = g => {
+    const code = norm(g.subject_code), ay = norm(g.academic_year), sem = norm(g.semester);
+    let hit = subjectsOfBatch.find(s => norm(s.subject_code) === code && norm(s.academic_year) === ay && norm(s.semester) === sem);
+    if (!hit) hit = subjectsOfBatch.find(s => norm(s.subject_code) === code && norm(s.academic_year) === ay);
+    const lv = hit ? parseInt(norm(hit.year_level), 10) : NaN;
+    return (lv >= 1 && lv <= 8) ? lv : null;
+  };
+
   let baseYear = null;
   if (stu.admission_date) { const m = String(stu.admission_date).match(/^(\d{4})-(\d{1,2})/); if (m) { let y = parseInt(m[1], 10) + 543; if (parseInt(m[2], 10) < 6) y -= 1; baseYear = y; } }
   if (baseYear == null) { const ys = grades.map(acadOf).filter(v => v != null); if (ys.length) baseYear = Math.min(...ys); }
 
   const yearGroups = {};
-  let totalCredits = 0, totalPoints = 0;
+  let regCredits = 0, gpaCredits = 0, totalPoints = 0;
   grades.forEach(g => {
-    const ay = acadOf(g);
-    let sy = (baseYear != null && ay != null) ? (ay - baseYear + 1) : 1;
-    if (sy < 1) sy = 1;
+    let sy = levelOfSubject(g);
+    if (sy == null) {
+      const ay = acadOf(g);
+      sy = (baseYear != null && ay != null) ? (ay - baseYear + 1) : 1;
+      if (sy < 1) sy = 1;
+    }
     if (!yearGroups[sy]) yearGroups[sy] = { courses: [], credits: 0 };
     yearGroups[sy].courses.push(g);
-    const cr = Number(_gradeCredits(g)) || 0; const gv = gradeMap[g.grade];
+    const cr = Number(_gradeCredits(g)) || 0;
+    const gv = gradeMap[norm(g.grade)];
     yearGroups[sy].credits += cr;
-    if (gv !== undefined) { totalPoints += gv * cr; totalCredits += cr; }
+    regCredits += cr;
+    if (gv !== undefined) { totalPoints += gv * cr; gpaCredits += cr; }
   });
-  const gpax = totalCredits ? (totalPoints / totalCredits).toFixed(2) : '-';
+  const gpax = gpaCredits ? (totalPoints / gpaCredits).toFixed(2) : '-';
   const sortedYears = Object.keys(yearGroups).map(Number).sort((a, b) => a - b);
-
-  const courseHead = `<tr style="background:#dceaf7"><th style="border:1px solid #999;padding:2px 4px;font-size:10px;width:22%">รหัสรายวิชา</th><th style="border:1px solid #999;padding:2px 4px;font-size:10px">ชื่อรายวิชา</th><th style="border:1px solid #999;padding:2px 4px;font-size:10px;width:15%">หน่วยกิต</th><th style="border:1px solid #999;padding:2px 4px;font-size:10px;width:10%">เกรด</th></tr>`;
-  const yearBlock = sy => {
-    const grp = yearGroups[sy]; if (!grp) return '';
-    let rows = `<tr><td colspan="4" style="text-align:center;font-weight:700;padding:2px;border:1px solid #999;background:#eef5fb;font-size:10px">ชั้นปีที่ ${sy}</td></tr>`;
-    grp.courses.forEach(g => {
-      rows += `<tr><td style="border:1px solid #999;padding:2px 4px;font-family:monospace;font-size:9.5px">${g.subject_code || ''}</td><td style="border:1px solid #999;padding:2px 4px;font-size:9.5px">${g.subject_name || ''}</td><td style="border:1px solid #999;padding:2px 4px;text-align:center;font-size:9.5px">${_gradeCreditCode(g) || ''}</td><td style="border:1px solid #999;padding:2px 4px;text-align:center;font-size:9.5px;font-weight:600">${g.grade || ''}</td></tr>`;
+  /* เรียงรายวิชาในแต่ละชั้นปี : ภาคการศึกษาก่อน แล้วตามลำดับที่วิชานั้นอยู่ในตารางรายวิชาที่เปิดสอน
+     (ลำดับนั้นคือลำดับตามเอกสารหลักสูตร ทำให้ใบระเบียนเรียงเหมือนฉบับที่งานทะเบียนออก)
+     วิชาที่หาไม่เจอในตาราง ให้ไปต่อท้ายและเรียงตามรหัสวิชา */
+  const subjOrder = {};
+  subjectsOfBatch.forEach((sb, i) => {
+    const k = norm(sb.subject_code) + '|' + norm(sb.academic_year) + '|' + norm(sb.semester);
+    if (subjOrder[k] === undefined) subjOrder[k] = i;
+  });
+  const orderOf = g => {
+    const k = norm(g.subject_code) + '|' + norm(g.academic_year) + '|' + norm(g.semester);
+    return subjOrder[k] === undefined ? 99999 : subjOrder[k];
+  };
+  sortedYears.forEach(sy => {
+    yearGroups[sy].courses.sort((a, b) => {
+      const s1 = norm(a.semester), s2 = norm(b.semester);
+      if (s1 !== s2) return s1.localeCompare(s2, 'th', { numeric: true });
+      const o1 = orderOf(a), o2 = orderOf(b);
+      if (o1 !== o2) return o1 - o2;
+      return norm(a.subject_code).localeCompare(norm(b.subject_code), 'th', { numeric: true });
     });
-    rows += `<tr><td colspan="2" style="border:1px solid #999;padding:2px 4px;text-align:right;font-weight:600;font-size:9.5px">รวม</td><td style="border:1px solid #999;padding:2px 4px;text-align:center;font-weight:700;font-size:9.5px">${grp.credits}</td><td style="border:1px solid #999"></td></tr>`;
+  });
+
+  /* เส้นตาราง : กรอบนอกและเส้นแบ่งคอลัมน์เท่านั้น
+     ไม่มีเส้นคั่นระหว่างรายวิชา เหมือนใบระเบียนฉบับจริง */
+  const B = '1px solid #000';
+  const cell = (extra) => 'border-left:' + B + ';border-right:' + B + ';padding:1px 4px;' + (extra || '');
+  const W = ['19%', '', '12%', '9%'];
+
+  const tableHead = `<tr>
+    <th style="${cell('border-top:' + B + ';border-bottom:' + B + ';text-align:center;font-weight:600;width:' + W[0] + '')}">รหัสรายวิชา</th>
+    <th style="${cell('border-top:' + B + ';border-bottom:' + B + ';text-align:center;font-weight:600')}">ชื่อรายวิชา</th>
+    <th style="${cell('border-top:' + B + ';border-bottom:' + B + ';text-align:center;font-weight:600;width:' + W[2] + '')}">หน่วยกิต</th>
+    <th style="${cell('border-top:' + B + ';border-bottom:' + B + ';text-align:center;font-weight:600;width:' + W[3] + '')}">เกรด</th>
+  </tr>`;
+
+  const yearBlock = sy => {
+    const grp = yearGroups[sy];
+    if (!grp) return '';
+    let rows = `<tr>
+      <td style="${cell()}"></td>
+      <td style="${cell('text-align:center;font-weight:600')}">ชั้นปีที่ ${sy}</td>
+      <td style="${cell()}"></td><td style="${cell()}"></td></tr>`;
+    grp.courses.forEach(g => {
+      rows += `<tr>
+        <td style="${cell('text-align:center;white-space:nowrap')}">${htmlEsc(norm(g.subject_code))}</td>
+        <td style="${cell()}">${htmlEsc(norm(g.subject_name))}</td>
+        <td style="${cell('text-align:center')}">${htmlEsc(String(Number(_gradeCredits(g)) || ''))}</td>
+        <td style="${cell('text-align:center')}">${htmlEsc(norm(g.grade))}</td></tr>`;
+    });
+    rows += `<tr>
+      <td style="${cell('border-top:' + B + ';border-bottom:' + B + '')}"></td>
+      <td style="${cell('border-top:' + B + ';border-bottom:' + B + ';text-align:right;font-weight:600')}">รวม</td>
+      <td style="${cell('border-top:' + B + ';border-bottom:' + B + ';text-align:center;font-weight:600')}">${grp.credits}</td>
+      <td style="${cell('border-top:' + B + ';border-bottom:' + B + '')}"></td></tr>`;
     return rows;
   };
+
+  // ครึ่งแรกไว้คอลัมน์ซ้าย ครึ่งหลังไว้คอลัมน์ขวา (ปกติ ปี 1-2 ซ้าย · ปี 3-4 ขวา)
   const half = Math.ceil(sortedYears.length / 2) || 1;
   const leftRows = sortedYears.slice(0, half).map(yearBlock).join('');
   const rightRows = sortedYears.slice(half).map(yearBlock).join('');
 
-  const practicumRows = PRACTICUM_HOURS.map(p => `<div style="display:flex;justify-content:space-between"><span>${p[0]}</span><span>${p[1]} ชั่วโมง</span></div>`).join('');
-  const engPass = getDataByType('eng_result').some(e => norm(e.student_id) === stuId && e.eng_status === 'ผ่าน');
-  const college = (APP.config && APP.config.college_name) || 'วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ';
+  // จำนวนหน่วยกิตตามหลักสูตร อ่านจากข้อมูลหลักสูตรที่บันทึกไว้
+  const curRow = getDataByType('curriculum')[0] || {};
+  const planCredits = norm(stu.curriculum_credits) || norm(curRow.total_credits) || '';
+  const sumLine = (label, value, unit) => `<tr>
+    <td colspan="2" style="${cell('border-top:' + B + ';border-bottom:' + B + '')}">${label}</td>
+    <td style="${cell('border-top:' + B + ';border-bottom:' + B + ';text-align:center;font-weight:600')}">${value}</td>
+    <td style="${cell('border-top:' + B + ';border-bottom:' + B + ';text-align:center')}">${unit || ''}</td></tr>`;
+  const summaryRows = sumLine('จำนวนหน่วยกิตตามหลักสูตร', planCredits || '-', 'หน่วย')
+    + sumLine('จำนวนหน่วยกิตที่ลงทะเบียน', regCredits || '-', 'หน่วย')
+    + sumLine('คะแนนเฉลี่ยสะสมตลอดหลักสูตร', gpax, '');
+
+  const practicumRows = PRACTICUM_HOURS.map(p =>
+    `<tr><td style="padding:0 0 0 10px">${p[0]}</td><td style="text-align:right;white-space:nowrap;padding-right:2px">${p[1]}</td><td style="white-space:nowrap;padding-left:4px">ชั่วโมง</td></tr>`).join('');
+
+  const engPass = getDataByType('eng_result').some(e => norm(e.student_id) === stuId && norm(e.eng_status) === 'ผ่าน');
+  const engTxt = engPass ? 'ผ่าน' : (norm(stu.eng_test) || '-');
+  const compTxt = norm(stu.comprehensive_exam) || '-';
+
+  const institute = norm(curRow.institute) || 'สถาบันพระบรมราชชนก กระทรวงสาธารณสุข';
+  const faculty = norm(curRow.faculty) || 'คณะพยาบาลศาสตร์';
+  const college = (APP.config && APP.config.college_name) || norm(curRow.college) || 'วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ';
   const director = (APP.config && APP.config.director_name) || 'ผู้ช่วยศาสตราจารย์พนารัตน์ วิศวเทพนิมิตร';
-  const logoTag = logoSrc ? `<img src="${logoSrc}" style="width:70px;height:auto;margin:0 auto 4px auto;display:block">` : '';
+  const logoTag = logoSrc ? `<img src="${logoSrc}" style="width:62px;height:auto;display:block">` : '';
+
+  const info = (label, value) => `<div style="margin-bottom:1px"><span style="font-weight:600">${label}</span> ${htmlEsc(value == null ? '' : String(value))}</div>`;
+  const nameEn = norm(stu.name_en);
 
   return `
-  <div style="font-family:'Sarabun',sans-serif;color:#000;font-size:11px;width:100%">
-    <div style="text-align:center;margin-bottom:6px">
-      ${logoTag}
-      <div style="font-weight:700;font-size:15px">ระเบียนแสดงผลการเรียน</div>
-      <div style="font-size:11px">สถาบันพระบรมราชชนก กระทรวงสาธารณสุข</div>
-      <div style="font-size:11px">คณะพยาบาลศาสตร์</div>
-      <div style="font-size:11px">${college}</div>
-    </div>
-    <table style="width:100%;font-size:10.5px;margin-bottom:6px;border-collapse:collapse"><tr>
-      <td style="vertical-align:top;width:56%;padding-right:6px">
-        <div>รหัสนักศึกษา: <b>${stu.student_id || ''}</b></div>
-        <div>ชื่อ-นามสกุล (ไทย): <b>${stu.name || ''}</b></div>
-        <div>(อังกฤษ): <b>${stu.name_en || ''}</b></div>
-        <div>วันที่เกิด: <b>${toThaiLongDate(stu.birth_date) || '-'}</b></div>
-        <div>จังหวัดที่เกิด: <b>${stu.birth_province || '-'}</b></div>
-        <div>สัญชาติ: <b>${stu.nationality || 'ไทย'}</b> &nbsp;&nbsp; ศาสนา: <b>${stu.religion || '-'}</b></div>
+  <div style="font-family:'Sarabun',sans-serif;color:#000;font-size:11px;width:100%;line-height:1.35">
+
+    <table style="width:100%;border-collapse:collapse;margin-bottom:8px"><tr>
+      <td style="width:70px;vertical-align:top">${logoTag}</td>
+      <td style="text-align:center;vertical-align:top">
+        <div style="font-weight:700;font-size:13px">ระเบียนแสดงผลการเรียน</div>
+        <div style="font-weight:700;font-size:13px">${htmlEsc(institute)}</div>
+        <div style="font-weight:700;font-size:13px">${htmlEsc(faculty)}</div>
+        <div style="font-weight:700;font-size:13px">${htmlEsc(college)}</div>
       </td>
-      <td style="vertical-align:top;width:44%">
-        <div>วันที่เข้ารับการศึกษา: <b>${toThaiLongDate(stu.admission_date) || '-'}</b></div>
-        <div>วันที่สำเร็จการศึกษา: <b>${toThaiLongDate(stu.graduation_date) || '-'}</b></div>
-        <div>วุฒิการศึกษา: <b>${stu.degree || 'พยาบาลศาสตรบัณฑิต'}</b></div>
-        <div>เกียรตินิยม: <b>${stu.honors || '-'}</b></div>
-        <div>วุฒิการศึกษาเดิม: <b>${stu.prev_education || 'มัธยมศึกษาปีที่ 6'}</b></div>
+      <td style="width:70px"></td>
+    </tr></table>
+
+    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:6px"><tr>
+      <td style="vertical-align:top;width:54%;padding-right:8px">
+        ${info('รหัสนักศึกษา:', norm(stu.student_id))}
+        ${info('ชื่อ-นามสกุล (ไทย):', norm(stu.name))}
+        ${info('(อังกฤษ):', nameEn ? nameEn.toUpperCase() : '')}
+        ${info('วันเกิด:', toThaiLongDate(stu.birth_date) || '-')}
+        ${info('จังหวัดที่เกิด:', norm(stu.birth_province) || '-')}
+        <div><span style="font-weight:600">สัญชาติ:</span> ${htmlEsc(norm(stu.nationality) || 'ไทย')}
+             &nbsp;&nbsp;&nbsp;<span style="font-weight:600">ศาสนา:</span> ${htmlEsc(norm(stu.religion) || '-')}</div>
+      </td>
+      <td style="vertical-align:top;width:46%">
+        ${info('วันเข้ารับการศึกษา:', toThaiLongDate(stu.admission_date) || '-')}
+        ${info('วันสำเร็จการศึกษา:', toThaiLongDate(stu.graduation_date) || '-')}
+        ${info('วุฒิการศึกษา:', norm(stu.degree) || norm(curRow.degree_full_th) || 'พยาบาลศาสตรบัณฑิต')}
+        ${info('เกียรตินิยม:', norm(stu.honors) || '-')}
+        ${info('วุฒิการศึกษาเดิม:', norm(stu.prev_education) || 'มัธยมศึกษาปีที่ 6')}
       </td>
     </tr></table>
+
     <table style="width:100%;border-collapse:collapse"><tr>
-      <td style="vertical-align:top;width:50%;padding-right:4px">
-        <table style="width:100%;border-collapse:collapse">${courseHead}${leftRows}</table>
+      <td style="vertical-align:top;width:50%;padding-right:5px">
+        <table style="width:100%;border-collapse:collapse;font-size:9px;table-layout:fixed">
+          ${tableHead}${leftRows}
+        </table>
       </td>
-      <td style="vertical-align:top;width:50%;padding-left:4px">
-        <table style="width:100%;border-collapse:collapse">${courseHead}${rightRows}</table>
-        <div style="margin-top:6px;font-size:10px;border:1px solid #999;padding:4px">
-          <div style="display:flex;justify-content:space-between"><span>จำนวนหน่วยกิตตามหลักสูตร</span><span><b>${stu.curriculum_credits || totalCredits}</b> หน่วย</span></div>
-          <div style="display:flex;justify-content:space-between"><span>จำนวนหน่วยกิตที่ลงทะเบียน</span><span><b>${totalCredits}</b> หน่วย</span></div>
-          <div style="display:flex;justify-content:space-between"><span>คะแนนเฉลี่ยสะสมตลอดหลักสูตร</span><span><b>${gpax}</b></span></div>
-        </div>
-        <div style="margin-top:6px;font-size:10px">
-          <div style="font-weight:600">จำนวนชั่วโมงฝึกปฏิบัติการพยาบาล:</div>
+      <td style="vertical-align:top;width:50%;padding-left:5px">
+        <table style="width:100%;border-collapse:collapse;font-size:9px;table-layout:fixed">
+          ${tableHead}${rightRows}${summaryRows}
+        </table>
+
+        <table style="width:100%;border-collapse:collapse;font-size:9.5px;margin-top:8px">
+          <tr><td colspan="3" style="padding-bottom:2px">จำนวนชั่วโมงฝึกปฏิบัติการพยาบาล:</td></tr>
           ${practicumRows}
-        </div>
-        <div style="margin-top:4px;font-size:10px">
-          <div style="display:flex;justify-content:space-between"><span>การทดสอบภาษาอังกฤษมาตรฐานของสถาบันพระบรมราชชนก</span><span><b>${engPass ? 'ผ่าน' : (stu.eng_test || '-')}</b></span></div>
-          <div style="display:flex;justify-content:space-between"><span>การสอบรวบยอดของสถาบันพระบรมราชชนก</span><span><b>${stu.comprehensive_exam || '-'}</b></span></div>
-        </div>
+        </table>
+
+        <table style="width:100%;border-collapse:collapse;font-size:9.5px;margin-top:8px">
+          <tr><td>การทดสอบภาษาอังกฤษมาตรฐานของสถาบันพระบรมราชชนก</td>
+              <td style="text-align:right;white-space:nowrap">${htmlEsc(engTxt)}</td></tr>
+          <tr><td>การสอบรวบยอดของสถาบันพระบรมราชชนก</td>
+              <td style="text-align:right;white-space:nowrap">${htmlEsc(compTxt)}</td></tr>
+        </table>
       </td>
     </tr></table>
-    <div style="margin-top:6px;font-size:9px;color:#333">
+
+    <div style="border-top:${B};margin-top:10px;padding-top:3px;font-size:9.5px">
       <div style="font-weight:600">ความหมายเกรด</div>
-      <div>A : 4.00 (ดีเยี่ยม) &nbsp; B+ : 3.50 (ดีมาก) &nbsp; B : 3.00 (ดี) &nbsp; C+ : 2.50 (ค่อนข้างดี) &nbsp; C : 2.00 (พอใช้) &nbsp; D+ : 1.50 (อ่อน) &nbsp; D : 1.00 (อ่อนมาก)</div>
-      <div>F : ตก &nbsp; S : พึงพอใจ &nbsp; U : ไม่พึงพอใจ &nbsp; CP : เทียบโอน &nbsp; AU : ไม่นับหน่วยกิต &nbsp; W : ถอนรายวิชา &nbsp; P : ผ่าน</div>
+      <table style="width:100%;border-collapse:collapse;font-size:9.5px">
+        <tr><td>A : 4.00 (ดีเยี่ยม)</td><td>B+ : 3.50 (ดีมาก)</td><td>B : 3.00 (ดี)</td><td>C+ : 2.50 (ค่อนข้างดี)</td><td>C : 2.00 (พอใช้)</td><td>D+ : 1.50 (อ่อน)</td><td>D : 1.00 (อ่อนมาก)</td></tr>
+        <tr><td>F : ตก</td><td>S : พึงพอใจ</td><td>U : ไม่พึงพอใจ</td><td>CP : เทียบโอน</td><td>AU : ไม่นับหน่วยกิต</td><td>W : ถอนรายวิชา</td><td>P : ผ่าน</td></tr>
+      </table>
     </div>
-    <div style="margin-top:26px;text-align:center;font-size:10.5px">
-      <div>….......................................................................................</div>
-      <div>(${director})</div>
-      <div>ผู้อำนวยการ${college}</div>
+
+    <div style="margin-top:18px;text-align:center;font-size:10.5px">
+      <div>.................................................................</div>
+      <div>(${htmlEsc(director)})</div>
+      <div>ผู้อำนวยการ${htmlEsc(college)}</div>
       <div>นายทะเบียน</div>
     </div>
   </div>`;
