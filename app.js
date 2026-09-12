@@ -9067,7 +9067,10 @@ async function pwOtpConfirm(mode) {
     _pwOtpMsg('ตั้งรหัสผ่านใหม่สำเร็จ! กรุณาเข้าสู่ระบบด้วยรหัสใหม่', true);
     showToast('ตั้งรหัสผ่านใหม่สำเร็จ');
     setTimeout(closeModal, 1400);
-    if (mode === 'change') setTimeout(handleLogout, 1500);
+    // ระบบพาออกเอง ไม่ต้องถามยืนยันซ้ำ (handleLogout จะขึ้นหน้าต่างยืนยัน)
+    if (mode === 'change') setTimeout(function () {
+      (window.emsDoLogout || window.handleLogout)();
+    }, 1500);
   } else {
     _pwOtpMsg((r && r.error) || 'ตั้งรหัสผ่านไม่สำเร็จ', false);
   }

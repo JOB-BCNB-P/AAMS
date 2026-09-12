@@ -260,7 +260,54 @@
   /* ============================================================
      4) ออกจากระบบ
      ============================================================ */
-  window.handleLogout = async function handleLogout() {
+  /* ถามยืนยันก่อนออกจากระบบ
+     ปุ่มออกจากระบบอยู่ติดกับปุ่มรีเฟรชและกระดิ่ง กดพลาดแล้วต้องล็อกอินใหม่ทั้งหมด
+     จึงให้ยืนยันอีกครั้ง — กดยกเลิกหรือปิดหน้าต่างนี้ ถือว่ายังอยู่ในระบบตามเดิม ไม่มีอะไรเปลี่ยน */
+  window.handleLogout = function handleLogout() {
+    var u = APP.currentUser || {};
+    var name = String(u.name == null ? '' : u.name).trim();
+    var roleName = ROLE_LABEL[APP.currentRole] || APP.currentRole || '';
+    var who = '';
+    if (name || roleName) {
+      who = '<div class="mt-3 flex items-center gap-2 rounded-xl bg-surface px-3 py-2 text-sm">'
+          + '<i data-lucide="user" class="w-4 h-4 text-gray-400"></i>'
+          + '<span>กำลังใช้งานในชื่อ <b>' + emsEsc(name || '-') + '</b>'
+          + (roleName ? ' <span class="text-gray-500">(' + emsEsc(roleName) + ')</span>' : '')
+          + '</span></div>';
+    }
+    var body = '<div class="flex items-start gap-3">'
+      + '<span class="flex-shrink-0 w-10 h-10 rounded-full bg-red-50 text-red-600 flex items-center justify-center">'
+      + '<i data-lucide="log-out" class="w-5 h-5"></i></span>'
+      + '<div class="flex-1">'
+      + '<p class="font-semibold">ต้องการออกจากระบบใช่หรือไม่</p>'
+      + '<p class="text-sm text-gray-500 mt-1">ข้อมูลที่กรอกค้างไว้แต่ยังไม่ได้กดบันทึกจะหายไป '
+      + 'และต้องเข้าสู่ระบบใหม่อีกครั้งเมื่อกลับมาใช้งาน</p>'
+      + who
+      + '</div></div>'
+      + '<div class="mt-5 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">'
+      + '<button type="button" onclick="closeModal()" '
+      + 'class="px-4 py-2 rounded-xl border border-gray-200 hover:bg-gray-50">ยกเลิก อยู่ในระบบต่อ</button>'
+      + '<button type="button" onclick="emsConfirmLogout()" '
+      + 'class="px-4 py-2 rounded-xl bg-red-600 text-white hover:bg-red-700 inline-flex items-center justify-center gap-1">'
+      + '<i data-lucide="log-out" class="w-4 h-4"></i>ออกจากระบบ</button>'
+      + '</div>';
+    showModal('ยืนยันการออกจากระบบ', body, null, 'max-w-md');
+  };
+
+  function emsEsc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // กดยืนยันแล้วจึงออกจากระบบจริง
+  window.emsConfirmLogout = function emsConfirmLogout() {
+    closeModal();
+    return window.emsDoLogout();
+  };
+
+  /* ออกจากระบบจริง — เรียกตรงนี้เมื่อระบบเป็นฝ่ายพาออกเอง เช่น หลังเปลี่ยนรหัสผ่านสำเร็จ
+     กรณีนั้นไม่ต้องถามยืนยัน เพราะผู้ใช้ไม่ได้เป็นคนกดปุ่ม */
+  window.emsDoLogout = async function emsDoLogout() {
     // ออกจากโหมดดูแทนผู้ใช้ก่อนเสมอ เพื่อไม่ให้บันทึก log ในชื่อคนอื่น
     if (APP._viewAs) {
       logViewAs('view_as_exit', APP._viewAs);
