@@ -158,7 +158,8 @@
       tab: 'summary', year: '', level: '1', sem: '1', search: '', draft: null, calc: [],
       tol: 0,                       // ยอมให้เกินชั่วโมงเป้าหมายได้กี่เปอร์เซ็นต์ ก่อนถือว่าเกิน
       mView: 'level', mLevel: '', mSid: '', mq: '',  // มุมมองการ์ดพันธกิจ : รายชั้นปี / รายบุคคล
-      mode: 'cohort', gsel: {},     // โหมดกรอก : ทั้งชั้นปี / เป็นกลุ่ม + รายชื่อที่เลือก
+      mode: 'cohort', gsel: {},     // กล่องกรอกที่เปิดอยู่ : ทั้งชั้นปี / รายบุคคล ('' = ยุบทั้งคู่)
+      mission: '', gq: '',          // พันธกิจที่เลือกกรอก ('' = ทุกพันธกิจ) · คำค้นในรายชื่อนักศึกษา
       fold: fold0                   // การ์ดที่ถูกยุบไว้ (จำเฉพาะระหว่างใช้งาน)
       };
     }
@@ -316,6 +317,50 @@
   }
   window.wlCohortPrefix = cohortPrefix;
 
+  /* "รุ่นที่" ของชั้นปีนั้นในปีการศึกษานั้น
+     อ่านจากทะเบียนนักศึกษาเป็นหลัก — หานักศึกษาที่รหัสขึ้นต้นด้วยรหัสรุ่นนี้ แล้วใช้เลขรุ่นของเขา
+     ถ้าปีนั้นยังไม่มีใครในทะเบียน จะเทียบจากส่วนต่างระหว่างเลขรุ่นกับรหัสรุ่นที่มีอยู่จริง
+     ถ้าเทียบไม่ได้เลย คืนค่าว่าง — ไม่แต่งเลขรุ่นขึ้นมาเอง */
+  function batchOf(year, level) {
+    var pfx = cohortPrefix(year, level);
+    if (!pfx) return '';
+    return memo('bt|' + pfx, function () {
+      var hit = {}, best = '', bestN = 0;
+      var off = {}, bestOff = null, bestOffN = 0;
+      get('student').forEach(function (s) {
+        var sid = String(s.student_id || ''), b = norm(s.batch);
+        if (sid.length < 2 || !b) return;
+        var p2 = sid.slice(0, 2);
+        if (p2 === pfx) {
+          hit[b] = (hit[b] || 0) + 1;
+          if (hit[b] > bestN) { bestN = hit[b]; best = b; }
+        }
+        var d = parseInt(b, 10) - parseInt(p2, 10);
+        if (isFinite(d)) {
+          off[d] = (off[d] || 0) + 1;
+          if (off[d] > bestOffN) { bestOffN = off[d]; bestOff = d; }
+        }
+      });
+      if (best) return best;
+      if (bestOff !== null) {
+        var v = parseInt(pfx, 10) + bestOff;
+        if (isFinite(v) && v > 0) return String(v);
+      }
+      return '';
+    });
+  }
+  window.wlBatchOf = batchOf;
+
+  // ชั้นปีที่ 1 (รุ่น 81) — ถ้าไม่รู้เลขรุ่น จะบอกรหัสรุ่นแทน
+  function levelLabel(year, level) {
+    var b = batchOf(year, level), p = cohortPrefix(year, level);
+    var tag = b ? 'รุ่น ' + b : (p ? 'รหัส ' + p : '');
+    return 'ชั้นปีที่ ' + level + (tag ? ' (' + tag + ')' : '');
+  }
+  function semLabel(s) {
+    return String(s) === '3' ? 'ภาคฤดูร้อน' : 'ภาคการศึกษาที่ ' + String(s);
+  }
+
   function cohortStudents(level, year) {
     var yr = year || state().year;
     return memo('co|' + yr + '|' + level, function () { return cohortStudentsRaw(level, yr); });
@@ -364,29 +409,26 @@
   function buildWorkloadPage() {
     var st = state();
     var years = wlYears();
-    // แท็บรายบุคคลถูกยุบเข้าไปอยู่ใน "กรอกภาระงาน" (โหมดกรอกเป็นกลุ่ม) แล้ว
-    var tabs = [['summary', 'สรุปผลรวม', 'bar-chart-3'], ['plan', 'กรอกภาระงาน', 'clipboard-list'],
-    ['rate', 'เกณฑ์หน่วยชั่วโมง', 'calculator']];
+    // แท็บเดิม 3 แท็บ ย้ายไปเป็นเมนูย่อยใต้เมนู "ภาระงานนักศึกษา" ในแถบเมนูซ้ายแล้ว
+    // หน้านี้จึงแสดงเฉพาะหัวข้อของเมนูย่อยที่กำลังเปิดอยู่
+    if (st.tab === 'students') st.tab = 'plan';   // ลิงก์เก่าที่ชี้มาแท็บรายบุคคล
+    var TAB_NAME = { summary: ['สรุปผลรวม', 'คิดชั่วโมงภาระงานตามสัดส่วนพันธกิจของวิทยาลัย'],
+      plan: ['กรอกภาระงาน', 'เลือกชั้นปีและภาคการศึกษา แล้วกรอกทั้งชั้นปีหรือเลือกกรอกรายบุคคล'],
+      rate: ['เกณฑ์หน่วยชั่วโมง', 'ตารางเทียบหน่วยชั่วโมงของกิจกรรมแต่ละประเภท'] };
+    var t = TAB_NAME[st.tab] || TAB_NAME.summary;
 
     var head = '<div class="flex flex-wrap items-center justify-between gap-3 mb-5">'
-      + '<div><h2 class="text-xl font-bold text-gray-800"><i data-lucide="gauge" class="w-6 h-6 inline mr-2"></i>ภาระงานนักศึกษา (Student workload)</h2>'
-      + '<p class="text-sm text-gray-500 mt-0.5">คิดชั่วโมงภาระงานตามสัดส่วนพันธกิจของวิทยาลัย</p></div>'
+      + '<div><h2 class="text-xl font-bold text-gray-800"><i data-lucide="gauge" class="w-6 h-6 inline mr-2"></i>ภาระงานนักศึกษา'
+      + ' <span class="text-gray-300 font-normal">/</span> ' + esc(t[0]) + '</h2>'
+      + '<p class="text-sm text-gray-500 mt-0.5">' + esc(t[1]) + '</p></div>'
       + '<div class="flex items-center gap-2"><label class="text-sm text-gray-500">ปีการศึกษา</label>'
       + '<select onchange="wlSet(\'year\', this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm">'
       + years.map(function (y) { return '<option ' + (y === st.year ? 'selected' : '') + '>' + esc(y) + '</option>'; }).join('')
       + '</select></div></div>';
 
-    var bar = '<div class="flex gap-1 mb-5 border-b overflow-x-auto">'
-      + tabs.map(function (t) {
-        return '<button data-wl-tab="' + t[0] + '" onclick="wlSet(\'tab\',\'' + t[0] + '\')" class="px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 '
-          + (st.tab === t[0] ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700') + '">'
-          + '<i data-lucide="' + t[2] + '" class="w-4 h-4 inline mr-1"></i>' + t[1] + '</button>';
-      }).join('') + '</div>';
-
-    if (st.tab === 'students') st.tab = 'plan';   // ลิงก์เก่าที่ชี้มาแท็บรายบุคคล
     var body = st.tab === 'plan' ? planTab()
       : st.tab === 'rate' ? rateTab() : summaryTab();
-    return head + bar + body;
+    return head + body;
   }
 
   /* กดแท็บแล้วต้องเห็นผลทันที
@@ -841,21 +883,30 @@
   }
 
   /* ---------------- ตัวเลือกชั้นปี/ภาคเรียน ---------------- */
+  /* ขั้นที่ 1-2 ของหน้ากรอกภาระงาน : เลือกชั้นปี (มีเลขรุ่นกำกับ) และภาคการศึกษา
+     ทำเป็นปุ่มกดแทนรายการเลื่อน จะได้เห็นตัวเลือกทั้งหมดพร้อมกันและกดง่ายบนมือถือ */
   function cohortPicker() {
     var st = state();
-    return '<div class="flex flex-wrap items-end gap-3 mb-4">'
-      + '<div><label class="block text-xs text-gray-600 mb-1">ชั้นปี</label>'
-      + '<select onchange="wlSet(\'level\',this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm">'
+    var chip = function (on, label, sub, onclick) {
+      return '<button type="button" onclick="' + onclick + '" class="px-4 py-2.5 rounded-xl border text-left transition '
+        + (on ? 'border-primary bg-primaryLight' : 'border-gray-200 bg-white hover:bg-gray-50') + '">'
+        + '<span class="block text-sm font-semibold ' + (on ? 'text-primary' : 'text-gray-700') + '">' + esc(label) + '</span>'
+        + (sub ? '<span class="block text-[11px] ' + (on ? 'text-primary' : 'text-gray-400') + '">' + esc(sub) + '</span>' : '')
+        + '</button>';
+    };
+    return '<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">'
+      + '<p class="text-xs font-semibold text-gray-600 mb-2"><i data-lucide="layers" class="w-3.5 h-3.5 inline mr-1"></i>เลือกชั้นปี</p>'
+      + '<div class="flex flex-wrap gap-2 mb-4">'
       + ['1', '2', '3', '4'].map(function (l) {
-          var pfx = cohortPrefix(st.year, l);
-          return '<option value="' + l + '" ' + (st.level === l ? 'selected' : '') + '>ชั้นปีที่ ' + l
-            + (pfx ? ' (รหัส ' + pfx + ')' : '') + '</option>';
+          var b = batchOf(st.year, l), p = cohortPrefix(st.year, l);
+          var sub = (b ? 'รุ่น ' + b : '') + (p ? (b ? ' · ' : '') + 'รหัส ' + p : '');
+          return chip(st.level === l, 'ชั้นปีที่ ' + l, sub, 'wlSet(\'level\',\'' + l + '\')');
         }).join('')
-      + '</select></div>'
-      + '<div><label class="block text-xs text-gray-600 mb-1">ภาคการศึกษา</label>'
-      + '<select onchange="wlSet(\'sem\',this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm">'
-      + SEMS.map(function (s) { return '<option value="' + s + '" ' + (st.sem === s ? 'selected' : '') + '>ภาค ' + semName(s) + '</option>'; }).join('')
-      + '</select></div></div>';
+      + '</div>'
+      + '<p class="text-xs font-semibold text-gray-600 mb-2"><i data-lucide="calendar" class="w-3.5 h-3.5 inline mr-1"></i>ภาคการศึกษา</p>'
+      + '<div class="flex flex-wrap gap-2">'
+      + SEMS.map(function (s) { return chip(st.sem === s, semLabel(s), '', 'wlSet(\'sem\',\'' + s + '\')'); }).join('')
+      + '</div></div>';
   }
 
   function groupSel() {
@@ -1286,50 +1337,128 @@
       + '</span></div>';
   }
 
-  /* เลือกโหมดกรอก : ค่ามาตรฐานทั้งชั้นปี หรือเจาะจงเป็นกลุ่มนักศึกษา */
-  function modePicker() {
-    var st = state();
-    var sel = groupSel();
-    var btn = function (key, label, icon, sub) {
-      var on = st.mode === key;
-      return '<button type="button" onclick="wlSet(\'mode\',\'' + key + '\')" '
-        + 'class="flex-1 min-w-[210px] text-left px-4 py-3 rounded-xl border '
-        + (on ? 'border-primary bg-primaryLight' : 'border-gray-200 bg-white hover:bg-gray-50') + '">'
-        + '<p class="text-sm font-semibold ' + (on ? 'text-primary' : 'text-gray-700') + '">'
-        + '<i data-lucide="' + icon + '" class="w-4 h-4 inline mr-1"></i>' + label + '</p>'
-        + '<p class="text-[11px] text-gray-500 mt-0.5">' + sub + '</p></button>';
-    };
-    var head = '<div class="flex flex-wrap gap-2 mb-3">'
-      + btn('cohort', 'ทั้งชั้นปี', 'users', 'ค่ามาตรฐานที่ใช้กับนักศึกษาทุกคนในชั้นปี/ภาคที่เลือก')
-      + btn('group', 'กรอกเป็นกลุ่ม', 'user-check', 'เลือกนักศึกษาทีละหลายคน แล้วบันทึกค่าเดียวกันให้ทุกคนที่เลือก')
-      + '</div>';
-    if (st.mode !== 'group') return head;
-
-    var names = get('student');
-    var nameOf = function (sid) {
-      var s = names.filter(function (x) { return norm(x.student_id) === norm(sid); })[0];
-      return s ? norm(s.name) : sid;
-    };
-    var chips = sel.slice(0, 20).map(function (sid) {
-      return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white border border-blue-100 text-xs">'
-        + '<span class="font-mono text-gray-400">' + esc(sid) + '</span>' + esc(nameOf(sid)) + '</span>';
-    }).join(' ');
-
-    return head + '<div class="bg-blue-50 border border-blue-100 rounded-2xl p-4 mb-4">'
-      + '<div class="flex flex-wrap items-center justify-between gap-2 mb-2">'
-      + '<p class="text-sm text-gray-700"><b>นักศึกษาที่เลือกไว้ ' + sel.length + ' คน</b>'
-      + ' <span class="text-xs text-gray-500">จากชั้นปีที่ ' + esc(st.level) + ' ภาค ' + semName(st.sem) + '</span></p>'
-      + '<div class="flex items-center gap-2">'
-      + '<button type="button" onclick="wlPickGroup()" class="px-3 py-1.5 rounded-xl bg-primary text-white text-sm hover:bg-primaryDark">'
-      + '<i data-lucide="user-plus" class="w-4 h-4 inline mr-1"></i>เลือกนักศึกษา</button>'
-      + (sel.length ? '<button type="button" onclick="wlGroupClear()" class="px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-white">ล้างรายชื่อ</button>' : '')
-      + '</div></div>'
-      + (sel.length
-          ? '<div class="flex flex-wrap gap-1.5">' + chips
-            + (sel.length > 20 ? '<span class="text-xs text-gray-500 self-center">+ อีก ' + (sel.length - 20) + ' คน</span>' : '') + '</div>'
-          : '<p class="text-xs text-gray-500">ยังไม่ได้เลือกใคร — กดปุ่ม "เลือกนักศึกษา" แล้วติ๊กได้ทีละหลายคน</p>')
+  /* ---------------- ขั้นที่ 3-4 : กล่องกรอกที่ยุบ-ขยายได้ ----------------
+     กล่องที่เปิดอยู่คือโหมดที่จะบันทึก เปิดกล่องหนึ่งอีกกล่องจะยุบลง
+     เพื่อไม่ให้สับสนว่าค่าที่กรอกอยู่จะถูกบันทึกให้ทั้งชั้นปีหรือเฉพาะคนที่เลือก */
+  function sectionBox(key, icon, title, sub, badge, body) {
+    var open = state().mode === key;
+    return '<div class="bg-white rounded-2xl border mb-4 overflow-hidden ' + (open ? 'border-primary' : 'border-blue-100') + '">'
+      + '<button type="button" onclick="wlSection(\'' + key + '\')" data-wl-sec="' + key + '" '
+      + 'class="w-full flex items-center justify-between gap-3 px-5 py-4 text-left hover:bg-surface/60">'
+      + '<span class="flex items-center gap-3 min-w-0">'
+      + '<span class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ' + (open ? 'bg-primary' : 'bg-gray-100') + '">'
+      + '<i data-lucide="' + icon + '" class="w-5 h-5 ' + (open ? 'text-white' : 'text-gray-500') + '"></i></span>'
+      + '<span class="min-w-0"><span class="block text-sm font-semibold ' + (open ? 'text-primary' : 'text-gray-800') + '">' + esc(title) + '</span>'
+      + '<span class="block text-[11px] text-gray-500">' + sub + '</span></span></span>'
+      + '<span class="flex items-center gap-2 flex-shrink-0">' + (badge || '')
+      + '<i data-lucide="chevron-down" class="w-5 h-5 text-gray-400 transition-transform"'
+      + (open ? '' : ' style="transform:rotate(-90deg)"') + '></i></span></button>'
+      + (open ? '<div class="px-5 pb-5 pt-4 border-t border-gray-100 fade-in">' + body() + '</div>' : '')
       + '</div>';
   }
+
+  window.wlSection = function (key) {
+    var st = state();
+    wlSet('mode', st.mode === key ? '' : key);
+  };
+
+  // พันธกิจที่จะกรอกในกล่องนี้ — '' คือกรอกทุกพันธกิจพร้อมกันเหมือนเดิม
+  function shownMissions() {
+    var k = state().mission;
+    return k ? MISSIONS.filter(function (m) { return m.key === k; }) : MISSIONS;
+  }
+
+  function missionPicker() {
+    var st = state();
+    var chip = function (on, label, color, locked, onclick) {
+      return '<button type="button" onclick="' + onclick + '" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs transition '
+        + (on ? 'border-primary bg-primaryLight text-primary font-semibold' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50') + '">'
+        + (color ? '<span style="width:8px;height:8px;border-radius:50%;background:' + color + ';display:inline-block"></span>' : '')
+        + esc(label)
+        + (locked ? '<i data-lucide="lock" class="w-3 h-3 text-gray-400"></i>' : '') + '</button>';
+    };
+    return '<p class="text-xs font-semibold text-gray-600 mb-2"><i data-lucide="target" class="w-3.5 h-3.5 inline mr-1"></i>เลือกพันธกิจ</p>'
+      + '<div class="flex flex-wrap gap-2 mb-4">'
+      + chip(!st.mission, 'ทุกพันธกิจ', '', false, 'wlSet(\'mission\',\'\')')
+      + MISSIONS.map(function (m) {
+          return chip(st.mission === m.key, m.label, m.color, !canEditMission(m.key), 'wlSet(\'mission\',\'' + m.key + '\')');
+        }).join('')
+      + '</div>';
+  }
+
+  /* รายชื่อนักศึกษาของกล่อง "กรอกรายบุคคล" — ติ๊กเลือกได้ทีละหลายคนในหน้าเดียว */
+  function groupListBox() {
+    var st = state();
+    var all = cohortStudents(st.level);
+    var q = norm(st.gq).toLowerCase();
+    var list = q ? all.filter(function (s) {
+      return (norm(s.student_id) + ' ' + norm(s.name)).toLowerCase().indexOf(q) >= 0;
+    }) : all;
+    var g = st.gsel || {};
+    return '<div data-wl-glist="1" class="border border-gray-200 rounded-xl max-h-72 overflow-y-auto divide-y divide-gray-50">'
+      + (list.length ? list.map(function (s) {
+          var sid = norm(s.student_id), on = !!g[sid];
+          return '<label class="flex items-center gap-3 px-3 py-2 cursor-pointer ' + (on ? 'bg-primaryLight' : 'hover:bg-surface') + '">'
+            + '<input type="checkbox" ' + (on ? 'checked' : '') + ' value="' + esc(sid) + '" '
+            + 'onchange="wlGroupOne(this.value,this.checked)" class="w-4 h-4 flex-shrink-0">'
+            + '<span class="font-mono text-xs text-gray-400 w-28 flex-shrink-0">' + esc(sid) + '</span>'
+            + '<span class="text-sm truncate">' + esc(s.name) + '</span></label>';
+        }).join('') : '<p class="px-3 py-6 text-center text-sm text-gray-400">ไม่พบนักศึกษา</p>')
+      + '</div>';
+  }
+
+  function groupPicker() {
+    var st = state();
+    var all = cohortStudents(st.level);
+    return '<p class="text-xs font-semibold text-gray-600 mb-2"><i data-lucide="users" class="w-3.5 h-3.5 inline mr-1"></i>รายชื่อนักศึกษา</p>'
+      + '<div class="flex flex-wrap items-center gap-2 mb-2">'
+      + '<input id="wlGroupSearch" value="' + esc(st.gq || '') + '" placeholder="ค้นหารหัส/ชื่อ..." '
+      + 'oninput="wlGroupSearch(this.value)" class="flex-1 min-w-[180px] border border-gray-200 rounded-xl px-3 py-2 text-sm">'
+      + '<button type="button" onclick="wlGroupAll(1)" class="px-3 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50">เลือกที่แสดงทั้งหมด</button>'
+      + '<button type="button" onclick="wlGroupAll(0)" class="px-3 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50">ล้างรายชื่อ</button>'
+      + '</div>'
+      + '<p class="text-xs text-gray-500 mb-2">เลือกแล้ว <b data-wl-gcount="1" class="text-primary">' + groupSel().length + '</b> คน'
+      + ' จาก' + esc(levelLabel(st.year, st.level)) + ' ทั้งหมด ' + all.length + ' คน</p>'
+      + groupListBox()
+      + '<p class="text-[11px] text-gray-400 mt-2">ค่าที่กรอกจะถูกบันทึกเป็นค่าเฉพาะรายของนักศึกษาทุกคนที่ติ๊กไว้'
+      + ' · ติ๊กคนเดียวจะดึงค่าเดิมของคนนั้นขึ้นมาแก้</p>';
+  }
+
+  window.wlGroupSearch = function (v) {
+    var st = state();
+    st.gq = v;
+    // วาดใหม่เฉพาะกล่องรายชื่อ ช่องค้นหาจึงไม่เสียโฟกัสและไม่เสียตำแหน่งเคอร์เซอร์
+    var box = document.querySelector('[data-wl-glist]');
+    if (box) { box.outerHTML = groupListBox(); if (window.lucide) lucide.createIcons(); }
+    else renderCurrentPage();
+  };
+  window.wlGroupOne = function (sid, on) {
+    var st = state();
+    if (!st.gsel) st.gsel = {};
+    var before = groupSel().length;
+    if (on) st.gsel[norm(sid)] = 1; else delete st.gsel[norm(sid)];
+    var after = groupSel().length;
+    // ติ๊กคนเดียว = แก้ค่าเฉพาะรายของคนนั้น ต้องดึงค่าเดิมของเขามาตั้งต้นใหม่
+    // (ทั้งตอนเข้าสู่สภาพ "คนเดียว" และตอนออกจากสภาพนั้น)
+    if (before === 1 || after === 1) { st.draft = null; renderCurrentPage(); return; }
+    var c = document.querySelector('[data-wl-gcount]');
+    if (c) c.textContent = after;
+  };
+  window.wlGroupAll = function (on) {
+    var st = state();
+    var q = norm(st.gq).toLowerCase();
+    if (!st.gsel) st.gsel = {};
+    cohortStudents(st.level).forEach(function (s) {
+      var sid = norm(s.student_id);
+      if (q && (sid + ' ' + norm(s.name)).toLowerCase().indexOf(q) < 0) return;
+      if (on) st.gsel[sid] = 1; else delete st.gsel[sid];
+    });
+    st.draft = null;
+    renderCurrentPage();
+  };
+
+  /* กล่องเลือกโหมดกรอกแบบเดิม (ปุ่ม 2 อัน + กล่องเลือกนักศึกษาแบบป๊อปอัป)
+     ถูกแทนที่ด้วยกล่องยุบ-ขยาย 2 กล่องด้านบนแล้ว จึงเอาออกเพื่อไม่ให้มีสองทางทำงานซ้อนกัน */
 
   /* รายชื่อนักศึกษาที่มีค่าเฉพาะรายของชั้นปี/ภาคนี้ — แทนแท็บรายบุคคลที่ยุบไปแล้ว */
   function ovrPanel() {
@@ -1367,40 +1496,72 @@
       + '<tbody>' + body + '</tbody></table></div></div>';
   }
 
-  function planTab() {
+  /* แถบสรุปชั่วโมง + ปุ่มบันทึก ของกล่องที่เปิดอยู่ */
+  function grandCard(group) {
     var st = state();
-    if (!canEdit()) return cohortPicker() + readonlyPlan();
-    var group = st.mode === 'group';
     var sel = groupSel();
     var d = draft();
-    var total = MISSIONS.reduce(function (s, m) {
+    var shown = shownMissions();
+    var total = shown.reduce(function (s, m) {
       return s + (d[m.key] || []).reduce(function (a, r) { return a + n(r.hours); }, 0) * d.weights[m.key];
     }, 0);
-    var card = '<div class="bg-blue-50 border border-blue-100 rounded-2xl p-4 mb-4 flex flex-wrap items-start justify-between gap-3">'
-      + '<div><p class="text-sm text-gray-600">ชั่วโมงภาระงานทั้งหมด · ชั้นปีที่ ' + esc(st.level) + ' ภาค ' + semName(st.sem) + ' ปีการศึกษา ' + esc(st.year) + '</p>'
+    var scope = st.mission ? ('เฉพาะ' + esc((missionOf(st.mission) || {}).label || '')) : 'ทุกพันธกิจ';
+    var saveLabel = group
+      ? (st.mission ? 'บันทึกพันธกิจนี้ให้ทุกคนที่เลือก' : 'บันทึกให้ทุกคนที่เลือก')
+      : (st.mission ? 'บันทึกพันธกิจนี้' : 'บันทึกทุกพันธกิจที่ทำได้');
+    return '<div class="bg-blue-50 border border-blue-100 rounded-2xl p-4 mb-4 flex flex-wrap items-start justify-between gap-3">'
+      + '<div><p class="text-sm text-gray-600">ชั่วโมงภาระงาน (' + scope + ') · ' + esc(levelLabel(st.year, st.level))
+      + ' ' + esc(semLabel(st.sem)) + ' ปีการศึกษา ' + esc(st.year) + '</p>'
       + '<p class="text-3xl font-bold text-primary tabular-nums" id="wlGrand">' + fx(total) + '</p>'
       + '<p class="text-xs text-gray-500">' + (group
           ? (sel.length
               ? 'จะบันทึกเป็นค่าเฉพาะรายให้นักศึกษาที่เลือกไว้ ' + sel.length + ' คน'
-              : '<span class="text-amber-700">ยังไม่ได้เลือกนักศึกษา — กด "เลือกนักศึกษา" ด้านบนก่อนบันทึก</span>')
+              : '<span class="text-amber-700">ยังไม่ได้ติ๊กเลือกนักศึกษา — เลือกจากรายชื่อด้านบนก่อนบันทึก</span>')
           : 'ใช้กับนักศึกษารหัส ' + esc(cohortPrefix(st.year, st.level))
             + ' จำนวน ' + cohortStudents(st.level).length + ' คน ที่ไม่ได้ปรับเฉพาะราย') + '</p></div>'
       + '<button onclick="wlSavePlan()" class="px-5 py-2.5 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm flex items-center gap-2 self-start">'
-      + '<i data-lucide="save" class="w-4 h-4"></i>' + (group ? 'บันทึกให้ทุกคนที่เลือก' : 'บันทึกทุกพันธกิจที่ทำได้') + '</button></div>';
+      + '<i data-lucide="save" class="w-4 h-4"></i>' + saveLabel + '</button></div>';
+  }
 
-    var foldBar = '<div class="flex items-center justify-end gap-3 mb-2 text-xs">'
+  function foldBar() {
+    if (state().mission) return '';   // เลือกพันธกิจเดียวแล้ว ไม่ต้องมีปุ่มยุบ/ขยายทั้งหมด
+    return '<div class="flex items-center justify-end gap-3 mb-2 text-xs">'
       + '<button type="button" onclick="wlFoldAll(1)" class="text-gray-500 hover:text-primary">'
       + '<i data-lucide="chevrons-down-up" class="w-3.5 h-3.5 inline mr-0.5"></i>ยุบทั้งหมด</button>'
       + '<button type="button" onclick="wlFoldAll(0)" class="text-gray-500 hover:text-primary">'
       + '<i data-lucide="chevrons-up-down" class="w-3.5 h-3.5 inline mr-0.5"></i>ขยายทั้งหมด</button></div>';
+  }
 
-    return cohortPicker() + modePicker() + card + missionScopeNote() + foldBar
-      + MISSIONS.map(function (m) {
-          var cur = group
-            ? (sel.length === 1 ? overrideOf(sel[0], st.year, st.sem) : null)
-            : planOf(st.year, st.level, st.sem);
-          return missionEditor(m, d, false, cur);
-        }).join('')
+  function missionEditors(group) {
+    var st = state();
+    var d = draft();
+    var sel = groupSel();
+    return shownMissions().map(function (m) {
+      var cur = group
+        ? (sel.length === 1 ? overrideOf(sel[0], st.year, st.sem) : null)
+        : planOf(st.year, st.level, st.sem);
+      return missionEditor(m, d, false, cur);
+    }).join('');
+  }
+
+  function planTab() {
+    var st = state();
+    if (!canEdit()) return cohortPicker() + readonlyPlan();
+    var sel = groupSel();
+    var badge = function (txt, cls) {
+      return '<span class="text-[11px] px-2 py-1 rounded-lg ' + cls + '">' + esc(txt) + '</span>';
+    };
+    return cohortPicker()
+      + missionScopeNote()
+      + sectionBox('cohort', 'users', 'กรอกข้อมูลทั้งชั้นปี',
+          'ค่ามาตรฐานที่ใช้กับนักศึกษาทุกคนใน' + esc(levelLabel(st.year, st.level)) + ' ' + esc(semLabel(st.sem)),
+          badge(cohortStudents(st.level).length + ' คน', 'bg-blue-50 text-blue-700'),
+          function () { return missionPicker() + grandCard(false) + foldBar() + missionEditors(false); })
+      + sectionBox('group', 'user-check', 'กรอกรายบุคคล (เลือกได้หลายคน)',
+          'ติ๊กเลือกนักศึกษาแล้วบันทึกค่าเดียวกันให้ทุกคนที่เลือก',
+          badge(sel.length ? 'เลือกแล้ว ' + sel.length + ' คน' : 'ยังไม่ได้เลือก',
+            sel.length ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'),
+          function () { return missionPicker() + groupPicker() + grandCard(true) + foldBar() + missionEditors(true); })
       + ovrPanel();
   }
 
@@ -1485,6 +1646,12 @@
     var who = (APP.currentUser && APP.currentUser.name) || '';
     var mine = MISSIONS.filter(function (m) { return canEditMission(m.key); });
     if (!mine.length) { showToast('บัญชีของคุณไม่ได้รับมอบหมายให้บันทึกพันธกิจใดเลย', 'error'); return; }
+    // เลือกกรอกพันธกิจเดียว ก็บันทึกเฉพาะพันธกิจนั้น
+    // ไม่งั้นพันธกิจอื่นจะถูกประทับว่า "บันทึกล่าสุดโดย..." ทั้งที่ไม่ได้แตะเลย
+    if (st.mission) {
+      mine = mine.filter(function (m) { return m.key === st.mission; });
+      if (!mine.length) { showToast('บัญชีของคุณไม่ได้รับมอบหมายให้บันทึกพันธกิจนี้', 'error'); return; }
+    }
 
     if (st.mode === 'group') {
       var sel = groupSel();
@@ -1533,9 +1700,13 @@
     var st = state();
     st.tab = 'plan';
     st.mode = 'group';
+    st.mission = '';
+    st.gq = '';
     st.gsel = {};
     st.gsel[norm(sid)] = 1;
     st.draft = null;
+    // แท็บกลายเป็นเมนูย่อยแล้ว จึงต้องย้ายหน้าไปที่เมนู "กรอกภาระงาน" เพื่อให้แถบเมนูซ้ายตรงกัน
+    if (typeof navigateTo === 'function' && APP.currentPage !== 'workloadPlan') { navigateTo('workloadPlan'); return; }
     renderCurrentPage();
   };
 
@@ -1664,11 +1835,16 @@
   };
 
   /* ---------------- ต่อเข้ากับระบบเดิม ---------------- */
+  // เมนูย่อยแต่ละอันเป็นหน้าของตัวเอง แถบเมนูซ้ายจึงไฮไลต์ได้ถูกและปุ่มย้อนกลับของเบราว์เซอร์ทำงานตามปกติ
+  var WL_PAGES = { workloadSummary: 'summary', workloadPlan: 'plan', workloadRate: 'rate' };
+  window.wlPages = WL_PAGES;
+
   (function () {
     var orig = window.getPageContent;
     if (typeof orig !== 'function') return;
     window.getPageContent = function (page) {
-      if (page === 'workload') return workloadPage();
+      if (WL_PAGES[page]) { state().tab = WL_PAGES[page]; return workloadPage(); }
+      if (page === 'workload') { state().tab = state().tab || 'summary'; return workloadPage(); }  // ลิงก์เก่า
       return orig.apply(this, arguments);
     };
   })();
@@ -1691,17 +1867,35 @@
       try { addItem(); } catch (e) { console.warn('เพิ่มเมนู ภาระงานนักศึกษา ไม่สำเร็จ:', e); }
     };
 
+    // เมนู "ภาระงานนักศึกษา" เป็นกลุ่มที่พับได้ ข้างในคือแท็บเดิมทั้ง 3
+    var WL_SUB = [['workloadSummary', 'สรุปผลรวม'], ['workloadPlan', 'กรอกภาระงาน'], ['workloadRate', 'เกณฑ์หน่วยชั่วโมง']];
+
     function addItem() {
       var perms = (APP.permissions && APP.permissions[APP.currentRole]) || {};
       if (!perms.workload) return;
       var nav = document.getElementById('sidebarNav');
-      if (!nav || nav.querySelector('[data-page="workload"]')) return;
-      var btn = document.createElement('button');
-      btn.setAttribute('onclick', "navigateTo('workload')");
-      btn.setAttribute('data-page', 'workload');
-      btn.className = 'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-700 hover:bg-surface hover:text-primary transition';
-      btn.innerHTML = '<i data-lucide="gauge" class="w-5 h-5 flex-shrink-0"></i>ภาระงานนักศึกษา';
-      insertNav(nav, btn, '[data-page="survey"], [data-page="services"]');
+      if (!nav || nav.querySelector('[data-page="workloadSummary"]')) return;
+
+      var here = APP.currentPage;
+      var open = here === 'workload' || WL_SUB.some(function (s) { return s[0] === here; });
+      var box = document.createElement('div');
+      box.className = 'dropdown-item' + (open ? ' dropdown-open' : '');
+      box.setAttribute('data-wl-menu', '1');
+      box.innerHTML =
+        '<button onclick="toggleDropdown(this)" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm text-gray-700 hover:bg-surface transition">'
+        + '<span class="flex items-center gap-3"><i data-lucide="gauge" class="w-5 h-5 flex-shrink-0"></i>ภาระงานนักศึกษา</span>'
+        + '<i data-lucide="chevron-down" class="w-4 h-4 transition-transform"' + (open ? ' style="transform:rotate(180deg)"' : '') + '></i>'
+        + '</button>'
+        + '<div class="dropdown-menu ml-8 mt-1 space-y-1">'
+        + WL_SUB.map(function (s) {
+            var on = here === s[0];
+            return '<button onclick="navigateTo(\'' + s[0] + '\')" data-page="' + s[0] + '" '
+              + 'class="nav-item w-full text-left px-3 py-2 rounded-lg text-sm transition '
+              + (on ? 'bg-primaryLight text-primary font-semibold' : 'text-gray-600 hover:bg-surface hover:text-primary') + '">'
+              + s[1] + '</button>';
+          }).join('')
+        + '</div>';
+      insertNav(nav, box, '[data-page="survey"], [data-page="services"]');
       if (window.lucide) lucide.createIcons();
     }
   })();
