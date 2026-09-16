@@ -530,7 +530,7 @@
         + '<th class="px-3 py-2 font-semibold w-44">PLO ที่ผูก</th>'
         + '<th class="px-3 py-2 font-semibold text-center w-24">คะแนนเต็ม</th>'
         + '<th class="px-3 py-2 font-semibold text-center w-24">เกณฑ์ผ่าน</th>'
-        + '<th class="px-3 py-2 w-10"></th></tr></thead><tbody>'
+        + '<th class="px-3 py-2 w-20"></th></tr></thead><tbody>'
         + rows.map(function (r) {
             return '<tr class="border-t border-gray-50">'
               + '<td class="px-3 py-2 font-semibold">' + esc(r.clo_code) + '</td>'
@@ -539,7 +539,9 @@
               + esc(r.plo_code || '—') + '</span></td>'
               + '<td class="px-3 py-2 text-center">' + esc(r.max_score) + '</td>'
               + '<td class="px-3 py-2 text-center">' + esc(r.pass_score) + '</td>'
-              + '<td class="px-3 py-2 text-right">'
+              + '<td class="px-3 py-2 text-right whitespace-nowrap">'
+              + '<button onclick="ploEditClo(' + esc(r.__backendId) + ')" class="text-gray-300 hover:text-primary mr-2" title="แก้ไข CLO นี้">'
+              + '<i data-lucide="pencil" class="w-4 h-4"></i></button>'
               + '<button onclick="ploDeleteClo(' + esc(r.__backendId) + ')" class="text-gray-300 hover:text-red-500" title="ลบ CLO นี้">'
               + '<i data-lucide="trash-2" class="w-4 h-4"></i></button></td></tr>';
           }).join('')
@@ -607,6 +609,74 @@
     }
     showToast('เพิ่ม CLO แล้ว ' + made + ' รายวิชา' + (skipped ? ' · ข้าม ' + skipped + ' วิชาที่มีอยู่แล้ว' : ''));
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  };
+
+  /* แก้ไข CLO ที่บันทึกไว้แล้ว
+     เดิมมีแต่ปุ่มลบ ถ้าพิมพ์ผิดหรือจะปรับเกณฑ์ผ่าน ต้องลบแล้วเพิ่มใหม่
+     ซึ่งทำให้คะแนนนักศึกษาที่กรอกไว้ใน CLO ข้อนั้นหายไปด้วย
+     การแก้ไขนี้ไม่แตะตารางคะแนน คะแนนเดิมยังอยู่ครบ */
+  window.ploEditClo = function (id) {
+    var rec = (APP.allData || []).filter(function (d) { return String(d.__backendId) === String(id); })[0];
+    if (!rec) { showToast('ไม่พบ CLO ที่จะแก้ไข', 'error'); return; }
+
+    var opts = ploOptions();
+    var sel = '<select id="cloEPlo" class="w-full border rounded-lg px-2 py-1.5 text-sm">'
+      + '<option value="">— เลือก PLO —</option>'
+      + opts.map(function (p) {
+          var t = (s(p.parent_code) ? '   ' : '') + s(p.plo_code) + ' ' + s(p.statement_th).slice(0, 60);
+          return '<option value="' + esc(p.plo_code) + '"'
+            + (s(rec.plo_code) === s(p.plo_code) ? ' selected' : '') + '>' + esc(t) + '</option>';
+        }).join('') + '</select>';
+
+    var html = '<div class="space-y-3">'
+      + '<p class="text-xs text-gray-500">รายวิชา ' + esc(rec.subject_code) + ' ' + esc(rec.subject_name)
+      + ' · ปีการศึกษา ' + esc(rec.academic_year) + ' ภาคการศึกษาที่ ' + esc(rec.semester) + '</p>'
+      + '<div><label class="block text-[11px] text-gray-500 mb-1">รหัส CLO</label>'
+      + '<input id="cloECode" value="' + esc(rec.clo_code) + '" class="w-full border rounded-lg px-2 py-1.5 text-sm"></div>'
+      + '<div><label class="block text-[11px] text-gray-500 mb-1">คำอธิบาย</label>'
+      + '<textarea id="cloEText" rows="3" class="w-full border rounded-lg px-2 py-1.5 text-sm">' + esc(rec.statement_th) + '</textarea></div>'
+      + '<div><label class="block text-[11px] text-gray-500 mb-1">ผูกกับ PLO</label>' + sel + '</div>'
+      + '<div class="grid grid-cols-2 gap-3">'
+      + '<div><label class="block text-[11px] text-gray-500 mb-1">คะแนนเต็ม</label>'
+      + '<input id="cloEMax" type="number" value="' + esc(rec.max_score) + '" class="w-full border rounded-lg px-2 py-1.5 text-sm"></div>'
+      + '<div><label class="block text-[11px] text-gray-500 mb-1">เกณฑ์ผ่าน</label>'
+      + '<input id="cloEPass" type="number" value="' + esc(rec.pass_score) + '" class="w-full border rounded-lg px-2 py-1.5 text-sm"></div>'
+      + '</div>'
+      + '<p class="text-[11px] text-gray-400">คะแนนนักศึกษาที่กรอกไว้จะไม่ถูกลบ '
+      + 'ถ้าแก้คะแนนเต็มหรือเกณฑ์ผ่าน ผลการบรรลุจะคำนวณใหม่จากคะแนนเดิม</p>'
+      + '</div>';
+
+    // คืน Promise ออกไปด้วย เพื่อให้ผู้เรียกรอจนบันทึกเสร็จจริงได้
+    showModal('แก้ไข ' + esc(rec.clo_code), html, function () { return window.ploSaveClo(id); }, 'max-w-xl');
+  };
+
+  window.ploSaveClo = async function (id) {
+    var rec = (APP.allData || []).filter(function (d) { return String(d.__backendId) === String(id); })[0];
+    if (!rec) return;
+    var v = function (el) { return s(((typeof document !== 'undefined' && document.getElementById(el)) || {}).value); };
+    var code = v('cloECode'), text = v('cloEText'), plo = v('cloEPlo'),
+        max = v('cloEMax'), pass = v('cloEPass');
+    if (!code) { showToast('กรุณากรอกรหัส CLO', 'error'); return; }
+    if (!plo) { showToast('กรุณาเลือก PLO ที่ CLO นี้ผูกอยู่', 'error'); return; }
+    if (!pass) { showToast('กรุณากรอกเกณฑ์ผ่าน', 'error'); return; }
+
+    // กันรหัสซ้ำกับ CLO ข้ออื่นในรายวิชาเดียวกัน
+    var dup = closOf(rec.academic_year, rec.semester, rec.subject_code).some(function (c) {
+      return String(c.__backendId) !== String(id) && s(c.clo_code) === code;
+    });
+    if (dup) { showToast('รหัส ' + code + ' มีอยู่แล้วในรายวิชานี้', 'error'); return; }
+
+    var r = await GSheetDB.update(Object.assign({}, rec, {
+      clo_code: code, statement_th: text, plo_code: plo,
+      max_score: max, pass_score: pass,
+      updated_by: (APP.currentUser && APP.currentUser.name) || ''
+    }));
+    if (r && r.isOk) {
+      if (typeof closeModal === 'function') closeModal();
+      showToast('แก้ไขแล้ว');
+      state().scores = null;
+      if (typeof renderCurrentPage === 'function') renderCurrentPage();
+    } else showToast('แก้ไขไม่สำเร็จ: ' + ((r && r.error) || ''), 'error');
   };
 
   window.ploDeleteClo = async function (id) {

@@ -1555,7 +1555,9 @@ function dashboardPage() {
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
       ${yearLevelCardsHTML(students, engPassRecords, _canEditHr)}
     </div>
-    ${unassignedYearNote(students)}`;
+    ${unassignedYearNote(students)}
+    ${/* ย้ายมาจากหน้าข้อมูลนักศึกษา ตามที่ขอให้อยู่ต่อจากการ์ดนักศึกษารายชั้นปี */ ''}
+    ${studentRetentionAnalyticsHTML()}`;
   } else if (r === 'deptHead') {
     stats = `
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
@@ -2069,7 +2071,7 @@ function studentsPage() {
     <h2 class="text-xl font-bold text-gray-800"><i data-lucide="users" class="w-6 h-6 inline mr-2"></i>ข้อมูลนักศึกษา</h2>
     ${isAdmin ? `<div class="flex gap-2"><button onclick="showAddStudentModal()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มนักศึกษา</button>${csvUploadBtn('student', 'name,title_prefix,gender,student_id,batch,status,status_date,status_reason,entry_type,transfer_from,transfer_date,scholarship,admission_project,admission_round,admission_year,phone,email,parent_name,parent_phone,advisor,year_level,room,national_id,name_en,birth_date,birth_province,nationality,religion,prev_education,degree,honors,admission_date,graduation_date,comprehensive_exam')}</div>` : ''}
   </div>
-  ${['admin', 'academic', 'registrar', 'executive'].includes(APP.currentRole) ? studentRetentionAnalyticsHTML() : ''}
+  ${/* การ์ดอัตราการคงอยู่ย้ายไปอยู่หน้าหลักแล้ว (ต่อจากการ์ดนักศึกษารายชั้นปี) */ ''}
   ${['admin', 'academic', 'registrar', 'executive'].includes(APP.currentRole) ? scholarshipRosterHTML() : ''}
   ${isAdmin ? promotePanelHTML(allStudents) : ''}
   <div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">
@@ -4227,6 +4229,107 @@ function engCriteriaHTML() {
   </details>`;
 }
 
+/* ขอบเขตข้อมูลของการ์ดสรุปผลสอบภาษาอังกฤษ
+   แยกมาเป็นฟังก์ชันเดียว เพื่อให้ตัวเลขบนการ์ดกับรายชื่อที่เปิดดูจากการ์ด
+   มาจากชุดข้อมูลเดียวกันเสมอ ไม่มีทางคลาดเคลื่อนกันได้
+   อ่านเงื่อนไขจากตัวกรองที่ผู้ใช้เลือกไว้ (ปีการศึกษา/ชั้นปี/รุ่น/อาจารย์ที่ปรึกษา) และบทบาทผู้ใช้ */
+function engSummaryScope() {
+  const role = APP.currentRole;
+  const canFilterByAdvisor = isAdminRole() || role === 'executive';
+
+  let allEng = getDataByType('eng_result');
+  const engYear = APP.filters._engYear || '';
+  if (engYear) allEng = allEng.filter(e => (e.academic_year || '') === engYear);
+
+  // นับเฉพาะนักศึกษาที่กำลังศึกษาอยู่ (ยกเว้นโหมดดูผู้สำเร็จการศึกษา)
+  let students = activeStudents(getDataByType('student'));
+  if (role === 'classTeacher') {
+    const yr = (APP.currentUser && APP.currentUser.responsible_year) || '1';
+    students = students.filter(s => norm(s.year_level) === norm(yr));
+  }
+  if (role === 'teacher') {
+    students = students.filter(s => s.advisor === (APP.currentUser && APP.currentUser.name));
+  }
+
+  const selectedAdvisor = APP.filters._engAdvisor || '';
+  const sumYrLevel = canFilterByAdvisor ? (APP.filters._engYearLevel || '') : '';
+  const sumIsGrad = sumYrLevel === '__grad';
+  const sumBatch = APP.filters._engBatch || '';
+  if (canFilterByAdvisor) {
+    if (sumIsGrad) {
+      students = getDataByType('student').filter(s => isGraduate(s));
+      if (sumBatch) students = students.filter(s => norm(s.batch) === sumBatch);
+    } else {
+      if (selectedAdvisor) students = students.filter(s => (s.advisor || '') === selectedAdvisor);
+      if (sumYrLevel) students = students.filter(s => norm(s.year_level) === sumYrLevel);
+    }
+  } else if (selectedAdvisor) {
+    students = students.filter(s => (s.advisor || '') === selectedAdvisor);
+  }
+
+  const passedIds = new Set(allEng.filter(e => e.eng_status === 'ผ่าน').map(e => norm(e.student_id)));
+  const passed = students.filter(s => passedIds.has(norm(s.student_id)));
+  const notPassed = students.filter(s => !passedIds.has(norm(s.student_id)));
+  const scopeLabel = sumIsGrad
+    ? ('ผู้สำเร็จการศึกษา' + (sumBatch ? ' รุ่นที่ ' + sumBatch : ''))
+    : (sumYrLevel ? 'ชั้นปีที่ ' + sumYrLevel : '');
+
+  return { students, allEng, passedIds, passed, notPassed, scopeLabel, sumYrLevel, sumIsGrad, sumBatch };
+}
+
+/* คลิกการ์ด "สอบผ่าน" / "ยังไม่ผ่าน" แล้วดูว่ามีใครบ้าง
+   kind = 'pass' | 'fail' */
+function showEngStudentList(kind) {
+  const sc = engSummaryScope();
+  const isPass = kind === 'pass';
+  const list = (isPass ? sc.passed : sc.notPassed).slice()
+    .sort((a, b) => norm(a.student_id).localeCompare(norm(b.student_id)));
+
+  // ผลที่ผ่าน ครั้งล่าสุดของแต่ละคน (ไว้แสดงคะแนน/วันที่)
+  const best = {};
+  sc.allEng.filter(e => e.eng_status === 'ผ่าน').forEach(e => {
+    const k = norm(e.student_id);
+    if (!best[k] || norm(e.eng_date) > norm(best[k].eng_date)) best[k] = e;
+  });
+  // จำนวนครั้งที่เข้าสอบไปแล้ว (ไว้แสดงกับคนที่ยังไม่ผ่าน)
+  const tries = {};
+  sc.allEng.forEach(e => { const k = norm(e.student_id); tries[k] = (tries[k] || 0) + 1; });
+
+  const head = isPass
+    ? '<th class="px-3 py-2 font-semibold">ประเภทข้อสอบ</th><th class="px-3 py-2 font-semibold text-center">คะแนน</th><th class="px-3 py-2 font-semibold text-center">วันที่สอบ</th>'
+    : '<th class="px-3 py-2 font-semibold text-center">เข้าสอบไปแล้ว</th>';
+
+  const rows = list.map((s, i) => {
+    const e = best[norm(s.student_id)] || {};
+    const tail = isPass
+      ? `<td class="px-3 py-2">${norm(e.eng_type) || '-'}</td><td class="px-3 py-2 text-center">${norm(e.eng_score) || '-'}</td><td class="px-3 py-2 text-center">${norm(e.eng_date) || '-'}</td>`
+      : `<td class="px-3 py-2 text-center">${tries[norm(s.student_id)] || 0} ครั้ง</td>`;
+    return `<tr class="border-t border-gray-50">
+      <td class="px-3 py-2 text-gray-400">${i + 1}</td>
+      <td class="px-3 py-2">${norm(s.student_id)}</td>
+      <td class="px-3 py-2 font-medium">${studentDisplayName(s)}</td>
+      <td class="px-3 py-2 text-center">${norm(s.year_level) || '-'}</td>
+      <td class="px-3 py-2 text-center">${norm(s.room) || '-'}</td>
+      ${tail}</tr>`;
+  }).join('');
+
+  const body = !list.length
+    ? '<p class="text-center text-gray-400 py-8">ไม่มีนักศึกษาในกลุ่มนี้</p>'
+    : `<div class="overflow-x-auto"><table class="w-full text-sm">
+        <thead><tr class="bg-surface text-left"><th class="px-3 py-2 w-10"></th>
+          <th class="px-3 py-2 font-semibold">รหัสนักศึกษา</th>
+          <th class="px-3 py-2 font-semibold">ชื่อ-สกุล</th>
+          <th class="px-3 py-2 font-semibold text-center">ชั้นปี</th>
+          <th class="px-3 py-2 font-semibold text-center">ห้อง</th>
+          ${head}</tr></thead><tbody>${rows}</tbody></table></div>`;
+
+  showModal(
+    (isPass ? 'รายชื่อนักศึกษาที่สอบผ่านภาษาอังกฤษ' : 'รายชื่อนักศึกษาที่ยังไม่ผ่านภาษาอังกฤษ')
+      + (sc.scopeLabel ? ' — ' + sc.scopeLabel : '')
+      + ' <span class="text-sm font-normal text-gray-500">(' + list.length + ' คน)</span>',
+    body, null, 'max-w-3xl');
+}
+
 function engResultsPage() {
   const isAdmin = isAdminRole();
   const isExecutive = APP.currentRole === 'executive';
@@ -4408,37 +4511,15 @@ function engResultsPage() {
   // Build summary stats (pass/fail counts only)
   let summaryTableHtml = '';
   if (!isStudent) {
-    // Get students list for summary — นับเฉพาะนักศึกษาที่กำลังศึกษาอยู่เท่านั้น
-    let summaryStudents = activeStudents(getDataByType('student'));
-    if (APP.currentRole === 'classTeacher') {
-      const yr = APP.currentUser.responsible_year || '1';
-      summaryStudents = summaryStudents.filter(s => norm(s.year_level) === norm(yr));
-    }
-    if (APP.currentRole === 'teacher') {
-      summaryStudents = summaryStudents.filter(s => s.advisor === APP.currentUser.name);
-    }
-    const selectedAdvisor = APP.filters._engAdvisor || '';
-    // สรุปผลให้สอดคล้องกับตัวกรองที่เลือก (ชั้นปี / ผู้สำเร็จการศึกษา / รุ่น / อาจารย์ที่ปรึกษา)
-    const sumYrLevel = canFilterByAdvisor ? (APP.filters._engYearLevel || '') : '';
-    const sumIsGrad = sumYrLevel === '__grad';
-    const sumBatch = APP.filters._engBatch || '';
-    if (canFilterByAdvisor) {
-      if (sumIsGrad) {
-        summaryStudents = getDataByType('student').filter(s => isGraduate(s));
-        if (sumBatch) summaryStudents = summaryStudents.filter(s => norm(s.batch) === sumBatch);
-      } else {
-        if (selectedAdvisor) summaryStudents = summaryStudents.filter(s => (s.advisor || '') === selectedAdvisor);
-        if (sumYrLevel) summaryStudents = summaryStudents.filter(s => norm(s.year_level) === sumYrLevel);
-      }
-    } else if (selectedAdvisor) {
-      summaryStudents = summaryStudents.filter(s => (s.advisor || '') === selectedAdvisor);
-    }
-    const scopeLabel = sumIsGrad ? ('ผู้สำเร็จการศึกษา' + (sumBatch ? ' รุ่นที่ ' + sumBatch : '')) : (sumYrLevel ? 'ชั้นปีที่ ' + sumYrLevel : '');
-
-    // Count unique students who passed / not passed
-    const passedIds = new Set(allEng.filter(e => e.eng_status === 'ผ่าน').map(e => norm(e.student_id)));
-    const passedCount = summaryStudents.filter(s => passedIds.has(norm(s.student_id))).length;
-    const notPassedCount = summaryStudents.length - passedCount;
+    // ขอบเขตของการ์ดสรุป — คิดที่ engSummaryScope() ที่เดียว
+    // หน้าต่างรายชื่อที่เปิดจากการ์ดใช้ฟังก์ชันเดียวกันนี้ ตัวเลขกับรายชื่อจึงตรงกันเสมอ
+    const _sc = engSummaryScope();
+    const summaryStudents = _sc.students;
+    const scopeLabel = _sc.scopeLabel;
+    const sumYrLevel = _sc.sumYrLevel;
+    const passedIds = _sc.passedIds;
+    const passedCount = _sc.passed.length;
+    const notPassedCount = _sc.notPassed.length;
 
     // การ์ดสรุปแยกรายชั้นปี (แสดงเมื่อยังไม่เลือกชั้นปีเจาะจง สำหรับ admin/ผู้บริหาร)
     let perYearCardsHtml = '';
@@ -4509,12 +4590,14 @@ function engResultsPage() {
       </summary>
       <div class="px-5 pb-5">
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div class="relative group cursor-default">
+        <div class="relative group cursor-pointer" onclick="showEngStudentList('pass')" title="คลิกเพื่อดูรายชื่อผู้สอบผ่าน">
           ${statCard('check-circle', 'สอบผ่าน', passedCount, 'คน', 'bg-green-500')}
+          <span class="absolute right-4 top-4 text-[11px] text-primary flex items-center gap-1 pointer-events-none"><i data-lucide="list" class="w-3.5 h-3.5"></i>ดูรายชื่อ</span>
           ${tooltipHtml}
         </div>
-        <div class="relative group cursor-default">
+        <div class="relative group cursor-pointer" onclick="showEngStudentList('fail')" title="คลิกเพื่อดูรายชื่อผู้ที่ยังไม่ผ่าน">
           ${statCard('x-circle', 'ยังไม่ผ่าน', notPassedCount, 'คน', 'bg-red-500')}
+          <span class="absolute right-4 top-4 text-[11px] text-primary flex items-center gap-1 pointer-events-none"><i data-lucide="list" class="w-3.5 h-3.5"></i>ดูรายชื่อ</span>
           ${tooltipHtml}
         </div>
       </div>
