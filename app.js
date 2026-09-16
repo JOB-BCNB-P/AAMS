@@ -3268,6 +3268,255 @@ function gpaxAnalyticsHTML() {
   </details>`;
 }
 
+/* ================= การ์ดคู่ในหน้าผลการเรียน (ตามบทบาท) =================
+   ขอบเขตนักศึกษาที่เห็น คิดที่ gradeScope() ที่เดียว การ์ดทั้งสองใบจึงนับจากชุดเดียวกันเสมอ
+     อาจารย์ประจำชั้น  เห็นนักศึกษาชั้นปีที่ตนดูแลทั้งหมด
+     อาจารย์           เห็นนักศึกษาในที่ปรึกษาของตนทั้งหมด
+     ผู้ดูแล/วิชาการ/ทะเบียน/ผู้บริหาร  เห็นตามตัวกรองชั้นปีที่เลือกไว้ด้านบน */
+function gradeScope() {
+  const role = APP.currentRole;
+  let students = [], label = '';
+  if (role === 'classTeacher') {
+    const yr = norm((APP.currentUser && APP.currentUser.responsible_year) || '1');
+    students = activeStudents(getDataByType('student')).filter(s => norm(s.year_level) === yr);
+    label = 'ชั้นปีที่ ' + yr + ' (ชั้นปีที่ดูแล)';
+  } else if (role === 'teacher') {
+    const me = norm((APP.currentUser && APP.currentUser.name) || '');
+    students = activeStudents(getDataByType('student')).filter(s => norm(s.advisor) === me);
+    label = 'นักศึกษาในที่ปรึกษา';
+  } else if (['admin', 'academic', 'registrar', 'executive'].includes(role)) {
+    const sel = APP.filters._gradeYearLevel || '';
+    if (sel === '__grad') { students = getDataByType('student').filter(isGraduate); label = 'ผู้สำเร็จการศึกษา'; }
+    else {
+      students = activeStudents(getDataByType('student'));
+      if (sel) { students = students.filter(s => norm(s.year_level) === sel); label = 'ชั้นปีที่ ' + sel; }
+      else label = 'ทุกชั้นปี';
+    }
+  }
+  students = students.slice().sort((a, b) => norm(a.student_id).localeCompare(norm(b.student_id)));
+  return { students, label };
+}
+
+// แต้มประจำเกรด — เกรดที่ไม่คิดแต้ม (S/U/W/I ฯลฯ) คืน null เพื่อไม่ให้ถูกนำไปเฉลี่ย
+const GRADE_POINTS = { 'A': 4, 'B+': 3.5, 'B': 3, 'C+': 2.5, 'C': 2, 'D+': 1.5, 'D': 1, 'F': 0 };
+function gradePoint(g) {
+  const v = GRADE_POINTS[norm(g).toUpperCase()];
+  return v === undefined ? null : v;
+}
+// คำนวณเกรดเฉลี่ยจากรายการเกรดที่ให้มา — ไม่มีรายการที่คิดแต้มได้ คืน null (ไม่แสดงเป็น 0)
+function gpaOf(list) {
+  let p = 0, c = 0;
+  (list || []).forEach(g => {
+    const v = gradePoint(g.grade); if (v === null) return;
+    const cr = Number(_gradeCredits(g)) || 3;
+    p += v * cr; c += cr;
+  });
+  return c ? { gpa: Math.round(p / c * 100) / 100, credits: c } : null;
+}
+
+/* ตัวกรองปีการศึกษา / ภาคการศึกษา ที่การ์ดทั้งสองใบใช้ร่วมกัน
+   ครั้งแรกที่เปิดหน้า จะตั้งไว้ที่ปีการศึกษาล่าสุดที่มีข้อมูล เพื่อไม่ให้ตารางกว้างเกินจำเป็น
+   เลือก "ทุกปีการศึกษา" เองได้ตลอด */
+function gradeCardYears(scopeGrades) {
+  return [...new Set((scopeGrades || []).map(g => norm(g.academic_year)).filter(Boolean))]
+    .sort((a, b) => b.localeCompare(a, 'th', { numeric: true }));
+}
+function gradeCardYear(years) {
+  const v = APP.filters._gradeCardYear;
+  return v === undefined ? (years[0] || '') : v;
+}
+function gradeCardFilterBar(years) {
+  const y = gradeCardYear(years);
+  const sm = APP.filters._gradeCardSem || '';
+  const btn = (key, val, label, cur) => `<button onclick="APP.filters.${key}='${val}';renderCurrentPage()" class="px-3 py-1.5 rounded-xl text-sm font-medium ${cur === val ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">${label}</button>`;
+  return `<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <span class="text-sm font-medium text-gray-700"><i data-lucide="calendar" class="w-4 h-4 inline mr-1"></i>ปีการศึกษา</span>
+      <div class="flex flex-wrap gap-2">
+        ${btn('_gradeCardYear', '', 'ทุกปีการศึกษา', y)}
+        ${years.map(v => btn('_gradeCardYear', v, v, y)).join('')}
+      </div>
+    </div>
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3">
+      <span class="text-sm font-medium text-gray-700"><i data-lucide="book-open" class="w-4 h-4 inline mr-1"></i>ภาคการศึกษา</span>
+      <div class="flex flex-wrap gap-2">
+        ${btn('_gradeCardSem', '', 'ทุกภาค', sm)}
+        ${btn('_gradeCardSem', '1', 'ภาคการศึกษาที่ 1', sm)}
+        ${btn('_gradeCardSem', '2', 'ภาคการศึกษาที่ 2', sm)}
+        ${btn('_gradeCardSem', '3', 'ภาคฤดูร้อน', sm)}
+      </div>
+    </div>
+  </div>`;
+}
+function gradeCardScopeText(years) {
+  const y = gradeCardYear(years), sm = APP.filters._gradeCardSem || '';
+  return (y ? 'ปีการศึกษา ' + y : 'ทุกปีการศึกษา')
+    + ' · ' + (sm === '3' ? 'ภาคฤดูร้อน' : sm ? 'ภาคการศึกษาที่ ' + sm : 'ทุกภาคการศึกษา');
+}
+
+/* การ์ดที่ 1 — เกรดรายวิชาของนักศึกษาทุกคนในขอบเขต (แถว = นักศึกษา, คอลัมน์ = รายวิชา) */
+function subjectGradeCardHTML(sc, scopeGrades, years) {
+  const y = gradeCardYear(years), sm = APP.filters._gradeCardSem || '';
+  const rows = scopeGrades.filter(g => (!y || norm(g.academic_year) === y) && (!sm || norm(g.semester) === sm));
+
+  // รายวิชาที่โผล่ในช่วงที่เลือก เรียงตามรหัสวิชา
+  const subjMap = {};
+  rows.forEach(g => {
+    const code = norm(g.subject_code) || norm(g.subject_name);
+    if (!code) return;
+    if (!subjMap[code]) subjMap[code] = { code, name: norm(g.subject_name), sems: {} };
+    if (!subjMap[code].name) subjMap[code].name = norm(g.subject_name);
+    subjMap[code].sems[norm(g.semester) + '/' + norm(g.academic_year)] = 1;
+  });
+  const subjects = Object.keys(subjMap).sort().map(k => subjMap[k]);
+
+  const byStu = {};
+  rows.forEach(g => {
+    const sid = norm(g.student_id); const code = norm(g.subject_code) || norm(g.subject_name);
+    if (!byStu[sid]) byStu[sid] = {};
+    byStu[sid][code] = g;   // ซ้ำรหัสเดียวกันให้ใช้รายการหลังสุด (ผลที่แก้ไขล่าสุด)
+  });
+
+  const gcls = v => v === 'F' ? 'bg-red-100 text-red-700 font-bold'
+    : (v === 'A' || v === 'B+') ? 'bg-emerald-100 text-emerald-700 font-semibold'
+    : 'bg-gray-100 text-gray-700';
+
+  const body = sc.students.map((s, i) => {
+    const sid = norm(s.student_id);
+    const mine = byStu[sid] || {};
+    const g = gpaOf(Object.keys(mine).map(k => mine[k]));
+    return `<tr class="border-t border-gray-50 hover:bg-gray-50">
+      <td class="px-3 py-2 text-center text-gray-400">${i + 1}</td>
+      <td class="px-3 py-2 font-mono text-primary whitespace-nowrap sticky left-0 bg-white">${sid}</td>
+      <td class="px-3 py-2 whitespace-nowrap">${studentDisplayName(s)}</td>
+      ${subjects.map(sj => {
+        const rec = mine[sj.code];
+        const v = rec ? norm(rec.grade) : '';
+        return `<td class="px-2 py-2 text-center">${v ? `<span class="px-2 py-0.5 rounded text-xs ${gcls(v)}">${v}</span>` : '<span class="text-gray-300">-</span>'}</td>`;
+      }).join('')}
+      <td class="px-3 py-2 text-center font-semibold ${g && g.gpa < 2.00 ? 'text-red-600' : 'text-gray-800'}">${g ? g.gpa.toFixed(2) : '<span class="text-gray-300">-</span>'}</td>
+    </tr>`;
+  }).join('');
+
+  // แถวสรุปท้ายตาราง — เฉลี่ยของรายวิชา และจำนวนที่ติด F
+  const foot = subjects.map(sj => {
+    const list = rows.filter(g => (norm(g.subject_code) || norm(g.subject_name)) === sj.code
+      && sc.students.some(s => norm(s.student_id) === norm(g.student_id)));
+    const g = gpaOf(list);
+    const nF = list.filter(x => norm(x.grade).toUpperCase() === 'F').length;
+    return `<td class="px-2 py-2 text-center text-xs">
+      <span class="${g && g.gpa < 2.00 ? 'text-red-600 font-semibold' : 'text-gray-600'}">${g ? g.gpa.toFixed(2) : '-'}</span>
+      ${nF ? `<div class="text-[10px] text-red-500">F ${nF}</div>` : ''}</td>`;
+  }).join('');
+
+  const nGraded = sc.students.filter(s => byStu[norm(s.student_id)]).length;
+  return `<details id="gradeSubjCard"${detailsOpen('gradeSubjCard')} ontoggle="rememberDetails(this)" class="bg-white rounded-2xl border border-blue-100 mb-4">
+    <summary class="cursor-pointer select-none p-5 flex items-center justify-between gap-3">
+      <span class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="table" class="w-5 h-5 text-primary"></i>ภาพรวมผลการเรียน (เกรดรายวิชา)
+        <span class="text-sm font-normal text-gray-500">— ${sc.label} · ${sc.students.length} คน · ${subjects.length} รายวิชา</span>
+        <span class="text-xs font-normal text-gray-400">— คลิกเพื่อดู</span></span>
+      <i data-lucide="chevron-down" class="chev w-5 h-5 text-gray-400 flex-shrink-0"></i>
+    </summary>
+    <div class="px-5 pb-5">
+      <p class="text-xs text-gray-500 mb-3">${gradeCardScopeText(years)} · มีผลการเรียนแล้ว ${nGraded} คน จาก ${sc.students.length} คน</p>
+      ${subjects.length ? `<div class="border border-gray-100 rounded-xl overflow-hidden">
+        <div class="overflow-auto" style="max-height:420px"><table class="w-full text-sm">
+          <thead class="sticky top-0 z-10"><tr class="bg-surface text-left">
+            <th class="px-3 py-2 font-semibold text-center">ลำดับ</th>
+            <th class="px-3 py-2 font-semibold">รหัสนักศึกษา</th>
+            <th class="px-3 py-2 font-semibold">ชื่อ-สกุล</th>
+            ${subjects.map(sj => `<th class="px-2 py-2 font-semibold text-center whitespace-nowrap" title="${htmlEsc(sj.name)}">
+              <span class="font-mono text-[11px]">${sj.code}</span>
+              <div class="text-[10px] font-normal text-gray-400 max-w-[8rem] truncate">${htmlEsc(sj.name)}</div></th>`).join('')}
+            <th class="px-3 py-2 font-semibold text-center whitespace-nowrap">GPA<div class="text-[10px] font-normal text-gray-400">ช่วงที่เลือก</div></th>
+          </tr></thead>
+          <tbody>${body}</tbody>
+          <tfoot><tr class="bg-surface border-t">
+            <td colspan="3" class="px-3 py-2 text-xs font-semibold text-gray-600">เฉลี่ยของรายวิชา</td>
+            ${foot}<td></td>
+          </tr></tfoot>
+        </table></div>
+      </div>` : '<p class="text-center text-gray-400 py-8">ไม่มีผลการเรียนในช่วงที่เลือก</p>'}
+    </div>
+  </details>`;
+}
+
+/* การ์ดที่ 2 — GPAx ของนักศึกษาทุกคนในขอบเขต */
+function gpaxByStudentCardHTML(sc, scopeGrades, years) {
+  const y = gradeCardYear(years), sm = APP.filters._gradeCardSem || '';
+  const inRange = scopeGrades.filter(g => (!y || norm(g.academic_year) === y) && (!sm || norm(g.semester) === sm));
+  const bucket = (list) => { const m = {}; list.forEach(g => { const k = norm(g.student_id); (m[k] = m[k] || []).push(g); }); return m; };
+  const rangeBy = bucket(inRange), allBy = bucket(scopeGrades);
+
+  const rows = sc.students.map(s => {
+    const sid = norm(s.student_id);
+    return { s, range: gpaOf(rangeBy[sid]), all: gpaOf(allBy[sid]) };
+  }).sort((a, b) => (b.all ? b.all.gpa : -1) - (a.all ? a.all.gpa : -1));
+
+  const withGpax = rows.filter(r => r.all);
+  const avg = withGpax.length
+    ? Math.round(withGpax.reduce((t, r) => t + r.all.gpa, 0) / withGpax.length * 100) / 100 : null;
+  const atRisk = withGpax.filter(r => r.all.gpa < 2.30).length;
+  const honor = withGpax.filter(r => r.all.gpa >= 3.50).length;
+
+  const body = rows.map((r, i) => {
+    const g = r.all;
+    const cls = !g ? 'text-gray-300' : g.gpa < 2.30 ? 'text-red-600 font-bold' : g.gpa >= 3.50 ? 'text-emerald-600 font-bold' : 'text-gray-800';
+    return `<tr class="border-t border-gray-50 hover:bg-gray-50">
+      <td class="px-3 py-2 text-center text-gray-400">${i + 1}</td>
+      <td class="px-3 py-2 font-mono text-primary">${norm(r.s.student_id)}</td>
+      <td class="px-3 py-2">${studentDisplayName(r.s)}${g && g.gpa < 2.30 ? '<span class="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-red-100 text-red-700">เฝ้าระวัง</span>' : ''}</td>
+      <td class="px-3 py-2 text-center">${norm(r.s.year_level) || '-'}</td>
+      <td class="px-3 py-2 text-center text-gray-500">${r.range ? r.range.credits : '-'}</td>
+      <td class="px-3 py-2 text-center">${r.range ? r.range.gpa.toFixed(2) : '<span class="text-gray-300">-</span>'}</td>
+      <td class="px-3 py-2 text-center ${cls}">${g ? g.gpa.toFixed(2) : '-'}</td>
+    </tr>`;
+  }).join('');
+
+  return `<details id="gradeGpaxCard"${detailsOpen('gradeGpaxCard')} ontoggle="rememberDetails(this)" class="bg-white rounded-2xl border border-blue-100 mb-4">
+    <summary class="cursor-pointer select-none p-5 flex items-center justify-between gap-3">
+      <span class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="bar-chart-3" class="w-5 h-5 text-primary"></i>ภาพรวมผลการเรียน (GPAx)
+        <span class="text-sm font-normal text-gray-500">— ${sc.label} · ${withGpax.length} คนมีผลการเรียนแล้ว${avg !== null ? ' · เฉลี่ย ' + avg.toFixed(2) : ''}</span>
+        <span class="text-xs font-normal text-gray-400">— คลิกเพื่อดู</span></span>
+      <i data-lucide="chevron-down" class="chev w-5 h-5 text-gray-400 flex-shrink-0"></i>
+    </summary>
+    <div class="px-5 pb-5">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+        ${statCard('users', 'GPAx เฉลี่ยของกลุ่ม', avg === null ? '-' : avg.toFixed(2), '', 'bg-blue-500')}
+        ${statCard('alert-triangle', 'GPAx ต่ำกว่า 2.30 (เฝ้าระวัง)', atRisk, 'คน', 'bg-red-500')}
+        ${statCard('award', 'GPAx 3.50 ขึ้นไป', honor, 'คน', 'bg-emerald-500')}
+      </div>
+      <p class="text-xs text-gray-500 mb-2">คอลัมน์ "GPA ช่วงที่เลือก" คิดจาก ${gradeCardScopeText(years)} ส่วน "GPAx สะสม" คิดจากผลการเรียนทั้งหมดที่มีในระบบ</p>
+      <div class="border border-gray-100 rounded-xl overflow-hidden">
+        <div class="overflow-auto" style="max-height:420px"><table class="w-full text-sm">
+          <thead class="sticky top-0 z-10"><tr class="bg-surface text-left">
+            <th class="px-3 py-2 font-semibold text-center">ลำดับ</th>
+            <th class="px-3 py-2 font-semibold">รหัสนักศึกษา</th>
+            <th class="px-3 py-2 font-semibold">ชื่อ-สกุล</th>
+            <th class="px-3 py-2 font-semibold text-center">ชั้นปี</th>
+            <th class="px-3 py-2 font-semibold text-center">หน่วยกิต<div class="text-[10px] font-normal text-gray-400">ช่วงที่เลือก</div></th>
+            <th class="px-3 py-2 font-semibold text-center">GPA<div class="text-[10px] font-normal text-gray-400">ช่วงที่เลือก</div></th>
+            <th class="px-3 py-2 font-semibold text-center">GPAx<div class="text-[10px] font-normal text-gray-400">สะสม</div></th>
+          </tr></thead>
+          <tbody>${body || '<tr><td colspan="7" class="px-3 py-6 text-center text-gray-400">ไม่มีนักศึกษาในขอบเขตนี้</td></tr>'}</tbody>
+        </table></div>
+      </div>
+    </div>
+  </details>`;
+}
+
+// การ์ดคู่ + แถบตัวกรองที่ใช้ร่วมกัน
+function gradeOverviewCardsHTML() {
+  const sc = gradeScope();
+  if (!sc.students.length) return '';
+  const ids = new Set(sc.students.map(s => norm(s.student_id)));
+  const scopeGrades = getDataByType('grade').filter(g => ids.has(norm(g.student_id)));
+  const years = gradeCardYears(scopeGrades);
+  return gradeCardFilterBar(years)
+    + subjectGradeCardHTML(sc, scopeGrades, years)
+    + gpaxByStudentCardHTML(sc, scopeGrades, years);
+}
+
 function gradesPage() {
   const isAdmin = isAdminRole();
   const isExecutive = APP.currentRole === 'executive';
@@ -3417,6 +3666,7 @@ function gradesPage() {
     ${isAdmin ? `<div class="flex gap-2"><button onclick="showAddGradeModal()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มผลการเรียน</button>${csvUploadBtn('grade', 'student_id,subject_code,subject_name,grade,credits,semester,academic_year')}</div>` : ''}
   </div>
   ${['admin', 'academic', 'registrar', 'executive'].includes(APP.currentRole) ? gpaxAnalyticsHTML() : ''}
+  ${isStudent ? '' : gradeOverviewCardsHTML()}
   ${studentSelector}
   ${noSelectionMsg || `${filterBar({ yearData: yearScopeGrades })}
   ${gpaSection}

@@ -447,7 +447,9 @@ button:disabled {
   margin-right: .35em;
 }
 
-/* wobble เฉพาะเครื่องที่มีเมาส์ (บนมือถือรบกวนสายตา) */
+/* การเคลื่อนไหวของปุ่มเวลาเอาเมาส์ไปชี้ (ทำเฉพาะเครื่องที่มีเมาส์ บนมือถือรบกวนสายตา)
+     แถบเมนูด้านข้าง : ขยับเล็กน้อย
+     ปุ่มอื่นทั้งหมด : ไม่ขยับ แค่ "นูนขึ้น" เหมือนการ์ดสถิติในหน้าหลัก */
 @media (hover: hover) and (pointer: fine) {
   @keyframes btnWobble {
     0%, 100% { transform: rotate(0deg); }
@@ -458,7 +460,26 @@ button:disabled {
     75% { transform: rotate(-0.8deg); }
   }
 
+  button:not(:disabled):not(.btn-spin) {
+    transition: transform .2s, box-shadow .2s;
+  }
+
   button:hover:not(:disabled):not(.btn-spin) {
+    transform: translateY(-2px);
+  }
+
+  /* ใส่เงาเฉพาะปุ่มที่มีพื้นหลังทึบ
+     ปุ่มไอคอนโปร่งใสในตารางถ้าใส่เงาจะดูเหมือนลอยอยู่เฉย ๆ
+     (ตัวเลือกนี้จับเฉพาะคลาสพื้นหลังจริง ไม่จับ hover:bg-... ที่เป็นสีตอนชี้) */
+  button[class*=" bg-"]:hover:not(:disabled):not(.btn-spin),
+  button[class^="bg-"]:hover:not(:disabled):not(.btn-spin) {
+    box-shadow: 0 8px 25px rgba(30, 111, 186, .15);
+  }
+
+  /* แถบเมนูด้านข้าง — ให้ขยับได้เหมือนเดิม */
+  #sidebarNav button:hover:not(:disabled):not(.btn-spin) {
+    transform: none;
+    box-shadow: none;
     animation: btnWobble .5s ease;
   }
 }
