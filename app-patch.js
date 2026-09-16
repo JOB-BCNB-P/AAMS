@@ -318,13 +318,15 @@
         emsApplyRole(window.__emsRealProfile.role, window.__emsRealProfile);
       }
     }
+    // ต้องรอให้บันทึกลงฐานข้อมูลเสร็จก่อนปิดเซสชัน
+    // ไม่งั้นคำสั่งบันทึกจะถูกตัดกลางคัน เพราะสิทธิ์หมดไปพร้อมกับเซสชัน
     try {
       if (APP.currentUser) {
         var ident = (APP.currentRole === 'student' && APP.currentUser.data)
           ? (APP.currentUser.data.student_id || '') : (APP.currentUser.email || '');
-        logLoginEvent('logout', { name: APP.currentUser.name, role: APP.currentRole, identifier: ident });
+        await logLoginEvent('logout', { name: APP.currentUser.name, role: APP.currentRole, identifier: ident });
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) { /* บันทึกไม่ได้ก็ต้องออกจากระบบให้ได้อยู่ดี */ }
 
     await GSheetDB.logout();
     APP.currentUser = null; APP.currentRole = null; APP.currentPage = 'dashboard'; APP.allData = [];
@@ -790,6 +792,9 @@
   function wrapTables(root) {
     (root || document).querySelectorAll('table').forEach(function (t) {
       if (t.closest('.ems-tablewrap')) return;
+      // เอกสารที่จัดหน้ามาเองแล้ว (ใบระเบียนแสดงผลการเรียน ฯลฯ) ห้ามแตะ
+      // ไม่งั้นตารางจะถูกบังคับให้กว้างตามเนื้อหา แล้วหน้ากระดาษจะเพี้ยน
+      if (t.closest('[data-ems-doc]')) return;
       var w = document.createElement('div');
       w.className = 'ems-tablewrap';
       t.parentNode.insertBefore(w, t);

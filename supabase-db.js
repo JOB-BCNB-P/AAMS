@@ -284,6 +284,17 @@ const EMSDB = (() => {
     const payload = Object.assign({}, cols);
     if (Object.keys(extra).length) payload.extra = extra;
 
+    /* ตารางบันทึกเหตุการณ์ (login_log, password_log) ตั้งสิทธิ์อ่านไว้เฉพาะผู้ดูแลระบบ
+       ถ้าขอให้ส่งแถวที่เพิ่งเพิ่มกลับมาด้วย คนบทบาทอื่นจะอ่านไม่ได้
+       ฐานข้อมูลจะถือว่าคำสั่งไม่สำเร็จแล้วยกเลิกการเพิ่มนั้นไปทั้งหมด
+       จึงมีโหมด noReturn ไว้สำหรับตารางแบบนี้ : เพิ่มอย่างเดียว ไม่ต้องอ่านกลับ */
+    if (opts && opts.noReturn) {
+      const { error: e0 } = await client().from(table).insert(payload);
+      if (e0) return { isOk: false, error: friendly(e0) };
+      if (!(opts && opts.noRefresh)) await refreshTab(t);
+      return { isOk: true, message: 'บันทึกแล้ว' };
+    }
+
     const { data, error } = await client().from(table).insert(payload).select('id').single();
     if (error) return { isOk: false, error: friendly(error) };
     if (nid) { try { await saveNationalId(data.id, nid); } catch (e) { /* ไม่ให้ล้มทั้งรายการ */ } }
@@ -380,8 +391,9 @@ const EMSDB = (() => {
   }
 
   // เขียนแถวใหม่แบบไม่ดึงข้อมูลกลับ (ใช้กับ login_log)
+  // ใช้กับตารางบันทึกเหตุการณ์ : เพิ่มอย่างเดียว ไม่อ่านกลับ ไม่โหลดตารางใหม่
   async function appendNoRefresh(obj) {
-    try { return await create(obj, { noRefresh: true }); }
+    try { return await create(obj, { noRefresh: true, noReturn: true }); }
     catch (err) { return { isOk: false, error: String(err) }; }
   }
 

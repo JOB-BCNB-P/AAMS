@@ -156,13 +156,13 @@ async function logLoginEvent(eventType, userInfo) {
       timestamp: localTimestamp,
       created_at: now.toISOString()
     };
-    if (GSheetDB && GSheetDB.hasWriteAccess && GSheetDB.hasWriteAccess()) {
-      // Fire and forget - บันทึกแบบไม่อ่าน log กลับ (กันดึง login_log ทั้งหมดมาที่เบราว์เซอร์นักศึกษา)
-      const writer = GSheetDB.appendNoRefresh ? GSheetDB.appendNoRefresh(obj) : GSheetDB.create(obj);
-      Promise.resolve(writer).catch(err => console.warn('logLoginEvent error:', err));
-    } else {
-      console.warn('logLoginEvent: no write access (Apps Script URL not configured)');
-    }
+    /* บันทึกทุกบทบาท รวมถึงนักศึกษา — สิทธิ์ในฐานข้อมูลอนุญาตให้ทุกคนที่เข้าสู่ระบบเพิ่มบันทึกของตัวเองได้
+       (เดิมมีเงื่อนไขกันไว้ ทำให้บันทึกของนักศึกษาหายไปทั้งหมด)
+       คืนค่าเป็น Promise ด้วย เพื่อให้ตอนออกจากระบบรอให้บันทึกเสร็จก่อนปิดเซสชันได้ */
+    const r = GSheetDB.appendNoRefresh ? await GSheetDB.appendNoRefresh(obj)
+                                       : await GSheetDB.create(obj, { noRefresh: true, noReturn: true });
+    if (r && r.isOk === false) console.warn('logLoginEvent: บันทึกไม่สำเร็จ —', r.error);
+    return r;
   } catch (err) {
     console.warn('logLoginEvent failed:', err);
   }
@@ -3601,14 +3601,46 @@ function showAddGradeModal() {
 function isGraduate(stu) { return norm(stu && stu.status) === 'สำเร็จการศึกษา' || norm(stu && stu.year_level) === 'จบ'; }
 
 const THAI_MONTHS = ['', 'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+const EN_MONTHS = ['january', 'february', 'march', 'april', 'may', 'june',
+  'july', 'august', 'september', 'october', 'november', 'december'];
+
+/* แปลงวันที่เป็นข้อความไทย เช่น 27 มิถุนายน 2565
+   ข้อมูลในระบบมาจากหลายทาง จึงมีหลายรูปแบบปนกัน รองรับไว้ทั้งหมด
+     2003-11-02            มาจากช่องกรอกวันที่
+     2/11/2546             พิมพ์เอง (ปีเป็น พ.ศ. หรือ ค.ศ. ก็ได้)
+     Date(2022,5,27)       ของเดิมที่ย้ายมาจาก Google Sheet — เลขเดือนเริ่มที่ 0 คือมกราคม
+     September 16, 2003    ของเดิมที่ย้ายมาจาก Google Sheet เช่นกัน
+   อ่านไม่ออกจะคืนข้อความเดิมไปตามตรง ไม่เดาให้ */
 function toThaiLongDate(dateStr) {
   if (!dateStr) return '';
   const s = String(dateStr).trim();
-  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-  if (m) { return parseInt(m[3], 10) + ' ' + THAI_MONTHS[parseInt(m[2], 10)] + ' ' + (parseInt(m[1], 10) + 543); }
+  const th = (d, mo, y) => (mo >= 1 && mo <= 12 && d >= 1 && d <= 31)
+    ? d + ' ' + THAI_MONTHS[mo] + ' ' + (y > 2400 ? y : y + 543) : s;
+
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return th(+m[3], +m[2], +m[1]);
+
   m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (m) { const y = parseInt(m[3], 10); return parseInt(m[1], 10) + ' ' + THAI_MONTHS[parseInt(m[2], 10)] + ' ' + (y > 2400 ? y : y + 543); }
+  if (m) return th(+m[1], +m[2], +m[3]);
+
+  // Date(ปี, เดือน, วัน) — เดือนนับจาก 0
+  m = s.match(/^Date\s*\(\s*(\d{4})\s*,\s*(\d{1,2})\s*,\s*(\d{1,2})/i);
+  if (m) return th(+m[3], +m[2] + 1, +m[1]);
+
+  // September 16, 2003
+  m = s.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/);
+  if (m) {
+    const mo = EN_MONTHS.indexOf(m[1].toLowerCase()) + 1;
+    if (mo) return th(+m[2], mo, +m[3]);
+  }
   return s;
+}
+
+// ชื่อเต็มพร้อมคำนำหน้า — ตาราง student เก็บคำนำหน้าแยกจากชื่อ
+function fullThaiName(stu) {
+  const pre = norm(stu && stu.title_prefix), nm = norm(stu && stu.name);
+  if (!pre) return nm;
+  return nm.indexOf(pre) === 0 ? nm : (pre + nm);
 }
 
 // ชั่วโมงฝึกปฏิบัติการพยาบาลตามหลักสูตร (มาตรฐาน — แก้ได้ที่นี่)
@@ -3756,8 +3788,19 @@ function buildOfficialTranscript(stu, logoSrc) {
   const info = (label, value) => `<div style="margin-bottom:1px"><span style="font-weight:600">${label}</span> ${htmlEsc(value == null ? '' : String(value))}</div>`;
   const nameEn = norm(stu.name_en);
 
+  /* CSS ส่วนกลางของระบบตั้งไว้สำหรับตารางข้อมูลบนหน้าจอ
+     (หัวตารางลอยตาม, บังคับความกว้างตามเนื้อหา, ย่อขนาดตัวอักษรบนจอเล็ก)
+     ซึ่งทำให้ใบระเบียนที่จัดหน้ามาเองเพี้ยน จึงปิดเฉพาะภายในเอกสารนี้ */
+  const docCss = `<style>
+    [data-ems-doc] table { min-width:0 !important; width:100% !important; border-collapse:collapse !important; }
+    [data-ems-doc] th { position:static !important; background:transparent !important; white-space:normal !important; z-index:auto !important; }
+    [data-ems-doc] th, [data-ems-doc] td { font-size:inherit !important; padding-left:4px !important; padding-right:4px !important; }
+    [data-ems-doc] .ems-tablewrap { overflow:visible !important; background:none !important; border-radius:0 !important; }
+  </style>`;
+
   return `
-  <div style="font-family:'Sarabun',sans-serif;color:#000;font-size:11px;width:100%;line-height:1.35">
+  <div data-ems-doc style="font-family:'Sarabun',sans-serif;color:#000;font-size:11px;width:100%;line-height:1.35">
+    ${docCss}
 
     <table style="width:100%;border-collapse:collapse;margin-bottom:8px"><tr>
       <td style="width:70px;vertical-align:top">${logoTag}</td>
@@ -3773,7 +3816,7 @@ function buildOfficialTranscript(stu, logoSrc) {
     <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:6px"><tr>
       <td style="vertical-align:top;width:54%;padding-right:8px">
         ${info('รหัสนักศึกษา:', norm(stu.student_id))}
-        ${info('ชื่อ-นามสกุล (ไทย):', norm(stu.name))}
+        ${info('ชื่อ-นามสกุล (ไทย):', fullThaiName(stu))}
         ${info('(อังกฤษ):', nameEn ? nameEn.toUpperCase() : '')}
         ${info('วันเกิด:', toThaiLongDate(stu.birth_date) || '-')}
         ${info('จังหวัดที่เกิด:', norm(stu.birth_province) || '-')}
