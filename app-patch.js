@@ -517,14 +517,47 @@
       if (!perms.leave) return;
       var nav = el('sidebarNav');
       if (!nav || nav.querySelector('[data-page="leave"]')) return;
-      var btn = document.createElement('button');
-      btn.setAttribute('onclick', "navigateTo('leave')");
-      btn.setAttribute('data-page', 'leave');
-      btn.className = 'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-700 hover:bg-surface hover:text-primary transition';
-      btn.innerHTML = '<i data-lucide="calendar-off" class="w-5 h-5 flex-shrink-0"></i>ระบบการลาของนักศึกษา';
+
+      // ผู้ที่เพิ่มข้อมูลการลาเองได้ : นักศึกษา (ยื่นใบลา) และผู้ดูแล/งานวิชาการ/งานทะเบียน
+      var role = APP.currentRole;
+      var canAdd = role === 'student' || role === 'admin' || role === 'academic' || role === 'registrar';
+      var here = APP.currentPage;
+      var node;
+
+      if (canAdd) {
+        // มีเมนูย่อย : ภาพรวมการลา / เพิ่มข้อมูลการลา
+        var subs = [['leave', 'ภาพรวมการลา'], ['leaveAdd', 'เพิ่มข้อมูลการลา']];
+        var open = subs.some(function (s) { return s[0] === here; });
+        node = document.createElement('div');
+        node.className = 'dropdown-item' + (open ? ' dropdown-open' : '');
+        node.setAttribute('data-leave-menu', '1');
+        node.innerHTML =
+          '<button onclick="toggleDropdown(this)" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm text-gray-700 hover:bg-surface transition">'
+          + '<span class="flex items-center gap-3"><i data-lucide="calendar-off" class="w-5 h-5 flex-shrink-0"></i>ระบบการลาของนักศึกษา</span>'
+          + '<i data-lucide="chevron-down" class="w-4 h-4 transition-transform"' + (open ? ' style="transform:rotate(180deg)"' : '') + '></i>'
+          + '</button>'
+          + '<div class="dropdown-menu ml-8 mt-1 space-y-1">'
+          + subs.map(function (s) {
+              var on = here === s[0];
+              return '<button onclick="navigateTo(\'' + s[0] + '\')" data-page="' + s[0] + '" '
+                + 'class="nav-item w-full text-left px-3 py-2 rounded-lg text-sm transition '
+                + (on ? 'bg-primaryLight text-primary font-semibold' : 'text-gray-600 hover:bg-surface hover:text-primary') + '">'
+                + s[1] + '</button>';
+            }).join('')
+          + '</div>';
+      } else {
+        // บทบาทที่ดูอย่างเดียว (อาจารย์ ผู้บริหาร) — เมนูเดี่ยวเหมือนเดิม
+        node = document.createElement('button');
+        node.setAttribute('onclick', "navigateTo('leave')");
+        node.setAttribute('data-page', 'leave');
+        node.className = 'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-700 hover:bg-surface hover:text-primary transition';
+        node.innerHTML = '<i data-lucide="calendar-off" class="w-5 h-5 flex-shrink-0"></i>ระบบการลาของนักศึกษา';
+      }
+
       // วางไว้ก่อนเมนู "แบบประเมินความพึงพอใจ" ถ้ามี ไม่งั้นต่อท้าย
       var before = nav.querySelector('[data-page="survey"], [data-page="surveyManage"], [data-page="services"]');
-      if (before) nav.insertBefore(btn, before); else nav.appendChild(btn);
+      while (before && before.parentNode && before.parentNode !== nav) before = before.parentNode;
+      if (before && before.parentNode === nav) nav.insertBefore(node, before); else nav.appendChild(node);
       if (window.lucide) lucide.createIcons();
     };
   })();

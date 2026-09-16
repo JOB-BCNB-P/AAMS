@@ -1068,7 +1068,8 @@ function closeModal() {
 // คืนรายการใบลาที่ "รอ" การอนุมัติของ user ปัจจุบัน (ตามบทบาท teacher/classTeacher/executive)
 // หลังจาก user กดอนุมัติ → leave นั้นจะไม่อยู่ในลิสต์นี้อีก → bell count ลดอัตโนมัติ
 function getPendingLeavesForCurrentRole() {
-  return []; // ระบบการลาถูกถอดออกจากทุกบทบาทแล้ว — ไม่แจ้งเตือนการอนุมัติการลาอีก
+  // ปิด/เปิดพร้อมกับเมนูระบบการลา (สวิตช์ ENABLE_LEAVE_MENU ใน config.js)
+  if (typeof CFG !== 'undefined' && CFG && CFG.ENABLE_LEAVE_MENU === false) return [];
   const role = APP.currentRole;
   if (role !== 'teacher' && role !== 'classTeacher' && role !== 'executive') return [];
   let leaves = getDataByType('leave').filter(l => l.leave_status !== 'ปฏิเสธ');
@@ -1440,7 +1441,8 @@ function getPageContent(page, role) {
     case 'resultTracking': return resultTrackingPage();
     case 'gradeTracking': return gradeTrackingPage();
     case 'fileTracking': return fileTrackingPage();
-    case 'leave': return leavePage();
+    case 'leave': APP._leaveTab = 'overview'; return leavePage();
+    case 'leaveAdd': APP._leaveTab = 'add'; return leavePage();
     case 'survey': return surveyPage();
     case 'surveyManage': return surveyManagePage();
     case 'settings': return settingsPage();
@@ -8693,6 +8695,244 @@ function allCoordinatorsApproved(leaveRec) {
   return sameBatch.every(l => l.coordinator_approval === 'อนุมัติ');
 }
 
+/* ================= ภาพรวมการลารายวิชา (ชุด D) =================
+   ใช้ข้อมูลตามบทบาทของผู้ใช้เสมอ — อาจารย์ประจำชั้นเห็นเฉพาะชั้นปีที่ดูแล
+   อาจารย์เห็นเฉพาะรายวิชาที่ตนประสานงาน นักศึกษาเห็นเฉพาะของตนเอง */
+
+// ชั้นปีของนักศึกษา — ใบลาเก็บชื่อไว้ จึงเทียบกลับไปที่ทะเบียนด้วยชื่อ (และรหัสถ้ามี)
+function leaveStudentIndex() {
+  const byName = {}, bySid = {};
+  getDataByType('student').forEach(s => {
+    const nm = norm(s.name), sid = norm(s.student_id);
+    if (nm) byName[nm] = s;
+    if (sid) bySid[sid] = s;
+  });
+  return { byName, bySid };
+}
+function leaveStudentOf(idx, l) {
+  return idx.bySid[norm(l.student_id)] || idx.byName[norm(l.name)] || null;
+}
+
+/* ตัวกรองร่วมของกราฟและตารางเฝ้าระวัง
+   ปีการศึกษาตั้งต้นที่ปีล่าสุดที่มีข้อมูล เพื่อไม่ให้กราฟรวมหลายปีจนอ่านไม่ออก */
+function leaveOverviewYears(rows) {
+  return [...new Set(rows.map(l => norm(l.academic_year)).filter(Boolean))]
+    .sort((a, b) => b.localeCompare(a, 'th', { numeric: true }));
+}
+function leaveOverviewYear(years) {
+  const v = APP.filters._leaveOvYear;
+  return v === undefined ? (years[0] || '') : v;
+}
+function leaveOverviewLevel() {
+  // อาจารย์ประจำชั้นดูแลชั้นปีเดียว ล็อกไว้ที่ชั้นปีนั้น
+  if (APP.currentRole === 'classTeacher') return norm((APP.currentUser && APP.currentUser.responsible_year) || '');
+  return APP.filters._leaveOvLevel || '';
+}
+
+// คัดข้อมูลตามตัวกรอง แล้วคืนทั้งรายการและคำอธิบายขอบเขต
+function leaveOverviewScope(rows) {
+  const years = leaveOverviewYears(rows);
+  const y = leaveOverviewYear(years);
+  const sem = APP.filters._leaveOvSem || '';
+  const lv = leaveOverviewLevel();
+  const idx = leaveStudentIndex();
+  let list = rows;
+  if (y) list = list.filter(l => norm(l.academic_year) === y);
+  if (sem) list = list.filter(l => normSem(l.semester) === normSem(sem));
+  if (lv) list = list.filter(l => { const s = leaveStudentOf(idx, l); return s && norm(s.year_level) === lv; });
+  const text = (lv ? 'ชั้นปีที่ ' + lv : 'ทุกชั้นปี')
+    + ' · ' + (y ? 'ปีการศึกษา ' + y : 'ทุกปีการศึกษา')
+    + ' · ' + (normSem(sem) === '3' ? 'ภาคฤดูร้อน' : sem ? 'ภาคการศึกษาที่ ' + sem : 'ทุกภาคการศึกษา');
+  return { list, years, y, sem, lv, idx, text };
+}
+
+function leaveOverviewFilterBar(sc) {
+  const btn = (key, val, label, cur) => `<button onclick="APP.filters.${key}='${val}';renderCurrentPage()" class="px-3 py-1.5 rounded-xl text-sm font-medium ${String(cur) === String(val) ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">${label}</button>`;
+  const lockedLevel = APP.currentRole === 'classTeacher';
+  return `<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <span class="text-sm font-medium text-gray-700"><i data-lucide="layers" class="w-4 h-4 inline mr-1"></i>ชั้นปี</span>
+      ${lockedLevel
+        ? `<span class="px-3 py-1.5 rounded-xl text-sm font-medium bg-primaryLight text-primary">ชั้นปีที่ ${sc.lv || '-'} (ชั้นปีที่ดูแล)</span>`
+        : `<div class="flex flex-wrap gap-2">${btn('_leaveOvLevel', '', 'ทุกชั้นปี', sc.lv)}${['1', '2', '3', '4'].map(v => btn('_leaveOvLevel', v, 'ชั้นปี ' + v, sc.lv)).join('')}</div>`}
+    </div>
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3">
+      <span class="text-sm font-medium text-gray-700"><i data-lucide="calendar" class="w-4 h-4 inline mr-1"></i>ปีการศึกษา</span>
+      <div class="flex flex-wrap gap-2">${btn('_leaveOvYear', '', 'ทุกปีการศึกษา', sc.y)}${sc.years.map(v => btn('_leaveOvYear', v, v, sc.y)).join('')}</div>
+    </div>
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3">
+      <span class="text-sm font-medium text-gray-700"><i data-lucide="book-open" class="w-4 h-4 inline mr-1"></i>ภาคการศึกษา</span>
+      <div class="flex flex-wrap gap-2">${btn('_leaveOvSem', '', 'ทุกภาค', sc.sem)}${btn('_leaveOvSem', '1', 'ภาคการศึกษาที่ 1', sc.sem)}${btn('_leaveOvSem', '2', 'ภาคการศึกษาที่ 2', sc.sem)}${btn('_leaveOvSem', '3', 'ภาคฤดูร้อน', sc.sem)}</div>
+    </div>
+  </div>`;
+}
+
+/* กราฟเส้นชั่วโมงการลาแยกรายวิชา
+   เรียงจากมากไปน้อย รายวิชาที่ลามากที่สุดจึงอยู่ซ้ายสุดและอ่านได้ทันที */
+function leaveSubjectLineSVG(points) {
+  // เว้นขอบซ้ายไว้กว้าง เพราะป้ายชื่อรายวิชาของจุดแรกเอียง -35 องศา แล้วยื่นออกไปทางซ้าย
+  // ถ้าเว้นน้อยกว่านี้ ชื่อวิชาแรกจะถูกตัดหายไปนอกกรอบ
+  const W = 780, H = 306, padL = 86, padR = 18, padT = 26, padB = 84;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const n = points.length;
+  const rawMax = Math.max(1, ...points.map(p => p.value));
+  const stepY = Math.max(1, Math.ceil(rawMax / 4));
+  const maxY = stepY * 4;
+  const xAt = i => n <= 1 ? padL + plotW / 2 : padL + (i / (n - 1)) * plotW;
+  const yAt = v => padT + plotH - (v / maxY) * plotH;
+
+  let grid = '';
+  for (let k = 0; k <= 4; k++) {
+    const v = stepY * k, y = yAt(v);
+    grid += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}" stroke="#eef2f7"/>`
+      + `<text x="${padL - 8}" y="${(y + 3.5).toFixed(1)}" text-anchor="end" font-size="10" fill="#94a3b8">${v}</text>`;
+  }
+  const pts = points.map((p, i) => `${xAt(i).toFixed(1)},${yAt(p.value).toFixed(1)}`).join(' ');
+  const area = n > 1
+    ? `<path d="M${xAt(0).toFixed(1)},${yAt(0).toFixed(1)} L${pts.split(' ').join(' L')} L${xAt(n - 1).toFixed(1)},${yAt(0).toFixed(1)} Z" fill="#1e6fba" fill-opacity="0.10"/>`
+    : '';
+  const line = `<polyline points="${pts}" fill="none" stroke="#1e6fba" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+  let dots = '', xlab = '';
+  points.forEach((p, i) => {
+    const x = xAt(i), y = yAt(p.value);
+    const top = i === 0 && p.value > 0;
+    dots += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${top ? 5.5 : 4}" fill="#fff" stroke="${top ? '#dc2626' : '#1e6fba'}" stroke-width="${top ? 3 : 2}">`
+      + `<title>${htmlEsc(p.label)} : ${p.value} ชั่วโมง (${p.count} ครั้ง)</title></circle>`
+      + `<text x="${x.toFixed(1)}" y="${(y - 11).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="600" fill="${top ? '#dc2626' : '#475569'}">${p.value}</text>`;
+    const short = p.label.length > 14 ? p.label.slice(0, 13) + '…' : p.label;
+    xlab += `<text x="${x.toFixed(1)}" y="${H - padB + 14}" text-anchor="end" font-size="9.5" fill="#64748b" transform="rotate(-35 ${x.toFixed(1)} ${H - padB + 14})">${htmlEsc(short)}<title>${htmlEsc(p.label)}</title></text>`;
+  });
+  return `<div style="overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" width="100%" style="min-width:560px;display:block" role="img" aria-label="ชั่วโมงการลาแยกรายวิชา">`
+    + `<text x="${padL - 8}" y="${padT - 11}" text-anchor="end" font-size="9" fill="#94a3b8">ชม.</text>`
+    + grid + area + line + dots + xlab + '</svg></div>';
+}
+
+function leaveSubjectChartHTML(sc) {
+  const map = {};
+  sc.list.forEach(l => {
+    const k = norm(l.subject_name) || norm(l.subject_code);
+    if (!k) return;
+    if (!map[k]) map[k] = { label: k, value: 0, count: 0 };
+    map[k].value += Number(l.leave_hours) || 0;
+    map[k].count++;
+  });
+  const points = Object.keys(map).map(k => map[k])
+    .filter(p => p.value > 0)
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, 'th'));
+
+  const body = points.length
+    ? leaveSubjectLineSVG(points)
+      + `<p class="text-sm text-gray-600 mt-2"><i data-lucide="trending-up" class="w-4 h-4 inline mr-1 text-red-500"></i>`
+      + `ลามากที่สุด: <b class="text-gray-800">${htmlEsc(points[0].label)}</b> รวม <b>${points[0].value}</b> ชั่วโมง (${points[0].count} ครั้ง)</p>`
+      + `<p class="text-[11px] text-gray-400 mt-1">นับเฉพาะใบลาที่ไม่ถูกปฏิเสธ · เรียงจากรายวิชาที่ลามากที่สุดไปน้อยที่สุด</p>`
+    : `<p class="text-center text-gray-400 py-8">ยังไม่มีข้อมูลการลาในช่วงที่เลือก</p>`;
+
+  return `<details id="leaveChartCard"${detailsOpen('leaveChartCard')} ontoggle="rememberDetails(this)" class="bg-white rounded-2xl border border-blue-100 mb-4">
+    <summary class="cursor-pointer select-none p-5 flex items-center justify-between gap-3">
+      <span class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="line-chart" class="w-5 h-5 text-primary"></i>การลาแยกรายวิชา
+        <span class="text-sm font-normal text-gray-500">— ${sc.text} · ${points.length} รายวิชา</span>
+        <span class="text-xs font-normal text-gray-400">— คลิกเพื่อดู</span></span>
+      <i data-lucide="chevron-down" class="chev w-5 h-5 text-gray-400 flex-shrink-0"></i>
+    </summary>
+    <div class="px-5 pb-5">${body}</div>
+  </details>`;
+}
+
+/* ตารางเฝ้าระวังนักศึกษาที่เสี่ยงลาเกินเกณฑ์ 20% ของรายวิชา
+   ตรวจจับตั้งแต่ 15% ขึ้นไป เพื่อให้ทันเตือนก่อนถึงเกณฑ์จริง
+   % ของแต่ละรายวิชาใช้ค่าที่อาจารย์ผู้ประสานรายวิชากรอกไว้ (ค่าสะสมสูงสุดที่บันทึก)
+   ถ้ายังไม่มีใครกรอก % ระบบจะไม่คำนวณให้เอง แต่จะแจ้งว่ายังรอผู้ประสานรายวิชากรอก */
+function leaveRiskRows(sc) {
+  const map = {};
+  sc.list.forEach(l => {
+    const subj = norm(l.subject_name) || norm(l.subject_code);
+    if (!subj) return;
+    const key = norm(l.name) + '|||' + subj + '|||' + normSem(l.semester) + '|||' + norm(l.academic_year);
+    if (!map[key]) {
+      const stu = leaveStudentOf(sc.idx, l);
+      map[key] = {
+        name: norm(l.name), sid: norm(l.student_id) || (stu ? norm(stu.student_id) : ''),
+        level: stu ? norm(stu.year_level) : '', subject: subj,
+        sem: normSem(l.semester), year: norm(l.academic_year),
+        hours: 0, pct: 0, count: 0, hasPct: false
+      };
+    }
+    const m = map[key];
+    m.hours += Number(l.leave_hours) || 0;
+    m.count++;
+    const p = Number(l.leave_percent) || 0;
+    if (norm(l.leave_percent) !== '') m.hasPct = true;
+    if (p > m.pct) m.pct = p;
+  });
+  return Object.keys(map).map(k => map[k]);
+}
+
+function leaveRiskTableHTML(sc) {
+  const all = leaveRiskRows(sc);
+  const risky = all.filter(r => r.hasPct && r.pct >= 15).sort((a, b) => b.pct - a.pct || b.hours - a.hours);
+  const over = risky.filter(r => r.pct >= 20).length;
+  const near = risky.length - over;
+  const noPct = all.filter(r => !r.hasPct).length;
+
+  const rows = risky.map((r, i) => {
+    const over20 = r.pct >= 20;
+    return `<tr class="border-t border-gray-50 hover:bg-gray-50">
+      <td class="px-3 py-2 text-center text-gray-400">${i + 1}</td>
+      <td class="px-3 py-2 font-mono text-primary whitespace-nowrap">${r.sid || '-'}</td>
+      <td class="px-3 py-2 whitespace-nowrap">${htmlEsc(r.name)}</td>
+      <td class="px-3 py-2 text-center">${r.level || '-'}</td>
+      <td class="px-3 py-2">${htmlEsc(r.subject)}</td>
+      <td class="px-3 py-2 text-center whitespace-nowrap">${r.sem === '3' ? 'ฤดูร้อน' : r.sem || '-'}/${r.year || '-'}</td>
+      <td class="px-3 py-2 text-center">${r.hours}</td>
+      <td class="px-3 py-2 text-center">${r.count}</td>
+      <td class="px-3 py-2 text-center"><span class="px-2 py-1 rounded-full text-xs ${over20 ? 'bg-red-100 text-red-700 font-bold' : 'bg-yellow-100 text-yellow-700 font-semibold'}">${r.pct}%</span></td>
+      <td class="px-3 py-2 text-center whitespace-nowrap">${over20
+        ? '<span class="text-xs text-red-700 font-semibold">เกินเกณฑ์แล้ว</span>'
+        : '<span class="text-xs text-yellow-700">ใกล้เกินเกณฑ์</span>'}</td>
+    </tr>`;
+  }).join('');
+
+  return `<details id="leaveRiskCard"${detailsOpen('leaveRiskCard')} ontoggle="rememberDetails(this)" class="bg-white rounded-2xl border ${over ? 'border-red-200' : 'border-blue-100'} mb-4">
+    <summary class="cursor-pointer select-none p-5 flex items-center justify-between gap-3">
+      <span class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="alert-triangle" class="w-5 h-5 ${over ? 'text-red-500' : 'text-amber-500'}"></i>เฝ้าระวังการลาเกินเกณฑ์
+        <span class="text-sm font-normal text-gray-500">— ${sc.text} · ${risky.length} รายการ</span>
+        <span class="text-xs font-normal text-gray-400">— คลิกเพื่อดู</span></span>
+      <i data-lucide="chevron-down" class="chev w-5 h-5 text-gray-400 flex-shrink-0"></i>
+    </summary>
+    <div class="px-5 pb-5">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+        ${statCard('octagon-alert', 'เกินเกณฑ์แล้ว (ตั้งแต่ 20%)', over, 'รายการ', 'bg-red-500')}
+        ${statCard('alert-triangle', 'ใกล้เกินเกณฑ์ (15–19%)', near, 'รายการ', 'bg-amber-500')}
+      </div>
+      ${risky.length ? `<div class="border border-gray-100 rounded-xl overflow-hidden">
+        <div class="overflow-auto" style="max-height:420px"><table class="w-full text-sm">
+          <thead class="sticky top-0 z-10"><tr class="bg-surface text-left">
+            <th class="px-3 py-2 font-semibold text-center">ลำดับ</th>
+            <th class="px-3 py-2 font-semibold">รหัสนักศึกษา</th>
+            <th class="px-3 py-2 font-semibold">ชื่อ-สกุล</th>
+            <th class="px-3 py-2 font-semibold text-center">ชั้นปี</th>
+            <th class="px-3 py-2 font-semibold">รายวิชา</th>
+            <th class="px-3 py-2 font-semibold text-center">ภาค/ปี</th>
+            <th class="px-3 py-2 font-semibold text-center">ชม.ลารวม</th>
+            <th class="px-3 py-2 font-semibold text-center">ครั้ง</th>
+            <th class="px-3 py-2 font-semibold text-center">%ลา</th>
+            <th class="px-3 py-2 font-semibold text-center">สถานะ</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>
+      </div>` : '<p class="text-center text-gray-400 py-8">ไม่มีนักศึกษาที่ลาถึง 15% ในช่วงที่เลือก</p>'}
+      <p class="text-[11px] text-gray-400 mt-3">เกณฑ์การลาของวิทยาลัยคือไม่เกิน 20% ของเวลาเรียนในรายวิชา ระบบจึงเริ่มเตือนตั้งแต่ 15%
+        · %ลา ใช้ค่าที่อาจารย์ผู้ประสานรายวิชากรอกไว้ตอนอนุมัติ</p>
+      ${noPct ? `<p class="text-[11px] text-amber-700 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>อีก ${noPct} รายการยังไม่มีการกรอก %ลา จึงยังประเมินความเสี่ยงไม่ได้ — รออาจารย์ผู้ประสานรายวิชากรอกตอนอนุมัติ</p>` : ''}
+    </div>
+  </details>`;
+}
+
+function leaveOverviewHTML(rows) {
+  const sc = leaveOverviewScope(rows || []);
+  return leaveOverviewFilterBar(sc) + leaveSubjectChartHTML(sc) + leaveRiskTableHTML(sc);
+}
+
 // Helper: Build leave percent summary table HTML
 function leavePercentSummaryHTML(leaveRecords, groupBy) {
   // groupBy: 'subject' (for student/teacher) or 'student_subject' (for classTeacher)
@@ -8865,6 +9105,11 @@ function leavePage() {
     });
   }
   data = applyFilters(data);
+
+  /* ข้อมูลการลาตามบทบาทของผู้ใช้ ก่อนถูกกรองด้วยชั้นปี/รายชื่อนักศึกษาที่เลือกในหน้า
+     กราฟและตารางเฝ้าระวังเป็นภาพรวมระดับชั้น จึงต้องเห็นได้แม้ยังไม่ได้เลือกนักศึกษา
+     (ใบลาที่ถูกปฏิเสธไม่นับ เพราะไม่ถือว่าลาจริง) */
+  const roleScopedLeaves = data.filter(l => norm(l.leave_status) !== 'ปฏิเสธ');
 
   // Admin/Academic/Executive/ClassTeacher/Teacher: ใช้ student picker
   // - admin/academic/executive: เลือก year ได้อิสระ + เลือกนักศึกษา
@@ -9111,10 +9356,26 @@ function leavePage() {
       </div>`
     : '';
 
-  return `<h2 class="text-xl font-bold text-gray-800 mb-4"><i data-lucide="calendar-off" class="w-6 h-6 inline mr-2"></i>ระบบการลาของนักศึกษา</h2>
-  ${isAdmin ? `<div class="flex gap-2 mb-4"><button onclick="showAddLeaveModal()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มข้อมูลการลา</button>${csvUploadBtn('leave', 'name,subject_name,leave_hours,leave_percent,semester,academic_year,leave_date,leave_type')}</div>` : ''}
-  ${pendingBanner}
-  ${form}
+  /* หน้านี้มี 2 เมนูย่อย
+       ภาพรวมการลา   : กราฟรายวิชา + ตารางเฝ้าระวัง + รายการใบลา
+       เพิ่มข้อมูลการลา : แบบฟอร์มของนักศึกษา / ปุ่มเพิ่มและนำเข้า CSV ของผู้ดูแล */
+  const _leaveHead = title => `<h2 class="text-xl font-bold text-gray-800 mb-4"><i data-lucide="calendar-off" class="w-6 h-6 inline mr-2"></i>ระบบการลาของนักศึกษา <span class="text-gray-300 font-normal">/</span> ${title}</h2>`;
+  const _leaveAddBar = isAdmin
+    ? `<div class="flex flex-wrap gap-2 mb-4"><button onclick="showAddLeaveModal()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มข้อมูลการลา</button>${csvUploadBtn('leave', 'name,subject_name,leave_hours,leave_percent,semester,academic_year,leave_date,leave_type')}</div>`
+    : '';
+
+  if (APP._leaveTab === 'add') {
+    const nothing = (!isStudent && !isAdmin)
+      ? `<div class="bg-white rounded-2xl border border-blue-100 p-8 text-center text-gray-400">
+          <i data-lucide="lock" class="w-10 h-10 mx-auto mb-3 text-gray-300"></i>
+          <p class="text-sm">บัญชีของคุณไม่ได้เพิ่มข้อมูลการลาเอง — นักศึกษาเป็นผู้ยื่นใบลา แล้วส่งมาให้อนุมัติ</p>
+        </div>` : '';
+    return _leaveHead('เพิ่มข้อมูลการลา') + _leaveAddBar + form + nothing;
+  }
+
+  return _leaveHead('ภาพรวมการลา')
+  + `${pendingBanner}
+  ${leaveOverviewHTML(roleScopedLeaves)}
   ${adminFilterCard}
   ${requireStudentSelection ? emptyStateMsg : `${pieChartCard}
   ${summaryTable}
