@@ -884,28 +884,29 @@
 
   /* ---------------- ตัวเลือกชั้นปี/ภาคเรียน ---------------- */
   /* ขั้นที่ 1-2 ของหน้ากรอกภาระงาน : เลือกชั้นปี (มีเลขรุ่นกำกับ) และภาคการศึกษา
-     ทำเป็นปุ่มกดแทนรายการเลื่อน จะได้เห็นตัวเลือกทั้งหมดพร้อมกันและกดง่ายบนมือถือ */
+     ทำเป็นช่องเลื่อนลงเรียงในแถวเดียวกัน ประหยัดพื้นที่และเห็นค่าที่เลือกอยู่ทันที */
   function cohortPicker() {
     var st = state();
-    var chip = function (on, label, sub, onclick) {
-      return '<button type="button" onclick="' + onclick + '" class="px-4 py-2.5 rounded-xl border text-left transition '
-        + (on ? 'border-primary bg-primaryLight' : 'border-gray-200 bg-white hover:bg-gray-50') + '">'
-        + '<span class="block text-sm font-semibold ' + (on ? 'text-primary' : 'text-gray-700') + '">' + esc(label) + '</span>'
-        + (sub ? '<span class="block text-[11px] ' + (on ? 'text-primary' : 'text-gray-400') + '">' + esc(sub) + '</span>' : '')
-        + '</button>';
+    var sel = function (label, icon, key, opts, cur) {
+      return '<div class="min-w-[13rem]">'
+        + '<label class="block text-xs font-medium text-gray-600 mb-1">'
+        + '<i data-lucide="' + icon + '" class="w-3.5 h-3.5 inline mr-1"></i>' + esc(label) + '</label>'
+        + '<select onchange="wlSet(\'' + key + '\',this.value)" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">'
+        + opts.map(function (o) {
+            return '<option value="' + esc(o[0]) + '"' + (String(cur) === String(o[0]) ? ' selected' : '') + '>'
+              + esc(o[1]) + '</option>';
+          }).join('')
+        + '</select></div>';
     };
+    var levelOpts = ['1', '2', '3', '4'].map(function (l) {
+      var b = batchOf(st.year, l), p = cohortPrefix(st.year, l);
+      var tag = (b ? 'รุ่น ' + b : '') + (p ? (b ? ' · ' : '') + 'รหัส ' + p : '');
+      return [l, 'ชั้นปีที่ ' + l + (tag ? ' (' + tag + ')' : '')];
+    });
     return '<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">'
-      + '<p class="text-xs font-semibold text-gray-600 mb-2"><i data-lucide="layers" class="w-3.5 h-3.5 inline mr-1"></i>เลือกชั้นปี</p>'
-      + '<div class="flex flex-wrap gap-2 mb-4">'
-      + ['1', '2', '3', '4'].map(function (l) {
-          var b = batchOf(st.year, l), p = cohortPrefix(st.year, l);
-          var sub = (b ? 'รุ่น ' + b : '') + (p ? (b ? ' · ' : '') + 'รหัส ' + p : '');
-          return chip(st.level === l, 'ชั้นปีที่ ' + l, sub, 'wlSet(\'level\',\'' + l + '\')');
-        }).join('')
-      + '</div>'
-      + '<p class="text-xs font-semibold text-gray-600 mb-2"><i data-lucide="calendar" class="w-3.5 h-3.5 inline mr-1"></i>ภาคการศึกษา</p>'
-      + '<div class="flex flex-wrap gap-2">'
-      + SEMS.map(function (s) { return chip(st.sem === s, semLabel(s), '', 'wlSet(\'sem\',\'' + s + '\')'); }).join('')
+      + '<div class="flex flex-wrap items-end gap-3">'
+      + sel('เลือกชั้นปี', 'layers', 'level', levelOpts, st.level)
+      + sel('ภาคการศึกษา', 'calendar', 'sem', SEMS.map(function (x) { return [x, semLabel(x)]; }), st.sem)
       + '</div></div>';
   }
 
