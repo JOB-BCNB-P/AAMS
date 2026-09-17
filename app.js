@@ -1646,6 +1646,23 @@ function dashboardPage() {
   </div>`;
 }
 
+/* ช่องเลือกตัวกรองแบบเลื่อนลง
+   ใช้แทนแถวปุ่ม เพราะตัวกรองหลายชุดใส่ปุ่มแล้วกินพื้นที่หลายบรรทัด
+   แบบเลื่อนลงจะวางเรียงในแถวเดียวกันได้ และเห็นค่าที่เลือกอยู่ทันที
+   เปลี่ยนค่าแล้ววาดหน้าใหม่ทันที ไม่ต้องกดยืนยัน */
+function filterSelectHTML(o) {
+  const cur = o.value == null ? '' : String(o.value);
+  const opts = (o.options || []).map(x => {
+    const v = String(x[0]);
+    return `<option value="${htmlEsc(v)}"${v === cur ? ' selected' : ''}>${htmlEsc(x[1])}</option>`;
+  }).join('');
+  const lock = !!o.disabled;
+  return `<div class="min-w-[10rem]">
+    <label class="block text-xs font-medium text-gray-600 mb-1">${o.icon ? `<i data-lucide="${o.icon}" class="w-3.5 h-3.5 inline mr-1"></i>` : ''}${htmlEsc(o.label)}</label>
+    <select ${lock ? 'disabled title="กำหนดไว้ตามบทบาทของคุณ" ' : ''}onchange="APP.filters.${o.key}=this.value;APP.pagination.page=1;renderCurrentPage()" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm ${lock ? 'bg-gray-50 text-gray-500 cursor-not-allowed' : 'bg-white'}">${opts}</select>
+  </div>`;
+}
+
 function statCard(icon, label, value, unit, color) {
   return `<div class="card-stat bg-white rounded-2xl p-5 border border-blue-100"><div class="flex items-center gap-4"><div class="w-12 h-12 ${color} rounded-xl flex items-center justify-center"><i data-lucide="${icon}" class="w-6 h-6 text-white"></i></div><div><p class="text-sm text-gray-500">${label}</p><p class="text-2xl font-bold text-gray-800">${value} <span class="text-sm font-normal text-gray-500">${unit}</span></p></div></div></div>`;
 }
@@ -3330,23 +3347,12 @@ function gradeCardYear(years) {
 function gradeCardFilterBar(years) {
   const y = gradeCardYear(years);
   const sm = APP.filters._gradeCardSem || '';
-  const btn = (key, val, label, cur) => `<button onclick="APP.filters.${key}='${val}';renderCurrentPage()" class="px-3 py-1.5 rounded-xl text-sm font-medium ${cur === val ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">${label}</button>`;
+  const yearOpts = [['', 'ทุกปีการศึกษา']].concat(years.map(v => [v, 'ปีการศึกษา ' + v]));
+  const semOpts = [['', 'ทุกภาคการศึกษา'], ['1', 'ภาคการศึกษาที่ 1'], ['2', 'ภาคการศึกษาที่ 2'], ['3', 'ภาคฤดูร้อน']];
   return `<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">
-    <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-      <span class="text-sm font-medium text-gray-700"><i data-lucide="calendar" class="w-4 h-4 inline mr-1"></i>ปีการศึกษา</span>
-      <div class="flex flex-wrap gap-2">
-        ${btn('_gradeCardYear', '', 'ทุกปีการศึกษา', y)}
-        ${years.map(v => btn('_gradeCardYear', v, v, y)).join('')}
-      </div>
-    </div>
-    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3">
-      <span class="text-sm font-medium text-gray-700"><i data-lucide="book-open" class="w-4 h-4 inline mr-1"></i>ภาคการศึกษา</span>
-      <div class="flex flex-wrap gap-2">
-        ${btn('_gradeCardSem', '', 'ทุกภาค', sm)}
-        ${btn('_gradeCardSem', '1', 'ภาคการศึกษาที่ 1', sm)}
-        ${btn('_gradeCardSem', '2', 'ภาคการศึกษาที่ 2', sm)}
-        ${btn('_gradeCardSem', '3', 'ภาคฤดูร้อน', sm)}
-      </div>
+    <div class="flex flex-wrap items-end gap-3">
+      ${filterSelectHTML({ label: 'ปีการศึกษา', icon: 'calendar', key: '_gradeCardYear', options: yearOpts, value: y })}
+      ${filterSelectHTML({ label: 'ภาคการศึกษา', icon: 'book-open', key: '_gradeCardSem', options: semOpts, value: sm })}
     </div>
   </div>`;
 }
@@ -8747,22 +8753,18 @@ function leaveOverviewScope(rows) {
 }
 
 function leaveOverviewFilterBar(sc) {
-  const btn = (key, val, label, cur) => `<button onclick="APP.filters.${key}='${val}';renderCurrentPage()" class="px-3 py-1.5 rounded-xl text-sm font-medium ${String(cur) === String(val) ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">${label}</button>`;
+  // อาจารย์ประจำชั้นดูแลชั้นปีเดียว ช่องชั้นปีจึงถูกล็อกไว้ เลือกเปลี่ยนไม่ได้
   const lockedLevel = APP.currentRole === 'classTeacher';
+  const levelOpts = lockedLevel
+    ? [[sc.lv, 'ชั้นปีที่ ' + (sc.lv || '-') + ' (ชั้นปีที่ดูแล)']]
+    : [['', 'ทุกชั้นปี']].concat(['1', '2', '3', '4'].map(v => [v, 'ชั้นปีที่ ' + v]));
+  const yearOpts = [['', 'ทุกปีการศึกษา']].concat(sc.years.map(v => [v, 'ปีการศึกษา ' + v]));
+  const semOpts = [['', 'ทุกภาคการศึกษา'], ['1', 'ภาคการศึกษาที่ 1'], ['2', 'ภาคการศึกษาที่ 2'], ['3', 'ภาคฤดูร้อน']];
   return `<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">
-    <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-      <span class="text-sm font-medium text-gray-700"><i data-lucide="layers" class="w-4 h-4 inline mr-1"></i>ชั้นปี</span>
-      ${lockedLevel
-        ? `<span class="px-3 py-1.5 rounded-xl text-sm font-medium bg-primaryLight text-primary">ชั้นปีที่ ${sc.lv || '-'} (ชั้นปีที่ดูแล)</span>`
-        : `<div class="flex flex-wrap gap-2">${btn('_leaveOvLevel', '', 'ทุกชั้นปี', sc.lv)}${['1', '2', '3', '4'].map(v => btn('_leaveOvLevel', v, 'ชั้นปี ' + v, sc.lv)).join('')}</div>`}
-    </div>
-    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3">
-      <span class="text-sm font-medium text-gray-700"><i data-lucide="calendar" class="w-4 h-4 inline mr-1"></i>ปีการศึกษา</span>
-      <div class="flex flex-wrap gap-2">${btn('_leaveOvYear', '', 'ทุกปีการศึกษา', sc.y)}${sc.years.map(v => btn('_leaveOvYear', v, v, sc.y)).join('')}</div>
-    </div>
-    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3">
-      <span class="text-sm font-medium text-gray-700"><i data-lucide="book-open" class="w-4 h-4 inline mr-1"></i>ภาคการศึกษา</span>
-      <div class="flex flex-wrap gap-2">${btn('_leaveOvSem', '', 'ทุกภาค', sc.sem)}${btn('_leaveOvSem', '1', 'ภาคการศึกษาที่ 1', sc.sem)}${btn('_leaveOvSem', '2', 'ภาคการศึกษาที่ 2', sc.sem)}${btn('_leaveOvSem', '3', 'ภาคฤดูร้อน', sc.sem)}</div>
+    <div class="flex flex-wrap items-end gap-3">
+      ${filterSelectHTML({ label: 'ชั้นปี', icon: 'layers', key: '_leaveOvLevel', options: levelOpts, value: sc.lv, disabled: lockedLevel })}
+      ${filterSelectHTML({ label: 'ปีการศึกษา', icon: 'calendar', key: '_leaveOvYear', options: yearOpts, value: sc.y })}
+      ${filterSelectHTML({ label: 'ภาคการศึกษา', icon: 'book-open', key: '_leaveOvSem', options: semOpts, value: sc.sem })}
     </div>
   </div>`;
 }
