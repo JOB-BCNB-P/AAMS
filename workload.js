@@ -1496,6 +1496,278 @@
       + '<tbody>' + body + '</tbody></table></div></div>';
   }
 
+  /* ================= นำเข้า/ส่งออกภาระงานเป็นไฟล์ CSV =================
+     ดาวน์โหลดแบบฟอร์ม → กรอกใน Excel → อัปโหลดกลับ
+     ข้อมูลที่นำเข้าจะไปลงในช่องกรอกบนหน้าจอก่อน ยังไม่เขียนลงระบบ
+     ผู้ใช้ต้องตรวจแล้วกดปุ่มบันทึกเองเหมือนกรอกด้วยมือ */
+  var CSV_COLS = ['mission', 'kind', 'subject_name', 'activity', 'pieces', 'hours',
+    'date_from', 'date_to', 'time_from', 'time_to', 'students'];
+
+  function csvCell(v) {
+    var t = String(v == null ? '' : v);
+    return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+  }
+  function csvDownload(name, rows) {
+    var text = '\uFEFF' + rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n') + '\r\n';
+    var blob = new Blob([text], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+  /* อ่าน CSV ให้ถูกแม้มีจุลภาคหรือขึ้นบรรทัดใหม่อยู่ในเครื่องหมายคำพูด
+     ชื่อกิจกรรมภาษาไทยมักมีจุลภาค ถ้าตัดด้วย split(',') เฉย ๆ ข้อมูลจะเพี้ยน */
+  function parseCsv(text) {
+    var out = [], row = [], cur = '', q = false;
+    text = String(text == null ? '' : text).replace(/^\uFEFF/, '');
+    for (var i = 0; i < text.length; i++) {
+      var ch = text.charAt(i);
+      if (q) {
+        if (ch === '"') { if (text.charAt(i + 1) === '"') { cur += '"'; i++; } else q = false; }
+        else cur += ch;
+      } else if (ch === '"') q = true;
+      else if (ch === ',') { row.push(cur); cur = ''; }
+      else if (ch === '\n') { row.push(cur); out.push(row); row = []; cur = ''; }
+      else if (ch !== '\r') cur += ch;
+    }
+    if (cur !== '' || row.length) { row.push(cur); out.push(row); }
+    return out.filter(function (r) { return r.some(function (c) { return norm(c) !== ''; }); });
+  }
+
+  // รับได้ทั้งรหัสพันธกิจ ชื่อเต็ม และชื่อย่อ เผื่อผู้ใช้พิมพ์เอง
+  function missionByName(v) {
+    var t = norm(v).toLowerCase();
+    if (!t) return null;
+    return MISSIONS.filter(function (m) {
+      return m.key.toLowerCase() === t || m.label.toLowerCase() === t || m.short.toLowerCase() === t;
+    })[0] || null;
+  }
+
+  function wlCsvPanel(which) {
+    var st = state();
+    var target = which === 'group'
+      ? (groupSel().length ? 'นักศึกษาที่เลือกไว้ ' + groupSel().length + ' คน' : 'ยังไม่ได้เลือกนักศึกษา')
+      : esc(levelLabel(st.year, st.level)) + ' ทั้งชั้น';
+    var btn = function (onclick, icon, label, cls) {
+      return '<button type="button" onclick="' + onclick + '" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm ' + cls + '">'
+        + '<i data-lucide="' + icon + '" class="w-4 h-4"></i>' + esc(label) + '</button>';
+    };
+    return '<div class="border border-emerald-100 bg-emerald-50/40 rounded-2xl p-4 mb-4">'
+      + '<div class="flex flex-wrap items-center justify-between gap-2 mb-2">'
+      + '<p class="text-sm font-semibold text-gray-700"><i data-lucide="file-spreadsheet" class="w-4 h-4 inline mr-1 text-emerald-600"></i>'
+      + 'กรอกผ่านไฟล์ CSV</p>'
+      + '<span class="text-[11px] text-gray-500">' + esc(levelLabel(st.year, st.level)) + ' · '
+      + esc(semLabel(st.sem)) + ' · ปีการศึกษา ' + esc(st.year) + '</span></div>'
+      + '<div class="flex flex-wrap gap-2 mb-2">'
+      + btn('wlCsvTemplate()', 'download', 'ดาวน์โหลดแบบฟอร์ม CSV', 'border-emerald-500 text-emerald-700 bg-white hover:bg-emerald-50')
+      + btn('wlCsvPick()', 'upload', 'อัปโหลดไฟล์ CSV', 'border-primary text-primary bg-white hover:bg-primaryLight')
+      + '</div>'
+      + '<input type="file" id="wlCsvInput" accept=".csv,text/csv" class="hidden" onchange="wlCsvFile(event)">'
+      + '<p class="text-[11px] text-gray-500">'
+      + 'แบบฟอร์มที่ดาวน์โหลดมีข้อมูลเดิมติดมาด้วย · คอลัมน์ : ' + CSV_COLS.join(', ') + '<br>'
+      + 'วันที่กรอกเป็น วว/ดด/ปปปป (พ.ศ.) เวลาเป็น ชช:นน · ช่อง students ใส่รหัสนักศึกษาคั่นด้วยเว้นวรรค (เว้นว่าง = ทุกคนในชั้น)<br>'
+      + '<b class="text-gray-700">นำเข้าแล้วข้อมูลจะไปลงในช่องกรอกด้านล่างก่อน ยังไม่บันทึกจนกว่าจะกดปุ่มบันทึก</b>'
+      + ' · พันธกิจที่ไม่มีข้อมูลในไฟล์จะไม่ถูกแตะ · จะเขียนทับเฉพาะพันธกิจที่มีข้อมูลในไฟล์<br>'
+      + 'ค่านี้จะลงให้กับ : <b class="text-gray-700">' + target + '</b></p>'
+      + '</div>';
+  }
+
+  window.wlCsvTemplate = function () {
+    var st = state();
+    var d = draft();
+    var rows = [CSV_COLS.slice()];
+    MISSIONS.forEach(function (m) {
+      var list = d[m.key] || [];
+      if (!list.length) {
+        // ยังไม่มีข้อมูล — ใส่แถวเปล่าที่ระบุชื่อพันธกิจไว้ให้ จะได้รู้ว่ากรอกค่าอะไรได้บ้าง
+        rows.push([m.label, '', '', '', '', '', '', '', '', '', '']);
+        return;
+      }
+      list.forEach(function (r) {
+        rows.push([
+          m.label,
+          m.subject ? '' : norm(r.kind) || ACT_KINDS[0],
+          m.subject ? norm(r.subject_name) : '',
+          m.subject ? '' : norm(r.activity),
+          m.subject ? norm(r.pieces) : '',
+          norm(r.hours),
+          m.timed ? (isoToTh(r.date_from) || norm(r.date_from_in)) : '',
+          m.timed ? (isoToTh(r.date_to) || norm(r.date_to_in)) : '',
+          m.timed ? norm(r.time_from) : '',
+          m.timed ? norm(r.time_to) : '',
+          partOf(r).join(' ')
+        ]);
+      });
+    });
+    csvDownload('workload_' + norm(st.year) + '_ชั้นปี' + norm(st.level) + '_ภาค' + norm(st.sem) + '.csv', rows);
+    showToast('ดาวน์โหลดแบบฟอร์มแล้ว (' + (rows.length - 1) + ' แถว)');
+  };
+
+  window.wlCsvPick = function () {
+    var el = document.getElementById('wlCsvInput');
+    if (!el) { showToast('ไม่พบช่องเลือกไฟล์', 'error'); return; }
+    el.value = '';
+    el.click();
+  };
+
+  window.wlCsvFile = async function (ev) {
+    var f = ev && ev.target && ev.target.files && ev.target.files[0];
+    if (!f) return;
+    var text = '';
+    try { text = await f.text(); } catch (e) { showToast('อ่านไฟล์ไม่สำเร็จ: ' + e, 'error'); return; }
+    var rows = parseCsv(text);
+    if (rows.length < 2) { showToast('ไฟล์ CSV ไม่มีข้อมูล', 'error'); return; }
+    wlCsvPlan(rows, f.name);
+  };
+
+  function wlCsvPlan(rows, fname) {
+    var st = state();
+    var head = rows[0].map(function (x) { return norm(x).toLowerCase(); });
+    var at = function (r, key) { var i = head.indexOf(key); return i < 0 ? '' : norm(r[i]); };
+    if (head.indexOf('mission') < 0) {
+      showModal('อ่านไฟล์ไม่ออก',
+        '<p class="text-sm text-gray-600">ไฟล์นี้ไม่มีคอลัมน์ <b>mission</b> จึงไม่รู้ว่าแต่ละแถวเป็นพันธกิจใด</p>'
+        + '<p class="text-xs text-gray-500 mt-2">ดาวน์โหลดแบบฟอร์มจากปุ่มด้านบนแล้วกรอกในไฟล์นั้นจะตรงที่สุด</p>'
+        + '<p class="text-xs text-gray-400 mt-2">หัวตารางที่พบ: ' + esc(rows[0].join(', ')) + '</p>');
+      return;
+    }
+
+    var ids = {};
+    cohortStudents(st.level).forEach(function (s) { ids[norm(s.student_id)] = 1; });
+
+    var byMission = {}, bad = [], total = 0, blank = 0;
+    rows.slice(1).forEach(function (raw, i) {
+      var line = i + 2;
+      var m = missionByName(at(raw, 'mission'));
+      if (!m) {
+        if (norm(at(raw, 'mission')) === '') return;   // แถวว่างสนิท ข้ามเงียบ ๆ
+        bad.push('บรรทัด ' + line + ' : ไม่รู้จักพันธกิจ "' + at(raw, 'mission') + '"');
+        return;
+      }
+      var name = m.subject ? at(raw, 'subject_name') : at(raw, 'activity');
+      var hrs = at(raw, 'hours');
+      if (!name && !hrs && !at(raw, 'date_from') && !at(raw, 'time_from')) { blank++; return; }  // แถวเปล่าของแบบฟอร์ม
+      if (!canEditMission(m.key)) { bad.push('บรรทัด ' + line + ' : ไม่ได้รับมอบหมายให้บันทึก' + m.label); return; }
+      if (!name) { bad.push('บรรทัด ' + line + ' : ' + m.short + ' ไม่ได้กรอก' + (m.subject ? 'ชื่อรายวิชา' : 'ชื่อกิจกรรม')); return; }
+      if (hrs !== '' && !isFinite(Number(hrs))) { bad.push('บรรทัด ' + line + ' : ชั่วโมง "' + hrs + '" ไม่ใช่ตัวเลข'); return; }
+
+      var r = {};
+      if (m.subject) {
+        r.subject_name = name;
+        var pc = at(raw, 'pieces');
+        if (pc !== '' && !isFinite(Number(pc))) { bad.push('บรรทัด ' + line + ' : จำนวนชิ้นงาน "' + pc + '" ไม่ใช่ตัวเลข'); return; }
+        r.pieces = pc;
+      } else {
+        r.activity = name;
+        var kd = at(raw, 'kind');
+        r.kind = ACT_KINDS.indexOf(kd) >= 0 ? kd : ACT_KINDS[0];
+        if (kd && ACT_KINDS.indexOf(kd) < 0) bad.push('บรรทัด ' + line + ' : ประเภท "' + kd + '" ไม่มีในระบบ ใช้ "' + ACT_KINDS[0] + '" แทน');
+      }
+
+      if (m.timed) {
+        ['date_from', 'date_to'].forEach(function (k) {
+          var v = at(raw, k);
+          var iso = thToIso(v);
+          r[k] = iso;
+          r[k + '_in'] = (v === '' || iso) ? '' : v;
+          if (v !== '' && !iso) bad.push('บรรทัด ' + line + ' : วันที่ "' + v + '" ต้องเป็น วว/ดด/ปปปป (พ.ศ.)');
+        });
+        ['time_from', 'time_to'].forEach(function (k) {
+          var v = at(raw, k);
+          if (v !== '' && minOfDay(v) === null) { bad.push('บรรทัด ' + line + ' : เวลา "' + v + '" ต้องเป็น ชช:นน'); v = ''; }
+          r[k] = v;
+        });
+      }
+
+      /* ชั่วโมง : กรอกมาเองก็ใช้ตามนั้น (พันธกิจแบบมีวันเวลาจะทำเครื่องหมายว่ากรอกเอง)
+         ไม่กรอกมา และมีวันเวลาครบ ก็คิดให้จากวันเวลาเหมือนกรอกบนหน้าจอ
+         ไม่มีทั้งคู่ ปล่อยว่างไว้ ไม่เดาตัวเลขให้ */
+      if (hrs !== '') {
+        r.hours = hrs;
+        if (m.timed) r.hours_manual = '1';
+      } else if (m.timed) {
+        var c = spanCalc(r);
+        r.hours = c.ready ? String(c.hours) : '';
+        if (!c.ready) bad.push('บรรทัด ' + line + ' : ' + name + ' — ' + (c.err || 'ยังคิดชั่วโมงไม่ได้') + ' (ปล่อยชั่วโมงว่างไว้)');
+      } else {
+        r.hours = '';
+        bad.push('บรรทัด ' + line + ' : ' + name + ' ไม่ได้กรอกชั่วโมง (นำเข้าให้แต่นับเป็น 0)');
+      }
+
+      var sel = norm(at(raw, 'students')).split(/[\s,;]+/).filter(Boolean);
+      var unknown = sel.filter(function (x) { return !ids[x]; });
+      if (unknown.length) bad.push('บรรทัด ' + line + ' : ไม่พบรหัสนักศึกษา ' + unknown.join(', ') + ' ในชั้นปีนี้ (ไม่นำเข้ารหัสเหล่านี้)');
+      r.students = sel.filter(function (x) { return ids[x]; });
+
+      if (!byMission[m.key]) byMission[m.key] = [];
+      byMission[m.key].push(r);
+      total++;
+    });
+
+    APP._wlCsv = { byMission: byMission, total: total };
+
+    var keys = Object.keys(byMission);
+    var d = draft();
+    var lines = MISSIONS.map(function (m) {
+      var n0 = (d[m.key] || []).length;
+      var n1 = byMission[m.key] ? byMission[m.key].length : null;
+      return '<tr class="border-t border-gray-50">'
+        + '<td class="px-3 py-1.5"><span style="width:8px;height:8px;border-radius:50%;background:' + m.color + ';display:inline-block;margin-right:6px"></span>'
+        + esc(m.label) + '</td>'
+        + '<td class="px-3 py-1.5 text-center text-gray-500">' + n0 + '</td>'
+        + '<td class="px-3 py-1.5 text-center ' + (n1 === null ? 'text-gray-300' : 'font-semibold text-primary') + '">'
+        + (n1 === null ? '—' : n1) + '</td>'
+        + '<td class="px-3 py-1.5 text-xs ' + (n1 === null ? 'text-gray-400' : 'text-emerald-700') + '">'
+        + (n1 === null ? 'ไม่มีข้อมูลในไฟล์ — คงของเดิมไว้' : 'เขียนทับด้วยข้อมูลจากไฟล์') + '</td></tr>';
+    }).join('');
+
+    var st2 = state();
+    var where = st2.mode === 'group'
+      ? (groupSel().length ? 'ค่าเฉพาะรายของนักศึกษาที่เลือกไว้ ' + groupSel().length + ' คน' : 'ยังไม่ได้เลือกนักศึกษา')
+      : levelLabel(st2.year, st2.level) + ' ทั้งชั้น';
+
+    showModal('นำเข้าภาระงานจากไฟล์ ' + esc(fname),
+      '<div class="space-y-3">'
+      + '<div class="grid grid-cols-3 gap-2 text-center">'
+      + '<div class="rounded-xl bg-emerald-50 border border-emerald-100 p-3"><p class="text-2xl font-bold text-emerald-700">' + total + '</p><p class="text-xs text-gray-600">รายการที่นำเข้าได้</p></div>'
+      + '<div class="rounded-xl bg-blue-50 border border-blue-100 p-3"><p class="text-2xl font-bold text-primary">' + keys.length + '</p><p class="text-xs text-gray-600">พันธกิจที่จะเขียนทับ</p></div>'
+      + '<div class="rounded-xl bg-gray-50 border border-gray-100 p-3"><p class="text-2xl font-bold text-gray-500">' + bad.length + '</p><p class="text-xs text-gray-600">ข้อสังเกต</p></div>'
+      + '</div>'
+      + '<div class="border border-gray-100 rounded-xl overflow-hidden"><table class="w-full text-sm">'
+      + '<thead><tr class="bg-surface text-left"><th class="px-3 py-2 font-semibold">พันธกิจ</th>'
+      + '<th class="px-3 py-2 font-semibold text-center">มีอยู่เดิม</th>'
+      + '<th class="px-3 py-2 font-semibold text-center">ในไฟล์</th>'
+      + '<th class="px-3 py-2 font-semibold">ผลที่จะเกิด</th></tr></thead><tbody>' + lines + '</tbody></table></div>'
+      + (bad.length
+          ? '<div class="border border-amber-200 bg-amber-50 rounded-xl p-3">'
+            + '<p class="text-xs font-semibold text-amber-800 mb-1">ข้อสังเกต ' + bad.length + ' รายการ</p>'
+            + '<ul class="text-[11px] text-amber-800 space-y-0.5 max-h-40 overflow-y-auto">'
+            + bad.slice(0, 50).map(function (x) { return '<li>• ' + esc(x) + '</li>'; }).join('')
+            + (bad.length > 50 ? '<li class="text-amber-600">… และอีก ' + (bad.length - 50) + ' รายการ</li>' : '')
+            + '</ul></div>'
+          : '')
+      + (blank ? '<p class="text-[11px] text-gray-400">ข้ามแถวเปล่าของแบบฟอร์ม ' + blank + ' แถว</p>' : '')
+      + '<p class="text-xs text-gray-600">ค่าที่นำเข้าจะไปลงในช่องกรอกของ <b>' + esc(where) + '</b>'
+      + ' — <b class="text-gray-800">ยังไม่บันทึกลงระบบ</b> ตรวจบนหน้าจอแล้วกดปุ่มบันทึกเองอีกครั้ง</p>'
+      + (total ? '' : '<p class="text-sm text-red-600">ไม่มีรายการที่นำเข้าได้</p>')
+      + '</div>',
+      total ? function () { return window.wlCsvApply(); } : null, 'max-w-2xl');
+  }
+
+  window.wlCsvApply = function () {
+    var p = APP._wlCsv;
+    if (!p || !p.total) return;
+    var st = state();
+    var d = st.draft || draft();
+    Object.keys(p.byMission).forEach(function (k) { d[k] = p.byMission[k]; });
+    st.draft = d;
+    APP._wlCsv = null;
+    if (typeof closeModal === 'function') closeModal();
+    showToast('นำเข้าแล้ว ' + p.total + ' รายการ — ตรวจแล้วกดบันทึกเพื่อเก็บลงระบบ');
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  };
+
   /* แถบสรุปชั่วโมง + ปุ่มบันทึก ของกล่องที่เปิดอยู่ */
   function grandCard(group) {
     var st = state();
@@ -1556,12 +1828,12 @@
       + sectionBox('cohort', 'users', 'กรอกข้อมูลทั้งชั้นปี',
           'ค่ามาตรฐานที่ใช้กับนักศึกษาทุกคนใน' + esc(levelLabel(st.year, st.level)) + ' ' + esc(semLabel(st.sem)),
           badge(cohortStudents(st.level).length + ' คน', 'bg-blue-50 text-blue-700'),
-          function () { return missionPicker() + grandCard(false) + foldBar() + missionEditors(false); })
+          function () { return missionPicker() + wlCsvPanel('cohort') + grandCard(false) + foldBar() + missionEditors(false); })
       + sectionBox('group', 'user-check', 'กรอกรายบุคคล (เลือกได้หลายคน)',
           'ติ๊กเลือกนักศึกษาแล้วบันทึกค่าเดียวกันให้ทุกคนที่เลือก',
           badge(sel.length ? 'เลือกแล้ว ' + sel.length + ' คน' : 'ยังไม่ได้เลือก',
             sel.length ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'),
-          function () { return missionPicker() + groupPicker() + grandCard(true) + foldBar() + missionEditors(true); })
+          function () { return missionPicker() + groupPicker() + wlCsvPanel('group') + grandCard(true) + foldBar() + missionEditors(true); })
       + ovrPanel();
   }
 
