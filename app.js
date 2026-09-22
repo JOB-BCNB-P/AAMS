@@ -710,7 +710,7 @@ function navigateTo(page) {
   APP.filters._engLevel = '';
   APP.filters._engExtType = '';
   APP.filters._gradeYearLevel = '';
-  APP.filters._gpaxBand = '';
+  APP.filters._gpaxBand = '';   // ไม่ได้ใช้แล้ว (การ์ดช่วง GPAx เปิดเป็นหน้าต่างรายชื่อแทนการกรองตาราง) — ล้างไว้กันค่าค้างจากเวอร์ชันเก่า
   APP._directoryTab = 'all';
   APP._directoryView = 'list';
   APP.filters._directoryYear = '';
@@ -3371,58 +3371,94 @@ function gpaxYearFilterHTML() {
   return `<div class="flex flex-wrap items-end gap-3 mb-4">
     <div class="min-w-[12rem]">
       <label class="block text-xs font-medium text-gray-600 mb-1"><i data-lucide="layers" class="w-3.5 h-3.5 inline mr-1"></i>กรองตามชั้นปี</label>
-      <select onchange="APP.filters._gradeYearLevel=this.value;APP.filters._gradeStudent='';APP.filters._gradeSearch='';APP.filters._gpaxBand='';APP.pagination.page=1;renderCurrentPage()" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
+      <select onchange="APP.filters._gradeYearLevel=this.value;APP.filters._gradeStudent='';APP.filters._gradeSearch='';APP.pagination.page=1;renderCurrentPage()" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
         ${opts.map(o => `<option value="${o[0]}"${sel === o[0] ? ' selected' : ''}>${o[1]}</option>`).join('')}
       </select>
     </div>
   </div>`;
 }
 
-function gpaxByStudentCardHTML(sc, scopeGrades) {
-  const allBy = {};
-  scopeGrades.forEach(g => { const k = norm(g.student_id); (allBy[k] = allBy[k] || []).push(g); });
-
-  const ranked = sc.students.map(s => ({ s, all: gpaOf(allBy[norm(s.student_id)]) }))
+/* ขอบเขตและอันดับ GPAx — คิดที่เดียว การ์ด ช่วงคะแนน และหน้าต่างรายชื่อ จึงนับจากชุดเดียวกันเสมอ */
+function gpaxScope() {
+  const sc = gradeScope();
+  const ids = new Set(sc.students.map(s => norm(s.student_id)));
+  const by = {};
+  getDataByType('grade').forEach(g => {
+    const k = norm(g.student_id);
+    if (ids.has(k)) (by[k] = by[k] || []).push(g);
+  });
+  const ranked = sc.students.map(s => ({ s, all: gpaOf(by[norm(s.student_id)]) }))
     .sort((a, b) => (b.all ? b.all.gpa : -1) - (a.all ? a.all.gpa : -1));
+  return { sc, ranked, withGpax: ranked.filter(r => r.all) };
+}
 
-  const withGpax = ranked.filter(r => r.all);
+// แถวหนึ่งของตารางอันดับ GPAx — ใช้ทั้งในการ์ดและในหน้าต่างรายชื่อของแต่ละช่วงคะแนน
+function gpaxRowHTML(r, i) {
+  const g = r.all;
+  const cls = !g ? 'text-gray-300' : g.gpa < 2.30 ? 'text-red-600 font-bold' : g.gpa >= 3.50 ? 'text-emerald-600 font-bold' : 'text-gray-800';
+  return `<tr class="border-t border-gray-50 hover:bg-gray-50">
+    <td class="px-3 py-2 text-center text-gray-400">${i + 1}</td>
+    <td class="px-3 py-2 font-mono text-primary">${norm(r.s.student_id)}</td>
+    <td class="px-3 py-2">${studentDisplayName(r.s)}${g && g.gpa < 2.30 ? '<span class="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-red-100 text-red-700">เฝ้าระวัง</span>' : ''}</td>
+    <td class="px-3 py-2 text-center">${norm(r.s.year_level) || '-'}</td>
+    <td class="px-3 py-2 text-center ${cls}">${g ? g.gpa.toFixed(2) : '-'}</td>
+    <td class="px-3 py-2 text-center">${g
+      ? `<button onclick="showStudentGradeSheet('${htmlEsc(norm(r.s.student_id))}')" class="text-gray-400 hover:text-primary" title="ดูใบแสดงผลการเรียน"><i data-lucide="eye" class="w-4 h-4"></i></button>`
+      : '<span class="text-xs text-gray-300">ยังไม่มีผล</span>'}</td>
+  </tr>`;
+}
+
+function gpaxTableHTML(rows) {
+  return `<div class="border border-gray-100 rounded-xl overflow-hidden">
+    <div class="overflow-auto" style="max-height:420px"><table class="w-full text-sm">
+      <thead class="sticky top-0 z-10"><tr class="bg-surface text-left">
+        <th class="px-3 py-2 font-semibold text-center">ลำดับ</th>
+        <th class="px-3 py-2 font-semibold">รหัสนักศึกษา</th>
+        <th class="px-3 py-2 font-semibold">ชื่อ-สกุล</th>
+        <th class="px-3 py-2 font-semibold text-center">ชั้นปี</th>
+        <th class="px-3 py-2 font-semibold text-center">GPAx<div class="text-[10px] font-normal text-gray-400">สะสม</div></th>
+        <th class="px-3 py-2 font-semibold text-center">ผลการเรียน</th>
+      </tr></thead>
+      <tbody>${rows.map(gpaxRowHTML).join('') || '<tr><td colspan="6" class="px-3 py-6 text-center text-gray-400">ไม่มีนักศึกษาในกลุ่มนี้</td></tr>'}</tbody>
+    </table></div>
+  </div>`;
+}
+
+/* กดการ์ดช่วงคะแนนแล้วดูว่ามีใครอยู่ในช่วงนั้นบ้าง
+   ในหน้าต่างกดปุ่มรูปดวงตาเพื่อเปิดใบแสดงผลการเรียนของคนนั้นต่อได้เลย */
+function showGpaxBandList(bi) {
+  const buckets = gpaxBuckets();
+  const b = buckets[bi];
+  if (!b) return;
+  const { sc, withGpax } = gpaxScope();
+  const list = withGpax.filter(r => b.test(r.all.gpa));
+  showModal('นักศึกษาช่วง GPAx ' + htmlEsc(b.label)
+    + ' <span class="text-sm font-normal text-gray-500">— ' + htmlEsc(sc.label) + ' (' + list.length + ' คน)</span>',
+    '<div class="space-y-3">'
+    + `<div class="flex items-center gap-2"><span class="inline-block w-10 h-1.5 rounded-full ${b.color}"></span>`
+    + `<span class="text-sm text-gray-600">เรียงจาก GPAx มากไปน้อย — กดปุ่ม <i data-lucide="eye" class="w-3.5 h-3.5 inline"></i> เพื่อดูเกรดรายวิชาของแต่ละคน</span></div>`
+    + gpaxTableHTML(list)
+    + '</div>', null, 'max-w-3xl');
+}
+
+function gpaxByStudentCardHTML() {
+  const { sc, ranked, withGpax } = gpaxScope();
   const avg = withGpax.length
     ? Math.round(withGpax.reduce((t, r) => t + r.all.gpa, 0) / withGpax.length * 100) / 100 : null;
   const atRisk = withGpax.filter(r => r.all.gpa < 2.30).length;
   const honor = withGpax.filter(r => r.all.gpa >= 3.50).length;
 
-  // จำนวนนักศึกษาแยกตามช่วง GPAx — คลิกการ์ดเพื่อกรองตารางด้านล่าง (คลิกซ้ำ = ยกเลิก)
+  // จำนวนนักศึกษาแยกตามช่วง GPAx — กดการ์ดเพื่อเปิดรายชื่อของช่วงนั้น
   const buckets = gpaxBuckets();
-  buckets.forEach(b => { b.n = withGpax.filter(r => b.test(r.all.gpa)).length; });
-  const selBand = APP.filters._gpaxBand || '';
   const bucketCards = buckets.map((b, bi) => {
-    const on = selBand === String(bi);
-    return `<button type="button" onclick="APP.filters._gpaxBand='${on ? '' : bi}';renderCurrentPage()"
-      class="card-stat text-left w-full bg-white rounded-xl border p-3 text-center transition ${on ? 'border-primary ring-2 ring-primary/30 bg-primaryLight' : 'border-gray-100 hover:border-primary/40'}"
-      title="${on ? 'คลิกเพื่อยกเลิกตัวกรอง' : 'คลิกเพื่อดูเฉพาะช่วงนี้'}">
+    const n = withGpax.filter(r => b.test(r.all.gpa)).length;
+    return `<button type="button" onclick="showGpaxBandList(${bi})"
+      class="card-stat text-left w-full bg-white rounded-xl border border-gray-100 hover:border-primary/40 p-3 text-center transition"
+      title="คลิกเพื่อดูรายชื่อนักศึกษาในช่วง ${b.label}">
       <div class="w-full h-1.5 rounded-full ${b.color} mb-2"></div>
-      <p class="text-2xl font-bold ${on ? 'text-primary' : 'text-gray-800'}">${b.n}</p>
+      <p class="text-2xl font-bold text-gray-800">${n}</p>
       <p class="text-xs text-gray-500 mt-0.5">${b.label}</p>
     </button>`;
-  }).join('');
-
-  const shown = (selBand !== '' && buckets[selBand])
-    ? ranked.filter(r => r.all && buckets[selBand].test(r.all.gpa))
-    : ranked;
-
-  const body = shown.map((r, i) => {
-    const g = r.all;
-    const cls = !g ? 'text-gray-300' : g.gpa < 2.30 ? 'text-red-600 font-bold' : g.gpa >= 3.50 ? 'text-emerald-600 font-bold' : 'text-gray-800';
-    return `<tr class="border-t border-gray-50 hover:bg-gray-50">
-      <td class="px-3 py-2 text-center text-gray-400">${i + 1}</td>
-      <td class="px-3 py-2 font-mono text-primary">${norm(r.s.student_id)}</td>
-      <td class="px-3 py-2">${studentDisplayName(r.s)}${g && g.gpa < 2.30 ? '<span class="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-red-100 text-red-700">เฝ้าระวัง</span>' : ''}</td>
-      <td class="px-3 py-2 text-center">${norm(r.s.year_level) || '-'}</td>
-      <td class="px-3 py-2 text-center ${cls}">${g ? g.gpa.toFixed(2) : '-'}</td>
-      <td class="px-3 py-2 text-center">${g
-        ? `<button onclick="showStudentGradeSheet('${htmlEsc(norm(r.s.student_id))}')" class="text-gray-400 hover:text-primary" title="ดูใบแสดงผลการเรียน"><i data-lucide="eye" class="w-4 h-4"></i></button>`
-        : '<span class="text-xs text-gray-300">ยังไม่มีผล</span>'}</td>
-    </tr>`;
   }).join('');
 
   return `<details id="gradeGpaxCard"${detailsOpen('gradeGpaxCard')} ontoggle="rememberDetails(this)" class="bg-white rounded-2xl border border-blue-100 mb-4">
@@ -3440,30 +3476,14 @@ function gpaxByStudentCardHTML(sc, scopeGrades) {
         ${statCard('award', 'GPAx 3.50 ขึ้นไป', honor, 'คน', 'bg-emerald-500')}
       </div>
 
-      <p class="text-sm font-semibold text-gray-600 mb-2">จำนวนนักศึกษาแยกตามช่วง GPAx</p>
+      <p class="text-sm font-semibold text-gray-600 mb-2">จำนวนนักศึกษาแยกตามช่วง GPAx
+        <span class="text-xs font-normal text-gray-400">— คลิกการ์ดเพื่อดูรายชื่อในช่วงนั้น</span></p>
       <div class="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2 mb-4">${bucketCards}</div>
 
-      <div class="flex flex-wrap items-center gap-2 mb-2">
-        <p class="text-sm font-semibold text-gray-600"><i data-lucide="list-ordered" class="w-4 h-4 inline mr-1"></i>รายงาน GPAx เรียงมากไปน้อย
-          <span class="font-normal text-gray-400">(${sc.label}${selBand !== '' && buckets[selBand] ? ' · เฉพาะช่วง ' + buckets[selBand].label : ''} — ${shown.length} คน)</span></p>
-        ${selBand !== ''
-          ? `<button onclick="APP.filters._gpaxBand='';renderCurrentPage()" class="px-3 py-1 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200">ล้างตัวกรองช่วงคะแนน</button>`
-          : '<span class="text-xs text-gray-400">— คลิกการ์ดช่วงคะแนนด้านบนเพื่อดูเฉพาะช่วงนั้น</span>'}
-      </div>
+      <p class="text-sm font-semibold text-gray-600 mb-2"><i data-lucide="list-ordered" class="w-4 h-4 inline mr-1"></i>รายงาน GPAx เรียงมากไปน้อย
+        <span class="font-normal text-gray-400">(${sc.label} — ${ranked.length} คน)</span></p>
       <p class="text-xs text-gray-500 mb-2">GPAx คิดจากผลการเรียนทั้งหมดที่มีในระบบ — กดปุ่ม <i data-lucide="eye" class="w-3.5 h-3.5 inline"></i> เพื่อดูเกรดรายวิชาและเลือกดูเฉพาะปี/ภาคที่ต้องการ</p>
-      <div class="border border-gray-100 rounded-xl overflow-hidden">
-        <div class="overflow-auto" style="max-height:420px"><table class="w-full text-sm">
-          <thead class="sticky top-0 z-10"><tr class="bg-surface text-left">
-            <th class="px-3 py-2 font-semibold text-center">ลำดับ</th>
-            <th class="px-3 py-2 font-semibold">รหัสนักศึกษา</th>
-            <th class="px-3 py-2 font-semibold">ชื่อ-สกุล</th>
-            <th class="px-3 py-2 font-semibold text-center">ชั้นปี</th>
-            <th class="px-3 py-2 font-semibold text-center">GPAx<div class="text-[10px] font-normal text-gray-400">สะสม</div></th>
-            <th class="px-3 py-2 font-semibold text-center">ผลการเรียน</th>
-          </tr></thead>
-          <tbody>${body || '<tr><td colspan="6" class="px-3 py-6 text-center text-gray-400">ไม่มีนักศึกษาในขอบเขตนี้</td></tr>'}</tbody>
-        </table></div>
-      </div>
+      ${gpaxTableHTML(ranked)}
     </div>
   </details>`;
 }
@@ -3476,9 +3496,7 @@ function gradeOverviewCardsHTML() {
     const f = gpaxYearFilterHTML();
     return f ? `<div class="bg-white rounded-2xl p-5 border border-blue-100 mb-4">${f}<p class="text-sm text-gray-400">ไม่มีนักศึกษาในขอบเขตที่เลือก</p></div>` : '';
   }
-  const ids = new Set(sc.students.map(s => norm(s.student_id)));
-  const scopeGrades = getDataByType('grade').filter(g => ids.has(norm(g.student_id)));
-  return gpaxByStudentCardHTML(sc, scopeGrades);
+  return gpaxByStudentCardHTML();
 }
 
 function gradesPage() {
