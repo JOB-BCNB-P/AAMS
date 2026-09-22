@@ -2303,14 +2303,54 @@ function creditInfoBox() {
   </details>`;
 }
 
+/* ================= รายวิชาของนักศึกษาคนหนึ่ง =================
+   ใช้ตัดสินว่ารายวิชาหนึ่งเป็นของนักศึกษาคนนี้หรือไม่ คิดที่เดียว
+   ทั้งตัวเลือกปีการศึกษาและตารางรายวิชาจึงใช้กฎเดียวกันเสมอ */
+
+// ชั้นปีของนักศึกษา "ในปีการศึกษาที่ระบุ"
+//   รหัสนักศึกษา 2 ตัวแรกคือปีที่เข้าเรียน เช่น 66 = เข้าปีการศึกษา 2566
+//   ปีการศึกษา 2569 จึงเป็นชั้นปีที่ 2569 - 2566 + 1 = 4
+//   ปีการศึกษาปัจจุบันใช้ชั้นปีในทะเบียนเป็นหลัก (เผื่อกรณีเรียนซ้ำชั้น/ลาพัก)
+//   คำนวณไม่ได้ก็คืนชั้นปีในทะเบียนไปตามตรง ไม่เดาให้
+function studentYearLevelIn(stu, academicYear) {
+  const reg = norm(stu && stu.year_level);
+  const y = parseInt(norm(academicYear), 10);
+  if (!isFinite(y)) return reg;
+  if (typeof currentAcademicYearBE === 'function' && String(y) === norm(currentAcademicYearBE())) return reg;
+  const sid = norm(stu && stu.student_id);
+  if (sid.length >= 2) {
+    const adm = 2500 + parseInt(sid.slice(0, 2), 10);
+    if (isFinite(adm)) {
+      const lv = y - adm + 1;
+      // นอกช่วง 1-8 แปลว่าปีนั้นยังไม่ได้เข้าเรียน (หรือจบไปนานแล้ว) — ไม่ได้อยู่ชั้นปีใดเลย
+      return (lv >= 1 && lv <= 8) ? String(lv) : '';
+    }
+  }
+  return reg;
+}
+
+/* รายวิชานี้เป็นของนักศึกษาคนนี้หรือไม่
+     ระบุรุ่นไว้  → รุ่นต้องตรงกับรุ่นของนักศึกษา
+     ไม่ระบุรุ่น  → ชั้นปีต้องตรงกับชั้นปีของนักศึกษาในปีการศึกษาของรายวิชานั้น
+   ไม่รู้ทั้งรุ่นและชั้นปีของนักศึกษา → ไม่ใช่ของใครทั้งนั้น (คืน false ดีกว่าโชว์ของคนอื่น) */
+function studentOwnsSubject(stu, subj) {
+  const sBatch = norm(subj && subj.batch);
+  const stuBatch = norm(stu && stu.batch);
+  if (sBatch) return !!stuBatch && sBatch === stuBatch;
+  const lv = studentYearLevelIn(stu, norm(subj && subj.academic_year));
+  const sLevel = norm(subj && subj.year_level);
+  return !!lv && !!sLevel && sLevel === lv;
+}
+
 function subjectsPage() {
   const isAdmin = isAdminRole();
   const canEdit = isAdmin || APP.currentRole === 'teacher' || APP.currentRole === 'classTeacher';
   const isStudent = APP.currentRole === 'student';
   const allSubjects = getDataByType('subject');
-  // นักศึกษา: จำกัดปีการศึกษา/ข้อมูลให้เห็นเฉพาะรุ่นของตนเองเท่านั้น
-  const pickerSubjects = (isStudent && APP.currentUser.data && norm(APP.currentUser.data.batch))
-    ? allSubjects.filter(s => norm(s.batch) === norm(APP.currentUser.data.batch))
+  // นักศึกษา: ตัวเลือกปีการศึกษาแสดงเฉพาะปีที่ตัวเองมีรายวิชาจริง
+  const stuRec = isStudent ? (APP.currentUser.data || null) : null;
+  const pickerSubjects = stuRec
+    ? allSubjects.filter(s => studentOwnsSubject(stuRec, s))
     : allSubjects;
   // นักศึกษา: ถ้ายังไม่เลือกปี ให้ default เป็นปีการศึกษาปัจจุบันโดยอัตโนมัติ
   if (isStudent && !APP.filters._pageYear) {
@@ -2328,13 +2368,23 @@ function subjectsPage() {
   headerHtml += yearPickerBar(pickerSubjects, 'ปีการศึกษา');
   if (isAdmin) headerHtml += creditInfoBox();
 
+  /* ทะเบียนไม่มีรุ่นและชั้นปี → ตัดสินไม่ได้ว่ารายวิชาไหนเป็นของใคร
+     จึงไม่แสดงรายวิชาเลย และบอกสาเหตุให้ทราบ ดีกว่าโชว์ของรุ่นอื่นปนมา */
+  if (isStudent && (!stuRec || (!norm(stuRec.batch) && !norm(stuRec.year_level)))) {
+    return headerHtml + `<div class="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center">
+      <i data-lucide="alert-triangle" class="w-8 h-8 mx-auto mb-2 text-amber-500"></i>
+      <p class="text-sm text-amber-800">ยังไม่พบรุ่นหรือชั้นปีของคุณในทะเบียนนักศึกษา จึงยังแสดงรายวิชาให้ไม่ได้</p>
+      <p class="text-xs text-amber-700 mt-1">กรุณาติดต่องานทะเบียนเพื่อตรวจสอบข้อมูล</p>
+    </div>`;
+  }
+
   // แสดงป้ายบอกบริบทสำหรับนักศึกษา (รุ่น/ชั้นปี/ปีการศึกษา)
   if (isStudent && APP.currentUser.data) {
     const stu = APP.currentUser.data;
     headerHtml += `<div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs text-blue-800 flex flex-wrap gap-3">
       <span><i data-lucide="user" class="w-3 h-3 inline mr-1"></i><strong>${stu.name || ''}</strong></span>
       ${stu.batch ? `<span>รุ่นที่ <strong>${stu.batch}</strong></span>` : ''}
-      <span>ชั้นปี <strong>${stu.year_level || '-'}</strong></span>
+      <span>ชั้นปี <strong>${studentYearLevelIn(stu, selectedYear) || '-'}</strong></span>
       <span>ปีการศึกษา <strong>${selectedYear || '-'}</strong></span>
     </div>`;
   }
@@ -2349,53 +2399,14 @@ function subjectsPage() {
   if (APP.filters.semester) data = data.filter(x => normSem(x.semester) === APP.filters.semester);
   if (APP.filters.yearLevel) data = data.filter(x => norm(x.year_level) === APP.filters.yearLevel);
   if (APP.currentRole === 'classTeacher') data = data.filter(s => norm(s.year_level) === norm(APP.currentUser.responsible_year || '1'));
-  if (isStudent && APP.currentUser.data) {
-    const stuBatch = norm(APP.currentUser.data.batch);
-    const stuYearLevel = norm(APP.currentUser.data.year_level);
-    // [DIAGNOSTIC] log ข้อมูลก่อนกรอง — เปิด Console (F12) ดูได้
-    try {
-      const beforeFilter = data.length;
-      const allGeRaw = allSubjects.filter(s => (s.subject_code || '').toUpperCase().startsWith('GE'));
-      const allBatch80Raw = allSubjects.filter(s => norm(s.batch) === '80');
-      console.log('[Subjects] นักศึกษา:', { name: APP.currentUser.data.name, batch: stuBatch, year_level: stuYearLevel });
-      console.log('[Subjects] selectedYear =', JSON.stringify(selectedYear), '| ทั้งหมดในชีต =', allSubjects.length, '| ในปีที่เลือก =', beforeFilter);
-      console.log('[Subjects] === GE ทุกตัว (จากทั้งชีต) ===');
-      console.table(allGeRaw.map(s => ({
-        code: s.subject_code, batch: s.batch, year_level: s.year_level, sem: s.semester,
-        academic_year_RAW: s.academic_year,
-        academic_year_norm: norm(s.academic_year),
-        academic_year_type: typeof s.academic_year,
-        academic_year_length: (s.academic_year || '').length,
-        matches_2568: norm(s.academic_year) === '2568'
-      })));
-      console.log('[Subjects] === Batch 80 ทุกตัว (จากทั้งชีต) ===');
-      console.table(allBatch80Raw.map(s => ({
-        code: s.subject_code, year_level: s.year_level, sem: s.semester,
-        academic_year_RAW: s.academic_year,
-        academic_year_norm: norm(s.academic_year),
-        matches_2568: norm(s.academic_year) === '2568'
-      })));
-    } catch (e) { console.error('diag err', e); }
-    // ขั้น 1) กรองรายวิชาให้ตรงกับนักศึกษา
-    //   - ถ้ารายวิชาระบุ batch → batch ต้องตรงกับนักศึกษา
-    //   - ถ้ารายวิชาไม่ระบุ batch (เช่นวิชา GE ทั่วไป) → ใช้ year_level ตรงเป็นตัวจับคู่
-    if (stuBatch) {
-      data = data.filter(s => {
-        const sBatch = norm(s.batch);
-        const sYear = norm(s.year_level);
-        if (sBatch) return sBatch === stuBatch;
-        // ไม่ระบุ batch → จับคู่ด้วย year_level (ต้องมีค่าและตรงกัน)
-        return sYear && sYear === stuYearLevel;
-      });
-    } else if (stuYearLevel) {
-      data = data.filter(s => norm(s.year_level) === stuYearLevel);
-    } else {
-      data = [];
-    }
-    try { console.log('[Subjects] รายวิชาหลังกรองด้วยรุ่น/ชั้นปี:', data.length); } catch (e) { }
-    // ขั้น 2) ถ้ามีรายวิชาซ้ำ (รหัสวิชา + ภาค + ปี ตรงกัน) → กรองเพิ่มด้วย year_level
-    //         เพื่อเลือกเฉพาะรายวิชาของชั้นปีของนักศึกษา
-    if (stuYearLevel) {
+  if (isStudent) {
+    // เห็นเฉพาะรายวิชาของรุ่น/ชั้นปีที่ตัวเองเรียน
+    data = stuRec ? data.filter(s => studentOwnsSubject(stuRec, s)) : [];
+
+    /* รายวิชาซ้ำ (รหัสวิชา + ภาค + ปี ตรงกัน แต่คนละชั้นปี)
+       ให้เหลือเฉพาะของชั้นปีที่นักศึกษาคนนี้อยู่ในปีการศึกษานั้น */
+    const lvNow = stuRec ? studentYearLevelIn(stuRec, selectedYear) : '';
+    if (lvNow) {
       const keyCounts = {};
       data.forEach(s => {
         const key = `${norm(s.subject_code)}|${normSem(s.semester)}|${norm(s.academic_year)}`;
@@ -2403,10 +2414,7 @@ function subjectsPage() {
       });
       data = data.filter(s => {
         const key = `${norm(s.subject_code)}|${normSem(s.semester)}|${norm(s.academic_year)}`;
-        if ((keyCounts[key] || 0) > 1) {
-          return norm(s.year_level) === stuYearLevel;
-        }
-        return true;
+        return (keyCounts[key] || 0) > 1 ? norm(s.year_level) === lvNow : true;
       });
     }
   }
