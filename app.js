@@ -3340,125 +3340,180 @@ function gradeCardYears(scopeGrades) {
   return [...new Set((scopeGrades || []).map(g => norm(g.academic_year)).filter(Boolean))]
     .sort((a, b) => b.localeCompare(a, 'th', { numeric: true }));
 }
-function gradeCardYear(years) {
-  const v = APP.filters._gradeCardYear;
-  return v === undefined ? (years[0] || '') : v;
-}
-function gradeCardFilterBar(years) {
-  const y = gradeCardYear(years);
-  const sm = APP.filters._gradeCardSem || '';
-  const yearOpts = [['', 'ทุกปีการศึกษา']].concat(years.map(v => [v, 'ปีการศึกษา ' + v]));
-  const semOpts = [['', 'ทุกภาคการศึกษา'], ['1', 'ภาคการศึกษาที่ 1'], ['2', 'ภาคการศึกษาที่ 2'], ['3', 'ภาคฤดูร้อน']];
-  return `<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">
-    <div class="flex flex-wrap items-end gap-3">
-      ${filterSelectHTML({ label: 'ปีการศึกษา', icon: 'calendar', key: '_gradeCardYear', options: yearOpts, value: y })}
-      ${filterSelectHTML({ label: 'ภาคการศึกษา', icon: 'book-open', key: '_gradeCardSem', options: semOpts, value: sm })}
-    </div>
-  </div>`;
-}
-function gradeCardScopeText(years) {
-  const y = gradeCardYear(years), sm = APP.filters._gradeCardSem || '';
-  return (y ? 'ปีการศึกษา ' + y : 'ทุกปีการศึกษา')
-    + ' · ' + (sm === '3' ? 'ภาคฤดูร้อน' : sm ? 'ภาคการศึกษาที่ ' + sm : 'ทุกภาคการศึกษา');
-}
+/* ตัวกรองปีการศึกษา/ภาคการศึกษา ย้ายเข้าไปอยู่ในหน้าต่างใบแสดงผลการเรียนของนักศึกษาแต่ละคนแล้ว
+   จึงไม่มีแถบตัวกรองด้านนอกการ์ดอีกต่อไป */
 
-/* การ์ดที่ 1 — เกรดรายวิชาของนักศึกษาทุกคนในขอบเขต (แถว = นักศึกษา, คอลัมน์ = รายวิชา) */
-function subjectGradeCardHTML(sc, scopeGrades, years) {
-  const y = gradeCardYear(years), sm = APP.filters._gradeCardSem || '';
-  const rows = scopeGrades.filter(g => (!y || norm(g.academic_year) === y) && (!sm || norm(g.semester) === sm));
-
-  // รายวิชาที่โผล่ในช่วงที่เลือก เรียงตามรหัสวิชา
-  const subjMap = {};
-  rows.forEach(g => {
-    const code = norm(g.subject_code) || norm(g.subject_name);
-    if (!code) return;
-    if (!subjMap[code]) subjMap[code] = { code, name: norm(g.subject_name), sems: {} };
-    if (!subjMap[code].name) subjMap[code].name = norm(g.subject_name);
-    subjMap[code].sems[norm(g.semester) + '/' + norm(g.academic_year)] = 1;
-  });
-  const subjects = Object.keys(subjMap).sort().map(k => subjMap[k]);
-
+/* การ์ดที่ 1 — รายชื่อนักศึกษาในขอบเขต กดปุ่มรูปดวงตาเพื่อเปิดใบแสดงผลการเรียนของคนนั้น
+   เดิมกางเกรดทุกรายวิชาของทุกคนพร้อมกัน ตารางกว้างมากจนต้องเลื่อนหาข้อมูล
+   ตอนนี้ดูทีละคนในหน้าต่าง ซึ่งมีตัวกรองปีการศึกษา/ภาคการศึกษาของตัวเอง */
+function subjectGradeCardHTML(sc, scopeGrades) {
   const byStu = {};
-  rows.forEach(g => {
-    const sid = norm(g.student_id); const code = norm(g.subject_code) || norm(g.subject_name);
-    if (!byStu[sid]) byStu[sid] = {};
-    byStu[sid][code] = g;   // ซ้ำรหัสเดียวกันให้ใช้รายการหลังสุด (ผลที่แก้ไขล่าสุด)
+  scopeGrades.forEach(g => {
+    const sid = norm(g.student_id);
+    if (!byStu[sid]) byStu[sid] = [];
+    byStu[sid].push(g);
   });
 
-  const gcls = v => v === 'F' ? 'bg-red-100 text-red-700 font-bold'
-    : (v === 'A' || v === 'B+') ? 'bg-emerald-100 text-emerald-700 font-semibold'
-    : 'bg-gray-100 text-gray-700';
-
-  const body = sc.students.map((s, i) => {
+  const rows = sc.students.map((s, i) => {
     const sid = norm(s.student_id);
-    const mine = byStu[sid] || {};
-    const g = gpaOf(Object.keys(mine).map(k => mine[k]));
+    const mine = byStu[sid] || [];
+    const terms = new Set(mine.map(g => normSem(g.semester) + '/' + norm(g.academic_year)));
+    const has = mine.length > 0;
     return `<tr class="border-t border-gray-50 hover:bg-gray-50">
       <td class="px-3 py-2 text-center text-gray-400">${i + 1}</td>
-      <td class="px-3 py-2 font-mono text-primary whitespace-nowrap sticky left-0 bg-white">${sid}</td>
-      <td class="px-3 py-2 whitespace-nowrap">${studentDisplayName(s)}</td>
-      ${subjects.map(sj => {
-        const rec = mine[sj.code];
-        const v = rec ? norm(rec.grade) : '';
-        return `<td class="px-2 py-2 text-center">${v ? `<span class="px-2 py-0.5 rounded text-xs ${gcls(v)}">${v}</span>` : '<span class="text-gray-300">-</span>'}</td>`;
-      }).join('')}
-      <td class="px-3 py-2 text-center font-semibold ${g && g.gpa < 2.00 ? 'text-red-600' : 'text-gray-800'}">${g ? g.gpa.toFixed(2) : '<span class="text-gray-300">-</span>'}</td>
+      <td class="px-3 py-2 font-mono text-primary whitespace-nowrap">${sid}</td>
+      <td class="px-3 py-2">${studentDisplayName(s)}</td>
+      <td class="px-3 py-2 text-center">${norm(s.year_level) || '-'}</td>
+      <td class="px-3 py-2 text-center ${has ? '' : 'text-gray-300'}">${has ? mine.length : '-'}</td>
+      <td class="px-3 py-2 text-center ${has ? '' : 'text-gray-300'}">${has ? terms.size : '-'}</td>
+      <td class="px-3 py-2 text-center">${has
+        ? `<button onclick="showStudentGradeSheet('${htmlEsc(sid)}')" class="text-gray-400 hover:text-primary" title="ดูใบแสดงผลการเรียน"><i data-lucide="eye" class="w-4 h-4"></i></button>`
+        : '<span class="text-xs text-gray-300">ยังไม่มีผล</span>'}</td>
     </tr>`;
-  }).join('');
-
-  // แถวสรุปท้ายตาราง — เฉลี่ยของรายวิชา และจำนวนที่ติด F
-  const foot = subjects.map(sj => {
-    const list = rows.filter(g => (norm(g.subject_code) || norm(g.subject_name)) === sj.code
-      && sc.students.some(s => norm(s.student_id) === norm(g.student_id)));
-    const g = gpaOf(list);
-    const nF = list.filter(x => norm(x.grade).toUpperCase() === 'F').length;
-    return `<td class="px-2 py-2 text-center text-xs">
-      <span class="${g && g.gpa < 2.00 ? 'text-red-600 font-semibold' : 'text-gray-600'}">${g ? g.gpa.toFixed(2) : '-'}</span>
-      ${nF ? `<div class="text-[10px] text-red-500">F ${nF}</div>` : ''}</td>`;
   }).join('');
 
   const nGraded = sc.students.filter(s => byStu[norm(s.student_id)]).length;
   return `<details id="gradeSubjCard"${detailsOpen('gradeSubjCard')} ontoggle="rememberDetails(this)" class="bg-white rounded-2xl border border-blue-100 mb-4">
     <summary class="cursor-pointer select-none p-5 flex items-center justify-between gap-3">
       <span class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="table" class="w-5 h-5 text-primary"></i>ภาพรวมผลการเรียน (เกรดรายวิชา)
-        <span class="text-sm font-normal text-gray-500">— ${sc.label} · ${sc.students.length} คน · ${subjects.length} รายวิชา</span>
+        <span class="text-sm font-normal text-gray-500">— ${sc.label} · ${sc.students.length} คน</span>
         <span class="text-xs font-normal text-gray-400">— คลิกเพื่อดู</span></span>
       <i data-lucide="chevron-down" class="chev w-5 h-5 text-gray-400 flex-shrink-0"></i>
     </summary>
     <div class="px-5 pb-5">
-      <p class="text-xs text-gray-500 mb-3">${gradeCardScopeText(years)} · มีผลการเรียนแล้ว ${nGraded} คน จาก ${sc.students.length} คน</p>
-      ${subjects.length ? `<div class="border border-gray-100 rounded-xl overflow-hidden">
+      <p class="text-xs text-gray-500 mb-3">มีผลการเรียนแล้ว ${nGraded} คน จาก ${sc.students.length} คน — กดปุ่ม
+        <i data-lucide="eye" class="w-3.5 h-3.5 inline"></i> เพื่อดูเกรดรายวิชาของนักศึกษาแต่ละคน (เลือกปีการศึกษา/ภาคการศึกษาได้ในหน้าต่างนั้น)</p>
+      ${sc.students.length ? `<div class="border border-gray-100 rounded-xl overflow-hidden">
         <div class="overflow-auto" style="max-height:420px"><table class="w-full text-sm">
           <thead class="sticky top-0 z-10"><tr class="bg-surface text-left">
             <th class="px-3 py-2 font-semibold text-center">ลำดับ</th>
             <th class="px-3 py-2 font-semibold">รหัสนักศึกษา</th>
             <th class="px-3 py-2 font-semibold">ชื่อ-สกุล</th>
-            ${subjects.map(sj => `<th class="px-2 py-2 font-semibold text-center whitespace-nowrap" title="${htmlEsc(sj.name)}">
-              <span class="font-mono text-[11px]">${sj.code}</span>
-              <div class="text-[10px] font-normal text-gray-400 max-w-[8rem] truncate">${htmlEsc(sj.name)}</div></th>`).join('')}
-            <th class="px-3 py-2 font-semibold text-center whitespace-nowrap">GPA<div class="text-[10px] font-normal text-gray-400">ช่วงที่เลือก</div></th>
+            <th class="px-3 py-2 font-semibold text-center">ชั้นปี</th>
+            <th class="px-3 py-2 font-semibold text-center">รายวิชาที่มีผล</th>
+            <th class="px-3 py-2 font-semibold text-center">ภาคที่มีผล</th>
+            <th class="px-3 py-2 font-semibold text-center">ผลการเรียน</th>
           </tr></thead>
-          <tbody>${body}</tbody>
-          <tfoot><tr class="bg-surface border-t">
-            <td colspan="3" class="px-3 py-2 text-xs font-semibold text-gray-600">เฉลี่ยของรายวิชา</td>
-            ${foot}<td></td>
-          </tr></tfoot>
+          <tbody>${rows}</tbody>
         </table></div>
-      </div>` : '<p class="text-center text-gray-400 py-8">ไม่มีผลการเรียนในช่วงที่เลือก</p>'}
+      </div>` : '<p class="text-center text-gray-400 py-8">ไม่มีนักศึกษาในขอบเขตนี้</p>'}
     </div>
   </details>`;
 }
 
+/* ================= ใบแสดงผลการเรียนรายคน (หน้าต่าง) =================
+   เลือกปีการศึกษา/ภาคการศึกษาได้ในหน้าต่างนี้ แล้ววาดใหม่เฉพาะเนื้อในกล่อง
+   หน้าต่างจึงไม่ปิดและไม่เสียตำแหน่งที่เลื่อนไว้ */
+function gradeSheetBody() {
+  const g = APP._gsheet || {};
+  const sid = norm(g.sid);
+  const stu = getDataByType('student').filter(x => norm(x.student_id) === sid)[0] || {};
+  const all = getDataByType('grade').filter(x => norm(x.student_id) === sid);
+  const years = gradeCardYears(all);
+  const y = g.year || '', sem = g.sem || '';
+  const shown = all.filter(x => (!y || norm(x.academic_year) === y) && (!sem || normSem(x.semester) === normSem(sem)));
+
+  const sel = (label, icon, key, opts, cur) => `<div class="min-w-[10rem]">
+    <label class="block text-xs font-medium text-gray-600 mb-1"><i data-lucide="${icon}" class="w-3.5 h-3.5 inline mr-1"></i>${label}</label>
+    <select onchange="gradeSheetSet('${key}',this.value)" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
+      ${opts.map(o => `<option value="${htmlEsc(String(o[0]))}"${String(cur) === String(o[0]) ? ' selected' : ''}>${htmlEsc(o[1])}</option>`).join('')}
+    </select></div>`;
+
+  // จัดกลุ่มตามภาค/ปี เรียงจากเก่าไปใหม่ เหมือนใบแสดงผลการเรียน
+  const groups = {};
+  shown.forEach(x => {
+    const k = norm(x.academic_year) + '|' + normSem(x.semester);
+    if (!groups[k]) groups[k] = { year: norm(x.academic_year), sem: normSem(x.semester), list: [] };
+    groups[k].list.push(x);
+  });
+  const order = Object.keys(groups).sort((a, b) => a.localeCompare(b, 'th', { numeric: true }));
+
+  const gcls = v => v === 'F' ? 'bg-red-100 text-red-700 font-bold'
+    : (v === 'A' || v === 'B+') ? 'bg-emerald-100 text-emerald-700 font-semibold'
+    : 'bg-gray-100 text-gray-700';
+
+  const body = order.map(k => {
+    const t = groups[k];
+    const tg = gpaOf(t.list);
+    const list = t.list.slice().sort((a, b) => norm(a.subject_code).localeCompare(norm(b.subject_code)));
+    return `<tr class="bg-surface"><td colspan="5" class="px-3 py-2 text-xs font-semibold text-gray-700">
+        ภาคการศึกษาที่ ${t.sem === '3' ? 'ฤดูร้อน' : htmlEsc(t.sem || '-')} ปีการศึกษา ${htmlEsc(t.year || '-')}
+        <span class="font-normal text-gray-500">— ${tg ? 'GPA ประจำภาค ' + tg.gpa.toFixed(2) + ' · ' + tg.credits + ' หน่วยกิต' : 'ยังไม่มีเกรดที่คิดแต้มได้'}</span>
+      </td></tr>`
+      + list.map(x => {
+        const v = norm(x.grade);
+        return `<tr class="border-t border-gray-50">
+          <td class="px-3 py-2 font-mono text-primary whitespace-nowrap">${htmlEsc(norm(x.subject_code))}</td>
+          <td class="px-3 py-2">${htmlEsc(norm(x.subject_name))}</td>
+          <td class="px-3 py-2 text-center">${htmlEsc(String(_gradeCredits(x) || ''))}</td>
+          <td class="px-3 py-2 text-center">${v ? `<span class="px-2 py-0.5 rounded text-xs ${gcls(v)}">${htmlEsc(v)}</span>` : '<span class="text-gray-300">-</span>'}</td>
+          <td class="px-3 py-2 text-center text-gray-500 whitespace-nowrap">${normSem(x.semester) === '3' ? 'ฤดูร้อน' : htmlEsc(normSem(x.semester) || '-')}/${htmlEsc(norm(x.academic_year) || '-')}</td>
+        </tr>`;
+      }).join('');
+  }).join('');
+
+  const gAll = gpaOf(all), gSel = gpaOf(shown);
+  const scopeText = (y ? 'ปีการศึกษา ' + y : 'ทุกปีการศึกษา')
+    + ' · ' + (normSem(sem) === '3' ? 'ภาคฤดูร้อน' : sem ? 'ภาคการศึกษาที่ ' + sem : 'ทุกภาคการศึกษา');
+
+  return `<div data-ems-gsheet="1" class="space-y-4">
+    <div class="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <p class="font-semibold text-gray-800">${studentDisplayName(stu) || '-'}</p>
+        <p class="text-xs text-gray-500 font-mono">${htmlEsc(sid)}${norm(stu.year_level) ? ' · ชั้นปี ' + htmlEsc(norm(stu.year_level)) : ''}${norm(stu.status) ? ' · ' + htmlEsc(norm(stu.status)) : ''}</p>
+      </div>
+      <div class="text-right">
+        <p class="text-xs text-gray-500">GPAx สะสม (ทุกภาค)</p>
+        <p class="text-2xl font-bold ${gAll && gAll.gpa < 2.30 ? 'text-red-600' : 'text-primary'} tabular-nums">${gAll ? gAll.gpa.toFixed(2) : '-'}</p>
+        <p class="text-[11px] text-gray-500">${gAll ? gAll.credits + ' หน่วยกิตที่คิดแต้ม' : 'ยังไม่มีเกรดที่คิดแต้มได้'}</p>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-end gap-3">
+      ${sel('ปีการศึกษา', 'calendar', 'year', [['', 'ทุกปีการศึกษา']].concat(years.map(v => [v, 'ปีการศึกษา ' + v])), y)}
+      ${sel('ภาคการศึกษา', 'book-open', 'sem', [['', 'ทุกภาคการศึกษา'], ['1', 'ภาคการศึกษาที่ 1'], ['2', 'ภาคการศึกษาที่ 2'], ['3', 'ภาคฤดูร้อน']], sem)}
+    </div>
+
+    ${shown.length ? `<div class="border border-gray-100 rounded-xl overflow-hidden">
+      <div class="overflow-auto" style="max-height:52vh"><table class="w-full text-sm">
+        <thead class="sticky top-0 z-10"><tr class="bg-surface text-left">
+          <th class="px-3 py-2 font-semibold">รหัสวิชา</th>
+          <th class="px-3 py-2 font-semibold">รายวิชา</th>
+          <th class="px-3 py-2 font-semibold text-center">หน่วยกิต</th>
+          <th class="px-3 py-2 font-semibold text-center">เกรด</th>
+          <th class="px-3 py-2 font-semibold text-center">ภาค/ปี</th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table></div>
+    </div>
+    <p class="text-xs text-gray-600">${htmlEsc(scopeText)} — ${shown.length} รายวิชา${gSel ? ' · GPA ช่วงที่เลือก <b>' + gSel.gpa.toFixed(2) + '</b> · ' + gSel.credits + ' หน่วยกิต' : ' · ยังไม่มีเกรดที่คิดแต้มได้ในช่วงนี้'}</p>`
+    : '<p class="text-center text-gray-400 py-8">ไม่มีผลการเรียนในช่วงที่เลือก</p>'}
+  </div>`;
+}
+
+function showStudentGradeSheet(sid) {
+  APP._gsheet = { sid: norm(sid), year: '', sem: '' };
+  const stu = getDataByType('student').filter(x => norm(x.student_id) === norm(sid))[0] || {};
+  showModal('ใบแสดงผลการเรียน <span class="text-sm font-normal text-gray-500">— '
+    + htmlEsc(studentDisplayName(stu) || norm(sid)) + '</span>', gradeSheetBody(), null, 'max-w-3xl');
+}
+
+function gradeSheetSet(k, v) {
+  if (!APP._gsheet) return;
+  APP._gsheet[k] = v;
+  // วาดใหม่เฉพาะเนื้อในกล่อง หน้าต่างจึงไม่ปิดและไม่กระโดดกลับไปบนสุด
+  const box = document.querySelector('[data-ems-gsheet]');
+  if (box) { box.outerHTML = gradeSheetBody(); if (window.lucide) lucide.createIcons(); }
+}
+
 /* การ์ดที่ 2 — GPAx ของนักศึกษาทุกคนในขอบเขต */
-function gpaxByStudentCardHTML(sc, scopeGrades, years) {
-  const y = gradeCardYear(years), sm = APP.filters._gradeCardSem || '';
-  const inRange = scopeGrades.filter(g => (!y || norm(g.academic_year) === y) && (!sm || norm(g.semester) === sm));
-  const bucket = (list) => { const m = {}; list.forEach(g => { const k = norm(g.student_id); (m[k] = m[k] || []).push(g); }); return m; };
-  const rangeBy = bucket(inRange), allBy = bucket(scopeGrades);
+function gpaxByStudentCardHTML(sc, scopeGrades) {
+  const allBy = {};
+  scopeGrades.forEach(g => { const k = norm(g.student_id); (allBy[k] = allBy[k] || []).push(g); });
 
   const rows = sc.students.map(s => {
     const sid = norm(s.student_id);
-    return { s, range: gpaOf(rangeBy[sid]), all: gpaOf(allBy[sid]) };
+    return { s, all: gpaOf(allBy[sid]) };
   }).sort((a, b) => (b.all ? b.all.gpa : -1) - (a.all ? a.all.gpa : -1));
 
   const withGpax = rows.filter(r => r.all);
@@ -3475,9 +3530,11 @@ function gpaxByStudentCardHTML(sc, scopeGrades, years) {
       <td class="px-3 py-2 font-mono text-primary">${norm(r.s.student_id)}</td>
       <td class="px-3 py-2">${studentDisplayName(r.s)}${g && g.gpa < 2.30 ? '<span class="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-red-100 text-red-700">เฝ้าระวัง</span>' : ''}</td>
       <td class="px-3 py-2 text-center">${norm(r.s.year_level) || '-'}</td>
-      <td class="px-3 py-2 text-center text-gray-500">${r.range ? r.range.credits : '-'}</td>
-      <td class="px-3 py-2 text-center">${r.range ? r.range.gpa.toFixed(2) : '<span class="text-gray-300">-</span>'}</td>
+      <td class="px-3 py-2 text-center text-gray-500">${g ? g.credits : '-'}</td>
       <td class="px-3 py-2 text-center ${cls}">${g ? g.gpa.toFixed(2) : '-'}</td>
+      <td class="px-3 py-2 text-center">${g
+        ? `<button onclick="showStudentGradeSheet('${htmlEsc(norm(r.s.student_id))}')" class="text-gray-400 hover:text-primary" title="ดูใบแสดงผลการเรียน"><i data-lucide="eye" class="w-4 h-4"></i></button>`
+        : '<span class="text-xs text-gray-300">ยังไม่มีผล</span>'}</td>
     </tr>`;
   }).join('');
 
@@ -3494,7 +3551,7 @@ function gpaxByStudentCardHTML(sc, scopeGrades, years) {
         ${statCard('alert-triangle', 'GPAx ต่ำกว่า 2.30 (เฝ้าระวัง)', atRisk, 'คน', 'bg-red-500')}
         ${statCard('award', 'GPAx 3.50 ขึ้นไป', honor, 'คน', 'bg-emerald-500')}
       </div>
-      <p class="text-xs text-gray-500 mb-2">คอลัมน์ "GPA ช่วงที่เลือก" คิดจาก ${gradeCardScopeText(years)} ส่วน "GPAx สะสม" คิดจากผลการเรียนทั้งหมดที่มีในระบบ</p>
+      <p class="text-xs text-gray-500 mb-2">GPAx คิดจากผลการเรียนทั้งหมดที่มีในระบบ — กดปุ่ม <i data-lucide="eye" class="w-3.5 h-3.5 inline"></i> เพื่อดูเกรดรายวิชาและเลือกดูเฉพาะปี/ภาคที่ต้องการ</p>
       <div class="border border-gray-100 rounded-xl overflow-hidden">
         <div class="overflow-auto" style="max-height:420px"><table class="w-full text-sm">
           <thead class="sticky top-0 z-10"><tr class="bg-surface text-left">
@@ -3502,9 +3559,9 @@ function gpaxByStudentCardHTML(sc, scopeGrades, years) {
             <th class="px-3 py-2 font-semibold">รหัสนักศึกษา</th>
             <th class="px-3 py-2 font-semibold">ชื่อ-สกุล</th>
             <th class="px-3 py-2 font-semibold text-center">ชั้นปี</th>
-            <th class="px-3 py-2 font-semibold text-center">หน่วยกิต<div class="text-[10px] font-normal text-gray-400">ช่วงที่เลือก</div></th>
-            <th class="px-3 py-2 font-semibold text-center">GPA<div class="text-[10px] font-normal text-gray-400">ช่วงที่เลือก</div></th>
+            <th class="px-3 py-2 font-semibold text-center">หน่วยกิต<div class="text-[10px] font-normal text-gray-400">สะสม</div></th>
             <th class="px-3 py-2 font-semibold text-center">GPAx<div class="text-[10px] font-normal text-gray-400">สะสม</div></th>
+            <th class="px-3 py-2 font-semibold text-center">ผลการเรียน</th>
           </tr></thead>
           <tbody>${body || '<tr><td colspan="7" class="px-3 py-6 text-center text-gray-400">ไม่มีนักศึกษาในขอบเขตนี้</td></tr>'}</tbody>
         </table></div>
@@ -3519,10 +3576,8 @@ function gradeOverviewCardsHTML() {
   if (!sc.students.length) return '';
   const ids = new Set(sc.students.map(s => norm(s.student_id)));
   const scopeGrades = getDataByType('grade').filter(g => ids.has(norm(g.student_id)));
-  const years = gradeCardYears(scopeGrades);
-  return gradeCardFilterBar(years)
-    + subjectGradeCardHTML(sc, scopeGrades, years)
-    + gpaxByStudentCardHTML(sc, scopeGrades, years);
+  return subjectGradeCardHTML(sc, scopeGrades)
+    + gpaxByStudentCardHTML(sc, scopeGrades);
 }
 
 function gradesPage() {
