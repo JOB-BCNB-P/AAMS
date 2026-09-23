@@ -518,15 +518,15 @@
       var nav = el('sidebarNav');
       if (!nav || nav.querySelector('[data-page="leave"]')) return;
 
-      // ผู้ที่เพิ่มข้อมูลการลาเองได้ : นักศึกษา (ยื่นใบลา) และผู้ดูแล/งานวิชาการ/งานทะเบียน
+      // ผู้ที่บันทึกข้อมูลการลาเองได้ : นักศึกษา (ยื่นใบลา) และผู้ดูแล/งานวิชาการ/งานทะเบียน
       var role = APP.currentRole;
       var canAdd = role === 'student' || role === 'admin' || role === 'academic' || role === 'registrar';
       var here = APP.currentPage;
       var node;
 
       if (canAdd) {
-        // มีเมนูย่อย : ภาพรวมการลา / เพิ่มข้อมูลการลา
-        var subs = [['leave', 'ภาพรวมการลา'], ['leaveAdd', 'เพิ่มข้อมูลการลา']];
+        // มีเมนูย่อย : ภาพรวมการลา / บันทึกข้อมูลการลา
+        var subs = [['leave', 'ภาพรวมการลา'], ['leaveAdd', 'บันทึกข้อมูลการลา']];
         var open = subs.some(function (s) { return s[0] === here; });
         node = document.createElement('div');
         node.className = 'dropdown-item' + (open ? ' dropdown-open' : '');
