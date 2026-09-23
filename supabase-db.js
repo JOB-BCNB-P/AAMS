@@ -42,7 +42,7 @@ const EMSDB = (() => {
     'app_setting',      // ค่าตั้งที่ผู้ดูแลแก้ได้เอง เช่น จำนวนสัปดาห์ต่อภาคการศึกษา
     // ระบบประเมินผลรายวิชา — เฉพาะโครงของแบบประเมิน
     // คำตอบรายคน (eval_response / eval_answer) อ่านเมื่อเปิดหน้ารายงานเท่านั้น
-    'eval_itemset', 'eval_item', 'eval_form', 'eval_target',
+    'eval_itemset', 'eval_item', 'eval_form', 'eval_target', 'eval_heading',
     'homeroom'          // ห้องเรียนประจำรายชั้นปี (เดิมเก็บในเครื่อง จึงไม่ข้ามอุปกรณ์)
   ];
 

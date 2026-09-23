@@ -712,6 +712,10 @@
         sd_mode: s(f.sd_mode) || 'sample',
         mean_mode: s(f.mean_mode) || 'item',
         show_comment_teacher: s(f.show_comment_teacher),
+        header_title: s(f.header_title), header_note: s(f.header_note),
+        headings: headingsOf(f.form_code).map(function (h) {
+          return { id: h.__rowIndex, position: s(h.position) || 'top', title: s(h.title), note: s(h.note) };
+        }),
         teachers: targetsOf(f.form_code, 'teacher').map(function (t) { return { name: s(t.target_name), ref: s(t.target_ref) }; }),
         sites: targetsOf(f.form_code, 'site').map(function (t) { return { name: s(t.target_name), ref: '' }; })
       };
@@ -779,37 +783,381 @@
       + '</div></div>';
   }
 
+  /* ================================================================
+     การ์ด "ด้านที่ประเมินและชุดข้อคำถาม"
+     กางดูข้อคำถามของแต่ละด้านได้ในหน้าเดียว
+     แก้ / ลบ / เลื่อนลำดับ / เพิ่มเอง / หยิบจากคลังข้อคำถาม
+     ================================================================ */
+
+  // แบบประเมินอื่นที่ใช้ชุดนี้อยู่ — แก้ข้อคำถามแล้วกระทบวิชาเหล่านั้นด้วย
+  function setUsedByOthers(code, exceptForm) {
+    var c = s(code);
+    if (!c) return [];
+    return forms().filter(function (x) {
+      return s(x.form_code) !== s(exceptForm)
+        && DIMS.some(function (dd) { return s(x[SET_FIELD[dd[0]]]) === c; });
+    });
+  }
+
+  // เรียกฟังก์ชันของคลังข้อคำถามโดยชี้ชุดให้ถูกก่อน จะได้ไม่ต้องเขียนตรรกะซ้ำ
+  window.evalDimItem = function (dim, fn) {
+    var st = state(), d = st.draft;
+    if (!d) return;
+    var code = s(d[SET_FIELD[dim]]);
+    if (!code) { showToast('ยังไม่ได้เลือกชุดข้อคำถามของด้านนี้', 'error'); return; }
+    st.set = code;
+    // ส่งต่อทุกตัวแปรที่เหลือ บางฟังก์ชันรับสองตัว เช่น เลื่อนลำดับ (รหัสแถว, ทิศทาง)
+    return window[fn].apply(window, Array.prototype.slice.call(arguments, 2));
+  };
+
+  function itemRowHTML(dim, it, i, n, scaleMax) {
+    var isText = s(it.input_type) === 'text';
+    function b(fn, icon, title, cls, off) {
+      if (off) return '<span class="inline-block w-7"></span>';
+      return '<button onclick="' + fn + '" title="' + title + '" '
+        + 'class="p-1 rounded ' + (cls || 'text-gray-300 hover:text-primary') + '">'
+        + '<i data-lucide="' + icon + '" class="w-4 h-4"></i></button>';
+    }
+    return '<div class="flex flex-wrap items-start gap-2 px-4 py-2 border-t border-gray-50 hover:bg-gray-50">'
+      + '<span class="w-6 text-xs text-gray-400 text-center pt-1">' + (isText ? '—' : (i + 1)) + '</span>'
+      + '<span class="w-16 font-mono text-xs text-primary pt-1">' + esc(s(it.item_code)) + '</span>'
+      + '<span class="flex-1 min-w-[14rem] text-sm text-gray-700">' + esc(s(it.statement_th))
+      + (s(it.section) ? '<span class="block text-xs text-gray-400">' + esc(s(it.section)) + '</span>' : '')
+      + '</span>'
+      + '<span class="pt-0.5">' + (isText
+        ? badge('ข้อความ', 'bg-sky-100 text-sky-700')
+        : badge('1–' + scaleMax, 'bg-gray-100 text-gray-600')) + '</span>'
+      + '<span class="flex items-center whitespace-nowrap">'
+      + b("evalDimItem('" + dim + "','evalMoveItem'," + it.__rowIndex + ",-1)", 'chevron-up', 'เลื่อนขึ้น', '', isText || i === 0)
+      + b("evalDimItem('" + dim + "','evalMoveItem'," + it.__rowIndex + ",1)", 'chevron-down', 'เลื่อนลง', '', isText || i >= n - 1)
+      + b("evalDimItem('" + dim + "','evalEditItem'," + it.__rowIndex + ")", 'pencil', 'แก้ไขข้อคำถาม')
+      + b("evalDimItem('" + dim + "','evalDeleteItem'," + it.__rowIndex + ")", 'trash-2', 'ลบข้อคำถาม', 'text-gray-300 hover:text-red-600')
+      + '</span></div>';
+  }
+
+  function dimensionBlock(d, dim, formCode) {
+    var key = SET_FIELD[dim[0]];
+    var cur = s(d[key]);
+    var list = setsOf(dim[0]).filter(function (x) {
+      return s(x.status) !== 'เลิกใช้' || s(x.set_code) === cur;
+    });
+    var opts = [['', '— ไม่ใช้ด้านนี้ —']].concat(list.map(function (x) {
+      return [s(x.set_code), setLabel(x)];
+    }));
+    var set = setByCode(cur);
+    var items = cur ? itemsOf(cur) : [];
+    var rated = items.filter(function (x) { return s(x.input_type) !== 'text'; });
+    var scaleMax = parseInt(s(set && set.scale_max), 10) || 5;
+    var shared = setUsedByOthers(cur, formCode);
+    // จำสถานะกาง/พับของการ์ดไว้ ถ้าหน้าหลักมีตัวช่วยนี้
+    var open = !!cur && typeof detailsOpen === 'function' && detailsOpen('evDim_' + dim[0]) !== '';
+
+    function tool(fn, icon, title, cls) {
+      return '<button onclick="' + fn + '" title="' + title + '" '
+        + 'class="p-1.5 rounded-lg ' + (cls || 'text-gray-400 hover:text-primary hover:bg-surface') + '">'
+        + '<i data-lucide="' + icon + '" class="w-4 h-4"></i></button>';
+    }
+
+    var head = '<div class="flex flex-wrap items-end gap-3 px-4 py-3">'
+      + '<div class="flex-1 min-w-[14rem]">'
+      + '<p class="text-sm font-medium text-gray-800 flex items-center gap-2">'
+      + '<i data-lucide="' + dim[2] + '" class="w-4 h-4 text-primary"></i>' + esc(dim[1]) + '</p>'
+      + '<p class="text-xs text-gray-500 mt-0.5">' + esc(dim[3]) + '</p></div>'
+      + selectHTML({ value: cur, on: "evalDraftR('" + key + "',this.value)", options: opts, width: 'min-w-[18rem]' })
+      + '<div class="flex items-center gap-0.5">'
+      + tool("evalDimNewSet('" + dim[0] + "')", 'plus', 'สร้างชุดข้อคำถามใหม่สำหรับด้านนี้')
+      + (cur ? tool("evalDimEditSet('" + dim[0] + "')", 'settings', 'แก้ชื่อและค่าของชุดนี้') : '')
+      + (cur ? tool("evalDimDeleteSet('" + dim[0] + "')", 'trash-2', 'ลบชุดนี้ทั้งชุด', 'text-gray-400 hover:text-red-600 hover:bg-red-50') : '')
+      + '</div>'
+      + '<div class="w-20 text-right text-sm ' + (cur ? 'text-emerald-600' : 'text-gray-300') + '">'
+      + (cur ? rated.length + ' ข้อ' : 'ไม่ใช้') + '</div></div>';
+
+    if (!cur) return '<div class="border-t border-gray-50">' + head + '</div>';
+
+    var body = '<div class="pb-3">'
+      + (shared.length
+        ? '<div class="mx-4 mb-2 bg-amber-50 border border-amber-200 rounded-xl p-3">'
+        + '<p class="text-xs text-amber-800"><i data-lucide="alert-triangle" class="w-3.5 h-3.5 inline"></i> '
+        + 'ชุดนี้ใช้ร่วมกับอีก ' + shared.length + ' รายวิชา — แก้ข้อคำถามที่นี่จะมีผลกับวิชาเหล่านั้นด้วย</p>'
+        + '<p class="text-xs text-amber-700 mt-0.5">' + esc(shared.slice(0, 4).map(function (x) { return s(x.subject_name); }).join(' · '))
+        + (shared.length > 4 ? ' และอีก ' + (shared.length - 4) + ' วิชา' : '') + '</p>'
+        + '<button onclick="evalDimForkSet(\'' + dim[0] + '\')" class="mt-2 px-3 py-1.5 rounded-lg bg-white border border-amber-300 text-amber-800 text-xs hover:bg-amber-100">'
+        + 'ทำสำเนาชุดนี้ให้วิชานี้ใช้เอง แล้วค่อยแก้</button></div>'
+        : '')
+      + (items.length
+        ? '<div class="border-t border-gray-100">'
+        + items.map(function (it, i) {
+          var idx = s(it.input_type) === 'text' ? -1 : rated.indexOf(it);
+          return itemRowHTML(dim[0], it, idx, rated.length, scaleMax);
+        }).join('') + '</div>'
+        : '<p class="px-4 py-6 text-center text-sm text-gray-400 border-t border-gray-100">ชุดนี้ยังไม่มีข้อคำถาม</p>')
+      + '<div class="px-4 pt-3 flex flex-wrap gap-2">'
+      + btn("evalDimItem('" + dim[0] + "','evalAddItem')", 'plus', 'เพิ่มข้อคำถาม',
+        'border border-primary text-primary bg-white hover:bg-primaryLight')
+      + btn("evalDimPickFromBank('" + dim[0] + "')", 'library', 'เพิ่มจากคลังข้อคำถาม',
+        'border border-gray-200 text-gray-700 hover:bg-gray-50')
+      + '</div></div>';
+
+    return '<details id="evDim_' + dim[0] + '"' + (open ? ' open' : '')
+      + ' ontoggle="rememberDetails(this)" class="border-t border-gray-50">'
+      + '<summary class="cursor-pointer select-none list-none">' + head
+      + '<p class="px-4 pb-2 -mt-1 text-xs text-primary">'
+      + '<i data-lucide="chevron-down" class="w-3.5 h-3.5 inline"></i> ดู/แก้ข้อคำถามทั้ง ' + items.length + ' ข้อ</p>'
+      + '</summary>' + body + '</details>';
+  }
+
+  /* ทำสำเนาชุดให้วิชานี้ใช้เอง — ไม่ไปแตะวิชาอื่นที่ใช้ชุดเดิมอยู่ */
+  window.evalDimForkSet = async function (dim) {
+    var st = state(), d = st.draft;
+    if (!d) return;
+    var src = setByCode(d[SET_FIELD[dim]]);
+    if (!src) return;
+    var f = formByCode(st.form);
+    var name = s(src.set_name) + ' — ' + (s(f && f.subject_code) || 'เฉพาะวิชานี้');
+    if (!confirm('ทำสำเนาชุด "' + s(src.set_name) + '" ให้วิชานี้ใช้เองใช่หรือไม่\n\n'
+      + 'ชุดใหม่ชื่อ "' + name + '" คัดลอกข้อคำถามมาให้ครบ แล้วแก้ได้โดยไม่กระทบวิชาอื่น')) return;
+
+    var code = newSetCode(dim);
+    var r = await GSheetDB.create({
+      type: 'eval_itemset', set_code: code, set_name: name, dimension: dim,
+      course_type: s(src.course_type), scale_max: s(src.scale_max) || '5',
+      is_default: '', status: 'ใช้งาน', sort_order: itemsets().length + 1,
+      note: 'สำเนาจาก ' + s(src.set_code), updated_by: who()
+    }, { noRefresh: true });
+    if (!r || !r.isOk) { showToast('ทำสำเนาไม่สำเร็จ · ' + ((r && r.error) || ''), 'error'); return; }
+
+    var items = itemsOf(src.set_code);
+    for (var i = 0; i < items.length; i++) {
+      await GSheetDB.create({
+        type: 'eval_item', set_code: code, item_code: s(items[i].item_code),
+        section: s(items[i].section), statement_th: s(items[i].statement_th),
+        input_type: s(items[i].input_type) || 'rating', sort_order: num(items[i].sort_order) || (i + 1),
+        status: 'ใช้งาน', updated_by: who()
+      }, { noRefresh: i < items.length - 1 });
+    }
+    d[SET_FIELD[dim]] = code;
+    showToast('ทำสำเนาแล้ว ' + items.length + ' ข้อ — แก้ได้เลย ไม่กระทบวิชาอื่น');
+    renderCurrentPage();
+  };
+
+  /* หยิบข้อคำถามจากชุดอื่นในคลังมาต่อท้ายชุดนี้ */
+  window.evalDimPickFromBank = function (dim) {
+    var st = state(), d = st.draft;
+    if (!d) return;
+    var cur = s(d[SET_FIELD[dim]]);
+    if (!cur) { showToast('ยังไม่ได้เลือกชุดข้อคำถามของด้านนี้', 'error'); return; }
+
+    var have = {};
+    itemsOf(cur).forEach(function (x) { have[normStatement(x.statement_th)] = 1; });
+
+    var pool = [];
+    setsOf(dim).forEach(function (x) {
+      if (s(x.set_code) === cur) return;
+      itemsOf(x.set_code).forEach(function (it) {
+        pool.push({ set: x, item: it, dup: !!have[normStatement(it.statement_th)] });
+      });
+    });
+    APP._evalPick = pool;
+
+    if (!pool.length) {
+      showModal('เพิ่มจากคลังข้อคำถาม',
+        '<p class="text-sm text-gray-600">ยังไม่มีชุดข้อคำถามอื่นในด้าน "'
+        + esc(DIM_NAME[dim] || dim) + '" ให้หยิบมาใช้</p>'
+        + '<p class="text-xs text-gray-500 mt-2">สร้างชุดใหม่หรือทำสำเนาชุดเดิมไว้ก่อน แล้วค่อยกลับมาหยิบข้ามชุดได้</p>',
+        null, 'max-w-lg');
+      return;
+    }
+
+    var bySet = {};
+    pool.forEach(function (p, i) { (bySet[s(p.set.set_code)] = bySet[s(p.set.set_code)] || []).push(i); });
+
+    var html = '<p class="text-sm text-gray-600 mb-2">เลือกข้อคำถามจากชุดอื่นในด้าน '
+      + '<b>' + esc(DIM_NAME[dim] || dim) + '</b> มาต่อท้ายชุดที่ใช้อยู่</p>'
+      + '<p class="text-xs text-gray-500 mb-3">ข้อที่ข้อความซ้ำกับของเดิมจะทำเครื่องหมายไว้ และไม่ติ๊กให้อัตโนมัติ</p>'
+      + '<div class="flex gap-2 mb-2">'
+      + '<button type="button" onclick="document.querySelectorAll(\'.ev-pick:not([data-dup])\').forEach(function(c){c.checked=true})" class="text-xs text-primary hover:underline">เลือกที่ไม่ซ้ำทั้งหมด</button>'
+      + '<button type="button" onclick="document.querySelectorAll(\'.ev-pick\').forEach(function(c){c.checked=false})" class="text-xs text-gray-500 hover:underline">ไม่เลือกเลย</button>'
+      + '</div>'
+      + '<div class="border border-gray-100 rounded-xl overflow-auto" style="max-height:360px">'
+      + Object.keys(bySet).map(function (code) {
+        var set = setByCode(code);
+        return '<p class="px-3 py-1.5 bg-surface text-xs font-semibold text-gray-600 sticky top-0">'
+          + esc(s(set && set.set_name) || code) + '</p>'
+          + bySet[code].map(function (i) {
+            var p = pool[i];
+            return '<label class="flex items-start gap-3 px-3 py-2 border-t border-gray-50 hover:bg-gray-50 cursor-pointer">'
+              + '<input type="checkbox" class="ev-pick mt-1 rounded" value="' + i + '"' + (p.dup ? ' data-dup="1"' : '') + '>'
+              + '<span class="flex-1"><span class="block text-sm text-gray-800">' + esc(s(p.item.statement_th)) + '</span>'
+              + '<span class="block text-xs text-gray-400 font-mono">' + esc(s(p.item.item_code))
+              + (s(p.item.section) ? ' · ' + esc(s(p.item.section)) : '') + '</span></span>'
+              + (p.dup ? badge('ซ้ำกับของเดิม', 'bg-amber-100 text-amber-700') : '')
+              + '</label>';
+          }).join('');
+      }).join('')
+      + '</div>';
+
+    showModal('เพิ่มจากคลังข้อคำถาม', html, function () { return window.evalDimDoPick(dim); }, 'max-w-2xl');
+  };
+
+  // เทียบข้อความแบบตัดเลขข้อนำหน้าและช่องว่างซ้ำ จะได้รู้ว่าซ้ำของเดิมหรือไม่
+  function normStatement(v) {
+    return s(v).replace(/^\d+(\.\d+)*\.?\s*/, '').replace(/\s+/g, ' ').toLowerCase();
+  }
+
+  window.evalDimDoPick = async function (dim) {
+    var st = state(), d = st.draft;
+    var pool = APP._evalPick || [];
+    if (!d || !pool.length) return;
+    var cur = s(d[SET_FIELD[dim]]);
+    var picked = [];
+    document.querySelectorAll('.ev-pick').forEach(function (c) { if (c.checked) picked.push(pool[num(c.value)]); });
+    if (!picked.length) { showToast('ยังไม่ได้เลือกข้อคำถาม', 'error'); return; }
+
+    var exist = itemsOf(cur);
+    var codes = {};
+    exist.forEach(function (x) { codes[s(x.item_code)] = 1; });
+    var last = exist.filter(function (x) { return s(x.input_type) !== 'text'; }).length;
+
+    var ok = 0;
+    for (var i = 0; i < picked.length; i++) {
+      var it = picked[i].item;
+      var isText = s(it.input_type) === 'text';
+      // รหัสข้อซ้ำในชุดเดียวกันไม่ได้ ต่อท้ายด้วยเลขให้อัตโนมัติ
+      var code = s(it.item_code), base = code, k = 2;
+      while (codes[code]) { code = base + '-' + k; k++; }
+      codes[code] = 1;
+      if (!isText) last++;
+      var r = await GSheetDB.create({
+        type: 'eval_item', set_code: cur, item_code: code,
+        section: s(it.section), statement_th: s(it.statement_th),
+        input_type: isText ? 'text' : 'rating',
+        sort_order: isText ? 99 : last, status: 'ใช้งาน', updated_by: who()
+      }, { noRefresh: i < picked.length - 1 });
+      if (r && r.isOk) ok++;
+    }
+    APP._evalPick = null;
+    closeModal();
+    showToast('เพิ่มข้อคำถามแล้ว ' + ok + ' ข้อ');
+    renderCurrentPage();
+  };
+
+  /* ================================================================
+     ส่วนหัวของแบบประเมิน
+     ชื่อแบบ · คำชี้แจง · หัวข้อการประเมินที่เพิ่ม/แก้/ลบ/เลื่อนได้
+     ================================================================ */
+  var HEAD_POS = [['top', 'ส่วนหัวของแบบประเมิน (บนสุด)']].concat(
+    DIMS.map(function (d) { return [d[0], 'ก่อนด้าน ' + d[1]]; }));
+  function headPosLabel(p) {
+    var x = HEAD_POS.filter(function (h) { return h[0] === s(p); })[0];
+    return x ? x[1] : s(p);
+  }
+
+  function headingsOf(code) {
+    var c = s(code);
+    return get('eval_heading').filter(function (h) { return s(h.form_code) === c; })
+      .sort(function (a, b) { return num(a.sort_order) - num(b.sort_order); });
+  }
+
+  function headerCard(f, d) {
+    var rows = (d.headings || []).map(function (h, i) {
+      return '<div class="flex flex-wrap items-start gap-2 px-4 py-2 border-t border-gray-50">'
+        + '<span class="w-6 text-xs text-gray-400 text-center pt-1">' + (i + 1) + '</span>'
+        + '<span class="flex-1 min-w-[14rem]"><span class="block text-sm font-medium text-gray-800">' + esc(h.title) + '</span>'
+        + (h.note ? '<span class="block text-xs text-gray-500">' + esc(h.note) + '</span>' : '')
+        + '<span class="block text-xs text-gray-400">' + esc(headPosLabel(h.position)) + '</span></span>'
+        + '<span class="flex items-center whitespace-nowrap">'
+        + (i > 0 ? '<button onclick="evalHeadMove(' + i + ',-1)" class="p-1 rounded text-gray-300 hover:text-primary" title="เลื่อนขึ้น"><i data-lucide="chevron-up" class="w-4 h-4"></i></button>' : '<span class="inline-block w-6"></span>')
+        + (i < d.headings.length - 1 ? '<button onclick="evalHeadMove(' + i + ',1)" class="p-1 rounded text-gray-300 hover:text-primary" title="เลื่อนลง"><i data-lucide="chevron-down" class="w-4 h-4"></i></button>' : '<span class="inline-block w-6"></span>')
+        + '<button onclick="evalHeadEdit(' + i + ')" class="p-1 rounded text-gray-300 hover:text-primary" title="แก้ไขหัวข้อ"><i data-lucide="pencil" class="w-4 h-4"></i></button>'
+        + '<button onclick="evalHeadDelete(' + i + ')" class="p-1 rounded text-gray-300 hover:text-red-600" title="ลบหัวข้อ"><i data-lucide="trash-2" class="w-4 h-4"></i></button>'
+        + '</span></div>';
+    }).join('');
+
+    return '<div class="bg-white rounded-2xl border border-blue-100 overflow-hidden mb-4">'
+      + '<div class="px-4 py-3 border-b border-gray-100">'
+      + '<p class="font-semibold text-gray-800 text-sm">ส่วนหัวของแบบประเมิน</p>'
+      + '<p class="text-xs text-gray-500 mt-0.5">ข้อความที่นักศึกษาเห็นก่อนเริ่มตอบ</p></div>'
+      + '<div class="p-4 space-y-3">'
+      + '<div><label class="block text-xs font-medium text-gray-600 mb-1">ชื่อแบบประเมิน</label>'
+      + '<input value="' + esc(d.header_title) + '" onchange="evalDraft(\'header_title\',this.value)" '
+      + 'placeholder="' + esc('แบบประเมินรายวิชา ' + s(f.subject_name)) + '" '
+      + 'class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm">'
+      + '<p class="text-xs text-gray-400 mt-1">เว้นว่างไว้ ระบบจะใช้ชื่อรายวิชาแทน</p></div>'
+      + '<div><label class="block text-xs font-medium text-gray-600 mb-1">คำชี้แจง</label>'
+      + '<textarea rows="3" onchange="evalDraft(\'header_note\',this.value)" '
+      + 'placeholder="เช่น ขอความร่วมมือนักศึกษาตอบตามความเป็นจริง คำตอบไม่ผูกกับชื่อผู้ตอบ" '
+      + 'class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm">' + esc(d.header_note) + '</textarea></div>'
+      + '</div>'
+      + '<div class="px-4 py-2 border-t border-gray-100 flex items-center justify-between">'
+      + '<p class="text-sm font-semibold text-gray-700">หัวข้อการประเมิน '
+      + '<span class="font-normal text-gray-400">(' + (d.headings || []).length + ')</span></p>'
+      + '<button onclick="evalHeadAdd()" class="px-3 py-1.5 rounded-lg bg-primary text-white text-xs hover:bg-primaryDark inline-flex items-center gap-1">'
+      + '<i data-lucide="plus" class="w-3.5 h-3.5"></i>เพิ่มหัวข้อ</button></div>'
+      + (rows || '<p class="px-4 py-4 text-center text-sm text-gray-400 border-t border-gray-50">ยังไม่มีหัวข้อเพิ่มเติม — ใส่ได้ถ้าต้องการคั่นแบบประเมินเป็นส่วน ๆ</p>')
+      + '</div>';
+  }
+
+  function headFormHTML(v) {
+    v = v || { position: 'top', title: '', note: '' };
+    return '<form id="evalHeadForm" class="space-y-3">'
+      + '<div><label class="block text-xs text-gray-600 mb-1">หัวข้อ *</label>'
+      + '<input name="title" required value="' + esc(v.title) + '" placeholder="เช่น ส่วนที่ 2 การประเมินอาจารย์ผู้สอน" '
+      + 'class="w-full border rounded-xl px-3 py-2 text-sm"></div>'
+      + '<div><label class="block text-xs text-gray-600 mb-1">คำอธิบายใต้หัวข้อ (ถ้ามี)</label>'
+      + '<textarea name="note" rows="2" class="w-full border rounded-xl px-3 py-2 text-sm">' + esc(v.note) + '</textarea></div>'
+      + '<div><label class="block text-xs text-gray-600 mb-1">แสดงตรงไหน</label>'
+      + '<select name="position" class="w-full border rounded-xl px-3 py-2 text-sm">'
+      + HEAD_POS.map(function (p) {
+        return '<option value="' + p[0] + '"' + (s(v.position) === p[0] ? ' selected' : '') + '>' + esc(p[1]) + '</option>';
+      }).join('') + '</select></div>'
+      + '</form>';
+  }
+  function readHeadForm() {
+    var f = document.getElementById('evalHeadForm');
+    if (!f) return null;
+    var title = s(f.title.value);
+    if (!title) { showToast('กรุณากรอกหัวข้อ', 'error'); return null; }
+    return { title: title, note: s(f.note.value), position: f.position.value };
+  }
+
+  window.evalHeadAdd = function () {
+    showModal('เพิ่มหัวข้อการประเมิน', headFormHTML(null),
+      function () { return window.evalHeadSave(-1); }, 'max-w-xl');
+  };
+  window.evalHeadEdit = function (i) {
+    var d = state().draft; if (!d) return;
+    var h = (d.headings || [])[i]; if (!h) return;
+    showModal('แก้ไขหัวข้อการประเมิน', headFormHTML(h),
+      function () { return window.evalHeadSave(i); }, 'max-w-xl');
+  };
+  window.evalHeadSave = function (i) {
+    var d = state().draft; if (!d) return;
+    var v = readHeadForm(); if (!v) return;
+    if (!d.headings) d.headings = [];
+    if (i < 0) d.headings.push(v); else d.headings[i] = Object.assign({}, d.headings[i], v);
+    closeModal();
+    renderCurrentPage();
+  };
+  window.evalHeadDelete = function (i) {
+    var d = state().draft; if (!d) return;
+    var h = (d.headings || [])[i]; if (!h) return;
+    if (!confirm('ลบหัวข้อ "' + h.title + '" ใช่หรือไม่')) return;
+    d.headings.splice(i, 1);
+    renderCurrentPage();
+  };
+  window.evalHeadMove = function (i, dir) {
+    var d = state().draft; if (!d || !d.headings) return;
+    var j = i + dir;
+    if (j < 0 || j >= d.headings.length) return;
+    var tmp = d.headings[i]; d.headings[i] = d.headings[j]; d.headings[j] = tmp;
+    renderCurrentPage();
+  };
+
   function formEditor(f) {
     var d = draftOf(f);
 
     var dimRows = DIMS.map(function (dim) {
-      var key = SET_FIELD[dim[0]];
-      var list = setsOf(dim[0]).filter(function (x) {
-        return s(x.status) !== 'เลิกใช้' || s(x[key]) === s(d[key]);
-      });
-      var opts = [['', '— ไม่ใช้ด้านนี้ —']].concat(list.map(function (x) {
-        return [s(x.set_code), setLabel(x)];
-      }));
-      var cur = s(d[key]);
-      function tool(fn, icon, title, cls) {
-        return '<button onclick="' + fn + '" title="' + title + '" '
-          + 'class="p-1.5 rounded-lg ' + (cls || 'text-gray-400 hover:text-primary hover:bg-surface') + '">'
-          + '<i data-lucide="' + icon + '" class="w-4 h-4"></i></button>';
-      }
-      return '<div class="flex flex-wrap items-end gap-3 px-4 py-3 border-t border-gray-50">'
-        + '<div class="flex-1 min-w-[14rem]">'
-        + '<p class="text-sm font-medium text-gray-800 flex items-center gap-2">'
-        + '<i data-lucide="' + dim[2] + '" class="w-4 h-4 text-primary"></i>' + esc(dim[1]) + '</p>'
-        + '<p class="text-xs text-gray-500 mt-0.5">' + esc(dim[3]) + '</p></div>'
-        + selectHTML({ value: cur, on: "evalDraftR('" + key + "',this.value)", options: opts, width: 'min-w-[18rem]' })
-        + '<div class="flex items-center gap-0.5">'
-        + tool("evalDimNewSet('" + dim[0] + "')", 'plus', 'สร้างชุดข้อคำถามใหม่สำหรับด้านนี้')
-        + (cur ? tool("evalDimManageItems('" + dim[0] + "')", 'list-checks', 'เพิ่ม/แก้/ลบข้อคำถามในชุดนี้') : '')
-        + (cur ? tool("evalDimEditSet('" + dim[0] + "')", 'settings', 'แก้ชื่อและค่าของชุดนี้') : '')
-        + (cur ? tool("evalDimDeleteSet('" + dim[0] + "')", 'trash-2', 'ลบชุดนี้', 'text-gray-400 hover:text-red-600 hover:bg-red-50') : '')
-        + '</div>'
-        + '<div class="w-20 text-right text-sm ' + (cur ? 'text-emerald-600' : 'text-gray-300') + '">'
-        + (cur ? countRating(cur) + ' ข้อ' : 'ไม่ใช้') + '</div></div>';
+      return dimensionBlock(d, dim, s(f.form_code));
     }).join('');
 
     var teacherBox = s(d.set_teacher)
@@ -842,7 +1190,10 @@
       + btn('evalSaveForm()', 'save', 'บันทึกการตั้งค่า', 'bg-primary text-white hover:bg-primaryDark')
       + '</div></div>'
 
-      // ก. ด้านที่ประเมิน
+      // ก. ส่วนหัวของแบบประเมิน
+      + headerCard(f, d)
+
+      // ข. ด้านที่ประเมินและชุดข้อคำถาม
       + '<div class="bg-white rounded-2xl border border-blue-100 overflow-hidden mb-4">'
       + '<div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">'
       + '<p class="font-semibold text-gray-800 text-sm">ด้านที่ประเมินและชุดข้อคำถาม</p>'
@@ -921,7 +1272,8 @@
       set_course: d.set_course, set_teacher: d.set_teacher,
       set_site: d.set_site, set_engage: d.set_engage,
       min_respondents: d.min_respondents, sd_mode: d.sd_mode, mean_mode: d.mean_mode,
-      show_comment_teacher: d.show_comment_teacher, updated_by: who()
+      show_comment_teacher: d.show_comment_teacher,
+      header_title: d.header_title, header_note: d.header_note, updated_by: who()
     }), { noRefresh: true });
     if (!r || !r.isOk) { showToast('บันทึกไม่สำเร็จ · ' + ((r && r.error) || ''), 'error'); return; }
 
@@ -952,8 +1304,30 @@
       if (!keep[have[j].__rowIndex]) await GSheetDB.delete(have[j], { noRefresh: true });
     }
 
+    /* หัวข้อการประเมิน — เทียบของเดิมกับของใหม่แล้วแก้เฉพาะที่ต่าง
+       แถวที่หายไปจากรายการถือว่าถูกลบ */
+    var haveH = headingsOf(st.form), keepH = {};
+    for (var hi = 0; hi < (d.headings || []).length; hi++) {
+      var h = d.headings[hi];
+      var row = h.id ? haveH.filter(function (x) { return String(x.__rowIndex) === String(h.id); })[0] : null;
+      var payload = {
+        type: 'eval_heading', form_code: st.form, position: h.position || 'top',
+        title: h.title, note: h.note || '', sort_order: hi + 1, updated_by: who()
+      };
+      if (row) {
+        keepH[row.__rowIndex] = 1;
+        await GSheetDB.update(Object.assign({}, row, payload), { noRefresh: true });
+      } else {
+        await GSheetDB.create(payload, { noRefresh: true });
+      }
+    }
+    for (var hj = 0; hj < haveH.length; hj++) {
+      if (!keepH[haveH[hj].__rowIndex]) await GSheetDB.delete(haveH[hj], { noRefresh: true });
+    }
+
     await GSheetDB.refreshTab('eval_form');
     await GSheetDB.refreshTab('eval_target');
+    await GSheetDB.refreshTab('eval_heading');
     st.draft = null;
     if (!quiet) { showToast('บันทึกการตั้งค่าแล้ว'); renderCurrentPage(); }
   };
@@ -1157,7 +1531,10 @@
           }).join('') + '</div></div>';
       }).join('');
 
-      return '<details id="evAns' + bi + '"' + (bi === 0 || !submitted ? ' open' : '') + ' class="bg-white rounded-2xl border border-blue-100 mb-4">'
+      // หัวข้อที่ตั้งให้ขึ้นก่อนด้านนี้ — ใส่เฉพาะกล่องแรกของด้านนั้น
+      var lead = (bi === 0 || blocks[bi - 1].dim !== b.dim) ? headingHTML(f, b.dim) : '';
+      return lead
+        + '<details id="evAns' + bi + '"' + (bi === 0 || !submitted ? ' open' : '') + ' class="bg-white rounded-2xl border border-blue-100 mb-4">'
         + '<summary class="cursor-pointer select-none px-4 py-3 flex items-center justify-between gap-3">'
         + '<span class="font-semibold text-gray-800 text-sm flex items-center gap-2">'
         + '<i data-lucide="' + DIM_ICON[b.dim] + '" class="w-4 h-4 text-primary"></i>' + esc(b.title) + '</span>'
@@ -1168,9 +1545,12 @@
     return '<div class="mb-4">'
       + '<button onclick="evalBackToForms()" class="text-sm text-gray-500 hover:text-primary inline-flex items-center gap-1 mb-1">'
       + '<i data-lucide="arrow-left" class="w-4 h-4"></i>กลับไปรายการแบบประเมิน</button>'
-      + '<h2 class="text-xl font-bold text-gray-800">' + esc(s(f.subject_name)) + '</h2>'
+      + '<h2 class="text-xl font-bold text-gray-800">' + esc(s(f.header_title) || s(f.subject_name)) + '</h2>'
       + '<p class="text-sm text-gray-500">' + esc(s(f.subject_code)) + ' · ภาค ' + esc(s(f.semester))
       + '/' + esc(s(f.academic_year)) + '</p></div>'
+      + (s(f.header_note)
+        ? '<div class="bg-white border border-blue-100 rounded-2xl p-4 mb-4 text-sm text-gray-700 whitespace-pre-line">'
+        + esc(s(f.header_note)) + '</div>' : '')
       + (submitted
         ? '<div class="bg-gray-50 border border-gray-200 rounded-2xl p-4 mb-4 text-sm text-gray-600">'
         + '<i data-lucide="check-circle" class="w-4 h-4 inline text-emerald-600"></i> '
@@ -1180,12 +1560,28 @@
         + 'ตอบแล้ว <b id="evalProgress" class="text-primary">' + answered + '</b> จาก ' + total + ' ข้อ</p>'
         + '<p class="text-xs text-gray-500 mt-1">ระบบเก็บเพียงว่าคุณประเมินแล้ว ไม่เก็บว่าคุณให้คะแนนข้อไหนเท่าไร '
         + 'และจะไม่แสดงผลจนกว่าจะมีผู้ตอบครบตามเกณฑ์</p></div>')
+      + headingHTML(f, 'top')
       + body
       + (submitted ? '' :
         '<div class="flex flex-wrap justify-end gap-2 mb-6">'
         + btn('evalSubmit(false)', 'save', 'บันทึกร่างไว้ก่อน', 'border border-gray-200 text-gray-700 hover:bg-gray-50')
         + btn('evalSubmit(true)', 'send', 'ส่งแบบประเมิน', 'bg-primary text-white hover:bg-primaryDark')
         + '</div>');
+  }
+
+  /* หัวข้อการประเมินที่ตั้งไว้ตรงตำแหน่งหนึ่ง
+     ใช้ทั้งหน้าที่นักศึกษาตอบและหน้าตัวอย่าง */
+  function headingHTML(f, position) {
+    var list = headingsOf(f && f.form_code).filter(function (h) {
+      return (s(h.position) || 'top') === position;
+    });
+    if (!list.length) return '';
+    return list.map(function (h) {
+      return '<div class="bg-primaryLight border border-blue-100 rounded-2xl px-4 py-3 mb-3">'
+        + '<p class="font-semibold text-primary text-sm">' + esc(s(h.title)) + '</p>'
+        + (s(h.note) ? '<p class="text-xs text-gray-600 mt-0.5 whitespace-pre-line">' + esc(s(h.note)) + '</p>' : '')
+        + '</div>';
+    }).join('');
   }
 
   async function loadMyAnswers(key) {
@@ -2060,6 +2456,22 @@
     var blocks = d ? previewBlocks(view, d.teachers, d.sites) : answerBlocks(view);
     var total = blocks.reduce(function (t, b) { return t + countRating(b.set); }, 0);
 
+    blocks.forEach(function (b, i) { b.__i = i; });
+
+    var hTitle = d ? s(d.header_title) : s(f.header_title);
+    var hNote = d ? s(d.header_note) : s(f.header_note);
+    var heads = d ? (d.headings || []) : headingsOf(f.form_code).map(function (h) {
+      return { position: s(h.position) || 'top', title: s(h.title), note: s(h.note) };
+    });
+    function headAt(pos) {
+      return heads.filter(function (h) { return (h.position || 'top') === pos; }).map(function (h) {
+        return '<div class="bg-primaryLight border border-blue-100 rounded-xl px-3 py-2 mb-2">'
+          + '<p class="font-semibold text-primary text-sm">' + esc(h.title) + '</p>'
+          + (h.note ? '<p class="text-xs text-gray-600 mt-0.5 whitespace-pre-line">' + esc(h.note) + '</p>' : '')
+          + '</div>';
+      }).join('');
+    }
+
     var body = blocks.map(function (b) {
       var items = itemsOf(b.set);
       var max = parseInt(s(setByCode(b.set) && setByCode(b.set).scale_max), 10) || 5;
@@ -2080,7 +2492,8 @@
             return '<span class="inline-flex items-center justify-center w-8 h-8 rounded-xl border border-gray-200 text-sm text-gray-400">' + v + '</span>';
           }).join('') + '</div></div>';
       }).join('');
-      return '<div class="border border-gray-100 rounded-xl mb-3 overflow-hidden">'
+      var lead2 = (b.__i === 0 || blocks[b.__i - 1].dim !== b.dim) ? headAt(b.dim) : '';
+      return lead2 + '<div class="border border-gray-100 rounded-xl mb-3 overflow-hidden">'
         + '<div class="px-4 py-2 bg-surface flex items-center justify-between">'
         + '<span class="text-sm font-semibold text-gray-800 flex items-center gap-2">'
         + '<i data-lucide="' + DIM_ICON[b.dim] + '" class="w-4 h-4 text-primary"></i>' + esc(b.title) + '</span>'
@@ -2093,6 +2506,9 @@
       + '<p class="text-sm text-gray-700">นี่คือหน้าตาที่นักศึกษาจะเห็น — ตอบทั้งหมด <b class="text-primary">' + total + '</b> ข้อ</p>'
       + '<p class="text-xs text-gray-500 mt-1">ในตัวอย่างนี้กดให้คะแนนไม่ได้ '
       + (d ? 'และแสดงตามค่าที่กำลังแก้อยู่บนหน้าจอ (ยังไม่ได้บันทึก)' : '') + '</p></div>'
+      + '<p class="text-lg font-bold text-gray-800 mb-1">' + esc(hTitle || s(f.subject_name)) + '</p>'
+      + (hNote ? '<p class="text-sm text-gray-600 mb-3 whitespace-pre-line">' + esc(hNote) + '</p>' : '')
+      + headAt('top')
       + (blocks.length ? body : warnBox('ยังไม่ได้เลือกชุดข้อคำถามของด้านใดเลย')),
       null, 'max-w-3xl');
     if (window.lucide) lucide.createIcons();
