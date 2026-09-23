@@ -9198,22 +9198,27 @@ function leavePage() {
           </div>
           <button type="button" onclick="addLeaveDateRow()" class="mt-2 text-xs text-blue-600 hover:underline flex items-center gap-1"><i data-lucide="plus" class="w-3 h-3"></i> เพิ่มวันที่ลา</button>
           <input type="hidden" name="leave_date" id="leaveDateHidden">
-          <p class="text-xs text-gray-400 mt-1">วันที่จะแสดงในรูปแบบ พ.ศ. (เช่น 07/05/2569)</p>
+          <p class="text-xs text-gray-400 mt-1">วันที่จะแสดงในรูปแบบ พ.ศ. (เช่น 07/05/2569) <span id="leaveDayCount" class="text-primary font-medium"></span></p>
         </div>
         <div>
           <label class="block text-xs text-gray-600 mb-2 font-semibold">เลือกรายวิชาที่ต้องการลา (เลือกได้หลายวิชา กรอกจำนวนชั่วโมงที่ละวิชา)</label>
           <div id="leaveSubjectList" class="space-y-1 max-h-64 overflow-y-auto border rounded-xl p-3 bg-gray-50">
-            ${subjects.map(s => `<div class="flex items-start gap-3 p-2 rounded-lg hover:bg-white transition leave-subject-row">
-              <input type="checkbox" class="leave-subject-check w-4 h-4 mt-1 rounded border-gray-300 text-primary focus:ring-primary" value="${(s.subject_name || '').replace(/"/g, '&quot;')}" data-coordinator="${(s.coordinator || '').replace(/"/g, '&quot;')}" onchange="toggleLeaveSubjectHours(this)">
+            ${subjects.map(s => {
+              const _tot = subjectTotalHours(s);
+              const _why = leaveHoursExplain(s);
+              return `<div class="flex items-start gap-3 p-2 rounded-lg hover:bg-white transition leave-subject-row">
+              <input type="checkbox" class="leave-subject-check w-4 h-4 mt-1 rounded border-gray-300 text-primary focus:ring-primary" value="${(s.subject_name || '').replace(/"/g, '&quot;')}" data-coordinator="${(s.coordinator || '').replace(/"/g, '&quot;')}" data-code="${(s.subject_code || '').replace(/"/g, '&quot;')}" data-total="${_tot}" onchange="toggleLeaveSubjectHours(this)">
               <div class="flex-1">
                 <div class="text-sm">${s.subject_code ? s.subject_code + ' ' : ''}${s.subject_name || ''}</div>
                 <div class="text-xs text-gray-500 mt-0.5"><i data-lucide="user" class="w-3 h-3 inline"></i> อ.ผู้ประสานรายวิชา: <span class="font-medium text-gray-700">${s.coordinator || '-'}</span></div>
+                ${_why ? `<div class="text-xs text-gray-400 mt-0.5">ชั่วโมงเรียนรวม ${_why}</div>` : '<div class="text-xs text-amber-600 mt-0.5">ยังไม่ได้ระบุชั่วโมงเรียนของวิชานี้ — ระบบคิดร้อยละให้ไม่ได้</div>'}
+                <div class="leave-pct text-xs mt-0.5"></div>
               </div>
               <div class="leave-subject-hours hidden flex items-center gap-1">
-                <input type="number" min="1" class="w-20 border rounded-lg px-2 py-1 text-sm text-center leave-hours-input" placeholder="ชม.">
+                <input type="number" min="1" step="0.5" class="w-20 border rounded-lg px-2 py-1 text-sm text-center leave-hours-input" placeholder="ชม." data-total="${_tot}" oninput="onLeaveHoursInput(this)">
                 <span class="text-xs text-gray-400">ชม.</span>
               </div>
-            </div>`).join('')}
+            </div>`; }).join('')}
           </div>
           <p class="text-xs text-gray-400 mt-1">เลือกรายวิชาแล้วกรอกจำนวนชั่วโมงที่ลาในแต่ละวิชา</p>
         </div>
@@ -9454,7 +9459,11 @@ function leavePage() {
         <td class="px-4 py-3">${l.name || ''}</td><td class="px-4 py-3">${l.subject_name || ''}</td>
         <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs ${l.leave_type === 'ลาป่วย' ? 'bg-red-100 text-red-700' : l.leave_type === 'ลาพบแพทย์' ? 'bg-purple-100 text-purple-700' : 'bg-orange-100 text-orange-700'}">${l.leave_type || ''}</span></td>
         <td class="px-4 py-3 max-w-[200px]">${reasonCell}</td>
-        <td class="px-4 py-3">${l.leave_hours || ''}</td><td class="px-4 py-3">${l.leave_percent || '-'}%</td>
+        <td class="px-4 py-3">${l.leave_hours || ''}${norm(l.total_hours) ? `<span class="block text-xs text-gray-400">จาก ${norm(l.total_hours)} ชม.</span>` : ''}</td>
+        <td class="px-4 py-3 whitespace-nowrap">${norm(l.leave_percent) !== '' ? norm(l.leave_percent) + '%' : '<span class="text-gray-300">ยังไม่ระบุ</span>'}
+          ${norm(l.percent_source) === 'manual' ? '<span class="block text-xs text-gray-400" title="แก้โดย ' + htmlEsc(norm(l.percent_by)) + '">แก้เอง</span>' : ''}
+          ${canEditLeavePercent() ? `<button onclick="showLeavePercentEditModal('${l.__backendId}')" class="text-gray-300 hover:text-primary ml-1 align-middle" title="แก้ % การลา"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>` : ''}
+        </td>
         <td class="px-4 py-3 text-xs">${toBuddhistDateList(l.leave_date) || '-'}</td><td class="px-4 py-3">${semLabel(l.semester)}/${l.academic_year || ''}</td>
         <td class="px-4 py-3">${getStatusBadge(l.leave_status)}</td>
         ${(canApprove || isStudent || isAdmin) ? `<td class="px-4 py-3">${approvalButtons}</td>` : ''}
@@ -9963,6 +9972,21 @@ function settingsPage() {
     ${paginationHTML(total, APP.pagination.perPage, APP.pagination.page, 'changePage')}
   </div>
   
+  <div class="bg-white rounded-2xl p-5 border border-blue-100 mb-6">
+    <h3 class="font-bold mb-1">ค่าตั้งการคิดร้อยละการลา</h3>
+    <p class="text-xs text-gray-500 mb-3">ชั่วโมงเรียนรวมของรายวิชา = (ชั่วโมงทฤษฎี + ชั่วโมงปฏิบัติ ต่อสัปดาห์) × จำนวนสัปดาห์
+      — ใช้คิดร้อยละการลาให้นักศึกษาเห็นทันทีตอนกรอกชั่วโมง
+      โดยอาจารย์ผู้ประสานงานรายวิชายังเป็นผู้ยืนยันค่าสุดท้ายเสมอ</p>
+    <div class="flex flex-wrap items-end gap-3">
+      <div class="min-w-[14rem]">
+        <label class="block text-xs text-gray-600 mb-1">จำนวนสัปดาห์ต่อภาคการศึกษา</label>
+        <input id="leaveWeeksInput" type="number" min="1" max="40" value="${leaveWeeks()}" class="w-full border rounded-xl px-3 py-2 text-sm">
+      </div>
+      <button onclick="saveLeaveWeeks()" class="px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm">บันทึก</button>
+      <p class="text-xs text-gray-400">ตัวอย่าง วิชา 3(2-1-6) → (2+1) × ${leaveWeeks()} = ${3 * leaveWeeks()} ชม.</p>
+    </div>
+  </div>
+
   <div class="bg-white rounded-2xl p-5 border border-blue-100">
     <h3 class="font-bold mb-4">สิทธิ์การเข้าถึงระบบ</h3>
     <p class="text-xs text-gray-400 mb-3">หมายเหตุ: ช่อง "แบบประเมินความพึงพอใจ" ของผู้ดูแลระบบ = สิทธิ์จัดการ/สรุปผลแบบประเมิน · บทบาทอื่น = สิทธิ์ทำแบบประเมิน</p>
@@ -9971,6 +9995,25 @@ function settingsPage() {
       <tbody>${modules.map(m => `<tr class="border-t hover:bg-gray-50"><td class="px-3 py-2 font-medium whitespace-nowrap">${moduleLabels[m]}</td>${roles.map(r => { const mk = (m === 'survey' && r === 'admin') ? 'surveyManage' : m; return `<td class="px-3 py-2 text-center"><label class="inline-flex"><input type="checkbox" ${APP.permissions[r]?.[mk] ? 'checked' : ''} onchange="togglePermission('${r}','${mk}',this.checked)" class="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"></label></td>`; }).join('')}</tr>`).join('')}</tbody>
     </table></div>
   `;
+}
+
+/* บันทึกจำนวนสัปดาห์ต่อภาคการศึกษา
+   เก็บในตาราง app_setting ไม่ใช่ในเครื่องผู้ใช้ ทุกคนจึงเห็นค่าเดียวกัน */
+async function saveLeaveWeeks() {
+  const el = document.getElementById('leaveWeeksInput');
+  const v = parseInt(el && el.value, 10);
+  if (!isFinite(v) || v < 1 || v > 40) { showToast('จำนวนสัปดาห์ต้องอยู่ระหว่าง 1 ถึง 40', 'error'); return; }
+  const rec = (getDataByType('app_setting') || []).find(x => norm(x.setting_key) === 'leave_weeks');
+  const payload = {
+    type: 'app_setting', setting_key: 'leave_weeks', setting_value: String(v),
+    label: 'จำนวนสัปดาห์ต่อภาคการศึกษา',
+    note: 'ใช้คิดชั่วโมงเรียนรวมของรายวิชา = (ชั่วโมงทฤษฎี + ชั่วโมงปฏิบัติ ต่อสัปดาห์) × จำนวนสัปดาห์',
+    updated_by: (APP.currentUser && APP.currentUser.name) || ''
+  };
+  const r = rec ? await GSheetDB.update(Object.assign({}, rec, payload)) : await GSheetDB.create(payload);
+  if (!r || !r.isOk) { showToast('บันทึกไม่สำเร็จ · ' + ((r && r.error) || ''), 'error'); return; }
+  showToast('บันทึกจำนวนสัปดาห์เป็น ' + v + ' สัปดาห์แล้ว');
+  renderCurrentPage();
 }
 
 function saveAdminGSheetConfig() {
@@ -10149,17 +10192,74 @@ function onLeaveTypeChange(type) {
   if (!extra) return;
   extra.innerHTML = '';
   if (type === 'ลาป่วย') {
-    extra.innerHTML = `<div class="bg-yellow-50 p-3 rounded-xl text-xs text-yellow-700"><i data-lucide="alert-triangle" class="w-4 h-4 inline"></i> ลาป่วย 3 วันขึ้นไป ต้องแนบใบรับรองแพทย์ (.jpg, .pdf, .png)</div>
-    <div id="sickCertUpload" class="hidden"><label class="block text-xs text-gray-600 mb-1">แนบใบรับรองแพทย์ *</label><input type="file" accept=".jpg,.pdf,.png" class="w-full text-sm" name="medical_cert"></div>`;
+    extra.innerHTML = `<div class="bg-yellow-50 p-3 rounded-xl text-xs text-yellow-700"><i data-lucide="alert-triangle" class="w-4 h-4 inline"></i> ลาป่วยเกิน 2 วัน (ตั้งแต่ 3 วันขึ้นไป) ต้องแนบใบรับรองแพทย์ (.png .jpg .jpeg .pdf)</div>
+    <div id="sickCertUpload" class="hidden"><label class="block text-xs text-gray-600 mb-1">แนบใบรับรองแพทย์ <span class="text-red-500">*</span></label><input type="file" accept=".png,.jpg,.jpeg,.pdf" class="w-full text-sm" name="medical_cert"></div>`;
   } else if (type === 'ลากิจ') {
     extra.innerHTML = `<div class="bg-blue-50 p-3 rounded-xl text-xs text-blue-700"><i data-lucide="info" class="w-4 h-4 inline"></i> ลากิจต้องส่งล่วงหน้า 1-2 วัน หากส่งช้าโปรดระบุเหตุผลในช่องเหตุผลการลาด้านบน</div>`;
   } else if (type === 'ลาพบแพทย์') {
     extra.innerHTML = `<div class="bg-purple-50 p-3 rounded-xl text-xs text-purple-700"><i data-lucide="info" class="w-4 h-4 inline"></i> ลาพบแพทย์ต้องส่งล่วงหน้า 3 วันทำการ และแนบใบนัดแพทย์</div>
-    <div><label class="block text-xs text-gray-600 mb-1">แนบใบนัดแพทย์ * (.jpg, .pdf, .png)</label><input type="file" accept=".jpg,.pdf,.png" class="w-full text-sm" name="appointment_doc"></div>`;
+    <div><label class="block text-xs text-gray-600 mb-1">แนบใบนัดแพทย์ <span class="text-red-500">*</span> (.png .jpg .jpeg .pdf)</label><input type="file" accept=".png,.jpg,.jpeg,.pdf" class="w-full text-sm" name="appointment_doc"></div>`;
   }
   lucide.createIcons();
   // Re-check dates to show/hide late reason field immediately
   if (typeof validateLeaveDate === 'function') validateLeaveDate();
+}
+
+/* ================= ร้อยละการลา =================
+   ชั่วโมงเรียนรวมของรายวิชาคิดจากรูปแบบหน่วยกิต น(ท-ป-อ)
+     (ชั่วโมงทฤษฎี + ชั่วโมงปฏิบัติ ต่อสัปดาห์) × จำนวนสัปดาห์ต่อภาคการศึกษา
+   จำนวนสัปดาห์เก็บในตาราง app_setting ผู้ดูแลระบบแก้ได้เองในหน้าตั้งค่า
+
+   วิชาที่ยังไม่ได้ระบุชั่วโมงไว้ จะคืน 0 = "คิดให้ไม่ได้"
+   ไม่ใช่ "คิดได้เท่ากับศูนย์" ระบบจะบอกตรง ๆ แทนที่จะขึ้นเลขที่ไม่มีที่มา */
+function appSetting(key, def) {
+  const r = (getDataByType('app_setting') || []).find(x => norm(x.setting_key) === key);
+  const v = r ? norm(r.setting_value) : '';
+  return v === '' ? def : v;
+}
+function leaveWeeks() {
+  const n = parseInt(appSetting('leave_weeks', '15'), 10);
+  return (isFinite(n) && n > 0) ? n : 15;
+}
+function subjectTotalHours(subj) {
+  if (!subj) return 0;
+  const th = Number(norm(subj.hours_theory)) || 0;
+  const lab = Number(norm(subj.hours_lab)) || 0;
+  const perWeek = th + lab;
+  return perWeek > 0 ? perWeek * leaveWeeks() : 0;
+}
+function leavePercentOf(hours, total) {
+  const h = Number(hours) || 0, t = Number(total) || 0;
+  if (h <= 0 || t <= 0) return null;
+  return Math.round(h / t * 10000) / 100;
+}
+// ข้อความอธิบายที่มา เช่น "3(2-1-6) × 15 สัปดาห์ = 45 ชม."
+function leaveHoursExplain(subj) {
+  const total = subjectTotalHours(subj);
+  if (!total) return '';
+  const th = Number(norm(subj.hours_theory)) || 0;
+  const lab = Number(norm(subj.hours_lab)) || 0;
+  return '(' + th + '+' + lab + ') ชม./สัปดาห์ × ' + leaveWeeks() + ' สัปดาห์ = ' + total + ' ชม.';
+}
+
+/* กรอกชั่วโมงแล้วขึ้นร้อยละให้ทันที — คิดเฉพาะบรรทัดของวิชานั้น
+   ไม่วาดหน้าใหม่ทั้งหน้า เพราะผู้ใช้กำลังพิมพ์อยู่ */
+function onLeaveHoursInput(el) {
+  const row = el.closest('.leave-subject-row'); if (!row) return;
+  const out = row.querySelector('.leave-pct'); if (!out) return;
+  const total = Number(el.dataset.total) || 0;
+  if (!total) {
+    out.innerHTML = '<span class="text-gray-400">วิชานี้ยังไม่ได้ระบุชั่วโมงเรียน จึงคิดร้อยละให้ไม่ได้</span>';
+    return;
+  }
+  const pct = leavePercentOf(el.value, total);
+  if (pct === null) { out.innerHTML = '<span class="text-gray-400">' + total + ' ชม.</span>'; return; }
+  const cls = pct >= 20 ? 'text-red-600 font-semibold'
+    : pct >= 15 ? 'text-amber-600 font-semibold' : 'text-emerald-600 font-semibold';
+  out.innerHTML = '<span class="' + cls + '">= ' + pct.toFixed(2) + '%</span>'
+    + '<span class="text-gray-400"> ของ ' + total + ' ชม.</span>'
+    + (pct >= 20 ? '<span class="block text-red-600">เกินเกณฑ์ 20% แล้ว</span>'
+      : pct >= 15 ? '<span class="block text-amber-600">ใกล้เกณฑ์ 20%</span>' : '');
 }
 
 function validateLeaveDate() {
@@ -10178,11 +10278,20 @@ function validateLeaveDate() {
       if (!earliestDate || d < earliestDate) earliestDate = d;
     }
   });
-  if (!earliestDate) return;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const diffDays = Math.ceil((earliestDate - today) / (1000 * 60 * 60 * 24));
-
-  // Note: leave_reason is now always required for all leave types — handled in submit validation
+  /* ลาป่วยเกิน 2 วัน ต้องแนบใบรับรองแพทย์
+     นับจาก "จำนวนวันที่ลา" ไม่ใช่ความล่าช้าในการยื่นใบลา
+     ของเดิมเช็คผิดตัว ทำให้คนลา 5 วันแต่ยื่นล่วงหน้าไม่ต้องแนบไฟล์ */
+  let dayCount = 0;
+  inputs.forEach(inp => { if (inp.value) dayCount++; });
+  const certBox = document.getElementById('sickCertUpload');
+  if (certBox) {
+    const need = (type === 'ลาป่วย' && dayCount > 2);
+    certBox.classList.toggle('hidden', !need);
+    const fileInput = certBox.querySelector('input[type="file"]');
+    if (fileInput) fileInput.required = need;
+  }
+  const hint = document.getElementById('leaveDayCount');
+  if (hint) hint.textContent = dayCount ? 'เลือกไว้ ' + dayCount + ' วัน' : '';
 }
 
 // ----- Multi-date leave row helpers -----
@@ -10284,10 +10393,15 @@ function initPageScripts(page) {
         const row = cb.closest('.leave-subject-row');
         const hoursInput = row ? row.querySelector('.leave-hours-input') : null;
         const hours = hoursInput ? Number(hoursInput.value) : 0;
+        const total = Number(cb.dataset.total) || 0;
         checkedSubjects.push({
           subject_name: cb.value,
+          subject_code: cb.dataset.code || '',
           coordinator: cb.dataset.coordinator || '',
-          leave_hours: hours
+          leave_hours: hours,
+          total_hours: total,
+          // ร้อยละคิดจากชั่วโมงเรียนรวมของวิชานั้น วิชาที่ไม่มีข้อมูลชั่วโมงจะเว้นว่างไว้
+          leave_percent: leavePercentOf(hours, total)
         });
       });
 
@@ -10313,10 +10427,11 @@ function initPageScripts(page) {
         if (valEl) { valEl.textContent = 'กรุณากรอกเหตุผลการลา'; valEl.classList.remove('hidden') }
         return;
       }
-      if (type === 'ลาป่วย' && diff <= -3) {
+      // ลาป่วยเกิน 2 วัน ต้องแนบใบรับรองแพทย์ — นับจากจำนวนวันที่เลือกไว้
+      if (type === 'ลาป่วย' && dateList.length > 2) {
         const cert = fd.get('medical_cert');
         if (!cert || !cert.name) {
-          if (valEl) { valEl.textContent = 'ลาป่วย 3 วันขึ้นไป ต้องแนบใบรับรองแพทย์'; valEl.classList.remove('hidden') }
+          if (valEl) { valEl.textContent = 'ลาป่วยเกิน 2 วัน (ลา ' + dateList.length + ' วัน) ต้องแนบใบรับรองแพทย์'; valEl.classList.remove('hidden') }
           return;
         }
       }
@@ -10358,6 +10473,8 @@ function initPageScripts(page) {
           fileLink = up.link; fileName = up.name;
         }
 
+        // รหัสชุด — ใบลาครั้งเดียวกันหลายรายวิชา ใช้รหัสนี้ร่วมกัน
+        const leaveGroupId = 'LG' + Date.now().toString(36).toUpperCase();
         let successCount = 0;
         let firstLeaveId = 0;
         for (const subj of checkedSubjects) {
@@ -10368,8 +10485,14 @@ function initPageScripts(page) {
             medical_cert: fileName,
             file_link: fileLink,
             subject_name: subj.subject_name,
+            subject_code: subj.subject_code || '',
             coordinator: subj.coordinator,
             leave_hours: subj.leave_hours,
+            total_hours: subj.total_hours || '',
+            leave_percent: subj.leave_percent == null ? '' : subj.leave_percent,
+            percent_source: subj.leave_percent == null ? '' : 'auto',
+            leave_days: String(dateList.length),
+            leave_group: leaveGroupId,
             semester: fd.get('semester'),
             academic_year: fd.get('academic_year'),
             leave_date: leaveDate,
@@ -10627,6 +10750,91 @@ async function rejectLeave(id, approvalField) {
   } else showToast('เกิดข้อผิดพลาด: ' + (r.error || ''), 'error');
 }
 
+/* ================= แก้ร้อยละการลา =================
+   ตามที่ตกลงไว้ ผู้ที่แก้ได้คือ
+     อาจารย์ผู้ประสานงานรายวิชา · อาจารย์ประจำชั้น · รองผู้อำนวยการด้านวิชาการ
+   ระบบคิดค่าให้ตอนนักศึกษากรอกชั่วโมง แต่ถือเป็นค่าตั้งต้นเท่านั้น
+   ใครแก้ครั้งล่าสุดจะถูกบันทึกไว้ในช่อง percent_by เสมอ */
+function canEditLeavePercent() {
+  const r = APP.currentRole;
+  return r === 'teacher' || r === 'classTeacher' || r === 'executive' || r === 'admin' || r === 'academic';
+}
+
+// ช่องกรอกร้อยละที่ใช้ซ้ำได้ทุกหน้าต่าง พร้อมบอกที่มาของค่าเดิม
+function leavePercentFieldHTML(rec, byLabel) {
+  const cur = norm(rec && rec.leave_percent);
+  const total = norm(rec && rec.total_hours);
+  const src = norm(rec && rec.percent_source);
+  const hint = total
+    ? 'ระบบคิดจาก ' + norm(rec.leave_hours) + ' ชม. จากชั่วโมงเรียนรวม ' + total + ' ชม.'
+    : 'วิชานี้ยังไม่ได้ระบุชั่วโมงเรียนรวม ระบบจึงคิดให้ไม่ได้';
+  return '<div>'
+    + '<label class="block text-xs text-gray-600 mb-1">% การลาในรายวิชานี้'
+    + '<span class="text-gray-400 font-normal"> — แก้ได้ถ้าไม่ตรง</span></label>'
+    + '<div class="relative">'
+    + '<input name="leave_percent" type="number" step="0.01" min="0" max="100" value="' + htmlEsc(cur) + '" '
+    + 'class="w-full border rounded-xl px-3 py-2 pr-10 text-sm" placeholder="เช่น 5.5">'
+    + '<span class="absolute right-3 top-2.5 text-gray-400 text-sm">%</span></div>'
+    + '<p class="text-xs text-gray-500 mt-1">' + htmlEsc(hint)
+    + (src === 'manual' && norm(rec.percent_by) ? ' · แก้ล่าสุดโดย ' + htmlEsc(norm(rec.percent_by)) : '')
+    + '</p>'
+    + (byLabel ? '<p class="text-xs text-gray-400">คุณกำลังยืนยันในฐานะ ' + htmlEsc(byLabel) + '</p>' : '')
+    + '</div>';
+}
+
+// อ่านค่าร้อยละจากฟอร์ม — เปลี่ยนจากเดิมจึงบันทึกว่าแก้เอง
+function leavePercentFromForm(fd, rec) {
+  const raw = (fd.get('leave_percent') || '').toString().trim();
+  const extra = {};
+  if (raw === '') return extra;
+  const v = Number(raw);
+  if (!isFinite(v) || v < 0 || v > 100) return extra;
+  extra.leave_percent = v;
+  if (String(v) !== norm(rec && rec.leave_percent)) {
+    extra.percent_source = 'manual';
+    extra.percent_by = (APP.currentUser && APP.currentUser.name) || '';
+  }
+  return extra;
+}
+
+/* แก้ร้อยละอย่างเดียว ไม่ยุ่งกับขั้นตอนอนุมัติ
+   ใช้กับใบลาที่อนุมัติไปแล้วแต่พบภายหลังว่าเปอร์เซ็นต์ไม่ตรง */
+function showLeavePercentEditModal(id) {
+  const rec = APP.allData.find(d => d.__backendId === id); if (!rec) return;
+  if (!canEditLeavePercent()) { showToast('บทบาทของคุณไม่มีสิทธิ์แก้ % การลา', 'error'); return; }
+  showModal('แก้ % การลา', `
+    <div class="space-y-3">
+      <div class="bg-blue-50 rounded-xl p-3 text-sm space-y-1">
+        <p><span class="text-gray-500">นักศึกษา:</span> <strong>${htmlEsc(norm(rec.name)) || '-'}</strong></p>
+        <p><span class="text-gray-500">รายวิชา:</span> <strong>${htmlEsc(norm(rec.subject_name)) || '-'}</strong></p>
+        <p><span class="text-gray-500">ชั่วโมงที่ลา:</span> <strong>${htmlEsc(norm(rec.leave_hours)) || '-'}</strong> ชม.
+           ${norm(rec.leave_days) ? '<span class="text-gray-500">· ลา</span> <strong>' + htmlEsc(norm(rec.leave_days)) + '</strong> วัน' : ''}</p>
+      </div>
+      <form id="leavePercentEditForm" class="space-y-3">
+        ${leavePercentFieldHTML(rec, '')}
+        <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึก % การลา</button>
+      </form>
+    </div>
+  `);
+  const f = document.getElementById('leavePercentEditForm');
+  if (f) f.onsubmit = async (ev) => {
+    ev.preventDefault();
+    const fd = new FormData(f);
+    const raw = (fd.get('leave_percent') || '').toString().trim();
+    if (raw === '') { showToast('กรุณากรอก % การลา', 'error'); return; }
+    const v = Number(raw);
+    if (!isFinite(v) || v < 0 || v > 100) { showToast('% การลาต้องอยู่ระหว่าง 0 ถึง 100', 'error'); return; }
+    const r = await GSheetDB.update(Object.assign({}, rec, {
+      leave_percent: v, percent_source: 'manual',
+      percent_by: (APP.currentUser && APP.currentUser.name) || ''
+    }));
+    if (!r || !r.isOk) { showToast('บันทึกไม่สำเร็จ · ' + ((r && r.error) || ''), 'error'); return; }
+    closeModal();
+    showToast('แก้ % การลาเรียบร้อย');
+    renderCurrentPage();
+  };
+}
+
 // Coordinator approves leave + fills in leave_percent
 function showLeaveApprovalModal(id, currentPercent) {
   const rec = APP.allData.find(d => d.__backendId === id); if (!rec) return;
@@ -10640,14 +10848,7 @@ function showLeaveApprovalModal(id, currentPercent) {
         ${(typeof window.emsLeaveFileButtonHTML === 'function') ? window.emsLeaveFileButtonHTML(rec) : ''}
       </div>
       <form id="leaveApprovalForm" class="space-y-3">
-        <div>
-          <label class="block text-xs text-gray-600 mb-1">% การลาในรายวิชานี้ <span class="text-red-500">*</span></label>
-          <div class="relative">
-            <input name="leave_percent" id="leavePercentInput" type="number" step="0.01" min="0" max="100" required value="${currentPercent || ''}" class="w-full border rounded-xl px-3 py-2 pr-10 text-sm" placeholder="เช่น 5.5">
-            <span class="absolute right-3 top-2.5 text-gray-400 text-sm">%</span>
-          </div>
-          <p class="text-xs text-gray-500 mt-1">กรอกเปอร์เซ็นต์การลาของนักศึกษาในรายวิชาตนเอง</p>
-        </div>
+        ${leavePercentFieldHTML(rec, 'อาจารย์ผู้ประสานงานรายวิชา')}
         <div>
           <label class="block text-xs text-gray-600 mb-1">หมายเหตุ (ถ้ามี)</label>
           <textarea name="approval_note" rows="2" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="หมายเหตุจากอาจารย์ผู้ประสาน"></textarea>
@@ -10656,14 +10857,15 @@ function showLeaveApprovalModal(id, currentPercent) {
       </form>
     </div>
   `);
-  setTimeout(() => { lucide.createIcons(); const inp = document.getElementById('leavePercentInput'); if (inp) inp.focus(); }, 50);
+  setTimeout(() => { lucide.createIcons(); }, 50);
   const f = document.getElementById('leaveApprovalForm');
   if (f) f.onsubmit = async (ev) => {
     ev.preventDefault();
     const fd = new FormData(f);
-    const percent = fd.get('leave_percent');
-    if (!percent && percent !== '0') { showToast('กรุณากรอก % การลา', 'error'); return; }
-    const extra = { leave_percent: Number(percent) };
+    const percent = (fd.get('leave_percent') || '').toString().trim();
+    if (percent === '') { showToast('กรุณากรอก % การลา', 'error'); return; }
+    const extra = leavePercentFromForm(fd, rec);
+    if (extra.leave_percent == null) { showToast('% การลาต้องอยู่ระหว่าง 0 ถึง 100', 'error'); return; }
     const note = fd.get('approval_note');
     if (note) extra.coordinator_note = note;
     closeModal();
@@ -10686,6 +10888,7 @@ function showClassTeacherApprovalModal(id) {
         ${(typeof window.emsLeaveFileButtonHTML === 'function') ? window.emsLeaveFileButtonHTML(rec) : ''}
       </div>
       <form id="classTeacherApprovalForm" class="space-y-3">
+        ${leavePercentFieldHTML(rec, 'อาจารย์ประจำชั้น')}
         <div>
           <label class="block text-xs text-gray-600 mb-1">หมายเหตุ (ถ้ามี — ไม่บังคับ)</label>
           <textarea name="class_teacher_note" id="classTeacherNoteInput" rows="3" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="หมายเหตุจากอาจารย์ประจำชั้น (ถ้าไม่มีก็กดยืนยันได้เลย)"></textarea>
@@ -10700,7 +10903,7 @@ function showClassTeacherApprovalModal(id) {
     ev.preventDefault();
     const fd = new FormData(f);
     const note = (fd.get('class_teacher_note') || '').toString().trim();
-    const extra = {};
+    const extra = leavePercentFromForm(fd, rec);
     if (note) extra.class_teacher_note = note;
     closeModal();
     await approveLeave(id, 'class_teacher_approval', extra);
@@ -10723,6 +10926,7 @@ function showExecutiveApprovalModal(id) {
         ${(typeof window.emsLeaveFileButtonHTML === 'function') ? window.emsLeaveFileButtonHTML(rec) : ''}
       </div>
       <form id="execApprovalForm" class="space-y-3">
+        ${leavePercentFieldHTML(rec, 'รองผู้อำนวยการด้านวิชาการ')}
         <div>
           <label class="block text-xs text-gray-600 mb-1">หมายเหตุ (ถ้ามี — ไม่บังคับ)</label>
           <textarea name="deputy_note" id="deputyNoteInput" rows="3" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="หมายเหตุจากผู้บริหาร (ถ้าไม่มีก็กดยืนยันได้เลย)"></textarea>
@@ -10737,7 +10941,7 @@ function showExecutiveApprovalModal(id) {
     ev.preventDefault();
     const fd = new FormData(f);
     const note = (fd.get('deputy_note') || '').toString().trim();
-    const extra = {};
+    const extra = leavePercentFromForm(fd, rec);
     if (note) extra.deputy_note = note;
     closeModal();
     await approveLeave(id, 'deputy_approval', extra);

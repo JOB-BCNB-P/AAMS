@@ -528,14 +528,20 @@
       + '<span class="text-[11px] text-gray-500">ปีการศึกษา ' + esc(st.eYear) + ' · ภาค '
       + esc(st.eSem === '3' ? 'ฤดูร้อน' : st.eSem) + ' · ชั้นปีที่ ' + esc(st.eLevel) + '</span></div>'
       + '<div class="flex flex-wrap gap-2 mb-2">'
-      + btn('ploCsvTemplate(\'clo\')', 'download', 'แม่แบบ CLO', 'border-emerald-500 text-emerald-700 bg-white hover:bg-emerald-50')
-      + btn('ploCsvTemplate(\'score\')', 'download', 'แม่แบบคะแนนรายคน', 'border-emerald-500 text-emerald-700 bg-white hover:bg-emerald-50')
+      + btn('ploCsvTemplateAll()', 'download', 'แม่แบบรวมไฟล์เดียว (CLO + คะแนน)', 'border-emerald-600 text-white bg-emerald-600 hover:bg-emerald-700')
       + btn('ploCsvPick()', 'upload', 'อัปโหลดไฟล์ CSV', 'border-primary text-primary bg-white hover:bg-primaryLight')
       + '</div>'
+      + '<details class="mb-2"><summary class="text-[11px] text-gray-500 cursor-pointer">แม่แบบแยกไฟล์ (แบบเดิม)</summary>'
+      + '<div class="flex flex-wrap gap-2 mt-2">'
+      + btn('ploCsvTemplate(\'clo\')', 'download', 'แม่แบบ CLO อย่างเดียว', 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50')
+      + btn('ploCsvTemplate(\'score\')', 'download', 'แม่แบบคะแนนอย่างเดียว', 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50')
+      + '</div></details>'
       + '<input type="file" id="ploCsvInput" accept=".csv,text/csv" class="hidden" onchange="ploCsvFile(event)">'
       + '<p class="text-[11px] text-gray-500">'
-      + 'แม่แบบ CLO ใช้กำหนด/แก้ไข CLO ของรายวิชา (คอลัมน์ subject_code, clo_code, statement_th, plo_code, max_score, pass_score)<br>'
-      + 'แม่แบบคะแนนรายคน ใช้กรอกคะแนนของนักศึกษาทั้งรุ่นในรายวิชาที่เลือก'
+      + '<b>แม่แบบรวม</b> มีทั้ง CLO และคะแนนรายคนอยู่ในไฟล์เดียว แยกด้วยคอลัมน์แรก "ประเภท"<br>'
+      + 'แถว <b>CLO</b> = รหัส CLO · คำอธิบาย · PLO ที่ผูก · คะแนนเต็ม · เกณฑ์ผ่าน &nbsp;|&nbsp; '
+      + 'แถว <b>คะแนน</b> = รหัสนักศึกษา · รหัส CLO · คะแนนที่ได้<br>'
+      + 'นำเข้าทีเดียว ระบบจะบันทึก CLO ให้ก่อนแล้วค่อยผูกคะแนนตามรหัส CLO'
       + (st.eSubject ? (nClo ? ' — ตอนนี้มี ' + nClo + ' CLO' : ' — รายวิชานี้ยังไม่ได้กำหนด CLO') : ' — เลือกรายวิชาก่อน')
       + '<br>ระบบจะสรุปให้ดูก่อนว่าจะเพิ่มหรือแก้อะไรบ้าง แล้วค่อยกดยืนยัน</p>'
       + '</div>';
@@ -618,6 +624,165 @@
       + (st.scores ? '' : ' — คะแนนเดิมจะติดมาด้วยถ้ากด "เปิดตารางกรอกคะแนน" ก่อนดาวน์โหลด'));
   };
 
+  /* ================================================================
+     แม่แบบรวมไฟล์เดียว — CLO และคะแนนรายคนอยู่ในไฟล์เดียวกัน
+     แยกด้วยคอลัมน์แรก "ประเภท"
+       CLO    = นิยาม CLO ของรายวิชา (คำอธิบาย ผูกกับ PLO คะแนนเต็ม เกณฑ์ผ่าน)
+       คะแนน  = คะแนนของนักศึกษาหนึ่งคนใน CLO หนึ่งข้อ
+     นำเข้าทีเดียวจบ ระบบสร้าง CLO ให้ก่อนแล้วค่อยผูกคะแนนตามรหัส CLO
+     ================================================================ */
+  var ALL_HEAD = ['ประเภท', 'subject_code', 'subject_name', 'clo_code', 'statement_th',
+    'plo_code', 'max_score', 'pass_score', 'student_id', 'name', 'score'];
+
+  function rowKind(v) {
+    var x = s(v).toLowerCase();
+    if (x === 'clo') return 'clo';
+    if (x === 'คะแนน' || x === 'score') return 'score';
+    return '';
+  }
+
+  window.ploCsvTemplateAll = function () {
+    var st = state();
+    var subs = subjectsOf(st.eYear, st.eSem, st.eLevel);
+    if (!subs.length) { showToast('ไม่มีรายวิชาในภาค/ปี/ชั้นปีที่เลือก', 'error'); return; }
+    var target = st.eSubject ? subs.filter(function (x) { return s(x.subject_code) === s(st.eSubject); }) : subs;
+    if (!target.length) target = subs;
+
+    var rows = [ALL_HEAD.slice()];
+    var studs = entryStudents();
+    var nClo = 0, nScore = 0;
+
+    target.forEach(function (x) {
+      var cs = closOf(st.eYear, st.eSem, x.subject_code);
+      if (cs.length) {
+        cs.forEach(function (c) {
+          rows.push(['CLO', x.subject_code, x.subject_name, c.clo_code, c.statement_th,
+            c.plo_code, c.max_score, c.pass_score, '', '', '']);
+          nClo++;
+        });
+      } else {
+        // ยังไม่มี CLO — เว้นรหัสไว้ให้กรอก ระบบจะข้ามแถวที่ยังไม่ได้กรอก
+        rows.push(['CLO', x.subject_code, x.subject_name, '', '', '', '100', '60', '', '', '']);
+      }
+    });
+
+    // แถวคะแนน — ทำให้เฉพาะรายวิชาที่เลือกและมี CLO อยู่แล้ว จะได้ไม่เป็นไฟล์ยักษ์
+    if (st.eSubject && studs.length) {
+      var clos = closOf(st.eYear, st.eSem, st.eSubject);
+      var subj = target[0] || {};
+      clos.forEach(function (c) {
+        studs.forEach(function (u) {
+          var v = st.scores ? st.scores[c.__backendId + '|' + u.student_id] : '';
+          rows.push(['คะแนน', s(subj.subject_code), '', s(c.clo_code), '', '', '', '',
+            s(u.student_id), s(u.name), (v == null ? '' : v)]);
+          nScore++;
+        });
+      });
+    }
+
+    csvDownload('plo_รวม_' + s(st.eYear) + '_' + s(st.eSem) + '_ชั้นปี' + s(st.eLevel)
+      + (st.eSubject ? '_' + s(st.eSubject) : '') + '.csv', rows);
+    showToast('ดาวน์โหลดแม่แบบรวมแล้ว — CLO ' + nClo + ' ข้อ · ช่องคะแนน ' + nScore + ' ช่อง'
+      + (st.eSubject ? '' : ' (เลือกรายวิชาก่อนจึงจะมีแถวคะแนนมาด้วย)'));
+  };
+
+  function ploCsvPlanAll(rows, head, fname) {
+    var st = state();
+    var idx = function (k) { return head.indexOf(k); };
+    var iKind = idx('ประเภท') >= 0 ? idx('ประเภท') : idx('type');
+    var iSub = idx('subject_code'), iCode = idx('clo_code'), iText = idx('statement_th'),
+      iPlo = idx('plo_code'), iMax = idx('max_score'), iPass = idx('pass_score'),
+      iSid = idx('student_id'), iScore = idx('score');
+
+    var subs = subjectsOf(st.eYear, st.eSem, st.eLevel);
+    var ploOk = {};
+    ploOptions().forEach(function (p) { ploOk[s(p.plo_code)] = 1; });
+    var stuOk = {};
+    entryStudents().forEach(function (u) { stuOk[s(u.student_id)] = 1; });
+
+    var cloPlan = [], scorePlan = [], bad = [], seen = {}, blank = 0;
+    var nStu = {}, willHave = {};
+
+    // ---- รอบแรก : แถว CLO ----
+    rows.slice(1).forEach(function (r, i) {
+      if (rowKind(r[iKind]) !== 'clo') return;
+      var line = i + 2;
+      var code = s(r[iCode]);
+      if (!code) return;                       // แถวเปล่าของแม่แบบ ข้ามเงียบ ๆ
+      var scode = iSub >= 0 ? s(r[iSub]) : s(st.eSubject);
+      var subj = subs.filter(function (x) { return s(x.subject_code) === scode; })[0];
+      if (!subj) { bad.push('บรรทัด ' + line + ' : ไม่พบรายวิชา ' + (scode || '(ไม่ได้ระบุ)') + ' ในภาค/ปี/ชั้นปีที่เลือก'); return; }
+      var key = scode + '|' + code;
+      if (seen[key]) { bad.push('บรรทัด ' + line + ' : ' + code + ' ของวิชา ' + scode + ' ซ้ำกับบรรทัด ' + seen[key]); return; }
+      seen[key] = line;
+      var plo = s(r[iPlo]);
+      if (!plo) { bad.push('บรรทัด ' + line + ' : ' + code + ' ไม่ได้ระบุ PLO'); return; }
+      if (!ploOk[plo]) { bad.push('บรรทัด ' + line + ' : ไม่พบ PLO รหัส ' + plo + ' ในหลักสูตร'); return; }
+      var pass = iPass >= 0 ? s(r[iPass]) : '';
+      if (pass === '' || !isFinite(Number(pass))) { bad.push('บรรทัด ' + line + ' : ' + code + ' เกณฑ์ผ่านต้องเป็นตัวเลข'); return; }
+      var max = iMax >= 0 ? s(r[iMax]) : '';
+      if (max !== '' && !isFinite(Number(max))) { bad.push('บรรทัด ' + line + ' : ' + code + ' คะแนนเต็มต้องเป็นตัวเลข'); return; }
+      if (max !== '' && Number(pass) > Number(max)) { bad.push('บรรทัด ' + line + ' : ' + code + ' เกณฑ์ผ่านมากกว่าคะแนนเต็ม'); return; }
+      var exist = closOf(st.eYear, st.eSem, scode).filter(function (c) { return s(c.clo_code) === code; })[0] || null;
+      cloPlan.push({
+        subj: subj, code: code, text: iText >= 0 ? s(r[iText]) : '',
+        plo: plo, max: max === '' ? '100' : max, pass: pass, exist: exist
+      });
+      willHave[key] = { max: max === '' ? '100' : max };
+    });
+
+    // CLO ที่มีอยู่แล้วในระบบ ก็ผูกคะแนนได้ แม้ไฟล์นี้จะไม่ได้นิยามซ้ำ
+    subs.forEach(function (x) {
+      closOf(st.eYear, st.eSem, x.subject_code).forEach(function (c) {
+        var k = s(x.subject_code) + '|' + s(c.clo_code);
+        if (!willHave[k]) willHave[k] = { max: s(c.max_score) };
+      });
+    });
+
+    // ---- รอบสอง : แถวคะแนน ----
+    rows.slice(1).forEach(function (r, i) {
+      if (rowKind(r[iKind]) !== 'score') return;
+      var line = i + 2;
+      var sid = s(r[iSid]);
+      var code = s(r[iCode]);
+      var scode = iSub >= 0 ? s(r[iSub]) : s(st.eSubject);
+      if (!sid && !code) return;
+      if (!sid) { bad.push('บรรทัด ' + line + ' : แถวคะแนนไม่ได้ระบุรหัสนักศึกษา'); return; }
+      if (!code) { bad.push('บรรทัด ' + line + ' : ' + sid + ' ไม่ได้ระบุรหัส CLO'); return; }
+      if (!stuOk[sid]) { bad.push('บรรทัด ' + line + ' : ไม่พบรหัสนักศึกษา ' + sid + ' ในรุ่นนี้'); return; }
+      var k = scode + '|' + code;
+      var info = willHave[k];
+      if (!info) { bad.push('บรรทัด ' + line + ' : ไม่พบ ' + code + ' ของวิชา ' + (scode || '(ไม่ได้ระบุ)') + ' ทั้งในไฟล์และในระบบ'); return; }
+      var v = iScore >= 0 ? s(r[iScore]) : '';
+      if (v === '') { blank++; return; }        // เว้นว่าง = ยังไม่ให้คะแนน ไม่ใช่ศูนย์
+      if (!isFinite(Number(v))) { bad.push('บรรทัด ' + line + ' : ' + sid + ' ' + code + ' "' + v + '" ไม่ใช่ตัวเลข'); return; }
+      var num = Number(v);
+      if (num < 0) { bad.push('บรรทัด ' + line + ' : ' + sid + ' ' + code + ' คะแนนติดลบ'); return; }
+      var max = Number(info.max);
+      if (isFinite(max) && max > 0 && num > max) {
+        bad.push('บรรทัด ' + line + ' : ' + sid + ' ' + code + ' คะแนน ' + num + ' เกินคะแนนเต็ม ' + max); return;
+      }
+      scorePlan.push({ subject_code: scode, clo_code: code, student_id: sid, score: num });
+      nStu[sid] = 1;
+    });
+
+    var add = cloPlan.filter(function (x) { return !x.exist; }).length;
+    var upd = cloPlan.length - add;
+    APP._ploCsv = { kind: 'all', plan: cloPlan, scores: scorePlan };
+
+    csvReview('นำเข้าไฟล์รวม ' + fname,
+      '<div class="grid grid-cols-4 gap-2 text-center">'
+      + '<div class="rounded-xl bg-emerald-50 border border-emerald-100 p-3"><p class="text-2xl font-bold text-emerald-700">' + add + '</p><p class="text-xs text-gray-600">CLO เพิ่มใหม่</p></div>'
+      + '<div class="rounded-xl bg-blue-50 border border-blue-100 p-3"><p class="text-2xl font-bold text-primary">' + upd + '</p><p class="text-xs text-gray-600">CLO แก้ของเดิม</p></div>'
+      + '<div class="rounded-xl bg-sky-50 border border-sky-100 p-3"><p class="text-2xl font-bold text-sky-700">' + scorePlan.length + '</p><p class="text-xs text-gray-600">คะแนน (' + Object.keys(nStu).length + ' คน)</p></div>'
+      + '<div class="rounded-xl bg-gray-50 border border-gray-100 p-3"><p class="text-2xl font-bold text-gray-500">' + bad.length + '</p><p class="text-xs text-gray-600">ข้ามไป</p></div>'
+      + '</div>'
+      + '<p class="text-xs text-gray-500">ปีการศึกษา ' + esc(st.eYear) + ' · ภาค ' + esc(st.eSem) + ' · ชั้นปีที่ ' + esc(st.eLevel)
+      + ' — ระบบจะบันทึก CLO ก่อน แล้วจึงผูกคะแนนตามรหัส CLO'
+      + (blank ? ' · ช่องคะแนนที่เว้นว่างไว้ ' + blank + ' ช่อง จะไม่ถูกแตะ (ไม่ใช่ให้ 0)' : '') + '</p>',
+      bad, cloPlan.length + scorePlan.length);
+  }
+
   window.ploCsvPick = function () {
     var el = document.getElementById('ploCsvInput');
     if (!el) { showToast('ไม่พบช่องเลือกไฟล์', 'error'); return; }
@@ -633,11 +798,14 @@
     var rows = parseCsv(text);
     if (rows.length < 2) { showToast('ไฟล์ CSV ไม่มีข้อมูล', 'error'); return; }
     var head = rows[0].map(function (x) { return s(x).toLowerCase(); });
+    // ไฟล์รวมมาก่อน เพราะมีทั้ง clo_code และ student_id อยู่ในไฟล์เดียว
+    if (head.indexOf('ประเภท') >= 0 || head.indexOf('type') >= 0) { ploCsvPlanAll(rows, head, f.name); return; }
     if (head.indexOf('clo_code') >= 0) { ploCsvPlanClo(rows, head, f.name); return; }
     if (head.indexOf('student_id') >= 0) { ploCsvPlanScore(rows, head, f.name); return; }
     showModal('อ่านไฟล์ไม่ออก',
       '<p class="text-sm text-gray-600">หัวตารางของไฟล์นี้ไม่ตรงกับแม่แบบที่ระบบรองรับ</p>'
-      + '<p class="text-xs text-gray-500 mt-2">ไฟล์ CLO ต้องมีคอลัมน์ <b>clo_code</b> · ไฟล์คะแนนต้องมีคอลัมน์ <b>student_id</b></p>'
+      + '<p class="text-xs text-gray-500 mt-2">ไฟล์รวมต้องมีคอลัมน์ <b>ประเภท</b> เป็นคอลัมน์แรก'
+      + ' · ไฟล์ CLO อย่างเดียวต้องมี <b>clo_code</b> · ไฟล์คะแนนอย่างเดียวต้องมี <b>student_id</b></p>'
       + '<p class="text-xs text-gray-400 mt-2">หัวตารางที่พบ: ' + esc(rows[0].join(', ')) + '</p>');
   };
 
@@ -771,6 +939,72 @@
     var p = APP._ploCsv;
     if (!p) return;
     var st = state();
+
+    /* ไฟล์รวม — ต้องทำสองจังหวะ
+       จังหวะแรกบันทึก CLO ให้เสร็จก่อน เพราะคะแนนอ้างถึง CLO ด้วยรหัสแถว
+       ที่ยังไม่เกิดขึ้นตอนอ่านไฟล์ จังหวะที่สองจึงค่อยหารหัสแถวจริงแล้วบันทึกคะแนน */
+    if (p.kind === 'all') {
+      var whoA = (APP.currentUser && APP.currentUser.name) || '';
+      var batchA = cohortPrefix(st.eYear, st.eLevel);
+      var okA = 0, errA = '';
+      if (p.plan.length) showToast('กำลังบันทึก CLO ' + p.plan.length + ' รายการ...');
+      for (var a = 0; a < p.plan.length; a++) {
+        var xa = p.plan[a];
+        var baseA = {
+          type: 'plo_clo', curriculum_year: st.curriculum,
+          academic_year: st.eYear, semester: st.eSem, year_level: st.eLevel, batch: batchA,
+          subject_code: xa.subj.subject_code, subject_name: xa.subj.subject_name,
+          clo_code: xa.code, statement_th: xa.text, plo_code: xa.plo,
+          max_score: xa.max, pass_score: xa.pass, updated_by: whoA
+        };
+        var rA = xa.exist
+          ? await GSheetDB.update(Object.assign({}, xa.exist, baseA), { noRefresh: a < p.plan.length - 1 })
+          : await GSheetDB.create(Object.assign({ sort_order: a + 1 }, baseA), { noRefresh: a < p.plan.length - 1 });
+        if (rA && rA.isOk) okA++; else errA = (rA && rA.error) || '';
+      }
+
+      // หารหัสแถวของ CLO หลังบันทึกเสร็จ แล้วแปลงคะแนนเป็นชุดที่ส่งขึ้นฐานข้อมูลได้
+      var payloadA = [], missA = 0;
+      if (p.scores.length) {
+        var mapA = {};
+        subjectsOf(st.eYear, st.eSem, st.eLevel).forEach(function (sb2) {
+          closOf(st.eYear, st.eSem, sb2.subject_code).forEach(function (c) {
+            mapA[s(sb2.subject_code) + '|' + s(c.clo_code)] = c;
+          });
+        });
+        p.scores.forEach(function (x) {
+          var c = mapA[s(x.subject_code) + '|' + s(x.clo_code)];
+          if (!c) { missA++; return; }
+          payloadA.push({ clo_id: Number(c.__backendId), student_id: x.student_id, score: x.score, updated_by: whoA });
+        });
+      }
+
+      var doneA = 0;
+      if (payloadA.length) {
+        showToast('กำลังบันทึกคะแนน ' + payloadA.length + ' รายการ...');
+        for (var b = 0; b < payloadA.length; b += 500) {
+          var rB = await sb().from('plo_score').upsert(payloadA.slice(b, b + 500), { onConflict: 'clo_id,student_id' });
+          if (rB && rB.error) {
+            APP._ploCsv = null;
+            if (typeof closeModal === 'function') closeModal();
+            showToast('บันทึกคะแนนไม่สำเร็จหลังจากบันทึกไปแล้ว ' + doneA + ' รายการ: ' + rB.error.message, 'error');
+            if (typeof renderCurrentPage === 'function') renderCurrentPage();
+            return;
+          }
+          doneA += Math.min(500, payloadA.length - b);
+        }
+      }
+
+      APP._ploCsv = null;
+      if (typeof closeModal === 'function') closeModal();
+      st.scores = null; st._dirty = {}; st.summary = null;
+      var msgA = 'นำเข้าเรียบร้อย — CLO ' + okA + ' รายการ · คะแนน ' + doneA + ' รายการ';
+      if (missA) msgA += ' (ข้ามคะแนนที่หา CLO ไม่เจอ ' + missA + ' รายการ)';
+      showToast(msgA, (okA === p.plan.length && !missA) ? 'success' : 'error');
+      if (errA) showToast('มีบางรายการบันทึกไม่สำเร็จ · ' + errA, 'error');
+      if (typeof renderCurrentPage === 'function') renderCurrentPage();
+      return;
+    }
 
     if (p.kind === 'clo') {
       var who = (APP.currentUser && APP.currentUser.name) || '';
