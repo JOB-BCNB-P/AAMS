@@ -1094,9 +1094,11 @@
               + '<td class="px-3 py-2 text-center">' + esc(r.max_score) + '</td>'
               + '<td class="px-3 py-2 text-center">' + esc(r.pass_score) + '</td>'
               + '<td class="px-3 py-2 text-right whitespace-nowrap">'
-              + '<button onclick="ploEditClo(' + esc(r.__backendId) + ')" class="text-gray-300 hover:text-primary mr-2" title="แก้ไข CLO นี้">'
+              // รหัสแถวเป็นข้อความ (เช่น plo_clo_20) ต้องครอบเครื่องหมายคำพูด
+              // ไม่งั้นเบราว์เซอร์อ่านเป็นชื่อตัวแปรแล้วฟ้องว่าไม่รู้จัก
+              + '<button onclick="ploEditClo(\'' + esc(r.__backendId) + '\')" class="text-gray-300 hover:text-primary mr-2" title="แก้ไข CLO นี้">'
               + '<i data-lucide="pencil" class="w-4 h-4"></i></button>'
-              + '<button onclick="ploDeleteClo(' + esc(r.__backendId) + ')" class="text-gray-300 hover:text-red-500" title="ลบ CLO นี้">'
+              + '<button onclick="ploDeleteClo(\'' + esc(r.__backendId) + '\')" class="text-gray-300 hover:text-red-500" title="ลบ CLO นี้">'
               + '<i data-lucide="trash-2" class="w-4 h-4"></i></button></td></tr>';
           }).join('')
         + '</tbody></table></div>';
