@@ -203,7 +203,12 @@
         + '</div>';
     }).join('');
 
-    return header('คลังข้อคำถาม', 'list-checks',
+    var back = s(st.bankReturn) && formByCode(st.bankReturn)
+      ? '<button onclick="evalBankBack()" class="text-sm text-gray-500 hover:text-primary inline-flex items-center gap-1 mb-2">'
+        + '<i data-lucide="arrow-left" class="w-4 h-4"></i>กลับไปตั้งค่าแบบประเมิน '
+        + esc(s(formByCode(st.bankReturn).subject_name)) + '</button>'
+      : '';
+    return back + header('คลังข้อคำถาม', 'list-checks',
       'ชุดข้อคำถามกลางที่แบบประเมินทุกวิชาหยิบไปใช้ — แก้ที่นี่ที่เดียว')
       + '<div class="grid grid-cols-1 lg:grid-cols-[18rem_1fr] gap-4">'
       + '<div class="bg-white rounded-2xl border border-blue-100 p-4 h-fit">'
@@ -524,8 +529,9 @@
 
     var rows = list.map(function (f) {
       var dims = DIMS.filter(function (d) { return s(f[SET_FIELD[d[0]]]); });
-      var nT = targetsOf(f.form_code, 'teacher').length;
-      var nS = targetsOf(f.form_code, 'site').length;
+      var tNames = targetsOf(f.form_code, 'teacher').map(function (t) { return s(t.target_name); });
+      var sNames = targetsOf(f.form_code, 'site').map(function (t) { return s(t.target_name); });
+      var nT = tNames.length, nS = sNames.length;
       var warn = [];
       if (s(f.set_teacher) && !nT) warn.push('ยังไม่ระบุอาจารย์ผู้สอน');
       if (s(f.set_site) && !nS) warn.push('ยังไม่ระบุแหล่งฝึก');
@@ -541,11 +547,26 @@
         }).join('') + '</div>'
         + (warn.length ? '<p class="text-xs text-amber-600 mt-1"><i data-lucide="alert-triangle" class="w-3 h-3 inline"></i> ' + esc(warn.join(' · ')) + '</p>' : '')
         + '</td>'
-        + '<td class="px-3 py-2 text-center text-sm">' + (nT || '-') + '</td>'
-        + '<td class="px-3 py-2 text-center text-sm">' + (s(f.set_site) ? (nS || '-') : '—') + '</td>'
-        + '<td class="px-3 py-2 text-center">' + statusBadge(f.status) + '</td>'
+        + '<td class="px-3 py-2 text-sm">'
+        + (nT ? '<div class="space-y-0.5">' + tNames.map(function (n) {
+            return '<p class="text-gray-700 whitespace-nowrap">' + esc(n) + '</p>';
+          }).join('') + '</div>'
+          : '<span class="text-gray-300">—</span>') + '</td>'
+        + '<td class="px-3 py-2 text-sm">'
+        + (!s(f.set_site) ? '<span class="text-gray-300">—</span>'
+          : nS ? '<div class="space-y-0.5">' + sNames.map(function (n) {
+            return '<p class="text-gray-700 whitespace-nowrap">' + esc(n) + '</p>';
+          }).join('') + '</div>' : '<span class="text-amber-600 text-xs">ยังไม่ระบุ</span>') + '</td>'
+        + '<td class="px-3 py-2 text-center">' + statusBadge(f.status)
+        + (s(f.released) ? '<span class="block mt-1">' + badge('ส่งผลแล้ว', 'bg-sky-100 text-sky-700') + '</span>' : '')
+        + '</td>'
         + '<td class="px-3 py-2 text-center whitespace-nowrap">'
+        + '<button onclick="evalPreviewForm(\'' + esc(s(f.form_code)) + '\')" class="text-gray-400 hover:text-primary p-1" title="ดูตัวอย่างแบบประเมิน"><i data-lucide="eye" class="w-4 h-4"></i></button>'
         + '<button onclick="evalShowProgress(\'' + esc(s(f.form_code)) + '\')" class="text-gray-400 hover:text-primary p-1" title="ดูอัตราการตอบ"><i data-lucide="users" class="w-4 h-4"></i></button>'
+        + '<button onclick="evalRelease(\'' + esc(s(f.form_code)) + '\',' + (s(f.released) ? 'false' : 'true') + ')" '
+        + 'class="p-1 ' + (s(f.released) ? 'text-sky-600 hover:text-sky-800' : 'text-gray-400 hover:text-primary') + '" '
+        + 'title="' + (s(f.released) ? 'ยกเลิกการส่งผลให้ผู้สอน' : 'ส่งผลประเมินให้ผู้สอน') + '">'
+        + '<i data-lucide="send" class="w-4 h-4"></i></button>'
         + '<button onclick="evalOpenForm(\'' + esc(s(f.form_code)) + '\')" class="text-gray-400 hover:text-primary p-1" title="ตั้งค่า"><i data-lucide="settings" class="w-4 h-4"></i></button>'
         + '<button onclick="evalDeleteForm(\'' + esc(s(f.form_code)) + '\')" class="text-gray-400 hover:text-red-600 p-1" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button>'
         + '</td></tr>';
@@ -558,8 +579,8 @@
       + '<th class="px-3 py-2 font-semibold text-center">ชั้นปี/รุ่น</th>'
       + '<th class="px-3 py-2 font-semibold text-center">ประเภท</th>'
       + '<th class="px-3 py-2 font-semibold">ด้านที่ประเมิน</th>'
-      + '<th class="px-3 py-2 font-semibold text-center">ผู้สอน</th>'
-      + '<th class="px-3 py-2 font-semibold text-center">แหล่งฝึก</th>'
+      + '<th class="px-3 py-2 font-semibold">อาจารย์ผู้สอนที่ถูกประเมิน</th>'
+      + '<th class="px-3 py-2 font-semibold">แหล่งฝึก</th>'
       + '<th class="px-3 py-2 font-semibold text-center">สถานะ</th>'
       + '<th class="px-3 py-2 font-semibold text-center">จัดการ</th>'
       + '</tr></thead><tbody>' + rows + '</tbody></table></div></div>'
@@ -636,6 +657,8 @@
         year_level: s(x.year_level), batch: s(x.batch),
         subject_code: s(x.subject_code), subject_name: s(x.subject_name),
         course_type: ct, status: 'ร่าง',
+        coordinator: s(x.coordinator),          // ใช้ตัดสินสิทธิ์ตอนส่งผลให้ผู้ประสานงานรายวิชา
+        released: '', released_at: '', released_by: '',
         set_course: defaultSet('course', ct),
         set_teacher: defaultSet('teacher', ct),
         set_site: ct === 'ปฏิบัติ' ? defaultSet('site', ct) : '',
@@ -768,13 +791,24 @@
         return [s(x.set_code), setLabel(x)];
       }));
       var cur = s(d[key]);
+      function tool(fn, icon, title, cls) {
+        return '<button onclick="' + fn + '" title="' + title + '" '
+          + 'class="p-1.5 rounded-lg ' + (cls || 'text-gray-400 hover:text-primary hover:bg-surface') + '">'
+          + '<i data-lucide="' + icon + '" class="w-4 h-4"></i></button>';
+      }
       return '<div class="flex flex-wrap items-end gap-3 px-4 py-3 border-t border-gray-50">'
         + '<div class="flex-1 min-w-[14rem]">'
         + '<p class="text-sm font-medium text-gray-800 flex items-center gap-2">'
         + '<i data-lucide="' + dim[2] + '" class="w-4 h-4 text-primary"></i>' + esc(dim[1]) + '</p>'
         + '<p class="text-xs text-gray-500 mt-0.5">' + esc(dim[3]) + '</p></div>'
         + selectHTML({ value: cur, on: "evalDraftR('" + key + "',this.value)", options: opts, width: 'min-w-[18rem]' })
-        + '<div class="w-24 text-right text-sm ' + (cur ? 'text-emerald-600' : 'text-gray-300') + '">'
+        + '<div class="flex items-center gap-0.5">'
+        + tool("evalDimNewSet('" + dim[0] + "')", 'plus', 'สร้างชุดข้อคำถามใหม่สำหรับด้านนี้')
+        + (cur ? tool("evalDimManageItems('" + dim[0] + "')", 'list-checks', 'เพิ่ม/แก้/ลบข้อคำถามในชุดนี้') : '')
+        + (cur ? tool("evalDimEditSet('" + dim[0] + "')", 'settings', 'แก้ชื่อและค่าของชุดนี้') : '')
+        + (cur ? tool("evalDimDeleteSet('" + dim[0] + "')", 'trash-2', 'ลบชุดนี้', 'text-gray-400 hover:text-red-600 hover:bg-red-50') : '')
+        + '</div>'
+        + '<div class="w-20 text-right text-sm ' + (cur ? 'text-emerald-600' : 'text-gray-300') + '">'
         + (cur ? countRating(cur) + ' ข้อ' : 'ไม่ใช้') + '</div></div>';
     }).join('');
 
@@ -802,6 +836,7 @@
       + ' ภาค ' + esc(s(f.semester)) + ' · ชั้นปีที่ ' + esc(s(f.year_level) || '-')
       + (s(f.batch) ? ' รุ่น ' + esc(s(f.batch)) : '') + ' · วิชา' + esc(s(f.course_type) || '-') + '</p></div>'
       + '<div class="flex flex-wrap gap-2">'
+      + btn('evalPreviewForm()', 'eye', 'ดูตัวอย่างแบบประเมิน', 'border border-gray-200 text-gray-700 hover:bg-gray-50')
       + btn('evalShowProgress(\'' + esc(s(f.form_code)) + '\')', 'users', 'อัตราการตอบ', 'border border-gray-200 text-gray-700 hover:bg-gray-50')
       + btn('evalImportOpen()', 'upload', 'นำเข้าคำตอบจากไฟล์เดิม', 'border border-gray-200 text-gray-700 hover:bg-gray-50')
       + btn('evalSaveForm()', 'save', 'บันทึกการตั้งค่า', 'bg-primary text-white hover:bg-primaryDark')
@@ -868,7 +903,7 @@
       + '</div>';
   }
 
-  window.evalSaveForm = async function () {
+  window.evalSaveForm = async function (quiet) {
     var st = state(), d = st.draft;
     var f = formByCode(st.form);
     if (!f || !d) return;
@@ -920,8 +955,7 @@
     await GSheetDB.refreshTab('eval_form');
     await GSheetDB.refreshTab('eval_target');
     st.draft = null;
-    showToast('บันทึกการตั้งค่าแล้ว');
-    renderCurrentPage();
+    if (!quiet) { showToast('บันทึกการตั้งค่าแล้ว'); renderCurrentPage(); }
   };
 
   /* ================================================================
@@ -1355,8 +1389,10 @@
         }))
       })
       + (r.code && r.data && r.data.visible
-        ? '<div class="ml-auto">' + btn('evalExportReport()', 'download', 'ส่งออกสรุป (CSV)', 'border border-gray-200 text-gray-700 hover:bg-gray-50') + '</div>'
-        : '')
+        ? '<div class="ml-auto flex flex-wrap gap-2">'
+        + (canManage() ? releaseButton(formByCode(r.code)) : '')
+        + btn('evalExportReport()', 'download', 'ส่งออกสรุป (CSV)', 'border border-gray-200 text-gray-700 hover:bg-gray-50')
+        + '</div>' : '')
       + '</div></div>';
 
     var head = header('ภาพรวมผลประเมินรายวิชา', 'bar-chart-3',
@@ -1504,7 +1540,10 @@
       + cmtBox;
   }
 
-  /* ---------------- ผลประเมินของอาจารย์เจ้าตัว ---------------- */
+  /* ---------------- ผลประเมินของอาจารย์เจ้าตัว ----------------
+     เห็นได้ต่อเมื่องานวิชาการกด "ส่งผล" ให้แล้วเท่านั้น
+     และเห็นเฉพาะค่าเฉลี่ยรายด้าน ไม่เห็นคำตอบรายข้อ ไม่เห็นว่าใครเป็นผู้ตอบ
+     ข้อบังคับนี้อยู่ที่ฐานข้อมูล หน้าจอเป็นเพียงการแสดงผลของสิ่งที่ได้มา */
   function minePage() {
     var p = (APP.permissions && APP.permissions[APP.currentRole]) || {};
     if (!p.evalMine) return noPerm();
@@ -1514,21 +1553,31 @@
     if (!m.loaded) { loadMyForms(); return header('ผลประเมินของฉัน', 'user-check', '') + loadingBox(); }
     if (m.error) return header('ผลประเมินของฉัน', 'user-check', '') + warnBox('โหลดข้อมูลไม่สำเร็จ', m.error);
 
+    var cur = m.list.filter(function (x) { return s(x.form_code) === m.code; })[0] || null;
     var head = header('ผลประเมินของฉัน', 'user-check',
-      'ผลประเมินอาจารย์ผู้สอนเฉพาะของคุณ เทียบกับค่าเฉลี่ยของรายวิชา')
+      'แสดงค่าเฉลี่ยรายด้าน — ไม่แสดงคำตอบรายข้อและไม่แสดงว่าใครเป็นผู้ตอบ')
       + '<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">'
       + selectHTML({
-        label: 'รายวิชา', icon: 'book-open', value: m.code, on: 'evalPickMine(this.value)', width: 'min-w-[24rem]',
+        label: 'รายวิชา', icon: 'book-open', value: m.code, on: 'evalPickMine(this.value)', width: 'min-w-[26rem]',
         options: [['', '— เลือกรายวิชา —']].concat(m.list.map(function (x) {
-          return [s(x.form_code), s(x.subject_code) + ' ' + s(x.subject_name) + ' · ' + s(x.semester) + '/' + s(x.academic_year)];
+          return [s(x.form_code), s(x.subject_code) + ' ' + s(x.subject_name)
+            + ' · ' + s(x.semester) + '/' + s(x.academic_year)
+            + (s(x.released) ? '' : ' · ยังไม่ส่งผล')];
         }))
       })
+      + (cur ? '<p class="text-xs text-gray-500 mt-2">บทบาทของคุณในรายวิชานี้: <b>'
+        + (s(cur.my_role) === 'coordinator' ? 'อาจารย์ผู้ประสานงานรายวิชา' : 'อาจารย์ผู้สอน') + '</b>'
+        + (s(cur.released) ? ' · งานวิชาการส่งผลให้เมื่อ ' + esc(s(cur.released_at)) : '') + '</p>' : '')
       + '</div>';
 
-    if (!m.list.length) return head + emptyBox('ยังไม่มีรายวิชาที่คุณถูกระบุเป็นอาจารย์ผู้สอนในแบบประเมิน');
+    if (!m.list.length) return head + emptyBox('ยังไม่มีรายวิชาที่คุณถูกระบุเป็นอาจารย์ผู้สอนหรือผู้ประสานงานรายวิชา');
     if (!m.code) return head + emptyBox('เลือกรายวิชาเพื่อดูผลของคุณ');
+    if (cur && !s(cur.released)) {
+      return head + warnBox('รายวิชานี้ยังไม่ได้รับการส่งผลจากงานวิชาการ',
+        'ผลประเมินจะเปิดให้ดูเมื่อผู้ดูแลระบบหรือเจ้าหน้าที่งานวิชาการกดส่งผลให้');
+    }
     if (!m.data) { loadMine(); return head + loadingBox('กำลังคำนวณผล…'); }
-    return head + mineBody(m.data, m.comments);
+    return head + mineBody(m.data, m.comments, cur);
   }
 
   async function loadMyForms() {
@@ -1549,13 +1598,14 @@
     var m = state().mine;
     if (m.loading2) return;
     m.loading2 = true;
-    var me = who();
     try {
-      var d = await rpc('ems_eval_summary', { p_form: m.code, p_teacher: me });
-      if (d && d.error) throw new Error(d.error === 'forbidden' ? 'ชื่อของคุณในระบบไม่ตรงกับรายชื่อผู้สอนของแบบประเมินนี้' : 'ไม่พบแบบประเมิน');
+      var d = await rpc('ems_eval_summary', { p_form: m.code, p_teacher: who() });
+      if (d && d.error) throw new Error(d.error === 'forbidden'
+        ? 'ชื่อของคุณในระบบไม่ตรงกับรายชื่อผู้สอนหรือผู้ประสานงานของรายวิชานี้'
+        : 'ไม่พบแบบประเมิน');
       m.data = d;
       if (d && d.visible) {
-        try { m.comments = await rpc('ems_eval_comments', { p_form: m.code, p_teacher: me }); }
+        try { m.comments = await rpc('ems_eval_comments', { p_form: m.code, p_teacher: who() }); }
         catch (e2) { m.comments = []; }
       }
     } catch (e) { m.error = String(e.message || e); }
@@ -1563,53 +1613,74 @@
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
   }
 
-  function mineBody(d, comments) {
-    if (!d.visible) {
-      return warnBox('ยังเปิดเผยผลไม่ได้ — มีผู้ตอบ ' + d.n + ' คน จากเกณฑ์ขั้นต่ำ ' + d.min + ' คน');
+  function mineBody(d, comments, cur) {
+    if (d.released === false) {
+      return warnBox('รายวิชานี้ยังไม่ได้รับการส่งผลจากงานวิชาการ',
+        'ผลประเมินจะเปิดให้ดูเมื่อผู้ดูแลระบบหรือเจ้าหน้าที่งานวิชาการกดส่งผลให้');
     }
-    var me = who();
-    var mine = (d.targets || []).filter(function (x) { return x.kind === 'teacher' && s(x.name) === me; })[0];
-    var all = (d.dimensions_all || []).filter(function (x) { return x.dimension === 'teacher'; })[0];
-    var secs = (d.sections || []).filter(function (x) { return x.dimension === 'teacher'; });
-    var items = (d.items || []).filter(function (x) { return x.dimension === 'teacher'; });
+    if (!d.visible) {
+      return warnBox('ยังเปิดเผยผลไม่ได้ — มีผู้ตอบ ' + d.n + ' คน จากเกณฑ์ขั้นต่ำ ' + d.min + ' คน',
+        'เกณฑ์นี้ตั้งไว้เพื่อไม่ให้ย้อนกลับไปเดาได้ว่าใครให้คะแนนเท่าไร');
+    }
+    var own = d.own || null;
+    var isCoord = cur && s(cur.my_role) === 'coordinator';
+    var ovI = d.overall_item || {}, ovD = d.overall_dim || {};
+    var main = s(d.mean_mode) === 'dimension' ? ovD.mean : ovI.mean;
+
+    var dimRows = (d.dimensions || []).map(function (x) {
+      return '<tr class="border-t border-gray-50">'
+        + '<td class="px-3 py-2"><span class="flex items-center gap-2">'
+        + '<i data-lucide="' + (DIM_ICON[x.dimension] || 'circle') + '" class="w-4 h-4 text-primary"></i>'
+        + esc(DIM_NAME[x.dimension] || x.dimension) + '</span></td>'
+        + meanCell(x.mean, x.sd) + '</tr>';
+    }).join('');
 
     var cmt = (comments || []);
     return '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">'
-      + statCard('user-check', 'ค่าเฉลี่ยของคุณ', mine ? fx(mine.mean) : '-', mine ? bandOf(mine.mean)[1] : '', 'bg-emerald-500')
-      + statCard('users', 'ค่าเฉลี่ยอาจารย์ทั้งรายวิชา', all ? fx(all.mean) : '-', '', 'bg-blue-500')
-      + statCard('sigma', 'SD ของคุณ', mine ? fx(mine.sd) : '-', s(d.sd_mode) === 'population' ? '(n)' : '(n−1)', 'bg-sky-500')
+      + (own
+        ? statCard('user-check', 'ค่าเฉลี่ยของคุณ (ด้านอาจารย์ผู้สอน)', fx(own.mean), bandOf(own.mean)[1], 'bg-emerald-500')
+        : statCard('book-open', 'ค่าเฉลี่ยรวมของรายวิชา', fx(main), bandOf(main)[1], 'bg-emerald-500'))
+      + statCard('users', 'ผู้ตอบ', d.n, 'คน', 'bg-blue-500')
+      + statCard('calculator', 'ค่าเฉลี่ยรวมทุกด้านของรายวิชา', fx(main), bandOf(main)[1], 'bg-sky-500')
       + '</div>'
-      + (secs.length ? tableWrap('รายหมวด', '<table class="w-full text-sm"><thead><tr class="bg-surface text-left">'
-        + '<th class="px-3 py-2 font-semibold">หมวด</th>'
-        + '<th class="px-3 py-2 font-semibold text-center">จำนวนคำตอบ</th>'
+
+      + (own
+        ? '<div class="bg-white rounded-2xl border border-blue-100 p-4 mb-4">'
+        + '<p class="font-semibold text-gray-800 text-sm mb-2">ผลของคุณ</p>'
+        + '<div class="flex flex-wrap items-end gap-6">'
+        + '<div><p class="text-xs text-gray-500">ค่าเฉลี่ย</p>'
+        + '<p class="text-2xl font-bold text-gray-800">' + fx(own.mean) + ' ' + bandBadge(own.mean) + '</p></div>'
+        + '<div><p class="text-xs text-gray-500">SD ' + (s(d.sd_mode) === 'population' ? '(n)' : '(n−1)') + '</p>'
+        + '<p class="text-2xl font-bold text-gray-800">' + fx(own.sd) + '</p></div>'
+        + '<div><p class="text-xs text-gray-500">จำนวนคำตอบที่ใช้คิด</p>'
+        + '<p class="text-2xl font-bold text-gray-800">' + own.n + '</p></div>'
+        + '</div></div>'
+        : '')
+
+      + tableWrap('ค่าเฉลี่ยรายด้านของรายวิชา',
+        '<table class="w-full text-sm"><thead><tr class="bg-surface text-left">'
+        + '<th class="px-3 py-2 font-semibold">ด้าน</th>'
         + '<th class="px-3 py-2 font-semibold text-center">Mean</th>'
         + '<th class="px-3 py-2 font-semibold text-center">SD</th>'
-        + '<th class="px-3 py-2 font-semibold text-center">แปลผล</th></tr></thead><tbody>'
-        + secs.map(function (x) {
-          return '<tr class="border-t border-gray-50"><td class="px-3 py-2">' + esc(s(x.section)) + '</td>'
-            + '<td class="px-3 py-2 text-center text-gray-500">' + x.n + '</td>' + meanCell(x.mean, x.sd) + '</tr>';
-        }).join('') + '</tbody></table>') : '')
-      + (items.length ? tableWrap('รายข้อ', '<table class="w-full text-sm"><thead><tr class="bg-surface text-left">'
-        + '<th class="px-3 py-2 font-semibold">รหัสข้อ</th><th class="px-3 py-2 font-semibold">หมวด</th>'
-        + '<th class="px-3 py-2 font-semibold">ข้อคำถาม</th>'
-        + '<th class="px-3 py-2 font-semibold text-center">จำนวนคำตอบ</th>'
-        + '<th class="px-3 py-2 font-semibold text-center">Mean</th>'
-        + '<th class="px-3 py-2 font-semibold text-center">SD</th>'
-        + '<th class="px-3 py-2 font-semibold text-center">แปลผล</th></tr></thead><tbody>'
-        + items.map(function (x) {
-          return '<tr class="border-t border-gray-50">'
-            + '<td class="px-3 py-2 font-mono text-primary whitespace-nowrap">' + esc(s(x.item_code)) + '</td>'
-            + '<td class="px-3 py-2 text-xs text-gray-500">' + esc(s(x.section) || '—') + '</td>'
-            + '<td class="px-3 py-2">' + esc(s(x.text)) + '</td>'
-            + '<td class="px-3 py-2 text-center text-gray-500">' + x.n + '</td>'
-            + meanCell(x.mean, x.sd) + '</tr>';
-        }).join('') + '</tbody></table>') : '')
+        + '<th class="px-3 py-2 font-semibold text-center">แปลผล</th></tr></thead>'
+        + '<tbody>' + dimRows + '</tbody></table>',
+        isCoord ? 'ในฐานะผู้ประสานงานรายวิชา คุณเห็นภาพรวมของรายวิชาทั้งหมด แต่ไม่เห็นคะแนนรายอาจารย์'
+          : 'ค่าเฉลี่ยรายด้านของทั้งรายวิชา ใช้เทียบกับผลของคุณด้านบน')
+
+      + '<div class="bg-white rounded-2xl border border-blue-100 p-4 mb-4">'
+      + '<p class="text-sm text-gray-700"><b>ค่าเฉลี่ยรวมทุกด้าน</b> '
+      + fx(ovI.mean) + ' (ถ่วงน้ำหนักรายข้อ) · ' + fx(ovD.mean) + ' (เฉลี่ยของค่าเฉลี่ยรายด้าน)</p>'
+      + '<p class="text-xs text-gray-500 mt-1">ค่าที่ใช้เป็นหลักของรายวิชานี้คือ '
+      + (s(d.mean_mode) === 'dimension' ? 'เฉลี่ยของค่าเฉลี่ยรายด้าน' : 'ถ่วงน้ำหนักรายข้อ') + '</p></div>'
+
       + (cmt.length
         ? tableWrap('ข้อเสนอแนะถึงคุณ <span class="font-normal text-gray-400">(' + cmt.length + ')</span>',
           '<div class="divide-y divide-gray-50">' + cmt.map(function (x) {
             return '<div class="px-4 py-3 text-sm text-gray-700">' + esc(s(x.text_answer)) + '</div>';
           }).join('') + '</div>', 'ไม่ระบุตัวผู้เขียน')
-        : '<p class="text-sm text-gray-400">ยังไม่มีข้อเสนอแนะที่เปิดให้คุณอ่าน</p>');
+        : '<div class="bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm text-gray-500">'
+        + 'ระบบไม่แสดงคำตอบรายข้อและข้อเสนอแนะของนักศึกษาให้อาจารย์ '
+        + 'หากต้องการดูรายละเอียดเพิ่มเติม กรุณาติดต่องานวิชาการ</div>');
   }
 
   /* ================================================================
@@ -1882,6 +1953,204 @@
     } catch (e) { showToast('ล้างไม่สำเร็จ · ' + (e.message || e), 'error'); }
   };
 
+  /* ================================================================
+     จัดการชุดข้อคำถามจากหน้าตั้งค่าแบบประเมินได้เลย
+     ไม่ต้องเด้งไปหน้าคลังข้อคำถามก่อนแล้วค่อยกลับมา
+     ================================================================ */
+
+  // สร้างชุดใหม่สำหรับด้านนี้ แล้วเลือกให้กับแบบประเมินที่กำลังตั้งค่าอยู่ทันที
+  window.evalDimNewSet = function (dim) {
+    var f = formByCode(state().form);
+    showModal('สร้างชุดข้อคำถามใหม่ — ' + esc(DIM_NAME[dim] || dim),
+      '<p class="text-sm text-gray-600 mb-3">สร้างแล้วระบบจะเลือกชุดนี้ให้กับ '
+      + '<b>' + esc(s(f && f.subject_name)) + '</b> โดยอัตโนมัติ จากนั้นค่อยเพิ่มข้อคำถามได้</p>'
+      + setFormHTML({ dimension: dim, scale_max: '5', status: 'ใช้งาน' }),
+      function () { return window.evalDimSaveNewSet(dim); }, 'max-w-xl');
+  };
+  window.evalDimSaveNewSet = async function (dim) {
+    var v = readSetForm(); if (!v) return;
+    v.type = 'eval_itemset';
+    v.dimension = dim;                       // ล็อกด้านไว้ตามแถวที่กดมา
+    v.set_code = newSetCode(dim);
+    v.sort_order = itemsets().length + 1;
+    var r = await GSheetDB.create(v);
+    if (!r || !r.isOk) { showToast('สร้างชุดไม่สำเร็จ · ' + ((r && r.error) || ''), 'error'); return; }
+    var d = state().draft;
+    if (d) d[SET_FIELD[dim]] = v.set_code;
+    closeModal();
+    showToast('สร้างชุด "' + v.set_name + '" และเลือกให้แล้ว — เพิ่มข้อคำถามได้เลย');
+    renderCurrentPage();
+  };
+
+  window.evalDimEditSet = function (dim) {
+    var d = state().draft; if (!d) return;
+    var set = setByCode(d[SET_FIELD[dim]]);
+    if (!set) { showToast('ยังไม่ได้เลือกชุดข้อคำถามของด้านนี้', 'error'); return; }
+    showModal('แก้ข้อมูลชุด — ' + esc(s(set.set_name)), setFormHTML(set),
+      function () { return window.evalDimSaveSet(dim); }, 'max-w-xl');
+  };
+  window.evalDimSaveSet = async function (dim) {
+    var d = state().draft; if (!d) return;
+    var set = setByCode(d[SET_FIELD[dim]]); if (!set) return;
+    var v = readSetForm(); if (!v) return;
+    v.dimension = s(set.dimension);          // ย้ายด้านจากตรงนี้ไม่ได้ กันแบบประเมินอื่นพัง
+    var r = await GSheetDB.update(Object.assign({}, set, v));
+    if (!r || !r.isOk) { showToast('บันทึกไม่สำเร็จ · ' + ((r && r.error) || ''), 'error'); return; }
+    closeModal(); showToast('บันทึกแล้ว'); renderCurrentPage();
+  };
+
+  // ลบได้เฉพาะชุดที่ไม่มีแบบประเมินอื่นใช้อยู่
+  window.evalDimDeleteSet = async function (dim) {
+    var st = state(), d = st.draft; if (!d) return;
+    var set = setByCode(d[SET_FIELD[dim]]); if (!set) return;
+    var used = forms().filter(function (x) {
+      return s(x.form_code) !== s(st.form)
+        && DIMS.some(function (dd) { return s(x[SET_FIELD[dd[0]]]) === s(set.set_code); });
+    });
+    if (used.length) {
+      showToast('ลบไม่ได้ — มีอีก ' + used.length + ' รายวิชาใช้ชุดนี้อยู่', 'error');
+      return;
+    }
+    if (!confirm('ลบชุด "' + s(set.set_name) + '" พร้อมข้อคำถามทั้งหมดใช่หรือไม่')) return;
+    var items = itemsOf(set.set_code);
+    for (var i = 0; i < items.length; i++) await GSheetDB.delete(items[i], { noRefresh: true });
+    var r = await GSheetDB.delete(set);
+    if (!r || !r.isOk) { showToast('ลบไม่สำเร็จ · ' + ((r && r.error) || ''), 'error'); return; }
+    d[SET_FIELD[dim]] = '';
+    showToast('ลบชุดแล้ว — ด้านนี้ถูกปิดไว้ก่อน');
+    renderCurrentPage();
+  };
+
+  /* ไปจัดการข้อคำถามในคลัง แล้วกลับมาที่แบบประเมินเดิมได้ด้วยปุ่มเดียว
+     บันทึกการตั้งค่าให้ก่อนเสมอ จะได้ไม่เสียสิ่งที่เพิ่งแก้ไว้ */
+  window.evalDimManageItems = async function (dim) {
+    var st = state(), d = st.draft; if (!d) return;
+    var code = s(d[SET_FIELD[dim]]);
+    if (!code) { showToast('ยังไม่ได้เลือกชุดข้อคำถามของด้านนี้', 'error'); return; }
+    await window.evalSaveForm(true);
+    st.bankReturn = s(st.form);
+    st.set = code;
+    if (typeof navigateTo === 'function') navigateTo('evalBank');
+    else { st.tab = 'evalBank'; renderCurrentPage(); }
+  };
+  window.evalBankBack = function () {
+    var st = state();
+    var code = s(st.bankReturn);
+    st.bankReturn = '';
+    st.form = code; st.draft = null;
+    if (typeof navigateTo === 'function') navigateTo('evalSetup');
+    else renderCurrentPage();
+  };
+
+  /* ================================================================
+     ดูตัวอย่างแบบประเมินก่อนเปิดให้นักศึกษา
+     แสดงหน้าตาเดียวกับที่นักศึกษาเห็น แต่กดให้คะแนนไม่ได้
+     ================================================================ */
+  window.evalPreviewForm = function (code) {
+    var st = state();
+    var f = formByCode(code || st.form);
+    if (!f) return;
+    var d = (st.draft && st.draft.form_code === s(f.form_code)) ? st.draft : null;
+
+    // ใช้ค่าที่กำลังแก้อยู่บนหน้าจอ จะได้เห็นผลก่อนกดบันทึก
+    var view = d ? Object.assign({}, f, {
+      set_course: d.set_course, set_teacher: d.set_teacher,
+      set_site: d.set_site, set_engage: d.set_engage
+    }) : f;
+    var blocks = d ? previewBlocks(view, d.teachers, d.sites) : answerBlocks(view);
+    var total = blocks.reduce(function (t, b) { return t + countRating(b.set); }, 0);
+
+    var body = blocks.map(function (b) {
+      var items = itemsOf(b.set);
+      var max = parseInt(s(setByCode(b.set) && setByCode(b.set).scale_max), 10) || 5;
+      var rows = items.map(function (it) {
+        if (s(it.input_type) === 'text') {
+          return '<div class="px-4 py-3 border-t border-gray-50">'
+            + '<p class="text-sm text-gray-700 mb-1">' + esc(s(it.statement_th)) + '</p>'
+            + '<div class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-300 bg-gray-50">'
+            + 'ช่องพิมพ์ข้อเสนอแนะ</div></div>';
+        }
+        var sc = [];
+        for (var v = max; v >= 1; v--) sc.push(v);
+        return '<div class="flex flex-wrap items-center gap-3 px-4 py-3 border-t border-gray-50">'
+          + '<p class="flex-1 min-w-[14rem] text-sm text-gray-700">'
+          + (s(it.item_code) && /^\d/.test(s(it.item_code)) ? '<span class="font-mono text-gray-400 mr-1">' + esc(s(it.item_code)) + '</span>' : '')
+          + esc(s(it.statement_th)) + '</p>'
+          + '<div class="flex gap-1">' + sc.map(function (v) {
+            return '<span class="inline-flex items-center justify-center w-8 h-8 rounded-xl border border-gray-200 text-sm text-gray-400">' + v + '</span>';
+          }).join('') + '</div></div>';
+      }).join('');
+      return '<div class="border border-gray-100 rounded-xl mb-3 overflow-hidden">'
+        + '<div class="px-4 py-2 bg-surface flex items-center justify-between">'
+        + '<span class="text-sm font-semibold text-gray-800 flex items-center gap-2">'
+        + '<i data-lucide="' + DIM_ICON[b.dim] + '" class="w-4 h-4 text-primary"></i>' + esc(b.title) + '</span>'
+        + '<span class="text-xs text-gray-400">' + countRating(b.set) + ' ข้อ</span></div>'
+        + rows + '</div>';
+    }).join('');
+
+    showModal('ตัวอย่างแบบประเมิน — ' + esc(s(f.subject_name)),
+      '<div class="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-3">'
+      + '<p class="text-sm text-gray-700">นี่คือหน้าตาที่นักศึกษาจะเห็น — ตอบทั้งหมด <b class="text-primary">' + total + '</b> ข้อ</p>'
+      + '<p class="text-xs text-gray-500 mt-1">ในตัวอย่างนี้กดให้คะแนนไม่ได้ '
+      + (d ? 'และแสดงตามค่าที่กำลังแก้อยู่บนหน้าจอ (ยังไม่ได้บันทึก)' : '') + '</p></div>'
+      + (blocks.length ? body : warnBox('ยังไม่ได้เลือกชุดข้อคำถามของด้านใดเลย')),
+      null, 'max-w-3xl');
+    if (window.lucide) lucide.createIcons();
+  };
+
+  // กล่องคำถามที่จะเกิดขึ้นจากร่างที่กำลังแก้อยู่ (ยังไม่ได้บันทึกลงฐานข้อมูล)
+  function previewBlocks(f, teachers, sites) {
+    var out = [];
+    if (s(f.set_course)) out.push({ dim: 'course', set: s(f.set_course), title: DIM_NAME.course });
+    if (s(f.set_teacher)) (teachers || []).forEach(function (t) {
+      out.push({ dim: 'teacher', set: s(f.set_teacher), title: 'อาจารย์ผู้สอน — ' + s(t.name) });
+    });
+    if (s(f.set_site)) (sites || []).forEach(function (t) {
+      out.push({ dim: 'site', set: s(f.set_site), title: 'แหล่งฝึกภาคปฏิบัติ — ' + s(t.name) });
+    });
+    if (s(f.set_engage)) out.push({ dim: 'engage', set: s(f.set_engage), title: DIM_NAME.engage });
+    return out;
+  }
+
+  /* ================================================================
+     ส่งผลประเมินให้ผู้สอนและผู้ประสานงานรายวิชา
+     ก่อนกดส่ง อาจารย์เปิดดูไม่ได้เลย (ฐานข้อมูลเป็นผู้บังคับ ไม่ใช่หน้าจอ)
+     ================================================================ */
+  window.evalRelease = async function (code, on) {
+    var f = formByCode(code);
+    if (!f) return;
+    var names = targetsOf(code, 'teacher').map(function (t) { return s(t.target_name); });
+    var coord = s(f.coordinator);
+    if (on) {
+      var who2 = names.slice();
+      if (coord && who2.indexOf(coord) < 0) who2.push(coord + ' (ผู้ประสานงานรายวิชา)');
+      if (!who2.length) { showToast('ยังไม่มีอาจารย์ผู้สอนหรือผู้ประสานงานรายวิชาให้ส่งผล', 'error'); return; }
+      if (!confirm('ส่งผลประเมินของ "' + s(f.subject_name) + '" ให้ดูใช่หรือไม่\n\n'
+        + who2.join('\n')
+        + '\n\nแต่ละคนจะเห็นเฉพาะค่าเฉลี่ยรายด้าน ไม่เห็นคำตอบรายข้อและไม่เห็นว่าใครเป็นผู้ตอบ')) return;
+    } else {
+      if (!confirm('ยกเลิกการส่งผลของ "' + s(f.subject_name) + '" ใช่หรือไม่\nอาจารย์จะกลับไปเปิดดูไม่ได้')) return;
+    }
+    var r = await GSheetDB.update(Object.assign({}, f, {
+      released: on ? '✓' : '',
+      released_at: on ? today() : '',
+      released_by: on ? who() : ''
+    }));
+    if (!r || !r.isOk) { showToast('บันทึกไม่สำเร็จ · ' + ((r && r.error) || ''), 'error'); return; }
+    showToast(on ? 'ส่งผลให้ผู้สอนแล้ว' : 'ยกเลิกการส่งผลแล้ว');
+    renderCurrentPage();
+  };
+
+  // ปุ่มส่ง/ยกเลิกการส่งผลประเมิน ใช้ทั้งในหน้ารายงานและหน้าตั้งค่า
+  function releaseButton(f) {
+    if (!f) return '';
+    return s(f.released)
+      ? btn("evalRelease('" + esc(s(f.form_code)) + "',false)", 'undo-2', 'ยกเลิกการส่งผล',
+        'border border-sky-200 text-sky-700 hover:bg-sky-50')
+      : btn("evalRelease('" + esc(s(f.form_code)) + "',true)", 'send', 'ส่งผลให้ผู้สอน',
+        'bg-primary text-white hover:bg-primaryDark');
+  }
+
   /* ---------------- หัวเรื่อง ---------------- */
   function header(title, icon, sub) {
     return '<div class="mb-4">'
@@ -1944,7 +2213,10 @@
       var subs = EV_SUB.filter(function (x) { return perms[x[2]]; });
       if (!subs.length) return;
       var here = APP.currentPage;
-      var anchor = '[data-page="ploAssess"], [data-page="survey"], [data-page="services"]';
+      // วางไว้ก่อนกลุ่ม "ผลการศึกษา" — querySelector คืนตัวที่อยู่ต้นเอกสารที่สุด
+      // ไม่ใช่ตัวแรกตามลำดับที่เขียนในรายการ จึงได้ตำแหน่งที่ต้องการเสมอ
+      var anchor = '[data-page="grades"], [data-page="engResults"], '
+        + '[data-page="ploAssess"], [data-page="survey"], [data-page="services"]';
 
       // มีเมนูเดียว (นักศึกษา/อาจารย์) ก็ไม่ต้องทำเป็นกลุ่มพับให้กดสองครั้ง
       if (subs.length === 1) {

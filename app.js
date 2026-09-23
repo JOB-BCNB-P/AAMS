@@ -9919,8 +9919,14 @@ function passwordLogSection() {
 
 function settingsPage() {
   const roles = ['admin', 'academic', 'registrar', 'deptHead', 'executive', 'teacher', 'classTeacher', 'otherStaff', 'student'];
-  const modules = ['dashboard', 'curriculum', 'ploAssess', 'students', 'teachers', 'advisors', 'specialTeachers', 'alumni', 'schedule', 'subjects', 'grades', 'engResults', 'teacherDirectory', 'services', 'tracking', 'resultTracking', 'gradeTracking', 'fileTracking', 'leave', 'workload', 'survey'];
-  const moduleLabels = { dashboard: 'หน้าหลัก', curriculum: 'ข้อมูลหลักสูตร', ploAssess: 'ประเมินผลหลักสูตร PLOs', students: 'ข้อมูลนักศึกษา', teachers: 'ข้อมูลอาจารย์', advisors: 'ข้อมูลอาจารย์ที่ปรึกษา', specialTeachers: 'ข้อมูลอาจารย์พิเศษ', alumni: 'ข้อมูลศิษย์เก่า', schedule: 'ปฏิทินกิจกรรมวิชาการ', subjects: 'รายวิชาที่เปิดสอน', grades: 'ผลการเรียน', engResults: 'ผลสอบ ENG', teacherDirectory: 'ทำเนียบอาจารย์', services: 'บริการอื่นๆ', tracking: 'ติดตามการส่งรายละเอียดรายวิชา', resultTracking: 'ติดตามการส่งผลการดำเนินงานรายวิชา', gradeTracking: 'ติดตามการส่งเกรดรายวิชา', fileTracking: 'ติดตามส่งแฟ้มรายวิชา', leave: 'ระบบการลาของนักศึกษา', workload: 'ภาระงานนักศึกษา (Student workload)', survey: 'แบบประเมินความพึงพอใจ' };
+  const modules = ['dashboard', 'curriculum', 'ploAssess', 'students', 'teachers', 'advisors', 'specialTeachers', 'alumni', 'schedule', 'subjects', 'grades', 'engResults', 'teacherDirectory', 'services', 'tracking', 'resultTracking', 'gradeTracking', 'fileTracking', 'leave', 'workload', 'survey',
+    'evalCourse', 'evalDo', 'evalSetup', 'evalReport', 'evalMine'];
+  const moduleLabels = { dashboard: 'หน้าหลัก', curriculum: 'ข้อมูลหลักสูตร', ploAssess: 'ประเมินผลหลักสูตร PLOs', students: 'ข้อมูลนักศึกษา', teachers: 'ข้อมูลอาจารย์', advisors: 'ข้อมูลอาจารย์ที่ปรึกษา', specialTeachers: 'ข้อมูลอาจารย์พิเศษ', alumni: 'ข้อมูลศิษย์เก่า', schedule: 'ปฏิทินกิจกรรมวิชาการ', subjects: 'รายวิชาที่เปิดสอน', grades: 'ผลการเรียน', engResults: 'ผลสอบ ENG', teacherDirectory: 'ทำเนียบอาจารย์', services: 'บริการอื่นๆ', tracking: 'ติดตามการส่งรายละเอียดรายวิชา', resultTracking: 'ติดตามการส่งผลการดำเนินงานรายวิชา', gradeTracking: 'ติดตามการส่งเกรดรายวิชา', fileTracking: 'ติดตามส่งแฟ้มรายวิชา', leave: 'ระบบการลาของนักศึกษา', workload: 'ภาระงานนักศึกษา (Student workload)', survey: 'แบบประเมินความพึงพอใจ',
+    evalCourse: 'ประเมินผลรายวิชา (เห็นกลุ่มเมนู)',
+    evalDo: '— ประเมินรายวิชา (นักศึกษาตอบ)',
+    evalSetup: '— ตั้งค่าแบบประเมิน + คลังข้อคำถาม',
+    evalReport: '— ภาพรวมผลประเมิน (ทุกรายวิชา)',
+    evalMine: '— ผลประเมินของฉัน (อาจารย์)' };
   const roleLabels = { admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'งานทะเบียน', deptHead: 'ประธานสาขา', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อ.ประจำชั้น', otherStaff: 'จนท.งานอื่นๆ', student: 'นักศึกษา' };
 
   const users = applyFilters(getDataByType('user'));
