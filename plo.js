@@ -1381,7 +1381,9 @@
       btn.setAttribute('data-page', 'ploAssess');
       btn.className = 'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-700 hover:bg-surface hover:text-primary transition';
       btn.innerHTML = '<i data-lucide="target" class="w-5 h-5 flex-shrink-0"></i>ประเมินผลหลักสูตร PLOs';
-      insertNav(nav, btn, '[data-page="teacherDirectory"], [data-page="services"]');
+      // เกาะหน้ากลุ่มภาระงานนักศึกษาถ้ามี จะได้เป็น PLOs → ภาระงานนักศึกษา เสมอ
+      insertNav(nav, btn, '[data-wl-menu], [data-page="teacherDirectory"], '
+        + '[data-page="tracking"], [data-page="services"]');
       if (window.lucide) lucide.createIcons();
     }
   })();

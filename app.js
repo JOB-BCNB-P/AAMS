@@ -602,8 +602,11 @@ function buildSidebar() {
   let items = [];
   if (p.dashboard) items.push({ id: 'dashboard', icon: 'layout-dashboard', label: 'หน้าหลัก' });
 
+  // ปฏิทินกิจกรรมวิชาการ — อยู่ก่อนระบบทะเบียน
+  if (p.schedule) items.push({ id: 'schedule', icon: 'calendar', label: 'ปฏิทินกิจกรรมวิชาการ' });
+
   // Registration dropdown — permission-driven for all roles
-  // ระบบทะเบียน: 1.ข้อมูลนักศึกษา 2.ข้อมูลอาจารย์ 3.ปฏิทินกิจกรรมวิชาการ (+ รายวิชาที่เปิดสอน)
+  // ระบบทะเบียน: 1.ข้อมูลนักศึกษา 2.ข้อมูลอาจารย์ (+ รายวิชาที่เปิดสอน)
   let regSub = [];
   if (r === 'student') {
     if (p.students) regSub.push({ id: 'studentInfo', label: 'ข้อมูลนักศึกษา' });
@@ -616,9 +619,6 @@ function buildSidebar() {
   if (p.alumni) regSub.push({ id: 'alumni', label: 'ข้อมูลศิษย์เก่า' });
   if (p.subjects) regSub.push({ id: 'subjects', label: 'รายวิชาที่เปิดสอน' });
   if (regSub.length) items.push({ id: 'registration', icon: 'book-open', label: 'ระบบทะเบียน', sub: regSub });
-
-  // ปฏิทินกิจกรรมวิชาการ — แยกเป็นเมนูหลัก ต่อจากระบบทะเบียน
-  if (p.schedule) items.push({ id: 'schedule', icon: 'calendar', label: 'ปฏิทินกิจกรรมวิชาการ' });
 
   // ผลการศึกษา: 1.ผลการเรียน 2.ผลสอบภาษาอังกฤษ
   let eduSub = [];

@@ -471,7 +471,11 @@
       btn.innerHTML = '<i data-lucide="graduation-cap" class="w-5 h-5 flex-shrink-0"></i>ข้อมูลหลักสูตร';
       // วางไว้ก่อนกลุ่ม "ระบบทะเบียน" เพราะข้อมูลหลักสูตรเป็นตัวตั้งต้นของรายวิชาและทะเบียนทั้งหมด
       // ถ้าบัญชีนั้นไม่มีเมนูระบบทะเบียน ให้ถอยไปวางก่อนปฏิทินกิจกรรมวิชาการ
-      insertNav(nav, btn, '[data-page="students"], [data-page="studentInfo"], [data-page="schedule"]');
+      /* บทบาทที่ไม่มีระบบทะเบียนและปฏิทิน (เช่น เจ้าหน้าที่งานอื่น ๆ)
+         ถ้ามีแค่สองตัวแรก เมนูจะตกไปต่อท้ายสุด จึงใส่ตัวสำรองไล่ลงมาให้ครบ */
+      insertNav(nav, btn, '[data-page="students"], [data-page="studentInfo"], [data-page="schedule"], '
+        + '[data-eval-menu], [data-page="grades"], [data-wl-menu], [data-page="ploAssess"], '
+        + '[data-page="teacherDirectory"], [data-page="tracking"], [data-page="survey"], [data-page="services"]');
       if (window.lucide) lucide.createIcons();
     }
   })();

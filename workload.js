@@ -2168,7 +2168,10 @@
               + s[1] + '</button>';
           }).join('')
         + '</div>';
-      insertNav(nav, box, '[data-page="survey"], [data-page="services"]');
+      // วางต่อจาก "ประเมินผลหลักสูตร PLOs" — เมนู PLOs ถูกแทรกทีหลัง
+      // แล้วไปเกาะกลุ่มนี้อีกที ลำดับสุดท้ายจึงเป็น PLOs แล้วค่อยภาระงานนักศึกษา
+      insertNav(nav, box, '[data-page="teacherDirectory"], [data-page="tracking"], '
+        + '[data-page="survey"], [data-page="services"]');
       if (window.lucide) lucide.createIcons();
     }
   })();
