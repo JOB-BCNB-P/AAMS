@@ -27,7 +27,7 @@
       }
     }
   </script>
-  <link rel="stylesheet" href="styles.css?v=20260924d-profilefix">
+  <link rel="stylesheet" href="styles.css?v=20260924e-nopwmenu">
 </head>
 
 <body class="bg-gray-50">
@@ -192,10 +192,8 @@
                 class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-surface hover:text-primary transition text-left">
                 <i data-lucide="settings" class="w-4 h-4 flex-shrink-0"></i>ตั้งค่าข้อมูลส่วนตัว
               </button>
-              <button type="button" id="changePwBtn" onclick="closeUserMenu();showPasswordOtpModal('change')"
-                class="hidden w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-surface hover:text-primary transition text-left">
-                <i data-lucide="key-round" class="w-4 h-4 flex-shrink-0"></i>เปลี่ยนรหัสผ่าน
-              </button>
+              <!-- เดิมมีเมนูเปลี่ยนรหัสผ่าน ถอดออกแล้วเพราะเข้าระบบผ่านอีเมลแทน
+                   ปุ่ม "ลืมรหัสผ่าน?" ในหน้าเข้าสู่ระบบยังอยู่ และยังใช้ตัวเดิมได้ -->
               <div class="border-t border-gray-100 my-1"></div>
               <button type="button" onclick="closeUserMenu();handleLogout()"
                 class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition text-left">
@@ -228,18 +226,18 @@
     </div>
   </div>
 
-  <script>window.__APP_VER = '20260924d-profilefix';</script>
-  <script src="config.js?v=20260924d"></script>
-  <script src="supabase-db.js?v=20260924d"></script>
-  <script src="auth.js?v=20260924d"></script>
-  <script src="grad-images.js?v=20260924d"></script>
-  <script src="app.js?v=20260924d"></script>
-  <script src="app-patch.js?v=20260924d"></script>
-  <script src="workload.js?v=20260924d"></script>
-  <script src="curriculum.js?v=20260924d"></script>
-  <script src="plo.js?v=20260924d"></script>
-  <script src="eval.js?v=20260924d"></script>
-  <script src="profile.js?v=20260924d"></script>
+  <script>window.__APP_VER = '20260924e-nopwmenu';</script>
+  <script src="config.js?v=20260924e"></script>
+  <script src="supabase-db.js?v=20260924e"></script>
+  <script src="auth.js?v=20260924e"></script>
+  <script src="grad-images.js?v=20260924e"></script>
+  <script src="app.js?v=20260924e"></script>
+  <script src="app-patch.js?v=20260924e"></script>
+  <script src="workload.js?v=20260924e"></script>
+  <script src="curriculum.js?v=20260924e"></script>
+  <script src="plo.js?v=20260924e"></script>
+  <script src="eval.js?v=20260924e"></script>
+  <script src="profile.js?v=20260924e"></script>
 </body>
 
 </html>
