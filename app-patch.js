@@ -921,16 +921,21 @@
   function applyRail(on) {
     document.body.classList.toggle('ems-rail', !!on);
     try { localStorage.setItem(RAIL_KEY, on ? '1' : '0'); } catch (e) { }
-    var btn = el('sidebarRailBtn');
+    var btn = el('sidebarToggleBtn');
     if (btn) {
       btn.setAttribute('title', on ? 'ขยายเมนู' : 'ยุบเมนู');
-      btn.setAttribute('aria-label', on ? 'ขยายเมนู' : 'ยุบเมนู');
       btn.setAttribute('aria-expanded', on ? 'false' : 'true');
-      var i = btn.querySelector('i,svg');
-      if (i) i.style.transform = on ? 'rotate(180deg)' : '';
     }
     railTitles();
   }
+
+  /* ขีดสามขีดข้างโลโก้ทำหน้าที่ต่างกันตามขนาดจอ
+     จอเล็ก เมนูเป็นลิ้นชัก จึงเปิด-ปิดลิ้นชัก
+     จอคอมพิวเตอร์ เมนูอยู่ประจำที่ จึงยุบเหลือแถบไอคอนหรือขยายกลับ */
+  window.emsToggleSidebar = function () {
+    if (window.innerWidth >= 1024) { applyRail(!document.body.classList.contains('ems-rail')); return; }
+    if (typeof window.toggleSidebar === 'function') window.toggleSidebar();
+  };
   // ยุบแล้วเหลือแต่ไอคอน ต้องมีคำอธิบายตอนชี้ ไม่งั้นเดาไม่ออกว่าปุ่มไหนคืออะไร
   function railTitles() {
     var nav = el('sidebarNav');

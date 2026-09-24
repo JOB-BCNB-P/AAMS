@@ -144,8 +144,8 @@ body {
   min-width: max-content;
 }
 
-/* บอกใบ้ว่ายังเลื่อนต่อได้ (เงาจาง ๆ ด้านขวา) */
-@media (max-width: 767.98px) {
+/* บอกใบ้ว่ายังเลื่อนต่อได้ (เงาจาง ๆ ด้านขวา) — แท็บเล็ตก็ต้องเห็น */
+@media (max-width: 1023.98px) {
   .ems-tablewrap {
     background:
       linear-gradient(to right, #fff 30%, rgba(255, 255, 255, 0)) left center / 24px 100% no-repeat,
@@ -831,24 +831,7 @@ body.ems-viewas #emsViewAsBar { animation: emsViewAsIn .18s ease-out; }
 
 /* ═══════════ เมนูข้าง: ยุบเหลือแถบไอคอน / ขยายกลับ ═══════════
    ใช้เฉพาะจอคอมพิวเตอร์ ส่วนแท็บเล็ตและมือถือยังเป็นลิ้นชักเลื่อนออกมาเหมือนเดิม */
-.ems-rail-btn {
-  display: none;
-  align-items: center;
-  gap: .75rem;
-  margin: 0 .75rem .5rem;
-  padding: .55rem .75rem;
-  border-radius: .75rem;
-  color: #6b7280;
-  font-size: .8125rem;
-  background: transparent;
-  border: 1px solid transparent;
-}
-
-.ems-rail-btn:hover { background: #f0f7ff; color: #1e6fba; border-color: #d1e6f9; }
-.ems-rail-btn>i, .ems-rail-btn>svg { flex: 0 0 auto; transition: transform .2s ease; }
-
 @media (min-width: 1024px) {
-  .ems-rail-btn { display: flex; }
   .sidebar { transition: width .22s ease; }
 
   body.ems-rail .sidebar { width: 4.75rem; }
@@ -856,8 +839,7 @@ body.ems-viewas #emsViewAsBar { animation: emsViewAsIn .18s ease-out; }
   /* ตัวอักษรถูกย่อเหลือศูนย์ ไอคอนเป็นภาพเวกเตอร์จึงไม่ได้รับผลกระทบ
      วิธีนี้ซ่อนข้อความที่ไม่ได้ครอบแท็กไว้ได้ ซึ่ง CSS เลือกตรง ๆ ไม่ได้ */
   body.ems-rail #sidebarNav .nav-item,
-  body.ems-rail #sidebarNav .dropdown-item>button,
-  body.ems-rail .ems-rail-btn {
+  body.ems-rail #sidebarNav .dropdown-item>button {
     font-size: 0;
     gap: 0;
     justify-content: center;
@@ -869,7 +851,6 @@ body.ems-viewas #emsViewAsBar { animation: emsViewAsIn .18s ease-out; }
   body.ems-rail #sidebarNav .dropdown-item>button>i,
   body.ems-rail #sidebarNav .dropdown-item>button>svg,
   body.ems-rail #sidebarNav .dropdown-menu,
-  body.ems-rail .ems-rail-btn-label,
   body.ems-rail .ems-sidebar-credit { display: none; }
 
   body.ems-rail #sidebarNav { padding-left: .5rem; padding-right: .5rem; }
@@ -934,3 +915,93 @@ body.ems-viewas #emsViewAsBar { animation: emsViewAsIn .18s ease-out; }
   /* ช่องว่าง ๆ ไม่ต้องกินที่ */
   table[data-ems-cards="1"] tbody td:empty { display: none; }
 }
+
+
+/* ═══════════ จัดหน้าให้พอดีมือถือและแท็บเล็ต ═══════════
+   หน้าเว็บนี้เขียนแถวต่าง ๆ ด้วย flex แบบไม่ขึ้นบรรทัดใหม่
+   บนจอคอมพิวเตอร์ที่กว้างพอจึงดูดี แต่พอจอแคบลง ของในแถวจะถูกบีบ
+   จนข้อความในปุ่มหักกลางคำ และแถบตัวกรองล้นออกนอกจอ
+   กฎด้านล่างอนุญาตให้ทุกแถวขึ้นบรรทัดใหม่ได้เมื่อที่ไม่พอ
+   แถวที่ตั้งใจไม่ให้ขึ้นบรรทัด ใส่ flex-nowrap หรือ ems-nowrap กำกับไว้ได้ */
+@media (max-width: 1023.98px) {
+  /* ให้ขึ้นบรรทัดใหม่เฉพาะ "แถวเครื่องมือ" คือแถวที่มีปุ่ม ช่องกรอก ตัวเลือก
+     หรือหัวเรื่องอยู่ในนั้นโดยตรง ซึ่งเป็นแถวที่ล้นจริงบนจอแคบ
+     ไม่เหมารวมทุกแถว เพราะแถวไอคอนคู่ข้อความ (เช่นในการ์ดสถิติ)
+     ถ้าขึ้นบรรทัดใหม่ ไอคอนจะหลุดไปอยู่คนละบรรทัดกับตัวเลข ดูแย่กว่าเดิม */
+  .ems-main .flex:not(.flex-col):not(.flex-nowrap):not(.ems-nowrap):has(> button),
+  .ems-main .flex:not(.flex-col):not(.flex-nowrap):not(.ems-nowrap):has(> select),
+  .ems-main .flex:not(.flex-col):not(.flex-nowrap):not(.ems-nowrap):has(> input),
+  .ems-main .flex:not(.flex-col):not(.flex-nowrap):not(.ems-nowrap):has(> label),
+  .ems-main .flex:not(.flex-col):not(.flex-nowrap):not(.ems-nowrap):has(> h2),
+  .ems-main .flex:not(.flex-col):not(.flex-nowrap):not(.ems-nowrap):has(> h3) {
+    flex-wrap: wrap;
+  }
+
+  /* แถวที่ไม่ได้ตั้งระยะห่างไว้ พอขึ้นบรรทัดใหม่จะติดกันจนอ่านยาก */
+  .ems-main .flex:not([class*="gap-"]):has(> button),
+  .ems-main .flex:not([class*="gap-"]):has(> select),
+  .ems-main .flex:not([class*="gap-"]):has(> input),
+  .ems-main .flex:not([class*="gap-"]):has(> h2) {
+    gap: .5rem;
+  }
+
+  /* ข้อความในปุ่มต้องไม่หักกลางคำ ("นำ เข้า CSV" อ่านแล้วสะดุด) */
+  .ems-main button,
+  .ems-main a[class*="rounded"] { white-space: nowrap; }
+
+  /* ปุ่มที่มีข้อความยาวมากจริง ๆ ให้หักได้ ดีกว่าดันจนล้นจอ */
+  .ems-main button { max-width: 100%; overflow-wrap: anywhere; }
+}
+
+@media (max-width: 640px) {
+  /* หัวเรื่องหน้าขึ้นบรรทัดของตัวเอง ปุ่มจึงไปเรียงกันด้านล่าง */
+  .ems-main>h2,
+  .ems-main .flex>h2,
+  .ems-main .flex>h3 { flex: 1 1 100%; }
+
+  .ems-main>h2 { font-size: 1.0625rem; line-height: 1.6rem; }
+
+  /* ช่องกรอกและตัวเลือกในแถบตัวกรอง กินเต็มแถวไปเลย กดง่ายกว่าและไม่ล้น */
+  .ems-main select,
+  .ems-main input[type="text"],
+  .ems-main input[type="search"],
+  .ems-main input[type="date"],
+  .ems-main input[type="number"],
+  .ems-main input[type="tel"],
+  .ems-main input[type="email"] { flex: 1 1 100%; min-width: 0; }
+
+  /* ปุ่มในแถบเครื่องมือแบ่งความกว้างกันเอง ไม่ต้องเล็งปุ่มเล็ก ๆ */
+  .ems-main .flex>button:not([class*="w-"]):not(.p-1):not(.p-1\.5):not(.p-2) {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  /* การ์ดสถิติเตี้ยลงหน่อย จะได้เห็นหลายใบในหน้าจอเดียว */
+  .ems-main .card-stat { padding: 1rem; }
+
+  /* กล่องเนื้อหาทั่วไปลดขอบในลง พื้นที่อ่านข้อมูลจะได้กว้างขึ้น */
+  .ems-main .rounded-2xl.p-5 { padding: 1rem; }
+}
+
+/* ═══════════ ปฏิทินกิจกรรม ═══════════
+   เดิมช่องที่ไม่มีสีจะไม่มีเส้นอะไรเลย พอจอกว้างขึ้นช่องจะโหว่
+   มองไม่ออกว่าเป็นตารางปฏิทิน และตัวเลขวันลอยอยู่มุมซ้ายบน
+   ใส่เส้นจาง ๆ ให้ทุกช่อง และจัดตัวเลขให้อยู่กึ่งกลาง */
+.ems-main .cal-day {
+  border: 1px solid #eef2f7;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+@media (min-width: 641px) {
+  .ems-main .cal-day { min-height: 3.5rem; }
+}
+
+/* จอเล็ก: ช่องต้องกดง่ายและตัวเลขต้องไม่ชนจุดกิจกรรม */
+@media (max-width: 640px) {
+  .ems-main .cal-day { min-height: 46px; padding: .125rem; }
+  .ems-main .cal-day>.text-xs { font-size: 12px; line-height: 1.1rem; }
+}
+

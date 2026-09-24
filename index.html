@@ -31,7 +31,7 @@
       }
     }
   </script>
-  <link rel="stylesheet" href="styles.css?v=20260924r-railcards">
+  <link rel="stylesheet" href="styles.css?v=20260924s-mobileui">
 </head>
 
 <body class="bg-gray-50">
@@ -153,7 +153,10 @@
 
       <header class="ems-header">
         <div class="ems-header-left">
-          <button onclick="toggleSidebar()" class="lg:hidden ems-icon-btn inline-flex items-center justify-center" aria-label="เปิดเมนู">
+          <!-- ขีดสามขีดข้างโลโก้: จอเล็กเปิด-ปิดลิ้นชักเมนู จอคอมพิวเตอร์ยุบ-ขยายเมนู -->
+          <button onclick="emsToggleSidebar()" id="sidebarToggleBtn"
+            class="ems-icon-btn inline-flex items-center justify-center" aria-label="ยุบ/ขยายเมนู"
+            aria-controls="sidebar" title="ยุบ/ขยายเมนู">
             <i data-lucide="menu" class="w-5 h-5"></i>
           </button>
           <img src="https://cdn.jsdelivr.net/gh/JOB-BCNB-P/LOGO/Logo%20Thai.png" alt=""
@@ -211,12 +214,6 @@
       <div class="ems-body">
         <aside id="sidebar" class="sidebar -translate-x-full lg:translate-x-0">
           <nav class="p-3 space-y-1 flex-1" id="sidebarNav"></nav>
-          <!-- ยุบเมนูเหลือแถบไอคอน เพื่อให้พื้นที่อ่านข้อมูลกว้างขึ้น (เฉพาะจอคอมพิวเตอร์) -->
-          <button type="button" id="sidebarRailBtn" onclick="emsToggleSidebarRail()"
-            class="ems-rail-btn" title="ยุบเมนู" aria-label="ยุบเมนู" aria-expanded="true">
-            <i data-lucide="chevrons-left" class="w-5 h-5"></i>
-            <span class="ems-rail-btn-label">ยุบเมนู</span>
-          </button>
           <p class="ems-sidebar-credit px-4 pb-3 text-gray-400" style="font-size:11px;">พัฒนาระบบ โดย Oranit.R นักวิชาการศึกษา BCNB</p>
         </aside>
         <div id="sidebarOverlay" class="hidden fixed inset-0 bg-black/40 z-30 lg:hidden" onclick="toggleSidebar()"></div>
@@ -236,18 +233,18 @@
     </div>
   </div>
 
-  <script>window.__APP_VER = '20260924r-railcards';</script>
-  <script src="config.js?v=20260924r"></script>
-  <script src="supabase-db.js?v=20260924r"></script>
-  <script src="auth.js?v=20260924r"></script>
-  <script src="grad-images.js?v=20260924r"></script>
-  <script src="app.js?v=20260924r"></script>
-  <script src="app-patch.js?v=20260924r"></script>
-  <script src="workload.js?v=20260924r"></script>
-  <script src="curriculum.js?v=20260924r"></script>
-  <script src="plo.js?v=20260924r"></script>
-  <script src="eval.js?v=20260924r"></script>
-  <script src="profile.js?v=20260924r"></script>
+  <script>window.__APP_VER = '20260924s-mobileui';</script>
+  <script src="config.js?v=20260924s"></script>
+  <script src="supabase-db.js?v=20260924s"></script>
+  <script src="auth.js?v=20260924s"></script>
+  <script src="grad-images.js?v=20260924s"></script>
+  <script src="app.js?v=20260924s"></script>
+  <script src="app-patch.js?v=20260924s"></script>
+  <script src="workload.js?v=20260924s"></script>
+  <script src="curriculum.js?v=20260924s"></script>
+  <script src="plo.js?v=20260924s"></script>
+  <script src="eval.js?v=20260924s"></script>
+  <script src="profile.js?v=20260924s"></script>
 </body>
 
 </html>
