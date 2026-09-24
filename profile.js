@@ -198,15 +198,27 @@
   }
 
   /* หาโปรไฟล์ของผู้ใช้ที่หน้าจอกำลังแสดง
-     กำลังแสดงคนอื่น : ต้องตรงกับตัวระบุของคนนั้นเท่านั้น และห้ามเป็นแถวของบัญชีที่ล็อกอิน
-     กำลังแสดงตัวเอง : หาจากกุญแจก่อน ไม่เจอค่อยถอยไปใช้รหัสผู้ใช้ */
+     ตัดสินจาก "ตัวตนที่ตรงกัน" อย่างเดียว ไม่พึ่งธงบอกสถานะใด ๆ อีก
+     เพราะธงดูแทนผู้ใช้ถูกล้างได้ระหว่างทาง (เช่นโหลดข้อมูลใหม่) ทั้งที่หน้าจอยังแสดงคนอื่นอยู่
+     พอเชื่อธงแล้วเข้าใจผิดว่าเป็นตัวเอง รูปและลายเซ็นของผู้ดูแลจึงไปขึ้นแทน */
   function myProfile() {
-    if (!showingSelf()) {
-      var p = profileOfShown();
-      if (p && MY_UID && s(p.owner_uid) === s(MY_UID)) return null;
-      return p;
+    var p = profileOfShown();
+    if (p) return p;
+
+    /* ไม่มีแถวไหนตรงกับคนบนหน้าจอเลย
+       จะใช้แถวของบัญชีที่ล็อกอินได้ ก็ต่อเมื่อแถวนั้น "ไม่มีตัวตนที่ขัดกัน"
+       เช่นบัญชีที่ไม่มีชื่อ/อีเมลตอนบันทึก แถวจึงไม่มีอะไรให้เทียบ
+       ถ้าแถวระบุตัวตนไว้ชัดแต่ไม่ตรงกับคนบนหน้าจอ = คนละคน ต้องไม่หยิบมาใช้ */
+    var mine = MY_UID ? profileByUid(MY_UID) : null;
+    if (!mine) return null;
+    var mk = s(mine.owner_key).toLowerCase();
+    var mn = s(mine.owner_name).toLowerCase();
+    var hasOwnIdentity = (mk && mk !== s(MY_UID).toLowerCase()) || !!mn;
+    if (hasOwnIdentity) {
+      var ids = idsOfShown();
+      if (ids.indexOf(mk) < 0 && ids.indexOf(mn) < 0) return null;
     }
-    return profileByKey(myKey()) || profileByUid(MY_UID);
+    return mine;
   }
 
   /* ตัวช่วยตรวจอาการเวลาหน้าจอแสดงข้อมูลผิดคน
