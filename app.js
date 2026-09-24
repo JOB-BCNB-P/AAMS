@@ -9191,6 +9191,8 @@ function leavePage() {
     const _beNow = new Date().getFullYear() + 543;
     const defAcadYear = _pick('academic_year') || String((new Date().getMonth() + 1) >= 6 ? _beNow : _beNow - 1);
     const defSemester = normSem(_pick('semester')) || '1';
+    // "เคยลามาแล้วในเทอมนี้" ตามแบบฟอร์มใบลา — นับจากใบลาเดิมของนักศึกษาคนนี้
+    const priorDays = leavePriorDays(stuRec.student_id, stuRec.name, defSemester, defAcadYear);
 
     // เดาภาคของรายวิชาจากรูปแบบหน่วยกิต — มีแต่ชั่วโมงปฏิบัติ ถือว่าเป็นวิชาภาคปฏิบัติ
     const _sectionOf = s => {
@@ -9299,12 +9301,17 @@ function leavePage() {
           </div>
           <input type="hidden" name="leave_date" id="leaveDateHidden">
           <p class="text-xs text-gray-400 mt-1">วันที่จะแสดงในรูปแบบ พ.ศ. <span id="leaveDayCount" class="text-primary font-medium"></span></p>
+          <div class="mt-3">
+            <label class="block text-[11px] text-gray-500 mb-1">เคยลามาแล้วในภาคการศึกษานี้ (วัน)</label>
+            <input type="number" name="prior_days" min="0" step="0.5" value="${priorDays}" oninput="this.dataset.touched='1'" class="w-full sm:w-40 border rounded-xl px-3 py-2 text-sm">
+            <p id="priorDaysHint" class="text-xs text-gray-400 mt-1">ระบบนับให้จากใบลาเดิมของคุณในภาคการศึกษานี้ที่ยังไม่ถูกปฏิเสธ แก้เองได้ถ้าไม่ตรง</p>
+          </div>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-semibold text-gray-700 mb-1">8. ภาคการศึกษา <span class="text-red-500">*</span></label>
-            <select name="semester" required class="w-full border rounded-xl px-3 py-2 text-sm">
+            <select name="semester" required onchange="refreshPriorLeaveDays()" class="w-full border rounded-xl px-3 py-2 text-sm">
               <option value="1" ${defSemester === '1' ? 'selected' : ''}>ภาคการศึกษาที่ 1</option>
               <option value="2" ${defSemester === '2' ? 'selected' : ''}>ภาคการศึกษาที่ 2</option>
               <option value="ฤดูร้อน" ${defSemester === 'ฤดูร้อน' || defSemester === '3' ? 'selected' : ''}>ภาคการศึกษาฤดูร้อน</option>
@@ -9312,7 +9319,7 @@ function leavePage() {
           </div>
           <div>
             <label class="block text-xs font-semibold text-gray-700 mb-1">9. ปีการศึกษา <span class="text-red-500">*</span></label>
-            <input name="academic_year" value="${_q(defAcadYear)}" required class="w-full border rounded-xl px-3 py-2 text-sm">
+            <input name="academic_year" value="${_q(defAcadYear)}" required onchange="refreshPriorLeaveDays()" class="w-full border rounded-xl px-3 py-2 text-sm">
           </div>
         </div>
 
@@ -10459,6 +10466,38 @@ function validateLeaveDate() {
   if (typeof leaveDocRefresh === 'function') leaveDocRefresh();
 }
 
+/* วันลาสะสมในภาคการศึกษาเดียวกัน — ช่อง "เคยลามาแล้วในเทอมนี้" ของแบบฟอร์มใบลา
+   ใบลาหนึ่งครั้งถูกบันทึกเป็นหลายแถว (แถวละรายวิชา) จึงนับตามรหัสชุดเพื่อไม่ให้ซ้ำ
+   ใบที่ถูกปฏิเสธไม่นับ เพราะไม่ถือว่าลาจริง */
+function leavePriorDays(studentId, name, semester, academicYear) {
+  const sid = norm(studentId), nm = norm(name);
+  const seen = {};
+  let total = 0;
+  (getDataByType('leave') || []).forEach(l => {
+    if (norm(l.leave_status) === 'ปฏิเสธ') return;
+    const mine = sid ? (norm(l.student_id) === sid) : (nm && norm(l.name) === nm);
+    if (!mine) return;
+    if (normSem(l.semester) !== normSem(semester)) return;
+    if (norm(l.academic_year) !== norm(academicYear)) return;
+    const key = norm(l.leave_group) || ('row' + l.__rowIndex);
+    if (seen[key]) return;
+    seen[key] = 1;
+    total += Number(norm(l.leave_days)) || 0;
+  });
+  return total;
+}
+
+// เปลี่ยนภาค/ปีการศึกษาแล้วนับใหม่ให้ เว้นแต่ผู้ยื่นแก้ตัวเลขเองไปแล้ว
+function refreshPriorLeaveDays() {
+  const f = document.getElementById('leaveForm'); if (!f) return;
+  const box = f.querySelector('[name="prior_days"]'); if (!box) return;
+  if (box.dataset.touched === '1') return;
+  const g = n => { const el = f.querySelector('[name="' + n + '"]'); return el ? el.value : ''; };
+  const stu = (APP.currentUser && APP.currentUser.data) || {};
+  box.value = leavePriorDays(stu.student_id, stu.name, g('semester'), g('academic_year'));
+  if (typeof leaveDocRefresh === 'function') leaveDocRefresh();
+}
+
 /* ================= ใบลาตัวอย่าง =================
    อ่านค่าจากฟอร์มที่กำลังกรอกอยู่ตรง ๆ ทุกครั้ง ไม่เก็บสำเนาไว้ที่ไหน
    สิ่งที่เห็นในกรอบตัวอย่างจึงเป็นสิ่งเดียวกับที่จะได้ตอนสั่งพิมพ์เสมอ */
@@ -10487,12 +10526,14 @@ function leaveDocData() {
     name: g('name'), batch: g('batch'), year_level: g('year_level'), phone: g('phone'),
     class_teacher: g('class_teacher'), semester: g('semester'), academic_year: g('academic_year'),
     reason: g('leave_reason'), from: g('leave_from'), to: g('leave_to'),
-    half_start: g('half_start'), half_end: g('half_end'),
+    half_start: g('half_start'), half_end: g('half_end'), prior_days: g('prior_days'),
     attach_name: picked ? picked.n : '', attach_label: picked ? picked.t : '',
     subjects: subjects
   };
 }
 
+/* วาดใบลาตามแบบฟอร์มของวิทยาลัย — เรียงหัวข้อและถ้อยคำตามกระดาษจริง
+   แยกรายวิชาเป็นกลุ่ม "ภาคทฤษฎี" กับ "ภาคปฏิบัติ" และติ๊กกล่องหน้ากลุ่มที่มีวิชาอยู่ */
 function leaveDocHTML(d) {
   d = d || {};
   const e = v => htmlEsc(v == null ? '' : String(v));
@@ -10500,87 +10541,112 @@ function leaveDocHTML(d) {
   const fill = (v, w) => String(v || '').trim()
     ? '<span class="ld-v">' + e(v) + '</span>'
     : '<span class="ld-blank" style="min-width:' + (w || 70) + 'px"></span>';
+  const line = w => '<span class="ld-blank" style="min-width:' + w + 'px"></span>';
   // ตาราง student เก็บคำนำหน้าแยกจากชื่อ แต่บางระเบียนพิมพ์รวมมาแล้ว จึงไม่เติมซ้ำ
   const pre = String(d.title_prefix || '').trim(), nm = String(d.name || '').trim();
   const fullName = !nm ? '' : (!pre || nm.indexOf(pre) === 0) ? nm : (pre + nm);
+  // "ลาป่วย" บนแบบฟอร์มเขียนเป็น "ใบลาป่วย" / "ขอลาป่วย" จึงตัดคำว่า ลา ออกก่อน
+  const kind = String(d.leave_type || '').replace(/^ลา/, '');
   const subs = d.subjects || [];
-  const sumHours = subs.reduce((a, s) => a + (Number(s.hours) || 0), 0);
+  const theory = subs.filter(s => s.section !== 'ปฏิบัติ');
+  const practice = subs.filter(s => s.section === 'ปฏิบัติ');
   const days = leaveDayCount(d.from, d.to, d.half_start, d.half_end);
-  const semLabel = d.semester === 'ฤดูร้อน' ? 'ฤดูร้อน' : d.semester;
-  const rows = subs.length ? subs.map((s, i) => '<tr>'
-    + '<td class="c">' + (i + 1) + '</td>'
-    + '<td class="c">' + e(s.code || '-') + '</td>'
-    + '<td>' + e(s.name) + '</td>'
-    + '<td class="c">' + e(s.section || '-') + '</td>'
-    + '<td class="c">' + e(s.ward || '-') + '</td>'
-    + '<td class="c">' + e(s.hours || '-') + '</td>'
-    + '<td class="c">' + (s.percent == null ? '-' : s.percent.toFixed(2) + '%') + '</td>'
-    + '<td>' + e(s.coordinator || '-') + '</td>'
-    + '</tr>').join('')
-    : '<tr><td colspan="8" class="c ld-muted">ยังไม่ได้เลือกรายวิชา</td></tr>';
+  const tag = h => String(h || '').trim() ? ' (' + h + ')' : '';
+  const range = leaveDateRange(d.from, d.to);
+  const fromTxt = range.length ? toThaiLongDate(range[0]) + tag(d.half_start) : '';
+  const toTxt = range.length ? toThaiLongDate(range[range.length - 1]) + tag(range.length > 1 ? d.half_end : d.half_start) : '';
+  const now = new Date();
+  const box = on => '<span class="ld-box' + (on ? ' on' : '') + '"></span>';
 
-  const signBox = (title, name) => '<div class="ld-sign">'
-    + '<div class="ld-sign-t">' + e(title) + '</div>'
-    + '<div class="ld-sign-l">ความเห็น .................................................</div>'
-    + '<div class="ld-sign-l">ลงชื่อ ....................................................</div>'
-    + '<div class="ld-sign-n">( ' + (String(name || '').trim() ? e(name) : '....................................') + ' )</div>'
-    + '<div class="ld-sign-l">วันที่ ......... / ......... / .........</div>'
-    + '</div>';
+  const hourLine = s => 'วิชา ' + fill(s.name, 200)
+    + ' จำนวน ' + fill(s.hours, 40) + ' ชั่วโมง คิดเป็นร้อยละ '
+    + fill(s.percent == null ? '' : s.percent.toFixed(2), 50) + ' %';
+  const theoryRows = (theory.length ? theory : [{}]).map(s => '<div class="ld-item">'
+    + hourLine(s)
+    + '<div>อาจารย์ผู้ประสานวิชา ลงนาม (' + line(150) + ')'
+    + (s.coordinator ? '<span class="ld-hint"> ' + e(s.coordinator) + '</span>' : '') + '</div>'
+    + '</div>').join('');
+  const practiceRows = (practice.length ? practice : [{}]).map(s => '<div class="ld-item">'
+    + hourLine(s)
+    + '<div>Ward ที่ขึ้นปฏิบัติงาน ' + fill(s.ward, 180) + '</div>'
+    + '<div>ลงชื่ออาจารย์ผู้ประจำวิชา ' + line(180)
+    + (s.coordinator ? '<span class="ld-hint"> ' + e(s.coordinator) + '</span>' : '') + '</div>'
+    + '</div>').join('');
 
   return '<style>'
-    + '.ld-doc{font-family:"Sarabun","TH SarabunPSK","Noto Sans Thai",sans-serif;color:#111827;line-height:1.75}'
-    + '.ld-doc .c{text-align:center}.ld-doc .r{text-align:right}'
-    + '.ld-head{text-align:center;margin-bottom:14px}'
-    + '.ld-head b{font-size:1.25em;display:block}'
-    + '.ld-blank{display:inline-block;border-bottom:1px dotted #9ca3af;height:1em;vertical-align:baseline}'
-    + '.ld-v{font-weight:600}'
-    + '.ld-muted{color:#9ca3af}'
-    + '.ld-p{text-indent:2.5em;margin:10px 0}'
-    + '.ld-doc table{width:100%;border-collapse:collapse;margin:10px 0;font-size:.92em}'
-    + '.ld-doc th,.ld-doc td{border:1px solid #9ca3af;padding:4px 6px;vertical-align:top}'
-    + '.ld-doc th{background:#f3f4f6;font-weight:600;text-align:center}'
-    + '.ld-signs{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}'
-    + '.ld-sign{flex:1;min-width:150px;border:1px solid #d1d5db;border-radius:6px;padding:8px;font-size:.85em}'
-    + '.ld-sign-t{font-weight:600;margin-bottom:6px;text-align:center}'
-    + '.ld-sign-l{margin-top:6px}.ld-sign-n{text-align:center;margin-top:2px}'
-    + '@media print{@page{size:A4;margin:18mm 16mm}.ld-doc{font-size:15px}}'
+    + '.ld-doc{font-family:"Sarabun","TH SarabunPSK","Noto Sans Thai",sans-serif;color:#111827;line-height:1.9;font-size:15px}'
+    + '.ld-doc .r{text-align:right}'
+    + '.ld-title{text-align:center;font-weight:700;font-size:1.2em;margin-bottom:10px}'
+    + '.ld-blank{display:inline-block;border-bottom:1px dotted #9ca3af;height:1.05em;vertical-align:baseline}'
+    + '.ld-v{font-weight:600;border-bottom:1px dotted #d1d5db;padding:0 2px}'
+    + '.ld-muted{color:#9ca3af}.ld-hint{color:#9ca3af;font-size:.82em}'
+    + '.ld-lbl{display:inline-block;min-width:44px;font-weight:600}'
+    + '.ld-p{text-indent:2.5em;margin:8px 0}'
+    + '.ld-box{display:inline-block;width:13px;height:13px;line-height:11px;text-align:center;'
+    + 'border:1px solid #374151;margin-right:6px;vertical-align:-2px;font-size:11px;font-weight:700}'
+    + '.ld-box.on::after{content:"\\2713"}'
+    + '.ld-sec{margin:10px 0 4px}.ld-sec>b{font-weight:700}'
+    + '.ld-items{margin-left:34px}.ld-item{margin-bottom:6px}'
+    + '.ld-sign{margin-top:14px;text-align:right}'
+    + '.ld-two{display:flex;gap:18px;margin-top:16px;flex-wrap:wrap;align-items:flex-start}'
+    + '.ld-two>div{flex:1;min-width:210px}'
+    + '.ld-two .h{font-weight:700;margin-bottom:6px}'
+    + '.ld-ind{margin-left:40px}'
+    + '.ld-note{margin-top:16px;font-size:.85em;line-height:1.6}'
+    + '.ld-note b{display:block}'
+    + '.ld-note ol{margin:2px 0 0 18px;padding:0}'
+    + '@media print{@page{size:A4;margin:16mm 15mm}.ld-doc{font-size:15px}}'
     + '</style>'
     + '<div class="ld-doc">'
-    + '<div class="ld-head"><b>ใบลานักศึกษา</b><span>วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ</span></div>'
-    + '<div class="r">เขียนที่ วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ</div>'
-    + '<div class="r">วันที่ ' + e(toThaiLongDate(leaveYmd(new Date()))) + '</div>'
-    + '<div style="margin-top:8px">เรื่อง&nbsp;&nbsp;&nbsp;ขออนุญาต' + fill(d.leave_type, 90) + '</div>'
-    + '<div>เรียน&nbsp;&nbsp;&nbsp;ผู้อำนวยการวิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ</div>'
-    + '<p class="ld-p">ข้าพเจ้า ' + fill(fullName, 160)
-    + ' รหัสนักศึกษา ' + fill(d.student_id, 110)
-    + ' รุ่นที่ ' + fill(d.batch, 40)
-    + ' ชั้นปีที่ ' + fill(d.year_level, 30)
-    + ' โทรศัพท์ที่ติดต่อได้ ' + fill(d.phone, 110)
-    + ' มีความประสงค์ขอ' + fill(d.leave_type, 80)
-    + ' ตั้งแต่ ' + fill(leaveRangeLabel(d.from, d.to, d.half_start, d.half_end), 220)
-    + ' รวม ' + fill(days || '', 30) + ' วัน'
-    + ' ในภาคการศึกษาที่ ' + fill(semLabel, 40) + ' ปีการศึกษา ' + fill(d.academic_year, 50)
-    + ' เนื่องจาก ' + fill(d.reason, 240) + '</p>'
-    + '<div>โดยขาดเรียนในรายวิชาดังต่อไปนี้</div>'
-    + '<table><thead><tr>'
-    + '<th style="width:34px">ลำดับ</th><th style="width:62px">รหัสวิชา</th><th>รายวิชา</th>'
-    + '<th style="width:52px">ภาค</th><th style="width:88px">Ward</th><th style="width:44px">ชม.</th>'
-    + '<th style="width:56px">ร้อยละ</th><th style="width:110px">อ.ผู้ประสานงานรายวิชา</th>'
-    + '</tr></thead><tbody>' + rows + '</tbody>'
-    + (subs.length ? '<tfoot><tr><td colspan="5" class="r"><b>รวมชั่วโมงที่ขาดเรียน</b></td>'
-      + '<td class="c"><b>' + sumHours + '</b></td><td colspan="2"></td></tr></tfoot>' : '')
-    + '</table>'
-    + '<div>หลักฐานแนบ : ' + (d.attach_name ? e(d.attach_label) + ' — ' + e(d.attach_name) : '<span class="ld-muted">ยังไม่ได้แนบไฟล์</span>') + '</div>'
-    + '<p class="ld-p">จึงเรียนมาเพื่อโปรดพิจารณาอนุญาต</p>'
-    + '<div style="text-align:right;margin-top:10px">'
-    + '<div>ลงชื่อ .................................................... นักศึกษาผู้ลา</div>'
-    + '<div style="margin-right:74px">( ' + (fullName ? e(fullName) : '....................................') + ' )</div>'
+
+    + '<div class="ld-title">ใบลา' + fill(kind, 90) + '</div>'
+    + '<div class="r"><b>วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ</b></div>'
+    + '<div class="r">วันที่ ' + fill(now.getDate(), 34) + ' เดือน '
+    + fill(THAI_MONTHS[now.getMonth() + 1], 76) + ' พ.ศ. ' + fill(now.getFullYear() + 543, 50) + '</div>'
+
+    + '<div><span class="ld-lbl">เรื่อง</span> ขอลา' + fill(kind, 140) + '</div>'
+    + '<div><span class="ld-lbl">เรียน</span> ผู้อำนวยการวิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ</div>'
+
+    + '<p class="ld-p">เนื่องด้วยข้าพเจ้า นาย, นาง, นางสาว ' + fill(fullName, 220)
+    + ' มีความจำเป็นจะขอลา' + fill(kind, 110) + ' เนื่องจาก ' + fill(d.reason, 300) + '</p>'
+    + '<div>ตั้งแต่วันที่ ' + fill(fromTxt, 210) + ' ถึงวันที่ ' + fill(toTxt, 210) + '</div>'
+    + '<div>รวมเวลา ' + fill(days || '', 50) + ' วัน &nbsp;&nbsp; เคยลามาแล้วในเทอมนี้ '
+    + fill(d.prior_days, 50) + ' วัน ทั้งนี้ในวันที่ลาข้าพเจ้าขาดเรียน</div>'
+
+    + '<div class="ld-sec">' + box(theory.length > 0) + '<b>ภาคทฤษฎี</b></div>'
+    + '<div class="ld-items">' + theoryRows + '</div>'
+    + '<div class="ld-sec">' + box(practice.length > 0) + '<b>ภาคปฏิบัติ</b></div>'
+    + '<div class="ld-items">' + practiceRows + '</div>'
+
+    + (d.attach_name ? '<div style="margin-top:8px">หลักฐานแนบ : ' + e(d.attach_label) + ' — ' + e(d.attach_name) + '</div>' : '')
+    + '<p class="ld-p" style="margin-top:10px">จึงเรียนมาเพื่อโปรดพิจารณาอนุมัติ</p>'
+
+    + '<div class="ld-sign">'
+    + '<div>ขอแสดงความนับถืออย่างสูง</div>'
+    + '<div>( ' + (fullName ? e(fullName) : line(180)) + ' )</div>'
+    + '<div>นักศึกษาพยาบาลศาสตร์ ชั้นปีที่ ' + fill(d.year_level, 34) + ' รุ่น ' + fill(d.batch, 46) + '</div>'
+    + '<div>เบอร์โทรศัพท์ ' + fill(d.phone, 130) + '</div>'
     + '</div>'
-    + '<div class="ld-signs">'
-    + signBox('อาจารย์ผู้ประสานงานรายวิชา', subs.length === 1 ? subs[0].coordinator : '')
-    + signBox('อาจารย์ประจำชั้น', d.class_teacher)
-    + signBox('รองผู้อำนวยการด้านวิชาการ', '')
+
+    + '<div class="ld-two">'
+    + '<div><div class="h">ความคิดเห็นอาจารย์ประจำชั้น</div>'
+    + '<div>' + line(240) + '</div><div>' + line(240) + '</div>'
+    + '<div class="ld-ind">ลงชื่อ ' + line(150) + '</div>'
+    + '<div class="ld-ind">( ' + (String(d.class_teacher || '').trim() ? e(d.class_teacher) : line(140)) + ' )</div>'
+    + '<div class="ld-ind">วันที่ ' + line(150) + '</div></div>'
+    + '<div><div class="h">คำสั่ง</div>'
+    + '<div class="ld-ind">' + box(false) + 'อนุญาต &nbsp;&nbsp;&nbsp;' + box(false) + 'ไม่อนุญาต</div>'
+    + '<div class="ld-ind" style="margin-top:8px">ลงชื่อ ' + line(150) + '</div>'
+    + '<div class="ld-ind">( ' + line(150) + ' )</div>'
+    + '<div class="ld-ind">ตำแหน่ง ' + line(140) + '</div>'
+    + '<div class="ld-ind">วันที่ ' + line(150) + '</div></div>'
     + '</div>'
+
+    + '<div class="ld-note"><b>หมายเหตุ</b><ol>'
+    + '<li>ส่งใบลาล่วงหน้าอย่างน้อย 1 วัน ที่อาจารย์ประจำชั้น และติดตามผลการลาก่อน</li>'
+    + '<li>มอบใบลาฉบับจริงให้อาจารย์ประจำชั้น หรืออาจารย์ฝ่ายปกครอง</li>'
+    + '<li>สำเนาส่งอาจารย์ผู้ประสานวิชา 1 ฉบับ และอาจารย์ประจำตึก 1 ฉบับ (กรณีขาดภาคปฏิบัติ)</li>'
+    + '</ol></div>'
     + '</div>';
 }
 
@@ -10803,6 +10869,7 @@ function initPageScripts(page) {
             leave_to: fd.get('leave_to') || fd.get('leave_from') || '',
             half_start: fd.get('half_start') || '',
             half_end: fd.get('half_end') || '',
+            prior_days: fd.get('prior_days') || '',
             leave_type: type,
             leave_reason: fd.get('leave_reason') || '',
             phone: fd.get('phone') || '',
