@@ -105,9 +105,14 @@
         student_id: s(au.student_id) };
     }
     if (u.data && Object.keys(u.data).length) return u.data;
-    var d = findInRegistry(s(u.student_id).toLowerCase(),
-      s(u.email).toLowerCase(), s(u.name).toLowerCase());
-    return d || { name: u.name, email: u.email };
+    // APP.currentUser ว่างได้ในบางจังหวะ จึงมีโปรไฟล์ตอนเข้าระบบไว้เป็นตัวสำรอง
+    var rp = realProfile();
+    var sid = s(u.student_id || rp.student_id).toLowerCase();
+    var em = s(u.email || rp.email).toLowerCase();
+    var nm = s(u.name || rp.name).toLowerCase();
+    var d = findInRegistry(sid, em, nm);
+    return d || { name: s(u.name) || s(rp.name), email: s(u.email) || s(rp.email),
+      student_id: s(u.student_id) || s(rp.student_id) };
   }
 
   function myKey() {
@@ -173,6 +178,39 @@
   }
   /* กุญแจของ "บัญชีที่ล็อกอินอยู่จริง" — ไม่ใช่คนที่หน้าจอกำลังแสดง
      app-patch.js เก็บโปรไฟล์จริงไว้ตั้งแต่ตอนเข้าระบบ ใช้เทียบได้ว่าตอนนี้แสดงตัวเองอยู่ไหม */
+  /* โปรไฟล์ที่ได้ตอนเข้าสู่ระบบ — ตัวนี้ไม่ถูกเขียนทับระหว่างทาง
+     ต่างจาก APP.currentUser ที่ถูกตั้งใหม่ทุกครั้งที่สลับบทบาทหรือโหลดข้อมูลรอบใหม่
+     และบางจังหวะกลายเป็นว่าง จนชื่อบนหน้าหลักขึ้นเป็น "ผู้ใช้" */
+  function realProfile() { return (window.__emsRealProfile || window.__emsProfile || {}); }
+
+  /* ตัวระบุทุกแบบของบัญชีที่ล็อกอินอยู่ ทั้งจากตอนเข้าระบบและจากแถวโปรไฟล์ของตัวเอง */
+  function realIds() {
+    var out = [];
+    var add = function (v) {
+      var x = s(v).toLowerCase();
+      if (x && out.indexOf(x) < 0) out.push(x);
+      var n = normName(v);
+      if (n && out.indexOf(n) < 0) out.push(n);
+    };
+    var rp = realProfile();
+    [rp.student_id, rp.email, rp.username, rp.name].forEach(add);
+    var mine = MY_UID ? profileByUid(MY_UID) : null;
+    if (mine) [mine.owner_key, mine.owner_name, mine.full_name].forEach(add);
+    return out;
+  }
+
+  /* คนบนหน้าจอเป็นคนอื่นแน่ ๆ หรือเปล่า
+     ตัดแถวของตัวเองทิ้งได้เฉพาะเมื่อ "มีหลักฐาน" ว่าเป็นคนอื่นเท่านั้น
+     ไม่รู้ว่าเป็นใคร ไม่ใช่หลักฐาน — ไม่งั้นข้อมูลของเจ้าตัวจะหายทั้งหน้า */
+  function isSomeoneElse() {
+    if (viewingAs()) return true;
+    var ids = idsOfShown();
+    if (!ids.length) return false;
+    var mine = realIds();
+    if (!mine.length) return false;
+    return !mine.some(function (k) { return ids.indexOf(k) >= 0; });
+  }
+
   function realAccountKey() {
     var rp = window.__emsRealProfile || null;
     if (!rp) return '';
@@ -238,17 +276,12 @@
     var p = profileOfShown();
     if (p) return p;
 
-    /* ไม่มีแถวไหนตรงกับคนบนหน้าจอเลย
-       จะใช้แถวของบัญชีที่ล็อกอินได้ ก็ต่อเมื่อแถวนั้น "ไม่มีตัวตนที่ขัดกัน"
-       เช่นบัญชีที่ไม่มีชื่อ/อีเมลตอนบันทึก แถวจึงไม่มีอะไรให้เทียบ
-       ถ้าแถวระบุตัวตนไว้ชัดแต่ไม่ตรงกับคนบนหน้าจอ = คนละคน ต้องไม่หยิบมาใช้ */
+    /* ไม่มีแถวไหนตรงกับตัวระบุบนหน้าจอ
+       แถวที่ผูกกับรหัสบัญชีที่ล็อกอินอยู่ เป็นของเจ้าตัวแน่นอน (ฐานข้อมูลบังคับไว้)
+       จึงทิ้งได้เฉพาะเมื่อรู้ชัดว่าหน้าจอกำลังแสดงคนอื่น */
     var mine = MY_UID ? profileByUid(MY_UID) : null;
     if (!mine) return null;
-    var mk = s(mine.owner_key).toLowerCase();
-    var hasOwnIdentity = (mk && mk !== s(MY_UID).toLowerCase())
-      || !!s(mine.owner_name) || !!s(mine.full_name);
-    if (hasOwnIdentity) return null;   // แถวระบุตัวตนไว้ชัด แต่ไม่ตรงกับคนบนหน้าจอ = คนละคน
-    return mine;
+    return isSomeoneElse() ? null : mine;
   }
 
   /* ตัวช่วยตรวจอาการเวลาหน้าจอแสดงข้อมูลผิดคน
@@ -265,6 +298,10 @@
       บัญชีในตารางผู้ใช้: viewAsUserRow() || null,
       ระเบียนที่ใช้: myRecord() || null,
       ตัวระบุที่จับคู่: idsOfShown(),
+      ตัวระบุของบัญชีที่ล็อกอิน: realIds(),
+      สรุปว่าเป็นคนอื่น: isSomeoneElse(),
+      โปรไฟล์ตอนเข้าระบบ: realProfile(),
+      แถวที่ผูกกับรหัสบัญชี: MY_UID ? (profileByUid(MY_UID) || null) : null,
       แสดงตัวเองอยู่: showingSelf(),
       กุญแจของบัญชีจริง: realAccountKey(),
       รหัสผู้ใช้ที่ล็อกอิน: MY_UID,
@@ -287,7 +324,7 @@
   function myDisplay() {
     var u = (window.APP && APP.currentUser) || {};
     var d = displayOf(myRecord(), myProfile());
-    if (!d.name) d.name = s(u.name);
+    if (!d.name) d.name = s(u.name) || s(realProfile().name);
     return d;
   }
   window.profileMy = myDisplay;
@@ -1100,7 +1137,8 @@
         ['ห้อง', rec.room], ['อาจารย์ที่ปรึกษา', rec.advisor],
         ['เบอร์โทรศัพท์', d.phone], ['อีเมล', rec.email]];
     } else {
-      rows = [['อีเมล', u.email || rec.email], ['สาขาวิชา', rec.department || u.department],
+      rows = [['อีเมล', u.email || rec.email || realProfile().email],
+        ['สาขาวิชา', rec.department || u.department],
         ['ตำแหน่ง', rec.position], ['เบอร์โทรศัพท์', d.phone],
         ['ชั้นปีที่รับผิดชอบ', (u.responsible_year || rec.responsible_year)
           ? 'ชั้นปีที่ ' + (u.responsible_year || rec.responsible_year) : ''],
