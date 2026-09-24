@@ -1616,9 +1616,10 @@ function dashboardPage() {
         </div>
       </div>
     </div>`;
-  } else if (r === 'student' && APP.currentUser.data) {
-    stats = `<div class="bg-white rounded-2xl p-5 border border-blue-100 mb-4"><p class="text-sm text-gray-500">ข้อมูลนักศึกษา</p><p class="font-bold text-lg">${APP.currentUser.name}</p></div>`;
   }
+  /* การ์ด "ข้อมูลนักศึกษา" ที่เคยมีตรงนี้ถูกตัดออกแล้ว
+     เพราะการ์ดข้อมูลส่วนบุคคลด้านบนหน้าหลัก (profile.js) แสดงชื่อ รูป
+     รหัสนักศึกษา รุ่น ชั้นปี ห้อง และอาจารย์ที่ปรึกษาครบกว่า ซ้ำกันสองที่โดยไม่จำเป็น */
 
   return `<h2 class="text-xl font-bold text-gray-800 mb-4"><i data-lucide="layout-dashboard" class="w-6 h-6 inline mr-2"></i>หน้าหลัก</h2>
   ${stats}
