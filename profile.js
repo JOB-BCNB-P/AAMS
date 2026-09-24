@@ -66,13 +66,22 @@
   /* โหมด "ดูแทนผู้ใช้" — ผู้ดูแลระบบเปิดดูหน้าจอในมุมมองของคนอื่น
      บัญชีที่ล็อกอินยังเป็นของผู้ดูแล แต่สิ่งที่ต้องแสดงคือข้อมูลของคนที่ถูกดูแทน
      ทุกจุดที่หาโปรไฟล์จึงต้องแยกสองกรณีนี้ออกจากกัน */
-  function viewingAs() { return !!(window.APP && APP._viewAs); }
+  /* ธง "ดูแทนผู้ใช้" เคยเก็บไว้ในหน่วยความจำอย่างเดียว
+     พอระบบโหลดข้อมูลรอบใหม่ ธงถูกล้างทิ้งทั้งที่หน้าจอยังแสดงคนอื่นอยู่
+     จึงเก็บสำเนาไว้ในที่เก็บของแท็บด้วย อ่านได้แม้ธงในหน่วยความจำหาย */
+  var VIEW_AS_KEY = 'ems_view_as';
+  function storedViewAs() {
+    try { return JSON.parse(window.sessionStorage.getItem(VIEW_AS_KEY) || 'null'); }
+    catch (e) { return null; }
+  }
+  function viewAsInfo() { return (window.APP && APP._viewAs) || storedViewAs() || null; }
+  function viewingAs() { return !!viewAsInfo(); }
 
   /* บัญชีของคนที่ถูกดูแทน
      APP._viewAs.id คือรหัสแถวในตารางบัญชีผู้ใช้ จึงชี้ตัวได้ตรง ๆ ไม่ต้องเดาจากชื่อ
      เทียบด้วยชื่อเป็นตัวสำรองไว้เผื่อรหัสแถวเปลี่ยนหลังโหลดข้อมูลใหม่ */
   function viewAsUserRow() {
-    var v = (window.APP && APP._viewAs) || null;
+    var v = viewAsInfo();
     if (!v) return null;
     var rows = get('user');
     return rows.find(function (x) { return String(x.__backendId) === String(v.id); })
@@ -93,32 +102,46 @@
     }) || null;
   }
 
-  function myRecord() {
+  /* ระเบียนของ "คนที่หน้าจอกำลังแสดง" ล้วน ๆ
+     ห้ามเติมข้อมูลของบัญชีที่ล็อกอินลงไป เพราะตัวนี้คือตัวที่ใช้จับคู่ว่าเป็นใคร
+     ถ้าเติมเข้าไป ตอนผู้ดูแลเข้าไปดูแทนนักศึกษา จะจับคู่ได้โปรไฟล์ของผู้ดูแลแทน */
+  function screenRecord() {
     var u = (window.APP && APP.currentUser) || {};
     if (viewingAs()) {
       // ห้ามใช้ u.data ของโหมดดูแทน เพราะบางครั้งว่าง และห้ามตกไปใช้ของผู้ดูแลเด็ดขาด
       var au = viewAsUserRow() || {};
-      var v = (APP._viewAs) || {};
+      var v = viewAsInfo() || {};
       var hit = findInRegistry(s(au.student_id).toLowerCase(),
         s(au.email).toLowerCase(), s(au.name || v.name || u.name).toLowerCase());
       return hit || { name: s(au.name) || s(v.name) || s(u.name), email: s(au.email),
         student_id: s(au.student_id) };
     }
     if (u.data && Object.keys(u.data).length) return u.data;
-    // APP.currentUser ว่างได้ในบางจังหวะ จึงมีโปรไฟล์ตอนเข้าระบบไว้เป็นตัวสำรอง
+    var d = findInRegistry(s(u.student_id).toLowerCase(),
+      s(u.email).toLowerCase(), s(u.name).toLowerCase());
+    return d || { name: s(u.name), email: s(u.email), student_id: s(u.student_id) };
+  }
+
+  /* ระเบียนสำหรับ "แสดงผล" — เติมชื่อและอีเมลจากตอนเข้าระบบให้ได้
+     เฉพาะตอนที่แน่ใจว่าหน้าจอกำลังแสดงเจ้าของบัญชีเองเท่านั้น */
+  function myRecord() {
+    var d = screenRecord() || {};
+    if (isSomeoneElse()) return d;
     var rp = realProfile();
-    var sid = s(u.student_id || rp.student_id).toLowerCase();
-    var em = s(u.email || rp.email).toLowerCase();
-    var nm = s(u.name || rp.name).toLowerCase();
-    var d = findInRegistry(sid, em, nm);
-    return d || { name: s(u.name) || s(rp.name), email: s(u.email) || s(rp.email),
-      student_id: s(u.student_id) || s(rp.student_id) };
+    return {
+      name: s(d.name) || s(rp.name),
+      email: s(d.email) || s(rp.email),
+      student_id: s(d.student_id) || s(rp.student_id),
+      title_prefix: d.title_prefix, phone: d.phone, batch: d.batch, room: d.room,
+      year_level: d.year_level, advisor: d.advisor, department: d.department,
+      position: d.position, responsible_year: d.responsible_year, homeroom: d.homeroom
+    };
   }
 
   function myKey() {
     if (viewingAs()) {
       var au = viewAsUserRow() || {};
-      var v = (APP._viewAs) || {};
+      var v = viewAsInfo() || {};
       return s(au.student_id || au.email || au.username || v.identifier || v.name).toLowerCase();
     }
     var u = (window.APP && APP.currentUser) || {}, d = myRecord();
@@ -248,10 +271,10 @@
       if (n && out.indexOf(n) < 0) out.push(n);
     };
     if (viewingAs()) {
-      var au = viewAsUserRow() || {}, v = (window.APP && APP._viewAs) || {};
+      var au = viewAsUserRow() || {}, v = viewAsInfo() || {};
       [au.student_id, au.email, au.username, au.name, v.identifier, v.name].forEach(add);
     }
-    var u = (window.APP && APP.currentUser) || {}, d = myRecord() || {};
+    var u = (window.APP && APP.currentUser) || {}, d = screenRecord() || {};
     [d.student_id, d.email, d.name, u.student_id, u.email, u.username, u.name].forEach(add);
     return out;
   }
@@ -293,7 +316,8 @@
       เวอร์ชัน: window.__APP_VER || '',
       บทบาทที่ใช้อยู่: s(APP.currentRole),
       กำลังดูแทน: !!viewingAs(),
-      ธงดูแทน: (window.APP && APP._viewAs) || null,
+      ธงดูแทน: viewAsInfo(),
+      ธงในหน่วยความจำ: (window.APP && APP._viewAs) || null,
       บัญชีที่แสดง: { ชื่อ: s(u.name), อีเมล: s(u.email), มีระเบียนแนบมา: !!(u.data && Object.keys(u.data).length) },
       บัญชีในตารางผู้ใช้: viewAsUserRow() || null,
       ระเบียนที่ใช้: myRecord() || null,
@@ -324,7 +348,7 @@
   function myDisplay() {
     var u = (window.APP && APP.currentUser) || {};
     var d = displayOf(myRecord(), myProfile());
-    if (!d.name) d.name = s(u.name) || s(realProfile().name);
+    if (!d.name) d.name = s(u.name) || (isSomeoneElse() ? '' : s(realProfile().name));
     return d;
   }
   window.profileMy = myDisplay;
@@ -1137,7 +1161,7 @@
         ['ห้อง', rec.room], ['อาจารย์ที่ปรึกษา', rec.advisor],
         ['เบอร์โทรศัพท์', d.phone], ['อีเมล', rec.email]];
     } else {
-      rows = [['อีเมล', u.email || rec.email || realProfile().email],
+      rows = [['อีเมล', u.email || rec.email],
         ['สาขาวิชา', rec.department || u.department],
         ['ตำแหน่ง', rec.position], ['เบอร์โทรศัพท์', d.phone],
         ['ชั้นปีที่รับผิดชอบ', (u.responsible_year || rec.responsible_year)

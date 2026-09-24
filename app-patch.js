@@ -185,6 +185,23 @@
     APP.currentRole = APP.currentUser.role;
   }
 
+  /* ---------- ธง "ดูแทนผู้ใช้" ที่ไม่หายตอนโหลดข้อมูลรอบใหม่ ----------
+     เดิมเก็บไว้ในหน่วยความจำอย่างเดียว พอระบบรีเฟรชข้อมูล ธงถูกล้างทิ้ง
+     แต่หน้าจอยังแสดงคนอื่นอยู่ ผลคือรูปและชื่อกลายเป็นของผู้ดูแล
+     และที่สำคัญกว่านั้น ตัวกั้นไม่ให้เขียนข้อมูลก็หลุดไปด้วย */
+  var VIEW_AS_KEY = 'ems_view_as';
+  function saveViewAs(v) {
+    try {
+      if (v) sessionStorage.setItem(VIEW_AS_KEY, JSON.stringify(v));
+      else sessionStorage.removeItem(VIEW_AS_KEY);
+    } catch (e) { /* ที่เก็บถูกปิดอยู่ ก็ยังทำงานต่อได้ */ }
+  }
+  function loadViewAs() {
+    try { return JSON.parse(sessionStorage.getItem(VIEW_AS_KEY) || 'null'); }
+    catch (e) { return null; }
+  }
+  window.emsSetViewAs = function (v) { APP._viewAs = v || null; saveViewAs(v || null); };
+
   window.emsEnterApp = async function emsEnterApp(profile) {
     var role = (profile && profile.role) || 'guest';
 
@@ -195,12 +212,24 @@
     // ส่วนตัวเลือกนี้เปลี่ยนแค่ "มุมมอง" ว่าจะทำงานในฐานะบทบาทไหน)
     window.__emsProfile = profile;
     window.__emsRealProfile = profile;   // โปรไฟล์จริง (ใช้ตอนออกจากโหมดดูแทนผู้ใช้)
+    var resume = loadViewAs();          // ยังค้างอยู่ในโหมดดูแทนหรือเปล่า
     APP._viewAs = null;
     APP._roles = (profile && Array.isArray(profile.roles) && profile.roles.length)
       ? profile.roles.slice() : [role];
     APP._roles.sort(function (a, b) { return (a === role ? -1 : 0) - (b === role ? -1 : 0); });
 
     emsApplyRole(role, profile);
+
+    // เคยกดดูแทนใครไว้แล้วระบบโหลดข้อมูลรอบใหม่ ให้กลับเข้าโหมดนั้นต่อ
+    // ไม่งั้นหน้าจอจะค้างอยู่ที่คนเดิมแต่ระบบเข้าใจว่าเป็นผู้ดูแล
+    if (resume && resume.id && role === 'admin') {
+      saveViewAs(resume);
+      setTimeout(function () {
+        try { window.emsViewAsUser(resume.id, true); } catch (e) { saveViewAs(null); }
+      }, 0);
+    } else if (resume) {
+      saveViewAs(null);
+    }
 
     try {
       var ident = (APP.currentRole === 'student' && APP.currentUser.data)
@@ -230,10 +259,12 @@
     if (el('currentUserRole')) el('currentUserRole').textContent = ROLE_LABEL[APP.currentRole] || '';
     var cpb = el('changePwBtn');
     if (cpb) cpb.classList.toggle('hidden', APP.currentRole === 'student');
-    buildSidebar();
-    navigateTo('dashboard');
-    emsRenderRoleSwitcher();
-    if (window.lucide) lucide.createIcons();
+    (window.emsSwapView || function (f) { f(); })(function () {
+      buildSidebar();
+      navigateTo('dashboard');
+      emsRenderRoleSwitcher();
+      if (window.lucide) lucide.createIcons();
+    });
     if (window.showToast) showToast('มุมมอง: ' + (ROLE_LABEL[APP.currentRole] || APP.currentRole));
   };
 
@@ -312,6 +343,7 @@
     if (APP._viewAs) {
       logViewAs('view_as_exit', APP._viewAs);
       APP._viewAs = null;
+      saveViewAs(null);
       viewAsBanner();
       if (window.__emsRealProfile) {
         window.__emsProfile = window.__emsRealProfile;
@@ -330,6 +362,7 @@
 
     await GSheetDB.logout();
     APP.currentUser = null; APP.currentRole = null; APP.currentPage = 'dashboard'; APP.allData = [];
+    saveViewAs(null);
     var cpb = el('changePwBtn');
     if (cpb) cpb.classList.add('hidden');
     showScreen('loginScreen');
@@ -1000,6 +1033,11 @@
      ============================================================ */
   APP._viewAs = null;
 
+  /* อ่านสถานะดูแทนจากทั้งหน่วยความจำและที่เก็บของแท็บ
+     ตัวกั้นการเขียนข้อมูลต้องใช้ตัวนี้ ไม่ใช่ APP._viewAs ตรง ๆ
+     เพราะถ้าธงในหน่วยความจำหาย ตัวกั้นจะเปิดช่องให้เขียนข้อมูลแทนคนอื่นได้ */
+  window.emsViewAsState = function () { return APP._viewAs || loadViewAs() || null; };
+
   function realRoles() {
     var p = window.__emsRealProfile || window.__emsProfile;
     return (p && Array.isArray(p.roles) && p.roles.length) ? p.roles : (p && p.role ? [p.role] : []);
@@ -1019,7 +1057,7 @@
       if (typeof orig !== 'function') return;
       RAW[n] = orig;
       GSheetDB[n] = function () {
-        if (APP._viewAs) {
+        if (window.emsViewAsState()) {
           if (window.showToast) showToast('โหมดดูแทนผู้ใช้: อ่านอย่างเดียว บันทึกข้อมูลไม่ได้', 'error');
           return Promise.resolve({ isOk: false, error: 'โหมดดูแทนผู้ใช้ (อ่านอย่างเดียว)' });
         }
@@ -1054,7 +1092,9 @@
   /* ---------- แถบแจ้งเตือนด้านล่างจอ ---------- */
   function viewAsBanner() {
     var bar = el('emsViewAsBar');
-    if (!APP._viewAs) { if (bar) bar.remove(); document.body.classList.remove('ems-viewas'); return; }
+    if (!window.emsViewAsState()) {
+      if (bar) bar.remove(); document.body.classList.remove('ems-viewas'); return;
+    }
     document.body.classList.add('ems-viewas');
     if (!bar) {
       bar = document.createElement('div');
@@ -1063,7 +1103,7 @@
                       'flex items-center gap-3 text-sm shadow-lg';
       document.body.appendChild(bar);
     }
-    var v = APP._viewAs;
+    var v = window.emsViewAsState();
     bar.innerHTML =
       '<span class="font-semibold whitespace-nowrap">👁 กำลังดูแทนผู้ใช้</span>' +
       '<span class="truncate">' + v.name + ' — ' + (ROLE_LABEL[v.role] || v.role) + '</span>' +
@@ -1096,7 +1136,33 @@
     return prof;
   }
 
-  window.emsViewAsUser = function emsViewAsUser(id) {
+  /* ---------- สลับหน้าจอแบบค่อย ๆ จาง ----------
+     เดิมกดแล้วเนื้อหาเปลี่ยนทันที เมนูกระพริบ หน้าจอกระตุก
+     จึงหรี่เนื้อหาลงก่อน แล้วค่อยวาดของใหม่และไล่ความทึบกลับมา
+     ถ้าเครื่องตั้งค่าว่าไม่ต้องการภาพเคลื่อนไหว ก็สลับทันทีเหมือนเดิม */
+  function prefersStill() {
+    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+    catch (e) { return false; }
+  }
+  window.emsSwapView = function emsSwapView(apply) {
+    var nodes = [el('mainContent'), el('sidebarNav')].filter(Boolean);
+    if (!nodes.length || prefersStill() || typeof requestAnimationFrame !== 'function') {
+      apply(); return;
+    }
+    nodes.forEach(function (n) { n.classList.add('ems-swap-out'); });
+    setTimeout(function () {
+      try { apply(); } finally {
+        try { window.scrollTo({ top: 0, behavior: prefersStill() ? 'auto' : 'smooth' }); } catch (e) { }
+        nodes.forEach(function (n) {
+          n.classList.remove('ems-swap-out');
+          n.classList.add('ems-swap-in');
+          setTimeout(function () { n.classList.remove('ems-swap-in'); }, 280);
+        });
+      }
+    }, 130);
+  };
+
+  window.emsViewAsUser = function emsViewAsUser(id, quiet) {
     if (!window.emsCanViewAs()) {
       if (window.showToast) showToast('เฉพาะผู้ดูแลระบบเท่านั้นที่ใช้โหมดนี้ได้', 'error');
       return;
@@ -1114,7 +1180,8 @@
       id: id, name: prof.name || prof.email || prof.student_id, role: prof.role,
       identifier: prof.email || prof.student_id || ''
     };
-    logViewAs('view_as', APP._viewAs);
+    saveViewAs(APP._viewAs);
+    if (!quiet) logViewAs('view_as', APP._viewAs);
 
     window.__emsProfile = prof;
     APP._roles = prof.roles.slice();
@@ -1125,19 +1192,22 @@
     var cpb = el('changePwBtn');
     if (cpb) cpb.classList.add('hidden');      // เปลี่ยนรหัสผ่านแทนคนอื่นไม่ได้
 
-    buildSidebar();
-    navigateTo('dashboard');
-    updateNotifBadge();
-    emsRenderRoleSwitcher();
-    viewAsBanner();
-    if (window.lucide) lucide.createIcons();
-    if (window.showToast) showToast('กำลังดูในมุมมองของ ' + APP._viewAs.name);
+    emsSwapView(function () {
+      buildSidebar();
+      navigateTo('dashboard');
+      updateNotifBadge();
+      emsRenderRoleSwitcher();
+      viewAsBanner();
+      if (window.lucide) lucide.createIcons();
+    });
+    if (!quiet && window.showToast) showToast('กำลังดูในมุมมองของ ' + APP._viewAs.name);
   };
 
   window.emsExitViewAs = function emsExitViewAs() {
-    if (!APP._viewAs) return;
-    logViewAs('view_as_exit', APP._viewAs);
+    if (!APP._viewAs && !loadViewAs()) return;
+    logViewAs('view_as_exit', APP._viewAs || loadViewAs());
     APP._viewAs = null;
+    saveViewAs(null);
 
     var prof = window.__emsRealProfile;
     if (!prof) { window.location.reload(); return; }
@@ -1150,12 +1220,14 @@
     var cpb = el('changePwBtn');
     if (cpb) cpb.classList.toggle('hidden', APP.currentRole === 'student');
 
-    buildSidebar();
-    navigateTo('settings');
-    updateNotifBadge();
-    emsRenderRoleSwitcher();
-    viewAsBanner();
-    if (window.lucide) lucide.createIcons();
+    emsSwapView(function () {
+      buildSidebar();
+      navigateTo('settings');
+      updateNotifBadge();
+      emsRenderRoleSwitcher();
+      viewAsBanner();
+      if (window.lucide) lucide.createIcons();
+    });
     if (window.showToast) showToast('กลับสู่บัญชีผู้ดูแลระบบแล้ว');
   };
 

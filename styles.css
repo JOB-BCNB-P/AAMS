@@ -691,3 +691,25 @@ details[open]>summary .chev {
 body.ems-viewas { padding-bottom: 52px; }
 body.ems-viewas #emsViewAsBar { animation: emsViewAsIn .18s ease-out; }
 @keyframes emsViewAsIn { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+
+/* ---------- สลับหน้าจอแบบค่อย ๆ จาง ----------
+   ใช้ตอนสลับบทบาท เข้า/ออกโหมดดูแทนผู้ใช้
+   หรี่ของเดิมลงก่อน แล้วค่อยไล่ของใหม่ขึ้นมา หน้าจอจะไม่กระตุก */
+.ems-swap-out {
+  opacity: .25;
+  transform: translateY(4px);
+  transition: opacity .13s ease-out, transform .13s ease-out;
+  pointer-events: none;
+}
+.ems-swap-in {
+  animation: emsSwapIn .28s ease-out both;
+}
+@keyframes emsSwapIn {
+  from { opacity: .25; transform: translateY(6px); }
+  to   { opacity: 1;   transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ems-swap-out { opacity: 1; transform: none; transition: none; }
+  .ems-swap-in  { animation: none; }
+}
