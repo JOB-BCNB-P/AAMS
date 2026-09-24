@@ -68,25 +68,54 @@
      ทุกจุดที่หาโปรไฟล์จึงต้องแยกสองกรณีนี้ออกจากกัน */
   function viewingAs() { return !!(window.APP && APP._viewAs); }
 
+  /* บัญชีของคนที่ถูกดูแทน
+     APP._viewAs.id คือรหัสแถวในตารางบัญชีผู้ใช้ จึงชี้ตัวได้ตรง ๆ ไม่ต้องเดาจากชื่อ
+     เทียบด้วยชื่อเป็นตัวสำรองไว้เผื่อรหัสแถวเปลี่ยนหลังโหลดข้อมูลใหม่ */
+  function viewAsUserRow() {
+    var v = (window.APP && APP._viewAs) || null;
+    if (!v) return null;
+    var rows = get('user');
+    return rows.find(function (x) { return String(x.__backendId) === String(v.id); })
+      || rows.find(function (x) { return s(x.name).toLowerCase() === s(v.name).toLowerCase(); })
+      || null;
+  }
+
   /* ระเบียนในทะเบียนของผู้ใช้ที่กำลังแสดงอยู่
-     ปกติ APP.currentUser.data มีให้อยู่แล้ว แต่บางทางเข้า (เช่นโหมดดูแทนผู้ใช้
-     ที่จับคู่ระเบียนไม่เจอ) จะว่าง จึงค้นจากทะเบียนให้อีกชั้นหนึ่ง
+     ปกติ APP.currentUser.data มีให้อยู่แล้ว แต่บางทางเข้าจะว่าง
+     โดยเฉพาะโหมดดูแทนผู้ใช้ที่จับคู่ระเบียนไม่เจอ จึงค้นจากทะเบียนให้อีกชั้นหนึ่ง
      ไม่งั้นการ์ดข้อมูลจะว่างเปล่าทั้งที่ข้อมูลมีอยู่ */
-  function myRecord() {
-    var u = (window.APP && APP.currentUser) || {};
-    if (u.data && Object.keys(u.data).length) return u.data;
-    var nm = s(u.name).toLowerCase(), em = s(u.email).toLowerCase();
-    var sid = s(u.student_id || (APP._viewAs && APP._viewAs.identifier)).toLowerCase();
+  function findInRegistry(sid, em, nm) {
     var table = (APP.currentRole === 'student') ? 'student' : 'teacher';
-    var hit = get(table).find(function (x) {
+    return get(table).find(function (x) {
       return (sid && s(x.student_id).toLowerCase() === sid)
         || (em && s(x.email).toLowerCase() === em)
         || (nm && s(x.name).toLowerCase() === nm);
-    });
-    return hit || { name: u.name, email: u.email };
+    }) || null;
+  }
+
+  function myRecord() {
+    var u = (window.APP && APP.currentUser) || {};
+    if (viewingAs()) {
+      // ห้ามใช้ u.data ของโหมดดูแทน เพราะบางครั้งว่าง และห้ามตกไปใช้ของผู้ดูแลเด็ดขาด
+      var au = viewAsUserRow() || {};
+      var v = (APP._viewAs) || {};
+      var hit = findInRegistry(s(au.student_id).toLowerCase(),
+        s(au.email).toLowerCase(), s(au.name || v.name || u.name).toLowerCase());
+      return hit || { name: s(au.name) || s(v.name) || s(u.name), email: s(au.email),
+        student_id: s(au.student_id) };
+    }
+    if (u.data && Object.keys(u.data).length) return u.data;
+    var d = findInRegistry(s(u.student_id).toLowerCase(),
+      s(u.email).toLowerCase(), s(u.name).toLowerCase());
+    return d || { name: u.name, email: u.email };
   }
 
   function myKey() {
+    if (viewingAs()) {
+      var au = viewAsUserRow() || {};
+      var v = (APP._viewAs) || {};
+      return s(au.student_id || au.email || au.username || v.identifier || v.name).toLowerCase();
+    }
     var u = (window.APP && APP.currentUser) || {}, d = myRecord();
     return s(d.student_id || u.email || d.email || u.username || u.name).toLowerCase();
   }
@@ -118,8 +147,11 @@
      ไม่ใช่ของคนที่ถูกดูแทน จะกลายเป็นเอารูปและลายเซ็นของผู้ดูแลไปขึ้นแทน */
   function myProfile() {
     if (viewingAs()) {
-      return profileByKey(myKey())
+      var p = profileByKey(myKey())
         || profileByName(s((window.APP && APP.currentUser && APP.currentUser.name) || ''));
+      // กันสุดทาง : ถ้าบังเอิญไปตรงกับโปรไฟล์ของบัญชีที่ล็อกอินอยู่ ถือว่าไม่เจอ
+      if (p && MY_UID && s(p.owner_uid) === MY_UID) return null;
+      return p;
     }
     return profileByUid(MY_UID) || profileByKey(myKey());
   }
