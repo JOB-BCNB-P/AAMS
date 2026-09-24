@@ -31,7 +31,7 @@
       }
     }
   </script>
-  <link rel="stylesheet" href="styles.css?v=20260924q-nocdn">
+  <link rel="stylesheet" href="styles.css?v=20260924r-railcards">
 </head>
 
 <body class="bg-gray-50">
@@ -211,7 +211,13 @@
       <div class="ems-body">
         <aside id="sidebar" class="sidebar -translate-x-full lg:translate-x-0">
           <nav class="p-3 space-y-1 flex-1" id="sidebarNav"></nav>
-          <p class="px-4 pb-3 text-gray-400" style="font-size:11px;">พัฒนาระบบ โดย Oranit.R นักวิชาการศึกษา BCNB</p>
+          <!-- ยุบเมนูเหลือแถบไอคอน เพื่อให้พื้นที่อ่านข้อมูลกว้างขึ้น (เฉพาะจอคอมพิวเตอร์) -->
+          <button type="button" id="sidebarRailBtn" onclick="emsToggleSidebarRail()"
+            class="ems-rail-btn" title="ยุบเมนู" aria-label="ยุบเมนู" aria-expanded="true">
+            <i data-lucide="chevrons-left" class="w-5 h-5"></i>
+            <span class="ems-rail-btn-label">ยุบเมนู</span>
+          </button>
+          <p class="ems-sidebar-credit px-4 pb-3 text-gray-400" style="font-size:11px;">พัฒนาระบบ โดย Oranit.R นักวิชาการศึกษา BCNB</p>
         </aside>
         <div id="sidebarOverlay" class="hidden fixed inset-0 bg-black/40 z-30 lg:hidden" onclick="toggleSidebar()"></div>
         <main class="ems-main" id="mainContent"></main>
@@ -230,18 +236,18 @@
     </div>
   </div>
 
-  <script>window.__APP_VER = '20260924q-nocdn';</script>
-  <script src="config.js?v=20260924q"></script>
-  <script src="supabase-db.js?v=20260924q"></script>
-  <script src="auth.js?v=20260924q"></script>
-  <script src="grad-images.js?v=20260924q"></script>
-  <script src="app.js?v=20260924q"></script>
-  <script src="app-patch.js?v=20260924q"></script>
-  <script src="workload.js?v=20260924q"></script>
-  <script src="curriculum.js?v=20260924q"></script>
-  <script src="plo.js?v=20260924q"></script>
-  <script src="eval.js?v=20260924q"></script>
-  <script src="profile.js?v=20260924q"></script>
+  <script>window.__APP_VER = '20260924r-railcards';</script>
+  <script src="config.js?v=20260924r"></script>
+  <script src="supabase-db.js?v=20260924r"></script>
+  <script src="auth.js?v=20260924r"></script>
+  <script src="grad-images.js?v=20260924r"></script>
+  <script src="app.js?v=20260924r"></script>
+  <script src="app-patch.js?v=20260924r"></script>
+  <script src="workload.js?v=20260924r"></script>
+  <script src="curriculum.js?v=20260924r"></script>
+  <script src="plo.js?v=20260924r"></script>
+  <script src="eval.js?v=20260924r"></script>
+  <script src="profile.js?v=20260924r"></script>
 </body>
 
 </html>

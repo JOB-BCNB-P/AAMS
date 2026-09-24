@@ -827,3 +827,110 @@ body.ems-viewas #emsViewAsBar { animation: emsViewAsIn .18s ease-out; }
    ใช้ :where() เพื่อให้ค่าความจำเพาะเป็นศูนย์ กฎจริงของ Tailwind จึงยังชนะเสมอ
    (เช่น hidden sm:block ยังทำงานถูกต้อง) */
 :where(.hidden) { display: none; }
+
+
+/* ═══════════ เมนูข้าง: ยุบเหลือแถบไอคอน / ขยายกลับ ═══════════
+   ใช้เฉพาะจอคอมพิวเตอร์ ส่วนแท็บเล็ตและมือถือยังเป็นลิ้นชักเลื่อนออกมาเหมือนเดิม */
+.ems-rail-btn {
+  display: none;
+  align-items: center;
+  gap: .75rem;
+  margin: 0 .75rem .5rem;
+  padding: .55rem .75rem;
+  border-radius: .75rem;
+  color: #6b7280;
+  font-size: .8125rem;
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.ems-rail-btn:hover { background: #f0f7ff; color: #1e6fba; border-color: #d1e6f9; }
+.ems-rail-btn>i, .ems-rail-btn>svg { flex: 0 0 auto; transition: transform .2s ease; }
+
+@media (min-width: 1024px) {
+  .ems-rail-btn { display: flex; }
+  .sidebar { transition: width .22s ease; }
+
+  body.ems-rail .sidebar { width: 4.75rem; }
+
+  /* ตัวอักษรถูกย่อเหลือศูนย์ ไอคอนเป็นภาพเวกเตอร์จึงไม่ได้รับผลกระทบ
+     วิธีนี้ซ่อนข้อความที่ไม่ได้ครอบแท็กไว้ได้ ซึ่ง CSS เลือกตรง ๆ ไม่ได้ */
+  body.ems-rail #sidebarNav .nav-item,
+  body.ems-rail #sidebarNav .dropdown-item>button,
+  body.ems-rail .ems-rail-btn {
+    font-size: 0;
+    gap: 0;
+    justify-content: center;
+    padding-left: .5rem;
+    padding-right: .5rem;
+  }
+
+  body.ems-rail #sidebarNav .dropdown-item>button>span { gap: 0; }
+  body.ems-rail #sidebarNav .dropdown-item>button>i,
+  body.ems-rail #sidebarNav .dropdown-item>button>svg,
+  body.ems-rail #sidebarNav .dropdown-menu,
+  body.ems-rail .ems-rail-btn-label,
+  body.ems-rail .ems-sidebar-credit { display: none; }
+
+  body.ems-rail #sidebarNav { padding-left: .5rem; padding-right: .5rem; }
+}
+
+/* จอเล็ก: ปุ่มยุบไม่มีความหมาย เพราะเมนูเป็นลิ้นชักอยู่แล้ว */
+@media (max-width: 1023.98px) {
+  body.ems-rail .sidebar { width: min(17rem, 82vw); }
+}
+
+/* ═══════════ ตารางหลายคอลัมน์บนมือถือ: การ์ดใบละแถว ═══════════
+   เลื่อนซ้าย-ขวาทีละคอลัมน์บนจอเล็กนั้นอ่านยากและเทียบข้อมูลไม่ได้
+   app-patch.js ติดชื่อคอลัมน์ไว้ที่ทุกช่องแล้ว (data-label) ที่เหลือคือจัดหน้าใหม่ */
+@media (max-width: 640px) {
+  .ems-tablewrap.ems-tablewrap-cards,
+  .ems-tablewrap:has(> table[data-ems-cards="1"]) { background: none; overflow-x: visible; }
+
+  table[data-ems-cards="1"] {
+    display: block;
+    min-width: 0 !important;
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  table[data-ems-cards="1"] thead { display: none; }
+  table[data-ems-cards="1"] tbody { display: block; }
+
+  table[data-ems-cards="1"] tbody tr {
+    display: block;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: .75rem;
+    padding: .35rem .75rem;
+    margin-bottom: .5rem;
+  }
+
+  table[data-ems-cards="1"] tbody td {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .75rem;
+    width: auto !important;
+    border: 0 !important;
+    padding: .3rem 0 !important;
+    text-align: right;
+    font-size: 13px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  table[data-ems-cards="1"] tbody td+td { border-top: 1px dashed #f1f5f9 !important; }
+
+  table[data-ems-cards="1"] tbody td::before {
+    content: attr(data-label);
+    flex: 0 0 38%;
+    text-align: left;
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  /* ช่องว่าง ๆ ไม่ต้องกินที่ */
+  table[data-ems-cards="1"] tbody td:empty { display: none; }
+}

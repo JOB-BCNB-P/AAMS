@@ -857,17 +857,99 @@
      ============================================================ */
   function wrapTables(root) {
     (root || document).querySelectorAll('table').forEach(function (t) {
-      if (t.closest('.ems-tablewrap')) return;
       // เอกสารที่จัดหน้ามาเองแล้ว (ใบระเบียนแสดงผลการเรียน ฯลฯ) ห้ามแตะ
       // ไม่งั้นตารางจะถูกบังคับให้กว้างตามเนื้อหา แล้วหน้ากระดาษจะเพี้ยน
       if (t.closest('[data-ems-doc]')) return;
-      var w = document.createElement('div');
-      w.className = 'ems-tablewrap';
-      t.parentNode.insertBefore(w, t);
-      w.appendChild(t);
+      if (!t.closest('.ems-tablewrap')) {
+        var w = document.createElement('div');
+        w.className = 'ems-tablewrap';
+        t.parentNode.insertBefore(w, t);
+        w.appendChild(t);
+      }
+      labelCells(t);
     });
   }
   window.emsWrapTables = wrapTables;
+
+  /* ---------- ตารางหลายคอลัมน์ : บนมือถือเปลี่ยนเป็นการ์ดรายแถว ----------
+     ตารางกว้าง ๆ บนจอมือถือต้องเลื่อนซ้าย-ขวาทีละคอลัมน์ อ่านยากและเทียบข้อมูลไม่ได้
+     จึงติดชื่อคอลัมน์ไว้ที่ทุกช่อง แล้วให้ CSS จัดใหม่เป็นการ์ดใบละแถว
+     ตารางที่จัดหน้าซับซ้อน (มีช่องควบรวม) ปล่อยไว้เหมือนเดิม เพราะแปลงแล้วจะเพี้ยน */
+  function labelCells(t) {
+    if (t.getAttribute('data-ems-cards') === 'skip') return;
+    var heads = t.tHead ? t.tHead.rows : null;
+    if (!heads || heads.length !== 1) { t.setAttribute('data-ems-cards', 'skip'); return; }
+    var th = heads[0].cells;
+    if (th.length < 3) { t.setAttribute('data-ems-cards', 'skip'); return; }
+    for (var i = 0; i < th.length; i++) {
+      if (th[i].colSpan > 1 || th[i].rowSpan > 1) { t.setAttribute('data-ems-cards', 'skip'); return; }
+    }
+    var names = [];
+    for (var j = 0; j < th.length; j++) names.push((th[j].textContent || '').replace(/\s+/g, ' ').trim());
+
+    var bodies = t.tBodies, done = 0;
+    for (var b = 0; b < bodies.length; b++) {
+      var rows = bodies[b].rows;
+      for (var r = 0; r < rows.length; r++) {
+        var cells = rows[r].cells;
+        // แถวสรุปหรือแถวที่ควบช่อง แปลงเป็นการ์ดแล้วจะอ่านไม่รู้เรื่อง
+        if (cells.length !== names.length) { t.setAttribute('data-ems-cards', 'skip'); return; }
+        for (var c = 0; c < cells.length; c++) {
+          if (cells[c].colSpan > 1 || cells[c].rowSpan > 1) {
+            t.setAttribute('data-ems-cards', 'skip'); return;
+          }
+          if (names[c]) cells[c].setAttribute('data-label', names[c]);
+        }
+        done++;
+      }
+    }
+    t.setAttribute('data-ems-cards', done ? '1' : 'skip');
+    // ติดธงไว้ที่กรอบหุ้มด้วย เผื่อเบราว์เซอร์รุ่นเก่าที่ยังไม่รู้จักตัวเลือก :has()
+    var wrap = t.closest('.ems-tablewrap');
+    if (wrap) wrap.classList.toggle('ems-tablewrap-cards', done > 0);
+  }
+
+  /* ============================================================
+     7.5) เมนูข้าง : ยุบเหลือแถบไอคอน / ขยายกลับ (เฉพาะจอคอมพิวเตอร์)
+     ------------------------------------------------------------
+     จอแท็บเล็ตและมือถือยังเป็นลิ้นชักเลื่อนออกมาเหมือนเดิม
+     ============================================================ */
+  var RAIL_KEY = 'ems_sidebar_rail';
+  function railOn() {
+    try { return localStorage.getItem(RAIL_KEY) === '1'; } catch (e) { return false; }
+  }
+  function applyRail(on) {
+    document.body.classList.toggle('ems-rail', !!on);
+    try { localStorage.setItem(RAIL_KEY, on ? '1' : '0'); } catch (e) { }
+    var btn = el('sidebarRailBtn');
+    if (btn) {
+      btn.setAttribute('title', on ? 'ขยายเมนู' : 'ยุบเมนู');
+      btn.setAttribute('aria-label', on ? 'ขยายเมนู' : 'ยุบเมนู');
+      btn.setAttribute('aria-expanded', on ? 'false' : 'true');
+      var i = btn.querySelector('i,svg');
+      if (i) i.style.transform = on ? 'rotate(180deg)' : '';
+    }
+    railTitles();
+  }
+  // ยุบแล้วเหลือแต่ไอคอน ต้องมีคำอธิบายตอนชี้ ไม่งั้นเดาไม่ออกว่าปุ่มไหนคืออะไร
+  function railTitles() {
+    var nav = el('sidebarNav');
+    if (!nav) return;
+    nav.querySelectorAll('.nav-item, .dropdown-item > button').forEach(function (b) {
+      var txt = (b.textContent || '').replace(/\s+/g, ' ').trim();
+      if (txt) b.setAttribute('title', txt);
+    });
+  }
+  window.emsToggleSidebarRail = function () { applyRail(!document.body.classList.contains('ems-rail')); };
+
+  /* ยุบอยู่แล้วกดเมนูที่มีเมนูย่อย ให้ขยายออกก่อน ไม่งั้นกดแล้วเหมือนไม่มีอะไรเกิดขึ้น */
+  document.addEventListener('click', function (ev) {
+    if (!document.body.classList.contains('ems-rail')) return;
+    if (window.innerWidth < 1024) return;
+    var btn = ev.target && ev.target.closest && ev.target.closest('.dropdown-item > button');
+    if (!btn || !btn.closest('#sidebarNav')) return;
+    applyRail(false);
+  }, true);
 
   /* ============================================================
      10) ปิดกล่องหน้าต่างได้หลายทาง — ไม่ต้องเล็งปุ่มกากบาทอย่างเดียว
@@ -1246,6 +1328,9 @@
       }).observe(node, { childList: true, subtree: true });
     });
     wrapTables(document);
+    applyRail(railOn());
+    var navBox = el('sidebarNav');
+    if (navBox) new MutationObserver(railTitles).observe(navBox, { childList: true, subtree: true });
     if (typeof window.__emsBoot === 'function') window.__emsBoot();
   });
 })();
