@@ -656,7 +656,7 @@
     var shown = canShow(link)
       ? (isPhoto
         ? '<button type="button" onclick="profileViewPhoto(\'' + esc(link) + '\')" title="ดูรูปขนาดเต็ม"'
-          + ' class="w-40 h-40 rounded-2xl overflow-hidden border border-gray-200 bg-white'
+          + ' class="ems-filebox-photo rounded-2xl border border-gray-200 bg-white'
           + ' flex items-center justify-center">'
           + imgTag(link, 'w-full h-full object-cover', label) + '</button>'
         : imgTag(link, 'max-h-28 max-w-full object-contain', label, 'background:#fff'))
@@ -1208,21 +1208,21 @@
     rows = rows.filter(function (x) { return s(x[1]); });
 
     /* กรอบรูปใหญ่แบบโปรไฟล์ LINE — กำหนดขนาดไว้ที่กรอบ ไม่ใช่ที่ตัวรูป
-       รูปโหลดทีหลัง ถ้าขนาดอยู่ที่ตัวรูป หน้าจอจะกระตุกตอนรูปมาถึง */
-    var FRAME = 'w-28 h-28 sm:w-36 sm:h-36 rounded-2xl overflow-hidden flex-shrink-0'
-      + ' flex items-center justify-center';
+       รูปโหลดทีหลัง ถ้าขนาดอยู่ที่ตัวรูป หน้าจอจะกระตุกตอนรูปมาถึง
+       ขนาดและการจัดวางใช้คลาสของเราเองใน styles.css ไม่พึ่ง CDN ภายนอก */
+    var FRAME = 'ems-idcard-avatar';
     var avatar = canShow(d.photo_link)
       ? '<button type="button" onclick="profileViewPhoto()" title="ดูรูปขนาดเต็ม"'
         + ' class="' + FRAME + ' border border-blue-100 bg-surface">'
-        + imgTag(d.photo_link, 'w-full h-full object-cover', 'รูปโปรไฟล์') + '</button>'
+        + imgTag(d.photo_link, '', 'รูปโปรไฟล์') + '</button>'
       : '<div class="' + FRAME + ' bg-primaryLight">'
         + '<i data-lucide="user" class="w-12 h-12 text-primary"></i></div>';
 
-    return '<div class="bg-white rounded-2xl p-5 border border-blue-100 mb-4">'
-      + '<div class="flex items-start gap-4 flex-wrap">'
+    return '<div class="ems-idcard-card bg-white rounded-2xl p-5 border border-blue-100 mb-4">'
+      + '<div class="ems-idcard">'
       + avatar
-      + '<div class="flex-1 min-w-[180px]">'
-      + '<p class="text-xl sm:text-2xl font-bold text-gray-800">' + esc(full || 'ผู้ใช้') + '</p>'
+      + '<div class="ems-idcard-main">'
+      + '<p class="ems-idcard-name">' + esc(full || 'ผู้ใช้') + '</p>'
       + '<p class="text-xs text-gray-500">' + esc(ROLE_LABEL[APP.currentRole] || '') + '</p>'
       + '</div>'
       + '<button onclick="navigateTo(\'profile\')"'
@@ -1231,14 +1231,14 @@
       + 'ตั้งค่าข้อมูลส่วนตัว</button>'
       + '</div>'
       + (rows.length
-        ? '<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mt-4">'
+        ? '<div class="ems-idcard-grid">'
           + rows.map(function (x) {
             // ค่ายาว ๆ อย่างอีเมลหรือชื่ออาจารย์ที่ปรึกษา ถ้าบีบลงครึ่งจอจะตัดคำจนอ่านยาก
-            // บนจอมือถือจึงให้กินเต็มแถว แล้วค่อยกลับมาเรียงข้างกันเมื่อจอกว้างพอ
-            var wide = s(x[1]).length > 18 ? ' col-span-2 sm:col-span-1' : '';
-            return '<div class="bg-surface rounded-xl px-3 py-2' + wide + '">'
-              + '<p class="text-[11px] text-gray-500">' + esc(x[0]) + '</p>'
-              + '<p class="text-sm text-gray-800 break-words">' + esc(x[1]) + '</p></div>';
+            // บนจอแคบจึงให้กินเต็มแถว แล้วค่อยกลับมาเรียงข้างกันเมื่อจอกว้างพอ
+            var wide = s(x[1]).length > 18 ? ' wide' : '';
+            return '<div class="ems-idcard-tile' + wide + '">'
+              + '<p class="k">' + esc(x[0]) + '</p>'
+              + '<p class="v">' + esc(x[1]) + '</p></div>';
           }).join('')
           + '</div>'
         : '<p class="text-xs text-gray-400 mt-3">ยังไม่มีข้อมูลเพิ่มเติมในระบบ</p>')

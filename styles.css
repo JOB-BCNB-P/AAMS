@@ -717,3 +717,113 @@ body.ems-viewas #emsViewAsBar { animation: emsViewAsIn .18s ease-out; }
   .ems-swap-out { opacity: 1; transform: none; transition: none; }
   .ems-swap-in  { animation: none; }
 }
+
+
+/* ═══════════ การ์ดข้อมูลส่วนบุคคล ═══════════
+   โครงและขนาดของการ์ดนี้เขียนเป็น CSS ของเราเอง ไม่พึ่งคลาสสำเร็จรูปจาก CDN ภายนอก
+   เพราะถ้าเครือข่ายโหลด CDN ไม่ทันหรือถูกบล็อก (เจอจริงบนแท็บเล็ต)
+   รูปจะขยายเต็มจอและชื่อจะถูกบีบจนอ่านเป็นตัวต่อตัว
+   ไฟล์นี้มากับเว็บโดยตรง จึงมาถึงเสมอ                                       */
+.ems-idcard-card {
+  background: #fff;
+  border: 1px solid #dbeafe;
+  border-radius: 1rem;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.ems-idcard {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+/* กรอบรูป: ขนาดอยู่ที่กรอบ ไม่ใช่ที่ตัวรูป หน้าจอจะได้ไม่กระตุกตอนรูปมาถึง */
+.ems-idcard-avatar {
+  width: 7rem;
+  height: 7rem;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 1rem;
+  padding: 0;
+}
+
+.ems-idcard-avatar>img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.ems-idcard-main {
+  flex: 1 1 11rem;
+  min-width: 11rem;
+}
+
+.ems-idcard-name {
+  font-size: 1.25rem;
+  line-height: 1.7rem;
+  font-weight: 700;
+  color: #1f2937;
+  overflow-wrap: anywhere;
+}
+
+.ems-idcard-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: .5rem;
+  margin-top: 1rem;
+}
+
+.ems-idcard-tile {
+  background: #f0f7ff;
+  border-radius: .75rem;
+  padding: .5rem .75rem;
+  min-width: 0;
+}
+
+.ems-idcard-tile>.k { font-size: 11px; color: #6b7280; }
+.ems-idcard-tile>.v { font-size: .875rem; color: #1f2937; overflow-wrap: anywhere; }
+
+@media (min-width: 480px) {
+  .ems-idcard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ems-idcard-tile.wide { grid-column: span 2; }
+}
+
+@media (min-width: 640px) {
+  .ems-idcard-avatar { width: 9rem; height: 9rem; }
+  .ems-idcard-name { font-size: 1.5rem; line-height: 2rem; }
+  .ems-idcard-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ems-idcard-tile.wide { grid-column: span 1; }
+}
+
+@media (min-width: 1024px) {
+  .ems-idcard-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* กรอบรูป/ลายเซ็นในหน้าตั้งค่า ก็ต้องไม่บานตามรูปเช่นกัน */
+.ems-filebox-photo {
+  width: 10rem;
+  height: 10rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 1rem;
+  padding: 0;
+}
+
+.ems-filebox-photo>img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* กันรูปทุกใบในเนื้อหาไม่ให้ดันหน้าจอให้กว้างเกิน */
+.ems-main img { max-width: 100%; }
+
+/* ตาข่ายกันพลาด: ถ้า CDN ของ Tailwind มาไม่ถึง (เครือข่ายช้า/ถูกบล็อก)
+   สิ่งที่ควรถูกซ่อนต้องยังซ่อนอยู่ ไม่งั้นเมนูและแผงต่าง ๆ จะโผล่ค้างเต็มจอ
+   ใช้ :where() เพื่อให้ค่าความจำเพาะเป็นศูนย์ กฎจริงของ Tailwind จึงยังชนะเสมอ
+   (เช่น hidden sm:block ยังทำงานถูกต้อง) */
+:where(.hidden) { display: none; }
