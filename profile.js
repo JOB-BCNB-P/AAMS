@@ -168,16 +168,68 @@
     return true;                     // ไม่มีอะไรให้เทียบเลย ถือว่าเข้าระบบมาตามปกติ
   }
 
-  /* หาโปรไฟล์ของผู้ใช้ที่หน้าจอกำลังแสดง
-     หาจากกุญแจตัวตนก่อนเสมอ — ตรงกับคนที่แสดงอยู่จริง ไม่ว่ามาทางไหน
-     รหัสผู้ใช้ของบัญชีที่ล็อกอินใช้เป็นตัวสำรอง เฉพาะตอนแสดงตัวเองเท่านั้น
-     ไม่งั้นรูปและลายเซ็นของผู้ดูแลจะไปขึ้นแทนคนที่ถูกดูแทน */
-  function myProfile() {
-    var p = profileByKey(myKey());
-    if (p) return p;
-    if (!showingSelf()) return null;
-    return profileByUid(MY_UID);
+  /* ตัวระบุทุกแบบของ "คนที่หน้าจอกำลังแสดง"
+     เก็บมาให้ครบทุกทาง แล้วค่อยจับคู่ แทนที่จะเดาว่าจะใช้ตัวไหนเป็นกุญแจ
+     การเดาผิดตัวเดียวเคยทำให้ตกไปหยิบโปรไฟล์ของผู้ดูแลมาแสดงแทน */
+  function idsOfShown() {
+    var out = [];
+    var add = function (v) {
+      var x = s(v).toLowerCase();
+      if (x && out.indexOf(x) < 0) out.push(x);
+    };
+    if (viewingAs()) {
+      var au = viewAsUserRow() || {}, v = (window.APP && APP._viewAs) || {};
+      [au.student_id, au.email, au.username, au.name, v.identifier, v.name].forEach(add);
+    }
+    var u = (window.APP && APP.currentUser) || {}, d = myRecord() || {};
+    [d.student_id, d.email, d.name, u.student_id, u.email, u.username, u.name].forEach(add);
+    return out;
   }
+
+  // แถวโปรไฟล์ที่ "ตรงกับคนที่แสดงอยู่จริง" เท่านั้น ไม่ตรงก็คือไม่มี
+  function profileOfShown() {
+    var ids = idsOfShown();
+    if (!ids.length) return null;
+    return allProfiles().find(function (p) {
+      return ids.indexOf(s(p.owner_key).toLowerCase()) >= 0
+        || ids.indexOf(s(p.owner_name).toLowerCase()) >= 0
+        || ids.indexOf(s(p.full_name).toLowerCase()) >= 0;
+    }) || null;
+  }
+
+  /* หาโปรไฟล์ของผู้ใช้ที่หน้าจอกำลังแสดง
+     กำลังแสดงคนอื่น : ต้องตรงกับตัวระบุของคนนั้นเท่านั้น และห้ามเป็นแถวของบัญชีที่ล็อกอิน
+     กำลังแสดงตัวเอง : หาจากกุญแจก่อน ไม่เจอค่อยถอยไปใช้รหัสผู้ใช้ */
+  function myProfile() {
+    if (!showingSelf()) {
+      var p = profileOfShown();
+      if (p && MY_UID && s(p.owner_uid) === s(MY_UID)) return null;
+      return p;
+    }
+    return profileByKey(myKey()) || profileByUid(MY_UID);
+  }
+
+  /* ตัวช่วยตรวจอาการเวลาหน้าจอแสดงข้อมูลผิดคน
+     เปิด Console แล้วพิมพ์  profileDebug()  จะเห็นว่าระบบมองเห็นอะไรอยู่ */
+  window.profileDebug = function () {
+    var u = (window.APP && APP.currentUser) || {};
+    var p = myProfile();
+    return {
+      เวอร์ชัน: window.__APP_VER || '',
+      บทบาทที่ใช้อยู่: s(APP.currentRole),
+      กำลังดูแทน: !!viewingAs(),
+      ธงดูแทน: (window.APP && APP._viewAs) || null,
+      บัญชีที่แสดง: { ชื่อ: s(u.name), อีเมล: s(u.email), มีระเบียนแนบมา: !!(u.data && Object.keys(u.data).length) },
+      บัญชีในตารางผู้ใช้: viewAsUserRow() || null,
+      ระเบียนที่ใช้: myRecord() || null,
+      ตัวระบุที่จับคู่: idsOfShown(),
+      แสดงตัวเองอยู่: showingSelf(),
+      กุญแจของบัญชีจริง: realAccountKey(),
+      รหัสผู้ใช้ที่ล็อกอิน: MY_UID,
+      โปรไฟล์ที่เลือกได้: p ? { owner_key: p.owner_key, owner_name: p.owner_name, owner_uid: p.owner_uid } : null,
+      จำนวนโปรไฟล์ทั้งหมด: allProfiles().length
+    };
+  };
 
   // ค่าที่ควรใช้แสดงผล — โปรไฟล์ของเจ้าตัวมาก่อน ไม่มีค่อยถอยไปใช้ทะเบียน
   function displayOf(rec, prof) {
