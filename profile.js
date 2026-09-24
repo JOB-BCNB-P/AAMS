@@ -123,11 +123,41 @@
     rec = rec || {};
     return s(rec.student_id || rec.email || rec.username || rec.name).toLowerCase();
   }
+  /* ชื่อคนไทยมีคำนำหน้าติดมาบ้างไม่ติดบ้าง แล้วแต่ว่าเก็บมาจากที่ไหน
+     "นางสาวอรณิช รักตะวัต" กับ "อรณิช รักตะวัต" คือคนเดียวกัน
+     ถ้าเทียบดิบ ๆ จะกลายเป็นคนละคน แล้วโปรไฟล์ของตัวเองหายไปเลย */
+  var NAME_PREFIX = [
+    'ว่าที่ร้อยตรีหญิง', 'ว่าที่ร้อยตรี', 'นางสาว', 'นาย', 'นาง',
+    'ศาสตราจารย์', 'รองศาสตราจารย์', 'ผู้ช่วยศาสตราจารย์',
+    'ดร.', 'ผศ.ดร.', 'รศ.ดร.', 'ศ.ดร.', 'ผศ.', 'รศ.', 'ศ.', 'น.ส.', 'อาจารย์', 'อ.'
+  ];
+  function normName(v) {
+    var x = s(v).toLowerCase().replace(/\s+/g, ' ').trim();
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (var i = 0; i < NAME_PREFIX.length; i++) {
+        var pre = NAME_PREFIX[i].toLowerCase();
+        if (x.indexOf(pre) === 0) { x = x.slice(pre.length).trim(); changed = true; break; }
+      }
+    }
+    return x.replace(/\s+/g, '');
+  }
+
   function allProfiles() { return get('user_profile'); }
   function profileByKey(key) {
     var k = s(key).toLowerCase();
     if (!k) return null;
-    return allProfiles().find(function (p) { return s(p.owner_key).toLowerCase() === k; }) || null;
+    var list = allProfiles();
+    var hit = list.find(function (p) { return s(p.owner_key).toLowerCase() === k; });
+    if (hit) return hit;
+    /* ค้นด้วยชื่อได้ด้วย เพราะใบลาส่งชื่อผู้อนุมัติมา ไม่ได้ส่งอีเมล
+       และชื่อที่ส่งมาอาจมีคำนำหน้าติดมาหรือไม่มีก็ได้ */
+    var n = normName(key);
+    if (!n) return null;
+    return list.find(function (p) {
+      return normName(p.owner_name) === n || normName(p.full_name) === n;
+    }) || null;
   }
   function profileByName(name) {
     var n = s(name).toLowerCase();
@@ -176,6 +206,8 @@
     var add = function (v) {
       var x = s(v).toLowerCase();
       if (x && out.indexOf(x) < 0) out.push(x);
+      var n = normName(v);
+      if (n && out.indexOf(n) < 0) out.push(n);
     };
     if (viewingAs()) {
       var au = viewAsUserRow() || {}, v = (window.APP && APP._viewAs) || {};
@@ -190,10 +222,11 @@
   function profileOfShown() {
     var ids = idsOfShown();
     if (!ids.length) return null;
+    var hit = function (v) {
+      return !!s(v) && (ids.indexOf(s(v).toLowerCase()) >= 0 || ids.indexOf(normName(v)) >= 0);
+    };
     return allProfiles().find(function (p) {
-      return ids.indexOf(s(p.owner_key).toLowerCase()) >= 0
-        || ids.indexOf(s(p.owner_name).toLowerCase()) >= 0
-        || ids.indexOf(s(p.full_name).toLowerCase()) >= 0;
+      return hit(p.owner_key) || hit(p.owner_name) || hit(p.full_name);
     }) || null;
   }
 
@@ -212,12 +245,9 @@
     var mine = MY_UID ? profileByUid(MY_UID) : null;
     if (!mine) return null;
     var mk = s(mine.owner_key).toLowerCase();
-    var mn = s(mine.owner_name).toLowerCase();
-    var hasOwnIdentity = (mk && mk !== s(MY_UID).toLowerCase()) || !!mn;
-    if (hasOwnIdentity) {
-      var ids = idsOfShown();
-      if (ids.indexOf(mk) < 0 && ids.indexOf(mn) < 0) return null;
-    }
+    var hasOwnIdentity = (mk && mk !== s(MY_UID).toLowerCase())
+      || !!s(mine.owner_name) || !!s(mine.full_name);
+    if (hasOwnIdentity) return null;   // แถวระบุตัวตนไว้ชัด แต่ไม่ตรงกับคนบนหน้าจอ = คนละคน
     return mine;
   }
 
@@ -356,6 +386,35 @@
   /* target = { uid, name } ของคนที่จะตั้งรูปให้ ไม่ส่งมา = ของตัวเอง
      ผู้ดูแลระบบเท่านั้นที่ตั้งให้คนอื่นได้ และฐานข้อมูลบังคับซ้ำอีกชั้นหนึ่ง
      ถึงแม้หน้าเว็บจะถูกดัดแปลง ก็เขียนแทนคนอื่นไม่ได้ถ้าไม่ใช่ผู้ดูแล */
+  /* คอลัมน์ของแต่ละงาน รวมไว้ที่เดียว จะได้ไม่พิมพ์ชื่อผิดกระจายหลายที่ */
+  function linkField(kind) { return kind === 'signature' ? 'signature_link' : 'photo_link'; }
+  function driveField(kind) { return kind === 'signature' ? 'signature_drive_id' : 'photo_drive_id'; }
+
+  /* ชุดค่าที่จะบันทึกหลังอัปโหลดสำเร็จ — เก็บรหัสไฟล์บนไดรฟ์ไว้ด้วย
+     ครั้งต่อไปจะได้เขียนทับไฟล์เดิม ไม่ทิ้งของเก่าค้างไว้บนไดรฟ์ */
+  function linkPatch(kind, r) {
+    var patch = {};
+    patch[linkField(kind)] = s(r && r.link);
+    patch[driveField(kind)] = s(r && r.driveId);
+    return patch;
+  }
+
+  /* ลบไฟล์เดิมทิ้งให้หมด ทั้งในถังไฟล์และบนไดรฟ์ */
+  async function purgeOld(kind, uid, driveId, keepPath) {
+    var c = client();
+    if (!c || !uid) return;
+    var paths = OK_EXT.map(function (e) { return uid + '/' + kind + '.' + e; })
+      .filter(function (x) { return x !== keepPath; });
+    try { await c.storage.from(BUCKET).remove(paths); } catch (e) { /* ไม่มีก็ไม่เป็นไร */ }
+    paths.forEach(function (x) { var l = PREFIX + x; delete URL_CACHE[l]; delete ASKED[l]; });
+    if (!s(driveId)) return;
+    try {
+      await c.functions.invoke('drive-sync', {
+        body: { mode: 'remove', kind: kind, fileId: s(driveId), storagePath: uid + '/' + kind + '.png' }
+      });
+    } catch (e) { /* ลบสำเนาบนไดรฟ์ไม่สำเร็จ ไม่กระทบการใช้งาน */ }
+  }
+
   async function uploadProfileFile(file, kind, target) {
     // กำลังแสดงคนอื่นอยู่ (ดูแทนผู้ใช้) — ไฟล์จะไปลงบัญชีที่ล็อกอินอยู่ ไม่ใช่ของคนที่ดูแทน
     if (!target && !showingSelf()) {
@@ -384,24 +443,34 @@
       return { isOk: false, error: m };
     }
 
-    // ลบไฟล์นามสกุลอื่นของงานเดียวกันทิ้ง ไม่งั้นของเก่าจะค้างอยู่ในถัง
+    // ของเก่านามสกุลอื่นต้องไม่ค้างอยู่ในถัง เก็บไว้ไฟล์เดียวต่อคนต่องาน
     var stale = OK_EXT.filter(function (e) { return e !== ext; })
       .map(function (e) { return uid + '/' + kind + '.' + e; });
     try { await c.storage.from(BUCKET).remove(stale); } catch (e) { /* ไม่มีก็ไม่เป็นไร */ }
+    stale.forEach(function (x) { var l = PREFIX + x; delete URL_CACHE[l]; delete ASKED[l]; });
 
     var link = PREFIX + path;
     delete URL_CACHE[link]; delete ASKED[link];
 
-    // สำเนาขึ้น Google Drive — ล้มเหลวก็ยังใช้งานได้ ไฟล์หลักอยู่ในระบบแล้ว
+    /* สำเนาขึ้น Google Drive — ล้มเหลวก็ยังใช้งานได้ ไฟล์หลักอยู่ในระบบแล้ว
+       ส่งรหัสไฟล์เดิมไปด้วย ไดรฟ์จะได้เขียนทับไฟล์เดิม ไม่สร้างไฟล์ใหม่ซ้อนขึ้นเรื่อย ๆ */
+    var prevRow = profileByUid(uid) || {};
+    var prevDriveId = s(prevRow[driveField(kind)]);
+    var driveId = prevDriveId;
     try {
       var who = (target && s(target.name)) || myDisplay().name || uid;
       var nice = who + ' - ' + (kind === 'signature' ? 'ลายเซ็น' : 'รูปโปรไฟล์') + '.' + ext;
-      await c.functions.invoke('drive-sync', {
-        body: { mode: 'sync', kind: kind, storagePath: path, filename: nice }
+      var sync = await c.functions.invoke('drive-sync', {
+        body: {
+          mode: 'sync', kind: kind, storagePath: path, filename: nice,
+          existingFileId: prevDriveId
+        }
       });
+      var got = s(sync && sync.data && sync.data.fileId);
+      if (got) driveId = got;
     } catch (e) { /* เก็บสำเนาไม่สำเร็จ ไม่กระทบการใช้งาน */ }
 
-    return { isOk: true, link: link };
+    return { isOk: true, link: link, driveId: driveId };
   }
   window.emsUploadProfileFile = uploadProfileFile;
 
@@ -684,9 +753,7 @@
     uploadProfileFile(file, kind, tg).then(function (r) {
       var t = document.getElementById('loadingToast'); if (t) t.remove();
       if (!r.isOk) { toast(r.error, 'error'); input.value = ''; return; }
-      var field = kind === 'signature' ? 'signature_link' : 'photo_link';
-      var patch = {}; patch[field] = r.link;
-      saveProfile(patch, tg).then(function (sv) {
+      saveProfile(linkPatch(kind, r), tg).then(function (sv) {
         if (!sv.isOk) { toast('อัปโหลดแล้วแต่บันทึกไม่สำเร็จ: ' + sv.error, 'error'); return; }
         toast(kind === 'signature' ? 'บันทึกลายเซ็นแล้ว' : 'บันทึกรูปโปรไฟล์แล้ว');
         refreshAvatar();
@@ -695,17 +762,24 @@
     });
   };
 
-  window.profileClearFile = function (kind, forOther) {
+  window.profileClearFile = async function (kind, forOther) {
     var tg = forOther ? currentTarget() : null;
     if (forOther && !tg) return;
-    var field = kind === 'signature' ? 'signature_link' : 'photo_link';
-    var patch = {}; patch[field] = '';
-    saveProfile(patch, tg).then(function (r) {
-      if (!r.isOk) { toast('ลบไม่สำเร็จ: ' + r.error, 'error'); return; }
-      toast('ลบแล้ว');
-      refreshAvatar();
-      if (typeof renderCurrentPage === 'function') renderCurrentPage();
-    });
+    var uid = (tg && s(tg.uid)) || MY_UID || await authId();
+    var prev = profileByUid(uid) || {};
+
+    // ล้างในฐานข้อมูลก่อน หน้าจอจะได้ไม่ค้างชี้ไปยังไฟล์ที่กำลังจะหาย
+    var patch = {};
+    patch[linkField(kind)] = '';
+    patch[driveField(kind)] = '';
+    var r = await saveProfile(patch, tg);
+    if (!r.isOk) { toast('ลบไม่สำเร็จ: ' + r.error, 'error'); return; }
+
+    // แล้วค่อยลบไฟล์จริงทิ้งทั้งในถังไฟล์และบนไดรฟ์ ไม่เก็บของเดิมไว้
+    await purgeOld(kind, uid, s(prev[driveField(kind)]), '');
+    toast('ลบแล้ว');
+    refreshAvatar();
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
   };
 
   /* ---------------- ครอปรูปโปรไฟล์ก่อนบันทึก ----------------
@@ -841,7 +915,7 @@
       uploadProfileFile(file, 'profile', tg).then(function (r) {
         var t = document.getElementById('loadingToast'); if (t) t.remove();
         if (!r.isOk) { toast(r.error, 'error'); return; }
-        saveProfile({ photo_link: r.link }, tg).then(function (sv) {
+        saveProfile(linkPatch('profile', r), tg).then(function (sv) {
           if (!sv.isOk) { toast('อัปโหลดแล้วแต่บันทึกไม่สำเร็จ: ' + sv.error, 'error'); return; }
           toast('บันทึกรูปโปรไฟล์แล้ว');
           refreshAvatar();
@@ -911,7 +985,7 @@
       uploadProfileFile(file, 'signature').then(function (r) {
         var t = document.getElementById('loadingToast'); if (t) t.remove();
         if (!r.isOk) { toast(r.error, 'error'); return; }
-        saveProfile({ signature_link: r.link }).then(function (sv) {
+        saveProfile(linkPatch('signature', r)).then(function (sv) {
           if (!sv.isOk) { toast('บันทึกไม่สำเร็จ: ' + sv.error, 'error'); return; }
           toast('บันทึกลายเซ็นแล้ว');
           if (typeof renderCurrentPage === 'function') renderCurrentPage();
