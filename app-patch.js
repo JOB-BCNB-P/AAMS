@@ -915,12 +915,21 @@
      จอแท็บเล็ตและมือถือยังเป็นลิ้นชักเลื่อนออกมาเหมือนเดิม
      ============================================================ */
   var RAIL_KEY = 'ems_sidebar_rail';
+  var TABLET_MAX = 1280;   // ต่ำกว่านี้ถือว่าจอไม่กว้างพอจะกางเมนูค้างไว้
+
+  /* เมนูกางกินที่ 256 พิกเซล บน iPad แนวนอน (กว้าง 1024) เหลือที่อ่านข้อมูลแค่ 768
+     ปฏิทินกับการ์ดจึงถูกบีบจนดูแปลก ๆ จอขนาดนี้จึงเริ่มต้นด้วยเมนูแบบแถบไอคอน
+     ถ้าผู้ใช้เคยเลือกไว้เอง ให้ยึดตามที่เลือก ไม่ไปเปลี่ยนให้ */
   function railOn() {
-    try { return localStorage.getItem(RAIL_KEY) === '1'; } catch (e) { return false; }
+    try {
+      var v = localStorage.getItem(RAIL_KEY);
+      if (v === '0' || v === '1') return v === '1';
+    } catch (e) { }
+    return window.innerWidth < TABLET_MAX;
   }
-  function applyRail(on) {
+  function applyRail(on, remember) {
     document.body.classList.toggle('ems-rail', !!on);
-    try { localStorage.setItem(RAIL_KEY, on ? '1' : '0'); } catch (e) { }
+    if (remember !== false) { try { localStorage.setItem(RAIL_KEY, on ? '1' : '0'); } catch (e) { } }
     var btn = el('sidebarToggleBtn');
     if (btn) {
       btn.setAttribute('title', on ? 'ขยายเมนู' : 'ยุบเมนู');
@@ -1333,7 +1342,7 @@
       }).observe(node, { childList: true, subtree: true });
     });
     wrapTables(document);
-    applyRail(railOn());
+    applyRail(railOn(), false);   // ค่าเริ่มต้น ยังไม่ถือว่าผู้ใช้เลือกเอง
     var navBox = el('sidebarNav');
     if (navBox) new MutationObserver(railTitles).observe(navBox, { childList: true, subtree: true });
     if (typeof window.__emsBoot === 'function') window.__emsBoot();

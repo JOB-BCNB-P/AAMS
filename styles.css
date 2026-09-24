@@ -923,7 +923,7 @@ body.ems-viewas #emsViewAsBar { animation: emsViewAsIn .18s ease-out; }
    จนข้อความในปุ่มหักกลางคำ และแถบตัวกรองล้นออกนอกจอ
    กฎด้านล่างอนุญาตให้ทุกแถวขึ้นบรรทัดใหม่ได้เมื่อที่ไม่พอ
    แถวที่ตั้งใจไม่ให้ขึ้นบรรทัด ใส่ flex-nowrap หรือ ems-nowrap กำกับไว้ได้ */
-@media (max-width: 1023.98px) {
+@media (max-width: 1279.98px) {
   /* ให้ขึ้นบรรทัดใหม่เฉพาะ "แถวเครื่องมือ" คือแถวที่มีปุ่ม ช่องกรอก ตัวเลือก
      หรือหัวเรื่องอยู่ในนั้นโดยตรง ซึ่งเป็นแถวที่ล้นจริงบนจอแคบ
      ไม่เหมารวมทุกแถว เพราะแถวไอคอนคู่ข้อความ (เช่นในการ์ดสถิติ)
@@ -1005,3 +1005,29 @@ body.ems-viewas #emsViewAsBar { animation: emsViewAsIn .18s ease-out; }
   .ems-main .cal-day>.text-xs { font-size: 12px; line-height: 1.1rem; }
 }
 
+
+
+/* ═══════════ ช่วงแท็บเล็ต 1024–1279 พิกเซล ═══════════
+   iPad แนวนอนกว้าง 1024 พอดี ซึ่งเป็นจุดที่หน้าเว็บสลับไปใช้ผังของจอคอมพิวเตอร์
+   ผลคือเมนูกางค้าง 256 พิกเซล แล้วเนื้อหาถูกบีบเหลือสองคอลัมน์ ๆ ละ 352
+   ปฏิทินเหลือกว้าง 310 ช่องวันละ 43 พิกเซล เล็กจนดูไม่ออกว่าเป็นปฏิทิน
+   ช่วงนี้จึงให้เนื้อหาเรียงคอลัมน์เดียว และลดจำนวนการ์ดต่อแถวลง */
+@media (min-width: 1024px) and (max-width: 1279.98px) {
+  .ems-main .grid.lg\:grid-cols-2 { grid-template-columns: minmax(0, 1fr); }
+  .ems-main .grid.lg\:grid-cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ems-main .grid.lg\:grid-cols-4 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* ═══════════ ข้อความยาวต้องไม่ล้นออกนอกการ์ด ═══════════
+   ภาษาไทยไม่มีช่องว่างระหว่างคำ ชื่อหน่วยงานหรือชื่อประกาศยาว ๆ
+   จึงกลายเป็นคำเดียวยาวมากในสายตาเบราว์เซอร์ และดันทะลุขอบการ์ดออกไป */
+.ems-main p,
+.ems-main h1, .ems-main h2, .ems-main h3, .ems-main h4,
+.ems-main span, .ems-main td, .ems-main th, .ems-main li, .ems-main label {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+/* ตัวเลขและรหัสไม่ควรถูกหักกลาง อ่านผิดได้ */
+.ems-main .font-mono,
+.ems-main .tabular-nums { overflow-wrap: normal; }
