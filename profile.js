@@ -58,6 +58,10 @@
   /* ---------------- ตัวตนของผู้ใช้ปัจจุบัน ----------------
      กุญแจจับคู่โปรไฟล์ : นักศึกษาใช้รหัสนักศึกษา บุคลากรใช้อีเมลหรือชื่อผู้ใช้
      เก็บเป็นตัวพิมพ์เล็กเสมอ จะได้ไม่พลาดเพราะพิมพ์ใหญ่เล็กไม่ตรงกัน */
+  /* รหัสผู้ใช้จริงจากระบบยืนยันตัวตน — กุญแจหลักที่ใช้หาโปรไฟล์ของตัวเอง
+     ขอครั้งเดียวตอนเปิดหน้า แล้วจำไว้ เพราะการขอเป็นงานแบบรอผล
+     แต่จุดที่ต้องใช้ (วาดหน้า/วาดเอกสาร) ต้องได้คำตอบทันที */
+  var MY_UID = '';
   function myKey() {
     var u = (window.APP && APP.currentUser) || {}, d = u.data || {};
     return s(d.student_id || u.email || d.email || u.username || u.name).toLowerCase();
@@ -79,7 +83,15 @@
       return s(p.owner_name).toLowerCase() === n || s(p.full_name).toLowerCase() === n;
     }) || null;
   }
-  function myProfile() { return profileByKey(myKey()); }
+  function profileByUid(uid) {
+    var u = s(uid);
+    if (!u) return null;
+    return allProfiles().find(function (p) { return s(p.owner_uid) === u; }) || null;
+  }
+  /* หาโปรไฟล์ของตัวเอง : ใช้รหัสผู้ใช้ก่อนเสมอ
+     เดิมใช้ชื่อ/อีเมลเป็นกุญแจ ซึ่งบางบัญชี (เช่นผู้ดูแลระบบ) ไม่มีค่า
+     แถวจึงถูกบันทึกด้วยกุญแจว่าง แล้วหาไม่เจอ รูปกับลายเซ็นเลยไม่ขึ้น */
+  function myProfile() { return profileByUid(MY_UID) || profileByKey(myKey()); }
 
   // ค่าที่ควรใช้แสดงผล — โปรไฟล์ของเจ้าตัวมาก่อน ไม่มีค่อยถอยไปใช้ทะเบียน
   function displayOf(rec, prof) {
@@ -125,8 +137,14 @@
     if (!c) { URL_CACHE[link] = ''; return; }
     c.storage.from(BUCKET).createSignedUrl(pathOf(link), 3600).then(function (r) {
       URL_CACHE[link] = (r && r.data && r.data.signedUrl) || '';
+      if (!URL_CACHE[link]) {
+        console.warn('[โปรไฟล์] เปิดไฟล์ไม่ได้:', link, (r && r.error && r.error.message) || 'ไม่ทราบสาเหตุ');
+      }
       fillWaiting(link);
-    }).catch(function () { URL_CACHE[link] = ''; fillWaiting(link); });
+    }).catch(function (e) {
+      console.warn('[โปรไฟล์] เปิดไฟล์ไม่ได้:', link, e && e.message);
+      URL_CACHE[link] = ''; fillWaiting(link);
+    });
   }
 
   // คืนลิงก์ที่ใช้ได้ทันทีถ้าเคยขอไว้แล้ว ถ้ายังไม่เคยก็ขอให้แล้วคืนค่าว่างไปก่อน
@@ -238,16 +256,31 @@
     if (!c) return { isOk: false, error: 'ยังเชื่อมต่อฐานข้อมูลไม่ได้' };
     var uid = await authId();
     if (!uid) return { isOk: false, error: 'ยังไม่ได้เข้าสู่ระบบ' };
-    var u = (window.APP && APP.currentUser) || {};
+    MY_UID = uid;
+    var u = (window.APP && APP.currentUser) || {}, d = u.data || {};
     var row = Object.assign({
       auth_user_id: uid,
+      owner_uid: uid,
       owner_key: myKey(),
       owner_name: s(u.name),
       owner_role: s(APP.currentRole)
     }, fields || {});
+    /* กุญแจและชื่อต้องไม่ว่าง ไม่งั้นเอกสารจะหาลายเซ็นของคนนี้ไม่เจอ
+       ไล่หาจากที่พอมี แล้วสุดท้ายถอยไปใช้รหัสผู้ใช้ ซึ่งไม่ซ้ำกันแน่นอน */
+    var prev = profileByUid(uid) || {};
+    row.owner_name = s(row.owner_name) || s(row.full_name) || s(prev.owner_name)
+      || s(prev.full_name) || s(d.name) || s(u.email) || s(u.username);
+    row.owner_key = s(row.owner_key) || s(prev.owner_key)
+      || s(d.student_id) || s(u.email).toLowerCase() || uid;
     var r = await c.from('user_profile').upsert(row, { onConflict: 'auth_user_id' });
     if (r.error) return { isOk: false, error: s(r.error.message) };
-    try { await GSheetDB.refreshTab('user_profile'); } catch (e) { /* รอบหน้าโหลดใหม่เองได้ */ }
+    // โหลดตารางโปรไฟล์ใหม่ก่อนคืนค่า ไม่งั้นหน้าจอจะวาดจากข้อมูลชุดเก่าแล้วดูเหมือนไม่มีอะไรเปลี่ยน
+    try {
+      await GSheetDB.refreshTab('user_profile');
+    } catch (e) {
+      console.warn('[โปรไฟล์] โหลดข้อมูลใหม่ไม่สำเร็จ:', e && e.message);
+      return { isOk: true, stale: true };
+    }
     return { isOk: true };
   }
   window.emsSaveProfile = saveProfile;
@@ -291,6 +324,20 @@
     if (r) r.textContent = ROLE_LABEL[APP.currentRole] || '';
   }
   window.profileRefreshAvatar = refreshAvatar;
+
+  /* ขอรหัสผู้ใช้ตั้งแต่เปิดหน้า แล้ววาดรูปโปรไฟล์ซ้ำให้อีกรอบเมื่อได้คำตอบ
+     ก่อนหน้านั้นการหาโปรไฟล์จะถอยไปใช้ชื่อ/อีเมลตามเดิม จึงไม่มีจังหวะที่หน้าจอพัง */
+  function initAuthUid() {
+    authId().then(function (uid) {
+      if (!uid || uid === MY_UID) return;
+      MY_UID = uid;
+      try {
+        refreshAvatar();
+        if (typeof renderCurrentPage === 'function' && APP && APP.currentPage) renderCurrentPage();
+      } catch (e) { /* ยังไม่เข้าสู่ระบบ ไม่ต้องทำอะไร */ }
+    }).catch(function () { /* ยังไม่เข้าสู่ระบบ */ });
+  }
+  window.profileInitUid = initAuthUid;
 
   /* ================= หน้าตั้งค่าข้อมูลส่วนตัว ================= */
   function fileBox(kind, link, label, hint) {
@@ -733,6 +780,7 @@
     window.renderCurrentPage = function () {
       orig.apply(this, arguments);
       try {
+        if (!MY_UID) initAuthUid();
         refreshAvatar();
         if (APP.currentPage === 'profile') setupSigPad();
       } catch (e) { console.warn('เตรียมหน้าโปรไฟล์ไม่สำเร็จ:', e); }
