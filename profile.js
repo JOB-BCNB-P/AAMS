@@ -141,19 +141,42 @@
     if (!u) return null;
     return allProfiles().find(function (p) { return s(p.owner_uid) === u; }) || null;
   }
-  /* หาโปรไฟล์ของผู้ใช้ที่กำลังแสดงอยู่
-     ปกติใช้รหัสผู้ใช้ก่อน เพราะบางบัญชีไม่มีชื่อ/อีเมลให้จับคู่
-     แต่ในโหมดดูแทนผู้ใช้ ห้ามใช้รหัสผู้ใช้เด็ดขาด เพราะเป็นของผู้ดูแลที่ล็อกอินอยู่
-     ไม่ใช่ของคนที่ถูกดูแทน จะกลายเป็นเอารูปและลายเซ็นของผู้ดูแลไปขึ้นแทน */
+  /* กุญแจของ "บัญชีที่ล็อกอินอยู่จริง" — ไม่ใช่คนที่หน้าจอกำลังแสดง
+     app-patch.js เก็บโปรไฟล์จริงไว้ตั้งแต่ตอนเข้าระบบ ใช้เทียบได้ว่าตอนนี้แสดงตัวเองอยู่ไหม */
+  function realAccountKey() {
+    var rp = window.__emsRealProfile || null;
+    if (!rp) return '';
+    return s(rp.student_id || rp.email || rp.username || rp.name).toLowerCase();
+  }
+
+  /* หน้าจอกำลังแสดง "ตัวเอง" อยู่หรือเปล่า
+     เทียบตัวตนตรง ๆ ไม่พึ่งธงบอกสถานะ เพราะทางเข้ามีหลายทาง
+     (โหมดดูแทนผู้ใช้ / สลับมุมมองบทบาท) และบางทางไม่ได้ตั้งธงไว้
+     สลับมุมมองบทบาทของคนเดิม ยังถือว่าเป็นตัวเอง — รูปและลายเซ็นจึงยังขึ้นตามปกติ */
+  function showingSelf() {
+    if (viewingAs()) return false;
+    var k = myKey();
+    if (!k) return true;             // ไม่มีตัวตนให้เทียบ ถือว่าเป็นตัวเอง
+    var rk = realAccountKey();
+    if (rk) return rk === k;
+    /* บางทางเข้าไม่ได้เก็บโปรไฟล์จริงไว้ให้เทียบ
+       ใช้แถวโปรไฟล์ของบัญชีที่ล็อกอินแทน — กุญแจในแถวนั้นคือตัวตนของเจ้าของบัญชี
+       แต่ถ้ากุญแจเป็นรหัสผู้ใช้ (ค่าสำรองตอนหาตัวตนไม่เจอ) เอามาเทียบไม่ได้ */
+    var mine = MY_UID ? profileByUid(MY_UID) : null;
+    var mk = mine ? s(mine.owner_key).toLowerCase() : '';
+    if (mk && mk !== s(MY_UID).toLowerCase()) return mk === k;
+    return true;                     // ไม่มีอะไรให้เทียบเลย ถือว่าเข้าระบบมาตามปกติ
+  }
+
+  /* หาโปรไฟล์ของผู้ใช้ที่หน้าจอกำลังแสดง
+     หาจากกุญแจตัวตนก่อนเสมอ — ตรงกับคนที่แสดงอยู่จริง ไม่ว่ามาทางไหน
+     รหัสผู้ใช้ของบัญชีที่ล็อกอินใช้เป็นตัวสำรอง เฉพาะตอนแสดงตัวเองเท่านั้น
+     ไม่งั้นรูปและลายเซ็นของผู้ดูแลจะไปขึ้นแทนคนที่ถูกดูแทน */
   function myProfile() {
-    if (viewingAs()) {
-      var p = profileByKey(myKey())
-        || profileByName(s((window.APP && APP.currentUser && APP.currentUser.name) || ''));
-      // กันสุดทาง : ถ้าบังเอิญไปตรงกับโปรไฟล์ของบัญชีที่ล็อกอินอยู่ ถือว่าไม่เจอ
-      if (p && MY_UID && s(p.owner_uid) === MY_UID) return null;
-      return p;
-    }
-    return profileByUid(MY_UID) || profileByKey(myKey());
+    var p = profileByKey(myKey());
+    if (p) return p;
+    if (!showingSelf()) return null;
+    return profileByUid(MY_UID);
   }
 
   // ค่าที่ควรใช้แสดงผล — โปรไฟล์ของเจ้าตัวมาก่อน ไม่มีค่อยถอยไปใช้ทะเบียน
@@ -270,8 +293,10 @@
      ผู้ดูแลระบบเท่านั้นที่ตั้งให้คนอื่นได้ และฐานข้อมูลบังคับซ้ำอีกชั้นหนึ่ง
      ถึงแม้หน้าเว็บจะถูกดัดแปลง ก็เขียนแทนคนอื่นไม่ได้ถ้าไม่ใช่ผู้ดูแล */
   async function uploadProfileFile(file, kind, target) {
-    // โหมดดูแทนผู้ใช้อ่านอย่างเดียว — ไฟล์จะไปลงบัญชีของผู้ดูแลที่ล็อกอินอยู่ ไม่ใช่ของคนที่ดูแทน
-    if (viewingAs()) return { isOk: false, error: 'โหมดดูแทนผู้ใช้: อ่านอย่างเดียว อัปโหลดไฟล์ไม่ได้' };
+    // กำลังแสดงคนอื่นอยู่ (ดูแทนผู้ใช้) — ไฟล์จะไปลงบัญชีที่ล็อกอินอยู่ ไม่ใช่ของคนที่ดูแทน
+    if (!target && !showingSelf()) {
+      return { isOk: false, error: 'โหมดดูแทนผู้ใช้: อ่านอย่างเดียว อัปโหลดไฟล์ไม่ได้' };
+    }
     if (!file || !file.name) return { isOk: false, error: 'ยังไม่ได้เลือกไฟล์' };
     var ext = extOf(file.name);
     if (OK_EXT.indexOf(ext) < 0) {
@@ -321,7 +346,9 @@
      เพราะตัวกลางตัดคอลัมน์ auth_user_id ทิ้ง (ถือเป็นคอลัมน์ระบบ)
      แต่คอลัมน์นี้คือกุญแจที่ฐานข้อมูลใช้ตรวจว่าเป็นแถวของเราจริง */
   async function saveProfile(fields, target) {
-    if (viewingAs()) return { isOk: false, error: 'โหมดดูแทนผู้ใช้: อ่านอย่างเดียว แก้ข้อมูลไม่ได้' };
+    if (!target && !showingSelf()) {
+      return { isOk: false, error: 'โหมดดูแทนผู้ใช้: อ่านอย่างเดียว แก้ข้อมูลไม่ได้' };
+    }
     var c = client();
     if (!c) return { isOk: false, error: 'ยังเชื่อมต่อฐานข้อมูลไม่ได้' };
     var mine = await authId();
@@ -446,7 +473,7 @@
       + '<div class="' + (isPhoto ? 'min-h-[168px]' : 'min-h-[72px]')
       + ' flex items-center justify-center mb-2">' + shown + '</div>'
       + '<input type="file" accept=".png,.jpg,.jpeg,.svg,.pdf" class="w-full text-xs"'
-      + (viewingAs() ? ' disabled' : '')
+      + ((forOther || showingSelf()) ? '' : ' disabled')
       + ' onchange="profilePickFile(this, \'' + kind + '\', ' + (forOther ? 'true' : 'false') + ')">'
       + '<p class="text-[11px] text-gray-400 mt-1">' + esc(hint) + '</p>'
       + (isProfileFile(link)
@@ -463,7 +490,7 @@
     var prof = myProfile();
     var d = displayOf(rec, prof);
     var isStudent = APP.currentRole === 'student';
-    var RO = viewingAs() ? ' disabled' : '';   // อ่านอย่างเดียวในโหมดดูแทนผู้ใช้
+    var RO = showingSelf() ? '' : ' disabled';   // อ่านอย่างเดียวเมื่อกำลังแสดงคนอื่น
 
     // ข้อมูลจากทะเบียนกลาง แสดงให้เห็นว่าอะไรแก้เองไม่ได้
     var fixed = [];
@@ -478,7 +505,7 @@
 
     return '<h2 class="text-xl font-bold text-gray-800 mb-4">'
       + '<i data-lucide="user-cog" class="w-6 h-6 inline mr-2"></i>ตั้งค่าข้อมูลส่วนตัว</h2>'
-      + (viewingAs()
+      + (!showingSelf()
         ? '<div class="bg-amber-50 border border-amber-200 rounded-2xl p-3 mb-4 text-sm text-amber-800">'
           + '<i data-lucide="eye" class="w-4 h-4 inline mr-1"></i>'
           + 'กำลังดูแทนผู้ใช้ — หน้านี้แสดงข้อมูลของ <b>'
@@ -1001,7 +1028,7 @@
         if (!MY_UID) initAuthUid();
         refreshAvatar();
         // โหมดดูแทนผู้ใช้ไม่ต้องเปิดกระดานวาด เพราะบันทึกไม่ได้อยู่แล้ว
-        if (APP.currentPage === 'profile' && !viewingAs()) setupSigPad();
+        if (APP.currentPage === 'profile' && showingSelf()) setupSigPad();
       } catch (e) { console.warn('เตรียมหน้าโปรไฟล์ไม่สำเร็จ:', e); }
     };
   })();
