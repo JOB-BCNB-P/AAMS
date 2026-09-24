@@ -688,7 +688,11 @@ details[open]>summary .chev {
 }
 
 /* ---------- โหมด "ดูแทนผู้ใช้" (View as) ---------- */
-body.ems-viewas { padding-bottom: 52px; }
+/* แถบดูแทนอยู่ติดขอบล่าง เผื่อที่ว่างไว้ไม่ให้ทับเนื้อหา
+   จอแคบแถบขึ้นสองบรรทัดได้ จึงเผื่อไว้มากกว่า */
+body.ems-viewas { padding-bottom: 76px; }
+@media (min-width: 640px) { body.ems-viewas { padding-bottom: 52px; } }
+body.ems-viewas #emsViewAsBar { padding-bottom: calc(.5rem + env(safe-area-inset-bottom)); }
 body.ems-viewas #emsViewAsBar { animation: emsViewAsIn .18s ease-out; }
 @keyframes emsViewAsIn { from { transform: translateY(100%); } to { transform: translateY(0); } }
 

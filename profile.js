@@ -761,7 +761,8 @@
       + '<div class="mb-3">'
       + '<p class="text-xs font-semibold text-gray-600 mb-1">วาดลายเซ็นเอง</p>'
       + '<canvas id="sigPad" width="600" height="200"'
-      + ' class="w-full border border-gray-300 rounded-xl bg-white touch-none cursor-crosshair"></canvas>'
+      + ' class="w-full h-32 sm:h-[200px] border border-gray-300 rounded-xl bg-white'
+      + ' touch-none cursor-crosshair"></canvas>'
       + '<div class="flex flex-wrap gap-2 mt-2">'
       + '<button type="button" onclick="profileSigClear()"'
       + ' class="px-3 py-1.5 border border-gray-200 rounded-xl text-xs text-gray-600 hover:bg-surface">ล้าง</button>'
@@ -848,7 +849,18 @@
      ถ้าอัปโหลดดิบ ๆ เบราว์เซอร์จะครอปกลางภาพให้เอง ซึ่งมักตัดหัวหรือตัดคางขาด
      จึงให้เลือกเองว่าจะเอาส่วนไหน แล้วส่งขึ้นเป็นรูปจัตุรัสที่ครอปแล้ว */
   var CROPPABLE = ['png', 'jpg', 'jpeg'];
-  var VIEW = 320;        // ขนาดกรอบที่เห็นบนจอตอนครอป
+  /* ขนาดกรอบที่เห็นบนจอตอนครอป
+     เดิมตายตัวที่ 320 พิกเซล พอเปิดบนมือถือจอแคบ กล่องจะล้นออกนอกจอ
+     จึงคิดจากความกว้างจอจริง หักขอบกล่องและระยะขอบจอออกก่อน */
+  var VIEW_MAX = 320;
+  var VIEW_MIN = 200;
+  var VIEW = VIEW_MAX;   // ค่าที่ใช้อยู่จริงของรอบนั้น
+  function cropViewSize() {
+    var w = (window.innerWidth || 360);
+    // ขอบจอ 16 สองข้าง + ขอบในกล่อง 20 สองข้าง = 72 กันเหลือไว้อีกนิด
+    var avail = w - 72;
+    return Math.max(VIEW_MIN, Math.min(VIEW_MAX, Math.floor(avail)));
+  }
   var OUT = 640;         // ขนาดไฟล์ที่บันทึกจริง เท่ากับรูปโปรไฟล์ของ LINE
   var crop = null;       // { img, url, scale, base, x, y }
   var cropTarget = null; // คนที่จะตั้งรูปให้ — ว่าง = ของตัวเอง
@@ -876,8 +888,12 @@
     img.src = url;
   }
 
+  // เปิดให้ชุดทดสอบเรียกวาดกล่องครอปได้ตรง ๆ โดยไม่ต้องเลือกไฟล์จริง
+  window.__emsBuildCropUI = function (img, url) { return buildCropUI(img, url); };
+
   function buildCropUI(img, url) {
     closeCropper();
+    VIEW = cropViewSize();   // คิดขนาดกรอบใหม่ทุกครั้งที่เปิด ตามจอที่ใช้อยู่ตอนนั้น
     var base = Math.max(VIEW / img.width, VIEW / img.height);   // ย่อ/ขยายให้พอดีคลุมกรอบ
     crop = { img: img, url: url, base: base, scale: base, x: 0, y: 0 };
     crop.x = (VIEW - img.width * base) / 2;
@@ -886,7 +902,8 @@
     var wrap = document.createElement('div');
     wrap.id = 'profileCropModal';
     wrap.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4';
-    wrap.innerHTML = '<div class="bg-white rounded-2xl p-5 w-full max-w-sm">'
+    wrap.innerHTML = '<div class="bg-white rounded-2xl p-4 sm:p-5 w-full max-w-sm '
+      + 'max-h-[92vh] overflow-y-auto">'
       + '<h3 class="font-bold mb-1">ครอปรูปโปรไฟล์</h3>'
       + '<p class="text-xs text-gray-500 mb-3">ลากรูปเพื่อเลื่อน และเลื่อนแถบด้านล่างเพื่อย่อ-ขยาย '
       + 'ส่วนที่อยู่ในวงกลมคือส่วนที่จะแสดงจริง · บันทึกเป็นรูป ' + OUT + '×' + OUT + ' พิกเซล</p>'
@@ -990,16 +1007,36 @@
      รองรับทั้งเมาส์และนิ้ว ใช้ Pointer Events ตัวเดียวจบ
      ปรับความละเอียดตามหน้าจอ ลายเซ็นบนจอความละเอียดสูงจะได้ไม่แตก */
   var sigDirty = false;
+  /* หมุนจอหรือย่อ-ขยายหน้าต่าง ความกว้างของกระดานเปลี่ยน
+     ถ้าไม่ตั้งขนาดใหม่ เส้นที่วาดจะเพี้ยนไปจากตำแหน่งนิ้ว
+     ตั้งใหม่เฉพาะตอนที่ยังไม่ได้วาดอะไร จะได้ไม่ลบงานของผู้ใช้ทิ้ง */
+  var sigWatch = false;
+  function watchSigPad() {
+    if (sigWatch || typeof window.addEventListener !== 'function') return;
+    sigWatch = true;
+    var timer = null;
+    window.addEventListener('resize', function () {
+      var cv = document.getElementById('sigPad');
+      if (!cv || cv.dataset.ready !== '1') return;
+      var want = Math.round(cv.getBoundingClientRect().width * (window.devicePixelRatio || 1));
+      if (!want || Math.abs(want - cv.width) < 8) return;
+      if (sigDirty) return;                 // กำลังมีลายเซ็นที่ยังไม่บันทึก ไม่แตะ
+      clearTimeout(timer);
+      timer = setTimeout(function () { cv.dataset.ready = ''; setupSigPad(); }, 180);
+    });
+  }
+
   function setupSigPad() {
     var cv = document.getElementById('sigPad');
     if (!cv || cv.dataset.ready === '1') return;
     cv.dataset.ready = '1';
+    watchSigPad();
     sigDirty = false;
     var ratio = window.devicePixelRatio || 1;
     var rect = cv.getBoundingClientRect();
     if (rect.width) {
       cv.width = Math.round(rect.width * ratio);
-      cv.height = Math.round(200 * ratio);
+      cv.height = Math.round((rect.height || 200) * ratio);
     }
     var ctx = cv.getContext('2d');
     ctx.scale(ratio, ratio);
@@ -1196,7 +1233,10 @@
       + (rows.length
         ? '<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mt-4">'
           + rows.map(function (x) {
-            return '<div class="bg-surface rounded-xl px-3 py-2">'
+            // ค่ายาว ๆ อย่างอีเมลหรือชื่ออาจารย์ที่ปรึกษา ถ้าบีบลงครึ่งจอจะตัดคำจนอ่านยาก
+            // บนจอมือถือจึงให้กินเต็มแถว แล้วค่อยกลับมาเรียงข้างกันเมื่อจอกว้างพอ
+            var wide = s(x[1]).length > 18 ? ' col-span-2 sm:col-span-1' : '';
+            return '<div class="bg-surface rounded-xl px-3 py-2' + wide + '">'
               + '<p class="text-[11px] text-gray-500">' + esc(x[0]) + '</p>'
               + '<p class="text-sm text-gray-800 break-words">' + esc(x[1]) + '</p></div>';
           }).join('')

@@ -1099,17 +1099,21 @@
     if (!bar) {
       bar = document.createElement('div');
       bar.id = 'emsViewAsBar';
-      bar.className = 'fixed bottom-0 left-0 right-0 z-40 bg-amber-500 text-white px-4 py-2 ' +
-                      'flex items-center gap-3 text-sm shadow-lg';
+      // จอแคบให้ขึ้นบรรทัดได้ ไม่งั้นปุ่มจะถูกดันหลุดขอบจอ
+      bar.className = 'fixed bottom-0 left-0 right-0 z-40 bg-amber-500 text-white ' +
+                      'px-3 sm:px-4 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 ' +
+                      'text-xs sm:text-sm shadow-lg';
       document.body.appendChild(bar);
     }
     var v = window.emsViewAsState();
     bar.innerHTML =
-      '<span class="font-semibold whitespace-nowrap">👁 กำลังดูแทนผู้ใช้</span>' +
-      '<span class="truncate">' + v.name + ' — ' + (ROLE_LABEL[v.role] || v.role) + '</span>' +
-      '<span class="hidden sm:inline text-white/80 text-xs whitespace-nowrap">(อ่านอย่างเดียว)</span>' +
-      '<button onclick="emsExitViewAs()" class="ml-auto mr-16 sm:mr-20 bg-white/20 hover:bg-white/30 ' +
-      'rounded-lg px-3 py-1 font-medium whitespace-nowrap">ออกจากโหมดดูแทน</button>';
+      '<span class="font-semibold whitespace-nowrap">👁' +
+      '<span class="hidden sm:inline"> กำลังดูแทนผู้ใช้</span></span>' +
+      '<span class="truncate min-w-0 flex-1">' + v.name + ' — ' + (ROLE_LABEL[v.role] || v.role) + '</span>' +
+      '<span class="hidden md:inline text-white/80 text-xs whitespace-nowrap">(อ่านอย่างเดียว)</span>' +
+      '<button onclick="emsExitViewAs()" class="ml-auto mr-12 sm:mr-20 bg-white/20 hover:bg-white/30 ' +
+      'rounded-lg px-2.5 sm:px-3 py-1 font-medium whitespace-nowrap">ออกจากโหมด' +
+      '<span class="hidden sm:inline">ดูแทน</span></button>';
   }
 
   /* ---------- ประกอบโปรไฟล์จำลองจากแถวผู้ใช้ในตาราง app_user ---------- */

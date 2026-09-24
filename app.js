@@ -9375,9 +9375,12 @@ function leavePage() {
           <h3 class="font-bold flex items-center gap-2"><i data-lucide="file-text" class="w-5 h-5 text-primary"></i>ตัวอย่างเอกสาร <span class="text-xs font-normal text-gray-400">(ใบลาเมื่อสั่งพิมพ์)</span></h3>
           <button type="button" onclick="leaveDocPrint()" class="flex items-center gap-1 px-3 py-1.5 border border-gray-200 rounded-xl text-xs text-gray-600 hover:bg-surface"><i data-lucide="printer" class="w-3.5 h-3.5"></i>พิมพ์</button>
         </div>
-        <div class="border border-gray-200 rounded-xl bg-white overflow-x-auto">
-          <div id="leaveDocPreview" class="p-5 text-[13px] leading-relaxed text-gray-800 min-w-[460px]"></div>
+        <div id="leaveDocBox" class="border border-gray-200 rounded-xl bg-white overflow-x-auto">
+          <div id="leaveDocFit" class="origin-top-left">
+            <div id="leaveDocPreview" class="p-4 sm:p-5 text-[13px] leading-relaxed text-gray-800 min-w-[460px]"></div>
+          </div>
         </div>
+        <p class="text-xs text-gray-400 mt-2 sm:hidden">ใบลาถูกย่อให้พอดีจอ เวลาสั่งพิมพ์จะได้ขนาดเต็มตามจริง</p>
         <p class="text-xs text-gray-400 mt-2">เอกสารนี้ยังไม่ถูกบันทึก จนกว่าจะกดปุ่ม "บันทึกและส่งใบลา"</p>
       </div>
     </div>`;
@@ -10767,12 +10770,40 @@ function leaveDocHTML(d) {
     + '</div>';
 }
 
+/* ใบลามีความกว้างตายตัว 460 พิกเซล ตามสัดส่วนกระดาษจริง
+   บนมือถือจอแคบกว่านั้น เดิมต้องเลื่อนซ้าย-ขวาดูทีละส่วน มองภาพรวมไม่ออก
+   จึงย่อทั้งใบลงให้พอดีความกว้างที่มี แล้วหดความสูงกรอบตามอัตราที่ย่อ */
+function leaveDocFit() {
+  const box = document.getElementById('leaveDocBox');
+  const fit = document.getElementById('leaveDocFit');
+  if (!box || !fit) return;
+  fit.style.transform = '';
+  fit.style.width = '';
+  box.style.height = '';
+  const avail = box.clientWidth;
+  const natural = fit.scrollWidth || 460;
+  if (!avail || avail >= natural) return;      // จอกว้างพอแล้ว ไม่ต้องย่อ
+  const k = avail / natural;
+  fit.style.width = natural + 'px';
+  fit.style.transform = 'scale(' + k + ')';
+  box.style.height = Math.ceil(fit.scrollHeight * k) + 'px';
+  box.style.overflowX = 'hidden';
+}
+if (typeof window !== 'undefined' && !window.__leaveDocFitBound) {
+  window.__leaveDocFitBound = true;
+  let t = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(t); t = setTimeout(leaveDocFit, 150);
+  });
+}
+
 function leaveDocRefresh() {
   const box = document.getElementById('leaveDocPreview');
   if (!box) return;
   const d = leaveDocData();
   if (!d) return;
   box.innerHTML = leaveDocHTML(d);
+  leaveDocFit();        // วาดใหม่แล้วความสูงเปลี่ยน ต้องคิดอัตราย่อใหม่ด้วย
 }
 
 function leaveDocPrint() {
