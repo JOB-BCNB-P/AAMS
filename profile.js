@@ -62,8 +62,32 @@
      ขอครั้งเดียวตอนเปิดหน้า แล้วจำไว้ เพราะการขอเป็นงานแบบรอผล
      แต่จุดที่ต้องใช้ (วาดหน้า/วาดเอกสาร) ต้องได้คำตอบทันที */
   var MY_UID = '';
+
+  /* โหมด "ดูแทนผู้ใช้" — ผู้ดูแลระบบเปิดดูหน้าจอในมุมมองของคนอื่น
+     บัญชีที่ล็อกอินยังเป็นของผู้ดูแล แต่สิ่งที่ต้องแสดงคือข้อมูลของคนที่ถูกดูแทน
+     ทุกจุดที่หาโปรไฟล์จึงต้องแยกสองกรณีนี้ออกจากกัน */
+  function viewingAs() { return !!(window.APP && APP._viewAs); }
+
+  /* ระเบียนในทะเบียนของผู้ใช้ที่กำลังแสดงอยู่
+     ปกติ APP.currentUser.data มีให้อยู่แล้ว แต่บางทางเข้า (เช่นโหมดดูแทนผู้ใช้
+     ที่จับคู่ระเบียนไม่เจอ) จะว่าง จึงค้นจากทะเบียนให้อีกชั้นหนึ่ง
+     ไม่งั้นการ์ดข้อมูลจะว่างเปล่าทั้งที่ข้อมูลมีอยู่ */
+  function myRecord() {
+    var u = (window.APP && APP.currentUser) || {};
+    if (u.data && Object.keys(u.data).length) return u.data;
+    var nm = s(u.name).toLowerCase(), em = s(u.email).toLowerCase();
+    var sid = s(u.student_id || (APP._viewAs && APP._viewAs.identifier)).toLowerCase();
+    var table = (APP.currentRole === 'student') ? 'student' : 'teacher';
+    var hit = get(table).find(function (x) {
+      return (sid && s(x.student_id).toLowerCase() === sid)
+        || (em && s(x.email).toLowerCase() === em)
+        || (nm && s(x.name).toLowerCase() === nm);
+    });
+    return hit || { name: u.name, email: u.email };
+  }
+
   function myKey() {
-    var u = (window.APP && APP.currentUser) || {}, d = u.data || {};
+    var u = (window.APP && APP.currentUser) || {}, d = myRecord();
     return s(d.student_id || u.email || d.email || u.username || u.name).toLowerCase();
   }
   function keyOfRecord(rec) {
@@ -88,10 +112,17 @@
     if (!u) return null;
     return allProfiles().find(function (p) { return s(p.owner_uid) === u; }) || null;
   }
-  /* หาโปรไฟล์ของตัวเอง : ใช้รหัสผู้ใช้ก่อนเสมอ
-     เดิมใช้ชื่อ/อีเมลเป็นกุญแจ ซึ่งบางบัญชี (เช่นผู้ดูแลระบบ) ไม่มีค่า
-     แถวจึงถูกบันทึกด้วยกุญแจว่าง แล้วหาไม่เจอ รูปกับลายเซ็นเลยไม่ขึ้น */
-  function myProfile() { return profileByUid(MY_UID) || profileByKey(myKey()); }
+  /* หาโปรไฟล์ของผู้ใช้ที่กำลังแสดงอยู่
+     ปกติใช้รหัสผู้ใช้ก่อน เพราะบางบัญชีไม่มีชื่อ/อีเมลให้จับคู่
+     แต่ในโหมดดูแทนผู้ใช้ ห้ามใช้รหัสผู้ใช้เด็ดขาด เพราะเป็นของผู้ดูแลที่ล็อกอินอยู่
+     ไม่ใช่ของคนที่ถูกดูแทน จะกลายเป็นเอารูปและลายเซ็นของผู้ดูแลไปขึ้นแทน */
+  function myProfile() {
+    if (viewingAs()) {
+      return profileByKey(myKey())
+        || profileByName(s((window.APP && APP.currentUser && APP.currentUser.name) || ''));
+    }
+    return profileByUid(MY_UID) || profileByKey(myKey());
+  }
 
   // ค่าที่ควรใช้แสดงผล — โปรไฟล์ของเจ้าตัวมาก่อน ไม่มีค่อยถอยไปใช้ทะเบียน
   function displayOf(rec, prof) {
@@ -106,7 +137,7 @@
   }
   function myDisplay() {
     var u = (window.APP && APP.currentUser) || {};
-    var d = displayOf(u.data || { name: u.name, email: u.email }, myProfile());
+    var d = displayOf(myRecord(), myProfile());
     if (!d.name) d.name = s(u.name);
     return d;
   }
@@ -207,6 +238,8 @@
      ผู้ดูแลระบบเท่านั้นที่ตั้งให้คนอื่นได้ และฐานข้อมูลบังคับซ้ำอีกชั้นหนึ่ง
      ถึงแม้หน้าเว็บจะถูกดัดแปลง ก็เขียนแทนคนอื่นไม่ได้ถ้าไม่ใช่ผู้ดูแล */
   async function uploadProfileFile(file, kind, target) {
+    // โหมดดูแทนผู้ใช้อ่านอย่างเดียว — ไฟล์จะไปลงบัญชีของผู้ดูแลที่ล็อกอินอยู่ ไม่ใช่ของคนที่ดูแทน
+    if (viewingAs()) return { isOk: false, error: 'โหมดดูแทนผู้ใช้: อ่านอย่างเดียว อัปโหลดไฟล์ไม่ได้' };
     if (!file || !file.name) return { isOk: false, error: 'ยังไม่ได้เลือกไฟล์' };
     var ext = extOf(file.name);
     if (OK_EXT.indexOf(ext) < 0) {
@@ -256,6 +289,7 @@
      เพราะตัวกลางตัดคอลัมน์ auth_user_id ทิ้ง (ถือเป็นคอลัมน์ระบบ)
      แต่คอลัมน์นี้คือกุญแจที่ฐานข้อมูลใช้ตรวจว่าเป็นแถวของเราจริง */
   async function saveProfile(fields, target) {
+    if (viewingAs()) return { isOk: false, error: 'โหมดดูแทนผู้ใช้: อ่านอย่างเดียว แก้ข้อมูลไม่ได้' };
     var c = client();
     if (!c) return { isOk: false, error: 'ยังเชื่อมต่อฐานข้อมูลไม่ได้' };
     var mine = await authId();
@@ -380,6 +414,7 @@
       + '<div class="' + (isPhoto ? 'min-h-[168px]' : 'min-h-[72px]')
       + ' flex items-center justify-center mb-2">' + shown + '</div>'
       + '<input type="file" accept=".png,.jpg,.jpeg,.svg,.pdf" class="w-full text-xs"'
+      + (viewingAs() ? ' disabled' : '')
       + ' onchange="profilePickFile(this, \'' + kind + '\', ' + (forOther ? 'true' : 'false') + ')">'
       + '<p class="text-[11px] text-gray-400 mt-1">' + esc(hint) + '</p>'
       + (isProfileFile(link)
@@ -392,10 +427,11 @@
 
   function profilePage() {
     var u = (window.APP && APP.currentUser) || {};
-    var rec = u.data || {};
+    var rec = myRecord();
     var prof = myProfile();
     var d = displayOf(rec, prof);
     var isStudent = APP.currentRole === 'student';
+    var RO = viewingAs() ? ' disabled' : '';   // อ่านอย่างเดียวในโหมดดูแทนผู้ใช้
 
     // ข้อมูลจากทะเบียนกลาง แสดงให้เห็นว่าอะไรแก้เองไม่ได้
     var fixed = [];
@@ -410,6 +446,12 @@
 
     return '<h2 class="text-xl font-bold text-gray-800 mb-4">'
       + '<i data-lucide="user-cog" class="w-6 h-6 inline mr-2"></i>ตั้งค่าข้อมูลส่วนตัว</h2>'
+      + (viewingAs()
+        ? '<div class="bg-amber-50 border border-amber-200 rounded-2xl p-3 mb-4 text-sm text-amber-800">'
+          + '<i data-lucide="eye" class="w-4 h-4 inline mr-1"></i>'
+          + 'กำลังดูแทนผู้ใช้ — หน้านี้แสดงข้อมูลของ <b>'
+          + esc(s(u.name)) + '</b> แบบอ่านอย่างเดียว แก้ไขหรืออัปโหลดไฟล์ไม่ได้</div>'
+        : '')
 
       + '<div class="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">'
 
@@ -419,14 +461,14 @@
       + '<i data-lucide="id-card" class="w-5 h-5 text-primary"></i>ข้อมูลที่คุณแก้เองได้</h3>'
       + '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">'
       + '<div><label class="block text-xs text-gray-600 mb-1">คำนำหน้า</label>'
-      + '<input name="title_prefix" value="' + esc(d.title_prefix) + '" placeholder="เช่น นางสาว"'
+      + '<input name="title_prefix" value="' + esc(d.title_prefix) + '" placeholder="เช่น นางสาว"' + RO
       + ' class="w-full border rounded-xl px-3 py-2 text-sm"></div>'
       + '<div class="sm:col-span-2"><label class="block text-xs text-gray-600 mb-1">ชื่อ-สกุล</label>'
-      + '<input name="full_name" value="' + esc(d.name) + '"'
+      + '<input name="full_name" value="' + esc(d.name) + '"' + RO
       + ' class="w-full border rounded-xl px-3 py-2 text-sm"></div>'
       + '</div>'
       + '<div><label class="block text-xs text-gray-600 mb-1">เบอร์โทรศัพท์</label>'
-      + '<input name="phone" value="' + esc(d.phone) + '" inputmode="tel" placeholder="เช่น 08x-xxx-xxxx"'
+      + '<input name="phone" value="' + esc(d.phone) + '" inputmode="tel" placeholder="เช่น 08x-xxx-xxxx"' + RO
       + ' class="w-full border rounded-xl px-3 py-2 text-sm"></div>'
       + '<p class="text-xs text-gray-400">ชื่อที่แก้ตรงนี้ใช้แสดงในระบบและในเอกสารของคุณ '
       + 'ทะเบียนกลางที่งานทะเบียนดูแลยังเป็นชื่อเดิม — ถ้าต้องการเปลี่ยนชื่อในทะเบียน กรุณาแจ้งงานทะเบียน</p>'
@@ -443,8 +485,9 @@
           + '</div></div>'
         : '')
 
-      + '<button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark'
-      + ' flex items-center justify-center gap-2">'
+      + '<button type="submit"' + RO
+      + ' class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark'
+      + ' disabled:opacity-50 flex items-center justify-center gap-2">'
       + '<i data-lucide="save" class="w-4 h-4"></i>บันทึกข้อมูลส่วนตัว</button>'
       + '</form>'
 
@@ -849,7 +892,7 @@
   /* ================= การ์ดข้อมูลส่วนบุคคลในหน้าหลัก ================= */
   function myInfoCard() {
     var u = (window.APP && APP.currentUser) || {};
-    var rec = u.data || {};
+    var rec = myRecord();
     var d = displayOf(rec, myProfile());
     var full = d.title_prefix && d.name.indexOf(d.title_prefix) !== 0
       ? d.title_prefix + d.name : d.name;
@@ -925,7 +968,8 @@
       try {
         if (!MY_UID) initAuthUid();
         refreshAvatar();
-        if (APP.currentPage === 'profile') setupSigPad();
+        // โหมดดูแทนผู้ใช้ไม่ต้องเปิดกระดานวาด เพราะบันทึกไม่ได้อยู่แล้ว
+        if (APP.currentPage === 'profile' && !viewingAs()) setupSigPad();
       } catch (e) { console.warn('เตรียมหน้าโปรไฟล์ไม่สำเร็จ:', e); }
     };
   })();
