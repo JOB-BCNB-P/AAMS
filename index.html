@@ -27,7 +27,7 @@
       }
     }
   </script>
-  <link rel="stylesheet" href="styles.css?v=20260924a-leavedoc">
+  <link rel="stylesheet" href="styles.css?v=20260924b-profile">
 </head>
 
 <body class="bg-gray-50">
@@ -170,21 +170,39 @@
             <span id="notifBadge"
               class="absolute top-0 right-0 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center hidden">0</span>
           </button>
-          <div class="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl bg-surface max-w-[14rem]">
-            <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center flex-shrink-0">
-              <i data-lucide="user" class="w-4 h-4 text-white"></i>
-            </div>
-            <div class="min-w-0">
-              <p class="text-sm font-medium text-gray-800 truncate" id="currentUserName">Admin</p>
-              <p class="text-xs text-gray-500 truncate" id="currentUserRole">ผู้ดูแลระบบ</p>
+          <!-- ชื่อผู้ใช้เป็นปุ่มเปิดเมนู : ตั้งค่าข้อมูลส่วนตัว / เปลี่ยนรหัสผ่าน / ออกจากระบบ -->
+          <div class="relative" id="userMenuWrap">
+            <button type="button" onclick="toggleUserMenu()" id="userMenuBtn" aria-haspopup="true" aria-expanded="false"
+              class="flex items-center gap-2 px-2 sm:px-3 py-2 rounded-xl bg-surface hover:bg-primaryLight transition max-w-[15rem]">
+              <span id="userAvatar" class="w-8 h-8 bg-primary rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">
+                <i data-lucide="user" class="w-4 h-4 text-white"></i>
+              </span>
+              <span class="min-w-0 hidden sm:block text-left">
+                <span class="block text-sm font-medium text-gray-800 truncate" id="currentUserName">Admin</span>
+                <span class="block text-xs text-gray-500 truncate" id="currentUserRole">ผู้ดูแลระบบ</span>
+              </span>
+              <i data-lucide="chevron-down" class="w-4 h-4 text-gray-400 flex-shrink-0"></i>
+            </button>
+            <div id="userMenu" class="hidden absolute right-0 mt-2 w-60 bg-white rounded-2xl shadow-xl border border-blue-100 py-2 z-50">
+              <div class="px-4 pb-2 mb-1 border-b border-gray-100 sm:hidden">
+                <p class="text-sm font-medium text-gray-800 truncate" id="userMenuName">Admin</p>
+                <p class="text-xs text-gray-500 truncate" id="userMenuRole">ผู้ดูแลระบบ</p>
+              </div>
+              <button type="button" onclick="closeUserMenu();navigateTo('profile')"
+                class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-surface hover:text-primary transition text-left">
+                <i data-lucide="settings" class="w-4 h-4 flex-shrink-0"></i>ตั้งค่าข้อมูลส่วนตัว
+              </button>
+              <button type="button" id="changePwBtn" onclick="closeUserMenu();showPasswordOtpModal('change')"
+                class="hidden w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-surface hover:text-primary transition text-left">
+                <i data-lucide="key-round" class="w-4 h-4 flex-shrink-0"></i>เปลี่ยนรหัสผ่าน
+              </button>
+              <div class="border-t border-gray-100 my-1"></div>
+              <button type="button" onclick="closeUserMenu();handleLogout()"
+                class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition text-left">
+                <i data-lucide="log-out" class="w-4 h-4 flex-shrink-0"></i>ออกจากระบบ
+              </button>
             </div>
           </div>
-          <button id="changePwBtn" onclick="showPasswordOtpModal('change')" class="hidden ems-icon-btn inline-flex items-center justify-center" title="เปลี่ยนรหัสผ่าน" aria-label="เปลี่ยนรหัสผ่าน">
-            <i data-lucide="key-round" class="w-5 h-5 text-gray-500"></i>
-          </button>
-          <button onclick="handleLogout()" class="ems-icon-btn hover:bg-red-50 inline-flex items-center justify-center" title="ออกจากระบบ" aria-label="ออกจากระบบ">
-            <i data-lucide="log-out" class="w-5 h-5 text-gray-500"></i>
-          </button>
         </div>
       </header>
 
@@ -210,17 +228,18 @@
     </div>
   </div>
 
-  <script>window.__APP_VER = '20260924a-leavedoc';</script>
-  <script src="config.js?v=20260924a"></script>
-  <script src="supabase-db.js?v=20260924a"></script>
-  <script src="auth.js?v=20260924a"></script>
-  <script src="grad-images.js?v=20260924a"></script>
-  <script src="app.js?v=20260924a"></script>
-  <script src="app-patch.js?v=20260924a"></script>
-  <script src="workload.js?v=20260924a"></script>
-  <script src="curriculum.js?v=20260924a"></script>
-  <script src="plo.js?v=20260924a"></script>
-  <script src="eval.js?v=20260924a"></script>
+  <script>window.__APP_VER = '20260924b-profile';</script>
+  <script src="config.js?v=20260924b"></script>
+  <script src="supabase-db.js?v=20260924b"></script>
+  <script src="auth.js?v=20260924b"></script>
+  <script src="grad-images.js?v=20260924b"></script>
+  <script src="app.js?v=20260924b"></script>
+  <script src="app-patch.js?v=20260924b"></script>
+  <script src="workload.js?v=20260924b"></script>
+  <script src="curriculum.js?v=20260924b"></script>
+  <script src="plo.js?v=20260924b"></script>
+  <script src="eval.js?v=20260924b"></script>
+  <script src="profile.js?v=20260924b"></script>
 </body>
 
 </html>

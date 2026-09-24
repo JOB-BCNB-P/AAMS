@@ -9180,7 +9180,17 @@ function leavePage() {
     /* ---- แบบฟอร์มบันทึกข้อมูลการลา ----
        เรียง 11 หัวข้อตามใบลาจริง และวางคู่กับ "ตัวอย่างเอกสาร" ทางขวา
        ทุกช่องที่กรอกจะไปขึ้นในใบลาตัวอย่างทันที ผู้ยื่นจึงเห็นก่อนว่าพิมพ์ออกมาแล้วได้หน้าตาแบบไหน */
-    const stuRec = APP.currentUser.data || {};
+    // โปรไฟล์ที่นักศึกษาแก้เองมาก่อน ไม่มีค่อยถอยไปใช้ทะเบียน
+    // ทะเบียนเป็นข้อมูลของงานทะเบียน ไม่ถูกเขียนทับจากหน้านี้
+    const stuRec = (typeof profileMy === 'function')
+      ? Object.assign({}, APP.currentUser.data || {}, (function () {
+          const m = profileMy(), o = {};
+          if (m.title_prefix) o.title_prefix = m.title_prefix;
+          if (m.name) o.name = m.name;
+          if (m.phone) o.phone = m.phone;
+          return o;
+        })())
+      : (APP.currentUser.data || {});
 
     // ค่าตั้งต้นของภาค/ปีการศึกษา : เอาค่าที่พบบ่อยที่สุดในรายวิชาของนักศึกษาคนนี้ ไม่ใช่ปีปฏิทิน
     const _pick = key => {
@@ -9588,7 +9598,9 @@ function leavePage() {
           ${canEditLeavePercent() ? `<button onclick="showLeavePercentEditModal('${l.__backendId}')" class="text-gray-300 hover:text-primary ml-1 align-middle" title="แก้ % การลา"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>` : ''}
         </td>
         <td class="px-4 py-3 text-xs">${toBuddhistDateList(l.leave_date) || '-'}</td><td class="px-4 py-3">${semLabel(l.semester)}/${l.academic_year || ''}</td>
-        <td class="px-4 py-3">${getStatusBadge(l.leave_status)}</td>
+        <td class="px-4 py-3">${getStatusBadge(l.leave_status)}
+          <button onclick="leavePrintRecord('${l.__backendId}')" class="block mt-1 text-xs text-gray-400 hover:text-primary flex items-center gap-1" title="พิมพ์ใบลาฉบับนี้"><i data-lucide="printer" class="w-3.5 h-3.5"></i>พิมพ์ใบลา</button>
+        </td>
         ${(canApprove || isStudent || isAdmin) ? `<td class="px-4 py-3">${approvalButtons}</td>` : ''}
         ${isAdmin ? `<td class="px-4 py-3"><div class="flex gap-1"><button onclick="showEditLeaveModal('${l.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${l.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>` : ''}</tr>`
   }).join('') : '<tr><td colspan="11" class="px-4 py-8 text-center text-gray-400">ไม่มีข้อมูล</td></tr>'}</tbody>
@@ -10528,8 +10540,51 @@ function leaveDocData() {
     reason: g('leave_reason'), from: g('leave_from'), to: g('leave_to'),
     half_start: g('half_start'), half_end: g('half_end'), prior_days: g('prior_days'),
     attach_name: picked ? picked.n : '', attach_label: picked ? picked.t : '',
+    // ใบที่กำลังกรอกยังไม่มีใครอนุมัติ ลายเซ็นอาจารย์จึงยังไม่ขึ้น
+    // ใบที่บันทึกแล้วจะสร้างด้วย leaveDocFromRecord ซึ่งใส่ค่าเหล่านี้ให้
+    approvals: {}, deputy_by: '',
     subjects: subjects
   };
+}
+
+/* ใบลาของ "ใบที่บันทึกแล้ว" — ประกอบจากทุกแถวที่อยู่ในใบลาชุดเดียวกัน
+   ใบลาหนึ่งครั้งที่ลาหลายวิชาถูกบันทึกเป็นหลายแถว จึงต้องรวมกลับให้เป็นใบเดียว */
+function leaveDocFromRecord(id) {
+  const all = getDataByType('leave');
+  const head = all.find(x => x.__backendId === id || String(x.__rowIndex) === String(id));
+  if (!head) return null;
+  const group = norm(head.leave_group);
+  const rows = group ? all.filter(x => norm(x.leave_group) === group) : [head];
+  const app = {};
+  // ลายเซ็นขึ้นเฉพาะขั้นที่ "กดอนุมัติในระบบแล้ว" เท่านั้น
+  if (rows.some(r => norm(r.class_teacher_approval) === 'อนุมัติ')) app.class_teacher = true;
+  if (rows.some(r => norm(r.deputy_approval) === 'อนุมัติ')) app.deputy = true;
+  return {
+    leave_type: norm(head.leave_type), student_id: norm(head.student_id),
+    title_prefix: norm(head.title_prefix), name: norm(head.name),
+    batch: norm(head.batch), year_level: norm(head.year_level), phone: norm(head.phone),
+    class_teacher: norm(head.class_teacher), semester: norm(head.semester),
+    academic_year: norm(head.academic_year), reason: norm(head.leave_reason),
+    from: norm(head.leave_from) || String(norm(head.leave_date)).split(',')[0],
+    to: norm(head.leave_to) || String(norm(head.leave_date)).split(',').pop(),
+    half_start: norm(head.half_start), half_end: norm(head.half_end),
+    prior_days: norm(head.prior_days),
+    attach_name: norm(head.medical_cert), attach_label: 'หลักฐานแนบ',
+    approvals: app, deputy_by: norm(head.deputy_by),
+    subjects: rows.map(r => ({
+      code: norm(r.subject_code), name: norm(r.subject_name), coordinator: norm(r.coordinator),
+      section: norm(r.section_type), ward: norm(r.ward),
+      hours: norm(r.leave_hours), total: Number(norm(r.total_hours)) || 0,
+      percent: norm(r.leave_percent) === '' ? null : Number(norm(r.leave_percent)),
+      approved: norm(r.coordinator_approval) === 'อนุมัติ'
+    }))
+  };
+}
+
+function leavePrintRecord(id) {
+  const d = leaveDocFromRecord(id);
+  if (!d) { showToast('ไม่พบใบลานี้', 'error'); return; }
+  leaveDocPrintWith(d);
 }
 
 /* วาดใบลาตามแบบฟอร์มของวิทยาลัย — เรียงหัวข้อและถ้อยคำตามกระดาษจริง
@@ -10557,26 +10612,37 @@ function leaveDocHTML(d) {
   const toTxt = range.length ? toThaiLongDate(range[range.length - 1]) + tag(range.length > 1 ? d.half_end : d.half_start) : '';
   const now = new Date();
   const box = on => '<span class="ld-box' + (on ? ' on' : '') + '"></span>';
+  /* ลายเซ็นในเอกสาร
+     ดึงจากโปรไฟล์ของเจ้าตัว และขึ้นเฉพาะช่องที่ "มีการลงนามจริงในระบบแล้ว"
+     ช่องที่ยังไม่ลงนามจะเว้นเส้นไว้ให้เซ็นบนกระดาษเหมือนเดิม */
+  const app = d.approvals || {};
+  const sigOf = who => (typeof profileSignatureTag === 'function' && String(who || '').trim())
+    ? profileSignatureTag(who, 'ld-sig') : '';
+  const slot = (html, align) => '<div class="ld-slot" style="justify-content:' + (align || 'flex-end') + '">'
+    + (html || '') + '</div>';
 
   const hourLine = s => 'วิชา ' + fill(s.name, 200)
     + ' จำนวน ' + fill(s.hours, 40) + ' ชั่วโมง คิดเป็นร้อยละ '
     + fill(s.percent == null ? '' : s.percent.toFixed(2), 50) + ' %';
   const theoryRows = (theory.length ? theory : [{}]).map(s => '<div class="ld-item">'
     + hourLine(s)
-    + '<div>อาจารย์ผู้ประสานวิชา ลงนาม (' + line(150) + ')'
+    + '<div>อาจารย์ผู้ประสานวิชา ลงนาม ('
+    + (s.approved ? (sigOf(s.coordinator) || line(150)) : line(150)) + ')'
     + (s.coordinator ? '<span class="ld-hint"> ' + e(s.coordinator) + '</span>' : '') + '</div>'
     + '</div>').join('');
   const practiceRows = (practice.length ? practice : [{}]).map(s => '<div class="ld-item">'
     + hourLine(s)
     + '<div>Ward ที่ขึ้นปฏิบัติงาน ' + fill(s.ward, 180) + '</div>'
-    + '<div>ลงชื่ออาจารย์ผู้ประจำวิชา ' + line(180)
+    + '<div>ลงชื่ออาจารย์ผู้ประจำวิชา '
+    + (s.approved ? (sigOf(s.coordinator) || line(180)) : line(180))
     + (s.coordinator ? '<span class="ld-hint"> ' + e(s.coordinator) + '</span>' : '') + '</div>'
     + '</div>').join('');
 
   return '<style>'
     + '.ld-doc{font-family:"Sarabun","TH SarabunPSK","Noto Sans Thai",sans-serif;color:#111827;line-height:1.9;font-size:15px}'
     + '.ld-doc .r{text-align:right}'
-    + '.ld-title{text-align:center;font-weight:700;font-size:1.2em;margin-bottom:10px}'
+    + '.ld-title{text-align:center;font-weight:700;font-size:1.25em;letter-spacing:.5px}'
+    + '.ld-rule{height:1px;background:#d1d5db;margin:6px auto 12px;max-width:180px}'
     + '.ld-blank{display:inline-block;border-bottom:1px dotted #9ca3af;height:1.05em;vertical-align:baseline}'
     + '.ld-v{font-weight:600;border-bottom:1px dotted #d1d5db;padding:0 2px}'
     + '.ld-muted{color:#9ca3af}.ld-hint{color:#9ca3af;font-size:.82em}'
@@ -10587,7 +10653,9 @@ function leaveDocHTML(d) {
     + '.ld-box.on::after{content:"\\2713"}'
     + '.ld-sec{margin:10px 0 4px}.ld-sec>b{font-weight:700}'
     + '.ld-items{margin-left:34px}.ld-item{margin-bottom:6px}'
-    + '.ld-sign{margin-top:14px;text-align:right}'
+    + '.ld-sign{margin-top:16px;text-align:right}'
+    + '.ld-slot{display:flex;align-items:flex-end;height:46px;margin-bottom:-6px}'
+    + '.ld-sig{max-height:44px;max-width:190px;object-fit:contain}'
     + '.ld-two{display:flex;gap:18px;margin-top:16px;flex-wrap:wrap;align-items:flex-start}'
     + '.ld-two>div{flex:1;min-width:210px}'
     + '.ld-two .h{font-weight:700;margin-bottom:6px}'
@@ -10600,6 +10668,7 @@ function leaveDocHTML(d) {
     + '<div class="ld-doc">'
 
     + '<div class="ld-title">ใบลา' + fill(kind, 90) + '</div>'
+    + '<div class="ld-rule"></div>'
     + '<div class="r"><b>วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ</b></div>'
     + '<div class="r">วันที่ ' + fill(now.getDate(), 34) + ' เดือน '
     + fill(THAI_MONTHS[now.getMonth() + 1], 76) + ' พ.ศ. ' + fill(now.getFullYear() + 543, 50) + '</div>'
@@ -10623,6 +10692,8 @@ function leaveDocHTML(d) {
 
     + '<div class="ld-sign">'
     + '<div>ขอแสดงความนับถืออย่างสูง</div>'
+    + slot(sigOf(d.student_id || d.name))
+    + '<div>ลงชื่อ ' + line(190) + '</div>'
     + '<div>( ' + (fullName ? e(fullName) : line(180)) + ' )</div>'
     + '<div>นักศึกษาพยาบาลศาสตร์ ชั้นปีที่ ' + fill(d.year_level, 34) + ' รุ่น ' + fill(d.batch, 46) + '</div>'
     + '<div>เบอร์โทรศัพท์ ' + fill(d.phone, 130) + '</div>'
@@ -10631,13 +10702,15 @@ function leaveDocHTML(d) {
     + '<div class="ld-two">'
     + '<div><div class="h">ความคิดเห็นอาจารย์ประจำชั้น</div>'
     + '<div>' + line(240) + '</div><div>' + line(240) + '</div>'
+    + '<div class="ld-ind">' + slot(app.class_teacher ? sigOf(d.class_teacher) : '', 'flex-start') + '</div>'
     + '<div class="ld-ind">ลงชื่อ ' + line(150) + '</div>'
     + '<div class="ld-ind">( ' + (String(d.class_teacher || '').trim() ? e(d.class_teacher) : line(140)) + ' )</div>'
     + '<div class="ld-ind">วันที่ ' + line(150) + '</div></div>'
     + '<div><div class="h">คำสั่ง</div>'
-    + '<div class="ld-ind">' + box(false) + 'อนุญาต &nbsp;&nbsp;&nbsp;' + box(false) + 'ไม่อนุญาต</div>'
-    + '<div class="ld-ind" style="margin-top:8px">ลงชื่อ ' + line(150) + '</div>'
-    + '<div class="ld-ind">( ' + line(150) + ' )</div>'
+    + '<div class="ld-ind">' + box(!!app.deputy) + 'อนุญาต &nbsp;&nbsp;&nbsp;' + box(false) + 'ไม่อนุญาต</div>'
+    + '<div class="ld-ind">' + slot(app.deputy ? sigOf(d.deputy_by) : '', 'flex-start') + '</div>'
+    + '<div class="ld-ind">ลงชื่อ ' + line(150) + '</div>'
+    + '<div class="ld-ind">( ' + (String(d.deputy_by || '').trim() ? e(d.deputy_by) : line(150)) + ' )</div>'
     + '<div class="ld-ind">ตำแหน่ง ' + line(140) + '</div>'
     + '<div class="ld-ind">วันที่ ' + line(150) + '</div></div>'
     + '</div>'
@@ -10661,6 +10734,24 @@ function leaveDocRefresh() {
 function leaveDocPrint() {
   const d = leaveDocData();
   if (!d) { showToast('ยังไม่มีข้อมูลให้พิมพ์', 'error'); return; }
+  leaveDocPrintWith(d);
+}
+
+/* ขอลิงก์รูปลายเซ็นให้พร้อมก่อนเปิดหน้าต่างพิมพ์
+   หน้าต่างพิมพ์เป็นเอกสารคนละใบ เติม src ย้อนหลังให้ไม่ได้
+   ถ้าเปิดไปก่อนที่ลิงก์จะพร้อม ลายเซ็นจะหายไปจากกระดาษที่พิมพ์ */
+function leaveDocPrintWith(d) {
+  const names = [d.student_id || d.name, d.class_teacher, d.deputy_by]
+    .concat((d.subjects || []).map(x => x.coordinator))
+    .filter(x => String(x || '').trim());
+  if (typeof profileWarmSignatures === 'function') {
+    profileWarmSignatures(names, () => leaveDocOpenPrint(d));
+  } else {
+    leaveDocOpenPrint(d);
+  }
+}
+
+function leaveDocOpenPrint(d) {
   const win = window.open('', '_blank');
   if (!win) { showToast('เบราว์เซอร์ปิดกั้นหน้าต่างใหม่ — อนุญาต pop-up ของเว็บนี้ก่อน แล้วกดพิมพ์อีกครั้ง', 'error'); return; }
   win.document.write('<!doctype html><html lang="th"><head><meta charset="utf-8"><title>ใบลานักศึกษา</title>'
@@ -11091,6 +11182,9 @@ function showCalendarDayModal(dateStr, idx) {
 async function approveLeave(id, approvalField, extra) {
   const rec = APP.allData.find(d => d.__backendId === id); if (!rec) return;
   rec[approvalField] = 'อนุมัติ';
+  // จำชื่อผู้กดอนุมัติไว้ ใบลาที่พิมพ์ออกมาจะได้ขึ้นชื่อและลายเซ็นของคนที่ลงนามจริง
+  const _byField = String(approvalField).replace(/_approval$/, '_by');
+  rec[_byField] = (APP.currentUser && APP.currentUser.name) || '';
   if (extra && typeof extra === 'object') {
     Object.keys(extra).forEach(k => { if (extra[k] !== undefined && extra[k] !== null && extra[k] !== '') rec[k] = extra[k]; });
   }

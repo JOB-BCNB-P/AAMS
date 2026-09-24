@@ -1,0 +1,598 @@
+/* ================================================================
+   profile.js — ข้อมูลส่วนตัวของผู้ใช้ (ทุกบทบาทแก้ของตัวเองได้)
+   ----------------------------------------------------------------
+   ทำ 3 อย่าง
+     1) เมนูดรอปดาวน์ที่ชื่อผู้ใช้มุมบนขวา
+     2) หน้า "ตั้งค่าข้อมูลส่วนตัว" — คำนำหน้า ชื่อ-สกุล เบอร์โทร รูปโปรไฟล์ ลายเซ็น
+     3) การ์ดข้อมูลส่วนบุคคลในหน้าหลัก
+
+   ทำไมเก็บแยกจากทะเบียนกลาง
+     ตาราง student / teacher เป็นข้อมูลราชการที่งานทะเบียนดูแล
+     ถ้าให้เจ้าตัวเขียนทับได้ ชื่อในใบรายงานผลการเรียนกับในทะเบียนจะเพี้ยนกัน
+     ตาราง user_profile จึงเป็น "ข้อมูลที่เจ้าตัวดูแลเอง" ใช้แสดงผลและใช้ในใบลา
+     ส่วนทะเบียนกลางยังเป็นของงานทะเบียนเหมือนเดิม
+
+   ไฟล์รูปและลายเซ็น
+     เก็บที่ Supabase Storage ถังปิด profile-files  เส้นทาง <รหัสผู้ใช้>/profile.png
+     ชื่อโฟลเดอร์คือรหัสผู้ใช้ ฐานข้อมูลจึงบังคับได้เองว่าเขียนได้เฉพาะของตัวเอง
+     แล้วสำเนาขึ้น Google Drive โฟลเดอร์ profile / signature ผ่าน drive-sync
+     ต่างจากใบลาตรงที่ "ไม่ลบไฟล์ต้นทาง" เพราะหน้าเว็บต้องอ่านมาแสดงตลอดเวลา
+   ================================================================ */
+(function () {
+  'use strict';
+
+  /* ---------------- เครื่องมือพื้นฐาน ---------------- */
+  function s(v) { return String(v == null ? '' : v).trim(); }
+  function esc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function get(t) { return (typeof getDataByType === 'function' ? getDataByType(t) : []) || []; }
+  function client() {
+    return (window.GSheetDB && typeof GSheetDB.client === 'function') ? GSheetDB.client() : null;
+  }
+  function toast(m, t) { if (typeof showToast === 'function') showToast(m, t); }
+
+  var BUCKET = 'profile-files';
+  var PREFIX = 'sbp:';
+  var MAX_BYTES = 5 * 1024 * 1024;
+  var OK_EXT = ['png', 'jpg', 'jpeg', 'svg', 'pdf'];
+  var MIME = {
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+    svg: 'image/svg+xml', pdf: 'application/pdf'
+  };
+  // นามสกุลที่เบราว์เซอร์แสดงเป็นรูปได้ — pdf แนบเก็บได้ แต่เอาไปวางในใบลาไม่ได้
+  var VIEWABLE = ['png', 'jpg', 'jpeg', 'svg'];
+
+  function extOf(n) { return s(n).split('.').pop().toLowerCase(); }
+  function isProfileFile(link) { return s(link).indexOf(PREFIX) === 0; }
+  function pathOf(link) { return isProfileFile(link) ? s(link).slice(PREFIX.length) : ''; }
+  function canShow(link) { return isProfileFile(link) && VIEWABLE.indexOf(extOf(link)) >= 0; }
+
+  var ROLE_LABEL = {
+    admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'เจ้าหน้าที่งานทะเบียน',
+    teacher: 'อาจารย์', classTeacher: 'อาจารย์ประจำชั้น', executive: 'ผู้บริหาร',
+    deptHead: 'ประธานสาขาวิชา', student: 'นักศึกษา', otherStaff: 'บุคลากรอื่น'
+  };
+
+  /* ---------------- ตัวตนของผู้ใช้ปัจจุบัน ----------------
+     กุญแจจับคู่โปรไฟล์ : นักศึกษาใช้รหัสนักศึกษา บุคลากรใช้อีเมลหรือชื่อผู้ใช้
+     เก็บเป็นตัวพิมพ์เล็กเสมอ จะได้ไม่พลาดเพราะพิมพ์ใหญ่เล็กไม่ตรงกัน */
+  function myKey() {
+    var u = (window.APP && APP.currentUser) || {}, d = u.data || {};
+    return s(d.student_id || u.email || d.email || u.username || u.name).toLowerCase();
+  }
+  function keyOfRecord(rec) {
+    rec = rec || {};
+    return s(rec.student_id || rec.email || rec.username || rec.name).toLowerCase();
+  }
+  function allProfiles() { return get('user_profile'); }
+  function profileByKey(key) {
+    var k = s(key).toLowerCase();
+    if (!k) return null;
+    return allProfiles().find(function (p) { return s(p.owner_key).toLowerCase() === k; }) || null;
+  }
+  function profileByName(name) {
+    var n = s(name).toLowerCase();
+    if (!n) return null;
+    return allProfiles().find(function (p) {
+      return s(p.owner_name).toLowerCase() === n || s(p.full_name).toLowerCase() === n;
+    }) || null;
+  }
+  function myProfile() { return profileByKey(myKey()); }
+
+  // ค่าที่ควรใช้แสดงผล — โปรไฟล์ของเจ้าตัวมาก่อน ไม่มีค่อยถอยไปใช้ทะเบียน
+  function displayOf(rec, prof) {
+    rec = rec || {}; prof = prof || null;
+    return {
+      title_prefix: s(prof && prof.title_prefix) || s(rec.title_prefix),
+      name: s(prof && prof.full_name) || s(rec.name),
+      phone: s(prof && prof.phone) || s(rec.phone),
+      photo_link: s(prof && prof.photo_link),
+      signature_link: s(prof && prof.signature_link)
+    };
+  }
+  function myDisplay() {
+    var u = (window.APP && APP.currentUser) || {};
+    var d = displayOf(u.data || { name: u.name, email: u.email }, myProfile());
+    if (!d.name) d.name = s(u.name);
+    return d;
+  }
+  window.profileMy = myDisplay;
+  window.profileByName = profileByName;
+  window.profileByKey = profileByKey;
+
+  /* ---------------- ลิงก์รูปแบบเปิดได้ชั่วคราว ----------------
+     ไฟล์อยู่ในถังปิด จึงต้องขอลิงก์ชั่วคราวก่อนถึงจะแสดงได้
+     ขอแล้วจำไว้ และเติม src ให้ <img> ที่รออยู่ — ไม่วาดหน้าใหม่
+     เพราะผู้ใช้อาจกำลังพิมพ์ฟอร์มอยู่ วาดใหม่แล้วสิ่งที่พิมพ์จะหาย */
+  var URL_CACHE = {};
+  var ASKED = {};
+
+  function fillWaiting(link) {
+    var url = URL_CACHE[link] || '';
+    var nodes = document.querySelectorAll('[data-prof-link="' + link.replace(/"/g, '') + '"]');
+    Array.prototype.forEach.call(nodes, function (el) {
+      if (url) { el.src = url; el.classList.remove('hidden'); }
+      else el.classList.add('hidden');
+    });
+  }
+
+  function askUrl(link) {
+    if (ASKED[link]) return;
+    ASKED[link] = 1;
+    var c = client();
+    if (!c) { URL_CACHE[link] = ''; return; }
+    c.storage.from(BUCKET).createSignedUrl(pathOf(link), 3600).then(function (r) {
+      URL_CACHE[link] = (r && r.data && r.data.signedUrl) || '';
+      fillWaiting(link);
+    }).catch(function () { URL_CACHE[link] = ''; fillWaiting(link); });
+  }
+
+  // คืนลิงก์ที่ใช้ได้ทันทีถ้าเคยขอไว้แล้ว ถ้ายังไม่เคยก็ขอให้แล้วคืนค่าว่างไปก่อน
+  function imgUrl(link) {
+    if (!canShow(link)) return '';
+    if (URL_CACHE[link] !== undefined) return URL_CACHE[link];
+    askUrl(link);
+    return '';
+  }
+  window.profileImgUrl = imgUrl;
+
+  // แท็กรูปที่เติม src ให้เองเมื่อลิงก์พร้อม
+  function imgTag(link, cls, alt, style) {
+    if (!canShow(link)) return '';
+    var url = imgUrl(link);
+    return '<img data-prof-link="' + esc(link) + '" src="' + esc(url) + '"'
+      + ' class="' + esc(cls || '') + (url ? '' : ' hidden') + '"'
+      + (style ? ' style="' + esc(style) + '"' : '')
+      + ' alt="' + esc(alt || '') + '">';
+  }
+  window.profileImgTag = imgTag;
+
+  /* ลายเซ็นของคนคนหนึ่ง ใช้ในใบลา
+     รับได้ทั้งชื่อคนและกุญแจ เพราะเอกสารบางที่เก็บไว้เป็นชื่อล้วน */
+  function signatureLinkOf(nameOrKey) {
+    var p = profileByKey(nameOrKey) || profileByName(nameOrKey);
+    return p ? s(p.signature_link) : '';
+  }
+  window.profileSignatureTag = function (nameOrKey, cls) {
+    return imgTag(signatureLinkOf(nameOrKey), cls || 'inline-block', 'ลายเซ็น');
+  };
+  window.profileHasSignature = function (nameOrKey) { return canShow(signatureLinkOf(nameOrKey)); };
+
+  /* ขอลิงก์ลายเซ็นของหลายคนให้พร้อมก่อน แล้วค่อยเรียกกลับ
+     ใช้ตอนสั่งพิมพ์ เพราะหน้าต่างพิมพ์เป็นเอกสารคนละใบ เติม src ย้อนหลังให้ไม่ได้ */
+  window.profileWarmSignatures = function (names, done) {
+    var links = (names || []).map(signatureLinkOf).filter(canShow);
+    var todo = links.filter(function (l) { return URL_CACHE[l] === undefined; });
+    if (!todo.length || !client()) { if (done) done(); return; }
+    var left = todo.length;
+    var tick = function () { if (--left <= 0 && done) done(); };
+    todo.forEach(function (l) {
+      ASKED[l] = 1;
+      client().storage.from(BUCKET).createSignedUrl(pathOf(l), 3600).then(function (r) {
+        URL_CACHE[l] = (r && r.data && r.data.signedUrl) || '';
+        fillWaiting(l);
+      }).catch(function () { URL_CACHE[l] = ''; }).then(tick, tick);
+    });
+  };
+
+  /* ---------------- อัปโหลดไฟล์ ---------------- */
+  async function authId() {
+    var c = client();
+    if (!c) return '';
+    var r = await c.auth.getUser();
+    return (r && r.data && r.data.user && r.data.user.id) || '';
+  }
+
+  async function uploadProfileFile(file, kind) {
+    if (!file || !file.name) return { isOk: false, error: 'ยังไม่ได้เลือกไฟล์' };
+    var ext = extOf(file.name);
+    if (OK_EXT.indexOf(ext) < 0) {
+      return { isOk: false, error: 'รองรับเฉพาะ .png .jpg .jpeg .svg และ .pdf เท่านั้น' };
+    }
+    if (file.size > MAX_BYTES) {
+      return { isOk: false, error: 'ไฟล์ใหญ่เกิน 5 MB (ไฟล์นี้ ' + (file.size / 1048576).toFixed(1) + ' MB)' };
+    }
+    var uid = await authId();
+    if (!uid) return { isOk: false, error: 'ยังไม่ได้เข้าสู่ระบบ จึงอัปโหลดไม่ได้' };
+
+    var c = client();
+    var path = uid + '/' + kind + '.' + ext;
+    var up = await c.storage.from(BUCKET)
+      .upload(path, file, { upsert: true, contentType: MIME[ext] || file.type, cacheControl: '0' });
+    if (up.error) {
+      var m = s(up.error.message);
+      if (/row-level security|not authorized|Unauthorized/i.test(m)) {
+        return { isOk: false, error: 'บัญชีของคุณไม่มีสิทธิ์อัปโหลดไฟล์นี้' };
+      }
+      return { isOk: false, error: m };
+    }
+
+    // ลบไฟล์นามสกุลอื่นของงานเดียวกันทิ้ง ไม่งั้นของเก่าจะค้างอยู่ในถัง
+    var stale = OK_EXT.filter(function (e) { return e !== ext; })
+      .map(function (e) { return uid + '/' + kind + '.' + e; });
+    try { await c.storage.from(BUCKET).remove(stale); } catch (e) { /* ไม่มีก็ไม่เป็นไร */ }
+
+    var link = PREFIX + path;
+    delete URL_CACHE[link]; delete ASKED[link];
+
+    // สำเนาขึ้น Google Drive — ล้มเหลวก็ยังใช้งานได้ ไฟล์หลักอยู่ในระบบแล้ว
+    try {
+      var nice = (myDisplay().name || uid) + ' - ' + (kind === 'signature' ? 'ลายเซ็น' : 'รูปโปรไฟล์') + '.' + ext;
+      await c.functions.invoke('drive-sync', {
+        body: { mode: 'sync', kind: kind, storagePath: path, filename: nice }
+      });
+    } catch (e) { /* เก็บสำเนาไม่สำเร็จ ไม่กระทบการใช้งาน */ }
+
+    return { isOk: true, link: link };
+  }
+  window.emsUploadProfileFile = uploadProfileFile;
+
+  /* ---------------- บันทึกโปรไฟล์ ----------------
+     เขียนตรงไปที่ตาราง ไม่ผ่านตัวอ่านข้อมูลกลาง
+     เพราะตัวกลางตัดคอลัมน์ auth_user_id ทิ้ง (ถือเป็นคอลัมน์ระบบ)
+     แต่คอลัมน์นี้คือกุญแจที่ฐานข้อมูลใช้ตรวจว่าเป็นแถวของเราจริง */
+  async function saveProfile(fields) {
+    var c = client();
+    if (!c) return { isOk: false, error: 'ยังเชื่อมต่อฐานข้อมูลไม่ได้' };
+    var uid = await authId();
+    if (!uid) return { isOk: false, error: 'ยังไม่ได้เข้าสู่ระบบ' };
+    var u = (window.APP && APP.currentUser) || {};
+    var row = Object.assign({
+      auth_user_id: uid,
+      owner_key: myKey(),
+      owner_name: s(u.name),
+      owner_role: s(APP.currentRole)
+    }, fields || {});
+    var r = await c.from('user_profile').upsert(row, { onConflict: 'auth_user_id' });
+    if (r.error) return { isOk: false, error: s(r.error.message) };
+    try { await GSheetDB.refreshTab('user_profile'); } catch (e) { /* รอบหน้าโหลดใหม่เองได้ */ }
+    return { isOk: true };
+  }
+  window.emsSaveProfile = saveProfile;
+
+  /* ---------------- เมนูดรอปดาวน์ที่ชื่อผู้ใช้ ---------------- */
+  window.toggleUserMenu = function () {
+    var m = document.getElementById('userMenu'), b = document.getElementById('userMenuBtn');
+    if (!m) return;
+    var open = m.classList.contains('hidden');
+    m.classList.toggle('hidden', !open);
+    if (b) b.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
+  window.closeUserMenu = function () {
+    var m = document.getElementById('userMenu'), b = document.getElementById('userMenuBtn');
+    if (m) m.classList.add('hidden');
+    if (b) b.setAttribute('aria-expanded', 'false');
+  };
+  document.addEventListener('click', function (e) {
+    var wrap = document.getElementById('userMenuWrap');
+    if (wrap && !wrap.contains(e.target)) window.closeUserMenu();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') window.closeUserMenu();
+  });
+
+  // รูปเล็กบนหัวเรื่อง — เรียกซ้ำได้ ไม่สร้างของซ้อน
+  function refreshAvatar() {
+    var box = document.getElementById('userAvatar');
+    if (!box) return;
+    var d = myDisplay();
+    var url = imgUrl(d.photo_link);
+    if (canShow(d.photo_link)) {
+      box.innerHTML = '<img data-prof-link="' + esc(d.photo_link) + '" src="' + esc(url) + '"'
+        + ' class="w-full h-full object-cover" alt="รูปโปรไฟล์">';
+    } else {
+      box.innerHTML = '<i data-lucide="user" class="w-4 h-4 text-white"></i>';
+      if (window.lucide) lucide.createIcons();
+    }
+    var n = document.getElementById('userMenuName'), r = document.getElementById('userMenuRole');
+    if (n) n.textContent = d.name || s(APP.currentUser && APP.currentUser.name);
+    if (r) r.textContent = ROLE_LABEL[APP.currentRole] || '';
+  }
+  window.profileRefreshAvatar = refreshAvatar;
+
+  /* ================= หน้าตั้งค่าข้อมูลส่วนตัว ================= */
+  function fileBox(kind, link, label, hint) {
+    var shown = canShow(link)
+      ? imgTag(link, 'max-h-28 max-w-full object-contain', label, 'background:#fff')
+      : (isProfileFile(link)
+        ? '<p class="text-xs text-amber-600">เก็บไฟล์ไว้แล้ว แต่เป็นไฟล์ PDF จึงแสดงตัวอย่างไม่ได้</p>'
+        : '<p class="text-xs text-gray-400">ยังไม่มี' + esc(label) + '</p>');
+    return '<div class="border border-dashed border-gray-300 rounded-xl p-3 bg-gray-50">'
+      + '<div class="min-h-[72px] flex items-center justify-center mb-2">' + shown + '</div>'
+      + '<input type="file" accept=".png,.jpg,.jpeg,.svg,.pdf" class="w-full text-xs"'
+      + ' onchange="profilePickFile(this, \'' + kind + '\')">'
+      + '<p class="text-[11px] text-gray-400 mt-1">' + esc(hint) + '</p>'
+      + (isProfileFile(link)
+        ? '<button type="button" onclick="profileClearFile(\'' + kind + '\')"'
+          + ' class="mt-2 text-xs text-red-600 hover:underline">ลบ' + esc(label) + '</button>'
+        : '')
+      + '</div>';
+  }
+
+  function profilePage() {
+    var u = (window.APP && APP.currentUser) || {};
+    var rec = u.data || {};
+    var prof = myProfile();
+    var d = displayOf(rec, prof);
+    var isStudent = APP.currentRole === 'student';
+
+    // ข้อมูลจากทะเบียนกลาง แสดงให้เห็นว่าอะไรแก้เองไม่ได้
+    var fixed = [];
+    if (isStudent) {
+      fixed = [['รหัสนักศึกษา', rec.student_id], ['รุ่นที่', rec.batch],
+        ['ชั้นปี', rec.year_level], ['สถานภาพ', rec.status]];
+    } else {
+      fixed = [['อีเมล', u.email || rec.email], ['สาขาวิชา', rec.department || u.department],
+        ['ชั้นปีที่รับผิดชอบ', u.responsible_year || rec.responsible_year]];
+    }
+    fixed = fixed.filter(function (x) { return s(x[1]); });
+
+    return '<h2 class="text-xl font-bold text-gray-800 mb-4">'
+      + '<i data-lucide="user-cog" class="w-6 h-6 inline mr-2"></i>ตั้งค่าข้อมูลส่วนตัว</h2>'
+
+      + '<div class="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">'
+
+      + '<form id="profileForm" class="bg-white rounded-2xl p-5 border border-blue-100 space-y-4"'
+      + ' onsubmit="return profileSubmit(event)">'
+      + '<h3 class="font-bold flex items-center gap-2">'
+      + '<i data-lucide="id-card" class="w-5 h-5 text-primary"></i>ข้อมูลที่คุณแก้เองได้</h3>'
+      + '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">'
+      + '<div><label class="block text-xs text-gray-600 mb-1">คำนำหน้า</label>'
+      + '<input name="title_prefix" value="' + esc(d.title_prefix) + '" placeholder="เช่น นางสาว"'
+      + ' class="w-full border rounded-xl px-3 py-2 text-sm"></div>'
+      + '<div class="sm:col-span-2"><label class="block text-xs text-gray-600 mb-1">ชื่อ-สกุล</label>'
+      + '<input name="full_name" value="' + esc(d.name) + '"'
+      + ' class="w-full border rounded-xl px-3 py-2 text-sm"></div>'
+      + '</div>'
+      + '<div><label class="block text-xs text-gray-600 mb-1">เบอร์โทรศัพท์</label>'
+      + '<input name="phone" value="' + esc(d.phone) + '" inputmode="tel" placeholder="เช่น 08x-xxx-xxxx"'
+      + ' class="w-full border rounded-xl px-3 py-2 text-sm"></div>'
+      + '<p class="text-xs text-gray-400">ชื่อที่แก้ตรงนี้ใช้แสดงในระบบและในเอกสารของคุณ '
+      + 'ทะเบียนกลางที่งานทะเบียนดูแลยังเป็นชื่อเดิม — ถ้าต้องการเปลี่ยนชื่อในทะเบียน กรุณาแจ้งงานทะเบียน</p>'
+
+      + (fixed.length
+        ? '<div class="pt-2 border-t border-gray-100">'
+          + '<p class="text-xs font-semibold text-gray-600 mb-2">ข้อมูลจากทะเบียน (แก้เองไม่ได้)</p>'
+          + '<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">'
+          + fixed.map(function (x) {
+            return '<div class="bg-gray-50 rounded-xl px-3 py-2">'
+              + '<p class="text-[11px] text-gray-500">' + esc(x[0]) + '</p>'
+              + '<p class="text-sm text-gray-800">' + esc(x[1]) + '</p></div>';
+          }).join('')
+          + '</div></div>'
+        : '')
+
+      + '<button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark'
+      + ' flex items-center justify-center gap-2">'
+      + '<i data-lucide="save" class="w-4 h-4"></i>บันทึกข้อมูลส่วนตัว</button>'
+      + '</form>'
+
+      + '<div class="space-y-4">'
+      + '<div class="bg-white rounded-2xl p-5 border border-blue-100">'
+      + '<h3 class="font-bold mb-3 flex items-center gap-2">'
+      + '<i data-lucide="image" class="w-5 h-5 text-primary"></i>รูปโปรไฟล์</h3>'
+      + fileBox('profile', d.photo_link, 'รูปโปรไฟล์',
+        'รองรับ .png .jpg .jpeg .svg .pdf — ไม่เกิน 5 MB (ไฟล์ PDF เก็บได้แต่แสดงเป็นรูปไม่ได้)')
+      + '</div>'
+
+      + '<div class="bg-white rounded-2xl p-5 border border-blue-100">'
+      + '<h3 class="font-bold mb-1 flex items-center gap-2">'
+      + '<i data-lucide="pen-tool" class="w-5 h-5 text-primary"></i>ลายเซ็น</h3>'
+      + '<p class="text-xs text-gray-500 mb-3">ใช้แสดงในใบลาตรงช่องลงนามของบทบาทคุณ '
+      + 'แนะนำไฟล์ .png พื้นหลังโปร่งใส หรือวาดเองด้านล่าง</p>'
+      + '<div class="mb-3">'
+      + '<p class="text-xs font-semibold text-gray-600 mb-1">วาดลายเซ็นเอง</p>'
+      + '<canvas id="sigPad" width="600" height="200"'
+      + ' class="w-full border border-gray-300 rounded-xl bg-white touch-none cursor-crosshair"></canvas>'
+      + '<div class="flex flex-wrap gap-2 mt-2">'
+      + '<button type="button" onclick="profileSigClear()"'
+      + ' class="px-3 py-1.5 border border-gray-200 rounded-xl text-xs text-gray-600 hover:bg-surface">ล้าง</button>'
+      + '<button type="button" onclick="profileSigSave()"'
+      + ' class="px-3 py-1.5 bg-primary text-white rounded-xl text-xs hover:bg-primaryDark">'
+      + 'บันทึกลายเซ็นที่วาด</button>'
+      + '</div></div>'
+      + '<p class="text-xs font-semibold text-gray-600 mb-1">หรืออัปโหลดไฟล์ลายเซ็น</p>'
+      + fileBox('signature', d.signature_link, 'ลายเซ็น',
+        'รองรับ .png .jpg .jpeg .svg .pdf — ไม่เกิน 5 MB')
+      + '</div>'
+      + '</div>'
+
+      + '</div>';
+  }
+
+  /* ---------------- ตัวช่วยของหน้าตั้งค่า ---------------- */
+  window.profileSubmit = function (ev) {
+    if (ev && ev.preventDefault) ev.preventDefault();
+    var f = document.getElementById('profileForm');
+    if (!f) return false;
+    var g = function (n) { var e = f.querySelector('[name="' + n + '"]'); return e ? s(e.value) : ''; };
+    var run = async function () {
+      var r = await saveProfile({
+        title_prefix: g('title_prefix'), full_name: g('full_name'), phone: g('phone')
+      });
+      if (!r.isOk) { toast('บันทึกไม่สำเร็จ: ' + r.error, 'error'); return; }
+      toast('บันทึกข้อมูลส่วนตัวแล้ว');
+      refreshAvatar();
+      if (typeof renderCurrentPage === 'function') renderCurrentPage();
+    };
+    if (typeof withLoading === 'function') withLoading(f, run); else run();
+    return false;
+  };
+
+  window.profilePickFile = function (input, kind) {
+    var file = input && input.files && input.files[0];
+    if (!file) return;
+    toast('กำลังอัปโหลด...', 'loading');
+    uploadProfileFile(file, kind).then(function (r) {
+      var t = document.getElementById('loadingToast'); if (t) t.remove();
+      if (!r.isOk) { toast(r.error, 'error'); input.value = ''; return; }
+      var field = kind === 'signature' ? 'signature_link' : 'photo_link';
+      var patch = {}; patch[field] = r.link;
+      saveProfile(patch).then(function (sv) {
+        if (!sv.isOk) { toast('อัปโหลดแล้วแต่บันทึกไม่สำเร็จ: ' + sv.error, 'error'); return; }
+        toast(kind === 'signature' ? 'บันทึกลายเซ็นแล้ว' : 'บันทึกรูปโปรไฟล์แล้ว');
+        refreshAvatar();
+        if (typeof renderCurrentPage === 'function') renderCurrentPage();
+      });
+    });
+  };
+
+  window.profileClearFile = function (kind) {
+    var field = kind === 'signature' ? 'signature_link' : 'photo_link';
+    var patch = {}; patch[field] = '';
+    saveProfile(patch).then(function (r) {
+      if (!r.isOk) { toast('ลบไม่สำเร็จ: ' + r.error, 'error'); return; }
+      toast('ลบแล้ว');
+      refreshAvatar();
+      if (typeof renderCurrentPage === 'function') renderCurrentPage();
+    });
+  };
+
+  /* ---------------- กระดานวาดลายเซ็น ----------------
+     รองรับทั้งเมาส์และนิ้ว ใช้ Pointer Events ตัวเดียวจบ
+     ปรับความละเอียดตามหน้าจอ ลายเซ็นบนจอความละเอียดสูงจะได้ไม่แตก */
+  var sigDirty = false;
+  function setupSigPad() {
+    var cv = document.getElementById('sigPad');
+    if (!cv || cv.dataset.ready === '1') return;
+    cv.dataset.ready = '1';
+    sigDirty = false;
+    var ratio = window.devicePixelRatio || 1;
+    var rect = cv.getBoundingClientRect();
+    if (rect.width) {
+      cv.width = Math.round(rect.width * ratio);
+      cv.height = Math.round(200 * ratio);
+    }
+    var ctx = cv.getContext('2d');
+    ctx.scale(ratio, ratio);
+    ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111827';
+    var drawing = false;
+    function pos(e) {
+      var r = cv.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    }
+    cv.addEventListener('pointerdown', function (e) {
+      drawing = true; sigDirty = true;
+      cv.setPointerCapture(e.pointerId);
+      var p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y);
+    });
+    cv.addEventListener('pointermove', function (e) {
+      if (!drawing) return;
+      e.preventDefault();
+      var p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke();
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) {
+      cv.addEventListener(ev, function () { drawing = false; });
+    });
+  }
+  window.profileSetupSigPad = setupSigPad;
+
+  window.profileSigClear = function () {
+    var cv = document.getElementById('sigPad');
+    if (!cv) return;
+    cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+    sigDirty = false;
+  };
+
+  window.profileSigSave = function () {
+    var cv = document.getElementById('sigPad');
+    if (!cv) return;
+    if (!sigDirty) { toast('ยังไม่ได้วาดลายเซ็น', 'error'); return; }
+    toast('กำลังบันทึกลายเซ็น...', 'loading');
+    cv.toBlob(function (blob) {
+      if (!blob) {
+        var t0 = document.getElementById('loadingToast'); if (t0) t0.remove();
+        toast('บันทึกลายเซ็นไม่สำเร็จ', 'error'); return;
+      }
+      var file = new File([blob], 'signature.png', { type: 'image/png' });
+      uploadProfileFile(file, 'signature').then(function (r) {
+        var t = document.getElementById('loadingToast'); if (t) t.remove();
+        if (!r.isOk) { toast(r.error, 'error'); return; }
+        saveProfile({ signature_link: r.link }).then(function (sv) {
+          if (!sv.isOk) { toast('บันทึกไม่สำเร็จ: ' + sv.error, 'error'); return; }
+          toast('บันทึกลายเซ็นแล้ว');
+          if (typeof renderCurrentPage === 'function') renderCurrentPage();
+        });
+      });
+    }, 'image/png');
+  };
+
+  /* ================= การ์ดข้อมูลส่วนบุคคลในหน้าหลัก ================= */
+  function myInfoCard() {
+    var u = (window.APP && APP.currentUser) || {};
+    var rec = u.data || {};
+    var d = displayOf(rec, myProfile());
+    var full = d.title_prefix && d.name.indexOf(d.title_prefix) !== 0
+      ? d.title_prefix + d.name : d.name;
+    var rows = [];
+    if (APP.currentRole === 'student') {
+      rows = [['รหัสนักศึกษา', rec.student_id], ['รุ่นที่', rec.batch],
+        ['ชั้นปี', rec.year_level ? 'ชั้นปีที่ ' + rec.year_level : ''],
+        ['ห้อง', rec.room], ['อาจารย์ที่ปรึกษา', rec.advisor],
+        ['เบอร์โทรศัพท์', d.phone], ['อีเมล', rec.email]];
+    } else {
+      rows = [['อีเมล', u.email || rec.email], ['สาขาวิชา', rec.department || u.department],
+        ['ตำแหน่ง', rec.position], ['เบอร์โทรศัพท์', d.phone],
+        ['ชั้นปีที่รับผิดชอบ', (u.responsible_year || rec.responsible_year)
+          ? 'ชั้นปีที่ ' + (u.responsible_year || rec.responsible_year) : ''],
+        ['ห้องเรียนประจำ', rec.homeroom]];
+    }
+    rows = rows.filter(function (x) { return s(x[1]); });
+
+    var avatar = canShow(d.photo_link)
+      ? imgTag(d.photo_link, 'w-16 h-16 rounded-2xl object-cover border border-blue-100', 'รูปโปรไฟล์')
+      : '<div class="w-16 h-16 rounded-2xl bg-primaryLight flex items-center justify-center">'
+        + '<i data-lucide="user" class="w-7 h-7 text-primary"></i></div>';
+
+    return '<div class="bg-white rounded-2xl p-5 border border-blue-100 mb-4">'
+      + '<div class="flex items-start gap-4 flex-wrap">'
+      + avatar
+      + '<div class="flex-1 min-w-[180px]">'
+      + '<p class="text-lg font-bold text-gray-800">' + esc(full || 'ผู้ใช้') + '</p>'
+      + '<p class="text-xs text-gray-500">' + esc(ROLE_LABEL[APP.currentRole] || '') + '</p>'
+      + '</div>'
+      + '<button onclick="navigateTo(\'profile\')"'
+      + ' class="flex items-center gap-1 px-3 py-1.5 border border-gray-200 rounded-xl text-xs'
+      + ' text-gray-600 hover:bg-surface"><i data-lucide="settings" class="w-3.5 h-3.5"></i>'
+      + 'ตั้งค่าข้อมูลส่วนตัว</button>'
+      + '</div>'
+      + (rows.length
+        ? '<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mt-4">'
+          + rows.map(function (x) {
+            return '<div class="bg-surface rounded-xl px-3 py-2">'
+              + '<p class="text-[11px] text-gray-500">' + esc(x[0]) + '</p>'
+              + '<p class="text-sm text-gray-800 break-words">' + esc(x[1]) + '</p></div>';
+          }).join('')
+          + '</div>'
+        : '<p class="text-xs text-gray-400 mt-3">ยังไม่มีข้อมูลเพิ่มเติมในระบบ</p>')
+      + '</div>';
+  }
+  window.profileMyInfoCard = myInfoCard;
+
+  /* ================= ต่อเข้ากับระบบเดิม ================= */
+  (function () {
+    var orig = window.getPageContent;
+    if (typeof orig !== 'function') return;
+    window.getPageContent = function (page) {
+      if (page === 'profile') return profilePage();
+      var html = orig.apply(this, arguments);
+      // หน้าหลักของทุกบทบาท ขึ้นต้นด้วยการ์ดข้อมูลของตัวเอง
+      if (page === 'dashboard') return myInfoCard() + html;
+      return html;
+    };
+  })();
+
+  (function () {
+    var orig = window.renderCurrentPage;
+    if (typeof orig !== 'function') return;
+    window.renderCurrentPage = function () {
+      orig.apply(this, arguments);
+      try {
+        refreshAvatar();
+        if (APP.currentPage === 'profile') setupSigPad();
+      } catch (e) { console.warn('เตรียมหน้าโปรไฟล์ไม่สำเร็จ:', e); }
+    };
+  })();
+})();
