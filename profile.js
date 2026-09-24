@@ -374,7 +374,8 @@
       + '<h3 class="font-bold mb-3 flex items-center gap-2">'
       + '<i data-lucide="image" class="w-5 h-5 text-primary"></i>รูปโปรไฟล์</h3>'
       + fileBox('profile', d.photo_link, 'รูปโปรไฟล์',
-        'รองรับ .png .jpg .jpeg .svg .pdf — ไม่เกิน 5 MB (ไฟล์ PDF เก็บได้แต่แสดงเป็นรูปไม่ได้)')
+        'เลือกไฟล์ .png .jpg .jpeg แล้วครอปให้พอดีกรอบก่อนบันทึก · รองรับ .svg .pdf ด้วย '
+        + '(อัปโหลดตามเดิม ครอปไม่ได้) — ไม่เกิน 5 MB')
       + '</div>'
 
       + '<div class="bg-white rounded-2xl p-5 border border-blue-100">'
@@ -424,6 +425,13 @@
   window.profilePickFile = function (input, kind) {
     var file = input && input.files && input.files[0];
     if (!file) return;
+    // รูปโปรไฟล์ให้ครอปเป็นสี่เหลี่ยมจัตุรัสก่อน จะได้พอดีกรอบวงกลมที่ใช้แสดงจริง
+    // ไฟล์ .svg และ .pdf ครอปด้วยผืนผ้าใบไม่ได้ จึงอัปโหลดตามเดิม
+    if (kind === 'profile' && CROPPABLE.indexOf(extOf(file.name)) >= 0) {
+      openCropper(file);
+      input.value = '';
+      return;
+    }
     toast('กำลังอัปโหลด...', 'loading');
     uploadProfileFile(file, kind).then(function (r) {
       var t = document.getElementById('loadingToast'); if (t) t.remove();
@@ -448,6 +456,141 @@
       refreshAvatar();
       if (typeof renderCurrentPage === 'function') renderCurrentPage();
     });
+  };
+
+  /* ---------------- ครอปรูปโปรไฟล์ก่อนบันทึก ----------------
+     รูปที่ผู้ใช้เลือกมามีสัดส่วนไม่แน่นอน แต่ที่แสดงจริงเป็นกรอบจัตุรัส/วงกลม
+     ถ้าอัปโหลดดิบ ๆ เบราว์เซอร์จะครอปกลางภาพให้เอง ซึ่งมักตัดหัวหรือตัดคางขาด
+     จึงให้เลือกเองว่าจะเอาส่วนไหน แล้วส่งขึ้นเป็นรูปจัตุรัสที่ครอปแล้ว */
+  var CROPPABLE = ['png', 'jpg', 'jpeg'];
+  var VIEW = 280;        // ขนาดกรอบที่เห็นบนจอ
+  var OUT = 512;         // ขนาดไฟล์ที่บันทึกจริง
+  var crop = null;       // { img, url, scale, base, x, y }
+
+  function cropDraw() {
+    if (!crop) return;
+    var cv = document.getElementById('profileCropCanvas');
+    if (!cv) return;
+    var ctx = cv.getContext('2d');
+    var w = crop.img.width * crop.scale, h = crop.img.height * crop.scale;
+    // ไม่ให้ลากจนเห็นขอบว่าง — รูปต้องคลุมกรอบไว้เสมอ
+    crop.x = Math.min(0, Math.max(VIEW - w, crop.x));
+    crop.y = Math.min(0, Math.max(VIEW - h, crop.y));
+    ctx.clearRect(0, 0, VIEW, VIEW);
+    ctx.fillStyle = '#f3f4f6'; ctx.fillRect(0, 0, VIEW, VIEW);
+    ctx.drawImage(crop.img, crop.x, crop.y, w, h);
+  }
+
+  function openCropper(file) {
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function () { buildCropUI(img, url); };
+    img.onerror = function () { URL.revokeObjectURL(url); toast('อ่านไฟล์รูปนี้ไม่ได้', 'error'); };
+    img.src = url;
+  }
+
+  function buildCropUI(img, url) {
+    closeCropper();
+    var base = Math.max(VIEW / img.width, VIEW / img.height);   // ย่อ/ขยายให้พอดีคลุมกรอบ
+    crop = { img: img, url: url, base: base, scale: base, x: 0, y: 0 };
+    crop.x = (VIEW - img.width * base) / 2;
+    crop.y = (VIEW - img.height * base) / 2;
+
+    var wrap = document.createElement('div');
+    wrap.id = 'profileCropModal';
+    wrap.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4';
+    wrap.innerHTML = '<div class="bg-white rounded-2xl p-5 w-full max-w-sm">'
+      + '<h3 class="font-bold mb-1">ครอปรูปโปรไฟล์</h3>'
+      + '<p class="text-xs text-gray-500 mb-3">ลากรูปเพื่อเลื่อน และเลื่อนแถบด้านล่างเพื่อย่อ-ขยาย '
+      + 'ส่วนที่อยู่ในวงกลมคือส่วนที่จะแสดงจริง</p>'
+      + '<div class="relative mx-auto overflow-hidden rounded-xl" style="width:' + VIEW + 'px;height:' + VIEW + 'px">'
+      + '<canvas id="profileCropCanvas" width="' + VIEW + '" height="' + VIEW + '"'
+      + ' class="block touch-none cursor-move"></canvas>'
+      + '<div class="absolute inset-0 pointer-events-none" style="border-radius:9999px;'
+      + 'box-shadow:0 0 0 9999px rgba(255,255,255,.62);outline:1px solid rgba(30,111,186,.5)"></div>'
+      + '</div>'
+      + '<div class="flex items-center gap-2 mt-3">'
+      + '<i data-lucide="zoom-out" class="w-4 h-4 text-gray-400"></i>'
+      + '<input id="profileCropZoom" type="range" min="1" max="4" step="0.01" value="1" class="flex-1">'
+      + '<i data-lucide="zoom-in" class="w-4 h-4 text-gray-400"></i>'
+      + '</div>'
+      + '<div class="flex gap-2 mt-4">'
+      + '<button type="button" onclick="profileCropCancel()"'
+      + ' class="flex-1 border border-gray-200 rounded-xl py-2 text-sm text-gray-600 hover:bg-surface">ยกเลิก</button>'
+      + '<button type="button" onclick="profileCropApply()"'
+      + ' class="flex-1 bg-primary text-white rounded-xl py-2 text-sm hover:bg-primaryDark">ใช้รูปนี้</button>'
+      + '</div></div>';
+    document.body.appendChild(wrap);
+    if (window.lucide) lucide.createIcons();
+
+    var cv = document.getElementById('profileCropCanvas');
+    var dragging = false, lastX = 0, lastY = 0;
+    cv.addEventListener('pointerdown', function (e) {
+      dragging = true; lastX = e.clientX; lastY = e.clientY;
+      cv.setPointerCapture(e.pointerId);
+    });
+    cv.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      e.preventDefault();
+      crop.x += e.clientX - lastX; crop.y += e.clientY - lastY;
+      lastX = e.clientX; lastY = e.clientY;
+      cropDraw();
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) {
+      cv.addEventListener(ev, function () { dragging = false; });
+    });
+
+    var zoom = document.getElementById('profileCropZoom');
+    zoom.addEventListener('input', function () {
+      var mul = parseFloat(zoom.value) || 1;
+      var old = crop.scale;
+      crop.scale = crop.base * mul;
+      // ย่อ-ขยายโดยยึดจุดกึ่งกลางกรอบไว้ ไม่ให้ภาพวิ่งหนี
+      var k = crop.scale / old;
+      crop.x = VIEW / 2 - (VIEW / 2 - crop.x) * k;
+      crop.y = VIEW / 2 - (VIEW / 2 - crop.y) * k;
+      cropDraw();
+    });
+
+    cropDraw();
+  }
+
+  function closeCropper() {
+    var m = document.getElementById('profileCropModal');
+    if (m) m.remove();
+    if (crop && crop.url) URL.revokeObjectURL(crop.url);
+    crop = null;
+  }
+  window.profileCropCancel = closeCropper;
+
+  window.profileCropApply = function () {
+    if (!crop) return;
+    var out = document.createElement('canvas');
+    out.width = OUT; out.height = OUT;
+    var ctx = out.getContext('2d');
+    var k = OUT / VIEW;
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, OUT, OUT);
+    ctx.drawImage(crop.img, crop.x * k, crop.y * k,
+      crop.img.width * crop.scale * k, crop.img.height * crop.scale * k);
+    closeCropper();
+    toast('กำลังอัปโหลด...', 'loading');
+    out.toBlob(function (blob) {
+      if (!blob) {
+        var t0 = document.getElementById('loadingToast'); if (t0) t0.remove();
+        toast('ครอปรูปไม่สำเร็จ', 'error'); return;
+      }
+      var file = new File([blob], 'profile.png', { type: 'image/png' });
+      uploadProfileFile(file, 'profile').then(function (r) {
+        var t = document.getElementById('loadingToast'); if (t) t.remove();
+        if (!r.isOk) { toast(r.error, 'error'); return; }
+        saveProfile({ photo_link: r.link }).then(function (sv) {
+          if (!sv.isOk) { toast('อัปโหลดแล้วแต่บันทึกไม่สำเร็จ: ' + sv.error, 'error'); return; }
+          toast('บันทึกรูปโปรไฟล์แล้ว');
+          refreshAvatar();
+          if (typeof renderCurrentPage === 'function') renderCurrentPage();
+        });
+      });
+    }, 'image/png');
   };
 
   /* ---------------- กระดานวาดลายเซ็น ----------------

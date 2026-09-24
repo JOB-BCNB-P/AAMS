@@ -8971,6 +8971,12 @@ function setLeaveYearLevel(v) {
   APP.pagination.page = 1;
   renderCurrentPage();
 }
+// เจ้าหน้าที่เลือกว่าจะบันทึกการลาให้นักศึกษาคนไหน
+function setLeaveAddStudent(v) {
+  APP.filters._leaveAddStudent = v;
+  renderCurrentPage();
+}
+
 function setLeaveStudent(v) {
   APP.filters._leaveStudent = v;
   APP.pagination.page = 1;
@@ -9141,9 +9147,16 @@ function leavePage() {
   if (isExecutive) pendingCount = data.filter(l => (l.coordinator_approval === 'อนุมัติ') && (l.class_teacher_approval === 'อนุมัติ') && (l.deputy_approval || 'รอ') === 'รอ' && l.leave_status !== 'ปฏิเสธ').length;
 
   let form = '';
-  if (isStudent) {
-    const stuYearLevel = APP.currentUser.data?.year_level || '';
-    const stuBatch = APP.currentUser.data?.batch || '';
+  /* แบบฟอร์มเดียวกันทั้งนักศึกษาและเจ้าหน้าที่
+     ต่างกันแค่ "ลาให้ใคร" — นักศึกษาคือตัวเอง เจ้าหน้าที่ต้องเลือกนักศึกษาก่อน
+     เคยแยกเป็นหน้าต่างเล็ก ๆ ของผู้ดูแลต่างหาก ทำให้เก็บข้อมูลได้ไม่ครบเท่าของนักศึกษา */
+  if (isStudent || isAdmin) {
+    const leaveForRec = isStudent
+      ? (APP.currentUser.data || {})
+      : (getDataByType('student').find(x =>
+          norm(x.student_id) === norm(APP.filters._leaveAddStudent || '')) || null);
+    const stuYearLevel = leaveForRec ? (leaveForRec.year_level || '') : '';
+    const stuBatch = leaveForRec ? (leaveForRec.batch || '') : '';
     const allSubjects = getDataByType('subject');
     // กรองรายวิชาตามนักศึกษา (batch + year_level)
     //   - ถ้ารายวิชาระบุ batch → batch ต้องตรงกับนักศึกษา
@@ -9171,6 +9184,8 @@ function leavePage() {
         return true;
       });
     }
+    // เจ้าหน้าที่ที่ยังไม่ได้เลือกนักศึกษา ไม่ต้องไล่รายวิชาทั้งระบบมาแสดงเปล่า ๆ
+    if (!isStudent && !leaveForRec) subjects = [];
     // Auto-detect class teacher from teacher records by responsible_year matching student's year_level
     const allTeachers = getDataByType('teacher');
     const classTeacherRec = stuYearLevel
@@ -9180,17 +9195,20 @@ function leavePage() {
     /* ---- แบบฟอร์มบันทึกข้อมูลการลา ----
        เรียง 11 หัวข้อตามใบลาจริง และวางคู่กับ "ตัวอย่างเอกสาร" ทางขวา
        ทุกช่องที่กรอกจะไปขึ้นในใบลาตัวอย่างทันที ผู้ยื่นจึงเห็นก่อนว่าพิมพ์ออกมาแล้วได้หน้าตาแบบไหน */
-    // โปรไฟล์ที่นักศึกษาแก้เองมาก่อน ไม่มีค่อยถอยไปใช้ทะเบียน
-    // ทะเบียนเป็นข้อมูลของงานทะเบียน ไม่ถูกเขียนทับจากหน้านี้
-    const stuRec = (typeof profileMy === 'function')
-      ? Object.assign({}, APP.currentUser.data || {}, (function () {
-          const m = profileMy(), o = {};
-          if (m.title_prefix) o.title_prefix = m.title_prefix;
-          if (m.name) o.name = m.name;
-          if (m.phone) o.phone = m.phone;
-          return o;
-        })())
-      : (APP.currentUser.data || {});
+    /* ข้อมูลของ "เจ้าของใบลา" — โปรไฟล์ที่เจ้าตัวแก้เองมาก่อน ไม่มีค่อยถอยไปใช้ทะเบียน
+       เจ้าหน้าที่ที่กรอกแทน ต้องใช้โปรไฟล์ของนักศึกษาคนนั้น ไม่ใช่ของตัวเอง */
+    const stuRec = (function () {
+      const base = Object.assign({}, leaveForRec || {});
+      const prof = isStudent
+        ? (typeof profileMy === 'function' ? profileMy() : null)
+        : (typeof profileByKey === 'function' && base.student_id
+            ? profileByKey(base.student_id) : null);
+      if (!prof) return base;
+      if (prof.title_prefix) base.title_prefix = prof.title_prefix;
+      if (prof.full_name || prof.name) base.name = prof.full_name || prof.name;
+      if (prof.phone) base.phone = prof.phone;
+      return base;
+    })();
 
     // ค่าตั้งต้นของภาค/ปีการศึกษา : เอาค่าที่พบบ่อยที่สุดในรายวิชาของนักศึกษาคนนี้ ไม่ใช่ปีปฏิทิน
     const _pick = key => {
@@ -9363,7 +9381,28 @@ function leavePage() {
       </div>
     </div>`;
 
-    form = `<div class="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start mb-4">${leaveFormCard}${leaveDocCard}</div>`;
+    /* เจ้าหน้าที่ต้องเลือกนักศึกษาก่อน ฟอร์มจึงจะขึ้น
+       กันกรอกใบลาค้างไว้โดยยังไม่รู้ว่าเป็นของใคร แล้วเผลอบันทึกผิดคน */
+    const leavePickCard = isStudent ? '' : `<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">
+      <label class="block text-xs font-semibold text-gray-700 mb-1">บันทึกการลาให้นักศึกษา <span class="text-red-500">*</span></label>
+      <select onchange="setLeaveAddStudent(this.value)" class="w-full sm:max-w-lg border rounded-xl px-3 py-2 text-sm">
+        <option value="">-- เลือกนักศึกษา --</option>
+        ${activeStudents(getDataByType('student'))
+          .slice()
+          .sort((a, b) => norm(a.student_id).localeCompare(norm(b.student_id)))
+          .map(x => `<option value="${_q(x.student_id)}" ${norm(x.student_id) === norm(leaveForRec && leaveForRec.student_id) ? 'selected' : ''}>${_q(x.student_id)} ${_q(x.name)}${x.year_level ? ' (ชั้นปี ' + _q(x.year_level) + ')' : ''}</option>`).join('')}
+      </select>
+      <p class="text-xs text-gray-400 mt-1">ใบลาจะถูกบันทึกในชื่อของนักศึกษาที่เลือก และเข้าลำดับการอนุมัติตามปกติ</p>
+    </div>`;
+
+    const leaveBody = (!isStudent && !leaveForRec)
+      ? `<div class="bg-white rounded-2xl border border-blue-100 p-8 text-center text-gray-400">
+          <i data-lucide="user-search" class="w-12 h-12 mx-auto mb-3 text-gray-300"></i>
+          <p class="text-sm">เลือกนักศึกษาด้านบนก่อน แบบฟอร์มและใบลาตัวอย่างจะขึ้นให้กรอก</p>
+        </div>`
+      : `<div class="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">${leaveFormCard}${leaveDocCard}</div>`;
+
+    form = `<div class="mb-4">${leavePickCard}${leaveBody}</div>`;
   }
 
   const pendingBanner = canApprove && pendingCount > 0
@@ -9482,12 +9521,14 @@ function leavePage() {
        ภาพรวมการลา   : กราฟรายวิชา + ตารางเฝ้าระวัง + รายการใบลา
        บันทึกข้อมูลการลา : แบบฟอร์มของนักศึกษา / ปุ่มเพิ่มและนำเข้า CSV ของผู้ดูแล */
   const _leaveHead = title => `<h2 class="text-xl font-bold text-gray-800 mb-4"><i data-lucide="calendar-off" class="w-6 h-6 inline mr-2"></i>ระบบการลาของนักศึกษา <span class="text-gray-300 font-normal">/</span> ${title}</h2>`;
+  /* เดิมผู้ดูแลมีปุ่มเปิดหน้าต่างเล็ก ๆ กรอกใบลา ซึ่งเก็บข้อมูลได้ไม่ครบเท่าฟอร์มของนักศึกษา
+     ตอนนี้ใช้ฟอร์มเดียวกันทั้งระบบแล้ว จึงเหลือไว้แค่การนำเข้าเป็นชุดจากไฟล์ CSV */
   const _leaveAddBar = isAdmin
-    ? `<div class="flex flex-wrap gap-2 mb-4"><button onclick="showAddLeaveModal()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="plus" class="w-4 h-4"></i>บันทึกข้อมูลการลา</button>${csvUploadBtn('leave', 'name,subject_name,leave_hours,leave_percent,semester,academic_year,leave_date,leave_type')}</div>`
+    ? `<div class="flex flex-wrap gap-2 mb-4">${csvUploadBtn('leave', 'name,subject_name,leave_hours,leave_percent,semester,academic_year,leave_date,leave_type')}</div>`
     : '';
 
   if (APP._leaveTab === 'add') {
-    const nothing = (!isStudent && !isAdmin)
+    const nothing = (!isStudent && !isAdmin)  // อาจารย์/ผู้บริหารไม่ได้ยื่นใบลาเอง
       ? `<div class="bg-white rounded-2xl border border-blue-100 p-8 text-center text-gray-400">
           <i data-lucide="lock" class="w-10 h-10 mx-auto mb-3 text-gray-300"></i>
           <p class="text-sm">บัญชีของคุณไม่ได้เพิ่มข้อมูลการลาเอง — นักศึกษาเป็นผู้ยื่นใบลา แล้วส่งมาให้อนุมัติ</p>
@@ -10505,8 +10546,10 @@ function refreshPriorLeaveDays() {
   const box = f.querySelector('[name="prior_days"]'); if (!box) return;
   if (box.dataset.touched === '1') return;
   const g = n => { const el = f.querySelector('[name="' + n + '"]'); return el ? el.value : ''; };
+  // อ่านเจ้าของใบลาจากฟอร์ม เพราะเจ้าหน้าที่กรอกแทนนักศึกษาได้
   const stu = (APP.currentUser && APP.currentUser.data) || {};
-  box.value = leavePriorDays(stu.student_id, stu.name, g('semester'), g('academic_year'));
+  box.value = leavePriorDays(g('student_id') || stu.student_id, g('name') || stu.name,
+    g('semester'), g('academic_year'));
   if (typeof leaveDocRefresh === 'function') leaveDocRefresh();
 }
 
@@ -10913,7 +10956,9 @@ function initPageScripts(page) {
         const certFile = fd.get('medical_cert');
         const apptFile = fd.get('appointment_doc');
         const attach = (certFile && certFile.name) ? certFile : ((apptFile && apptFile.name) ? apptFile : null);
-        const myStuId = (APP.currentUser && APP.currentUser.data && APP.currentUser.data.student_id) || '';
+        // เจ้าหน้าที่กรอกแทนได้ จึงต้องอ่านรหัสนักศึกษาจากฟอร์ม ไม่ใช่จากบัญชีผู้กรอก
+        const myStuId = String(fd.get('student_id') || '').trim()
+          || (APP.currentUser && APP.currentUser.data && APP.currentUser.data.student_id) || '';
         let fileLink = '', fileName = '';
         if (attach) {
           if (typeof window.emsUploadLeaveFile !== 'function') {
