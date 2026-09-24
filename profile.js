@@ -203,7 +203,10 @@
     return (r && r.data && r.data.user && r.data.user.id) || '';
   }
 
-  async function uploadProfileFile(file, kind) {
+  /* target = { uid, name } ของคนที่จะตั้งรูปให้ ไม่ส่งมา = ของตัวเอง
+     ผู้ดูแลระบบเท่านั้นที่ตั้งให้คนอื่นได้ และฐานข้อมูลบังคับซ้ำอีกชั้นหนึ่ง
+     ถึงแม้หน้าเว็บจะถูกดัดแปลง ก็เขียนแทนคนอื่นไม่ได้ถ้าไม่ใช่ผู้ดูแล */
+  async function uploadProfileFile(file, kind, target) {
     if (!file || !file.name) return { isOk: false, error: 'ยังไม่ได้เลือกไฟล์' };
     var ext = extOf(file.name);
     if (OK_EXT.indexOf(ext) < 0) {
@@ -212,7 +215,7 @@
     if (file.size > MAX_BYTES) {
       return { isOk: false, error: 'ไฟล์ใหญ่เกิน 5 MB (ไฟล์นี้ ' + (file.size / 1048576).toFixed(1) + ' MB)' };
     }
-    var uid = await authId();
+    var uid = (target && s(target.uid)) || await authId();
     if (!uid) return { isOk: false, error: 'ยังไม่ได้เข้าสู่ระบบ จึงอัปโหลดไม่ได้' };
 
     var c = client();
@@ -237,7 +240,8 @@
 
     // สำเนาขึ้น Google Drive — ล้มเหลวก็ยังใช้งานได้ ไฟล์หลักอยู่ในระบบแล้ว
     try {
-      var nice = (myDisplay().name || uid) + ' - ' + (kind === 'signature' ? 'ลายเซ็น' : 'รูปโปรไฟล์') + '.' + ext;
+      var who = (target && s(target.name)) || myDisplay().name || uid;
+      var nice = who + ' - ' + (kind === 'signature' ? 'ลายเซ็น' : 'รูปโปรไฟล์') + '.' + ext;
       await c.functions.invoke('drive-sync', {
         body: { mode: 'sync', kind: kind, storagePath: path, filename: nice }
       });
@@ -251,27 +255,29 @@
      เขียนตรงไปที่ตาราง ไม่ผ่านตัวอ่านข้อมูลกลาง
      เพราะตัวกลางตัดคอลัมน์ auth_user_id ทิ้ง (ถือเป็นคอลัมน์ระบบ)
      แต่คอลัมน์นี้คือกุญแจที่ฐานข้อมูลใช้ตรวจว่าเป็นแถวของเราจริง */
-  async function saveProfile(fields) {
+  async function saveProfile(fields, target) {
     var c = client();
     if (!c) return { isOk: false, error: 'ยังเชื่อมต่อฐานข้อมูลไม่ได้' };
-    var uid = await authId();
-    if (!uid) return { isOk: false, error: 'ยังไม่ได้เข้าสู่ระบบ' };
-    MY_UID = uid;
+    var mine = await authId();
+    if (!mine) return { isOk: false, error: 'ยังไม่ได้เข้าสู่ระบบ' };
+    MY_UID = mine;
+    var forOther = !!(target && s(target.uid) && s(target.uid) !== mine);
+    var uid = forOther ? s(target.uid) : mine;
     var u = (window.APP && APP.currentUser) || {}, d = u.data || {};
     var row = Object.assign({
       auth_user_id: uid,
       owner_uid: uid,
-      owner_key: myKey(),
-      owner_name: s(u.name),
-      owner_role: s(APP.currentRole)
+      owner_key: forOther ? s(target.key) : myKey(),
+      owner_name: forOther ? s(target.name) : s(u.name),
+      owner_role: forOther ? s(target.role) : s(APP.currentRole)
     }, fields || {});
     /* กุญแจและชื่อต้องไม่ว่าง ไม่งั้นเอกสารจะหาลายเซ็นของคนนี้ไม่เจอ
        ไล่หาจากที่พอมี แล้วสุดท้ายถอยไปใช้รหัสผู้ใช้ ซึ่งไม่ซ้ำกันแน่นอน */
     var prev = profileByUid(uid) || {};
-    row.owner_name = s(row.owner_name) || s(row.full_name) || s(prev.owner_name)
-      || s(prev.full_name) || s(d.name) || s(u.email) || s(u.username);
+    row.owner_name = s(row.owner_name) || s(row.full_name) || s(prev.owner_name) || s(prev.full_name)
+      || (forOther ? '' : (s(d.name) || s(u.email) || s(u.username)));
     row.owner_key = s(row.owner_key) || s(prev.owner_key)
-      || s(d.student_id) || s(u.email).toLowerCase() || uid;
+      || (forOther ? '' : (s(d.student_id) || s(u.email).toLowerCase())) || uid;
     var r = await c.from('user_profile').upsert(row, { onConflict: 'auth_user_id' });
     if (r.error) return { isOk: false, error: s(r.error.message) };
     // โหลดตารางโปรไฟล์ใหม่ก่อนคืนค่า ไม่งั้นหน้าจอจะวาดจากข้อมูลชุดเก่าแล้วดูเหมือนไม่มีอะไรเปลี่ยน
@@ -325,6 +331,23 @@
   }
   window.profileRefreshAvatar = refreshAvatar;
 
+  // กดที่รูปแล้วดูขนาดเต็ม 640×640 เหมือนเปิดรูปโปรไฟล์ใน LINE
+  window.profileViewPhoto = function (link) {
+    var l = s(link) || s(myDisplay().photo_link);
+    if (!canShow(l)) return;
+    var old = document.getElementById('profilePhotoViewer');
+    if (old) old.remove();
+    var box = document.createElement('div');
+    box.id = 'profilePhotoViewer';
+    box.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4';
+    box.setAttribute('onclick', 'this.remove()');
+    box.innerHTML = '<div class="bg-white rounded-2xl p-3 shadow-xl">'
+      + imgTag(l, 'block rounded-xl', 'รูปโปรไฟล์',
+        'width:' + OUT + 'px;height:' + OUT + 'px;max-width:80vw;max-height:80vh;object-fit:cover')
+      + '<p class="text-[11px] text-gray-400 text-center mt-2">กดที่ใดก็ได้เพื่อปิด</p></div>';
+    document.body.appendChild(box);
+  };
+
   /* ขอรหัสผู้ใช้ตั้งแต่เปิดหน้า แล้ววาดรูปโปรไฟล์ซ้ำให้อีกรอบเมื่อได้คำตอบ
      ก่อนหน้านั้นการหาโปรไฟล์จะถอยไปใช้ชื่อ/อีเมลตามเดิม จึงไม่มีจังหวะที่หน้าจอพัง */
   function initAuthUid() {
@@ -340,19 +363,28 @@
   window.profileInitUid = initAuthUid;
 
   /* ================= หน้าตั้งค่าข้อมูลส่วนตัว ================= */
-  function fileBox(kind, link, label, hint) {
+  function fileBox(kind, link, label, hint, forOther) {
+    // รูปโปรไฟล์แสดงตัวอย่างเป็นกรอบจัตุรัสเท่าของจริง ลายเซ็นเป็นแถบกว้าง
+    var isPhoto = kind === 'profile';
     var shown = canShow(link)
-      ? imgTag(link, 'max-h-28 max-w-full object-contain', label, 'background:#fff')
+      ? (isPhoto
+        ? '<button type="button" onclick="profileViewPhoto(\'' + esc(link) + '\')" title="ดูรูปขนาดเต็ม"'
+          + ' class="w-40 h-40 rounded-2xl overflow-hidden border border-gray-200 bg-white'
+          + ' flex items-center justify-center">'
+          + imgTag(link, 'w-full h-full object-cover', label) + '</button>'
+        : imgTag(link, 'max-h-28 max-w-full object-contain', label, 'background:#fff'))
       : (isProfileFile(link)
         ? '<p class="text-xs text-amber-600">เก็บไฟล์ไว้แล้ว แต่เป็นไฟล์ PDF จึงแสดงตัวอย่างไม่ได้</p>'
         : '<p class="text-xs text-gray-400">ยังไม่มี' + esc(label) + '</p>');
     return '<div class="border border-dashed border-gray-300 rounded-xl p-3 bg-gray-50">'
-      + '<div class="min-h-[72px] flex items-center justify-center mb-2">' + shown + '</div>'
+      + '<div class="' + (isPhoto ? 'min-h-[168px]' : 'min-h-[72px]')
+      + ' flex items-center justify-center mb-2">' + shown + '</div>'
       + '<input type="file" accept=".png,.jpg,.jpeg,.svg,.pdf" class="w-full text-xs"'
-      + ' onchange="profilePickFile(this, \'' + kind + '\')">'
+      + ' onchange="profilePickFile(this, \'' + kind + '\', ' + (forOther ? 'true' : 'false') + ')">'
       + '<p class="text-[11px] text-gray-400 mt-1">' + esc(hint) + '</p>'
       + (isProfileFile(link)
-        ? '<button type="button" onclick="profileClearFile(\'' + kind + '\')"'
+        ? '<button type="button" onclick="profileClearFile(\'' + kind + '\', '
+          + (forOther ? 'true' : 'false') + ')"'
           + ' class="mt-2 text-xs text-red-600 hover:underline">ลบ' + esc(label) + '</button>'
         : '')
       + '</div>';
@@ -447,7 +479,8 @@
       + '</div>'
       + '</div>'
 
-      + '</div>';
+      + '</div>'
+      + (isAdmin() ? '<div class="mt-4">' + adminCard() + '</div>' : '');
   }
 
   /* ---------------- ตัวช่วยของหน้าตั้งค่า ---------------- */
@@ -469,23 +502,25 @@
     return false;
   };
 
-  window.profilePickFile = function (input, kind) {
+  window.profilePickFile = function (input, kind, forOther) {
     var file = input && input.files && input.files[0];
     if (!file) return;
+    var tg = forOther ? currentTarget() : null;
+    if (forOther && !tg) { toast('ยังไม่ได้เลือกผู้ใช้', 'error'); input.value = ''; return; }
     // รูปโปรไฟล์ให้ครอปเป็นสี่เหลี่ยมจัตุรัสก่อน จะได้พอดีกรอบวงกลมที่ใช้แสดงจริง
     // ไฟล์ .svg และ .pdf ครอปด้วยผืนผ้าใบไม่ได้ จึงอัปโหลดตามเดิม
     if (kind === 'profile' && CROPPABLE.indexOf(extOf(file.name)) >= 0) {
-      openCropper(file);
+      openCropper(file, tg);
       input.value = '';
       return;
     }
     toast('กำลังอัปโหลด...', 'loading');
-    uploadProfileFile(file, kind).then(function (r) {
+    uploadProfileFile(file, kind, tg).then(function (r) {
       var t = document.getElementById('loadingToast'); if (t) t.remove();
       if (!r.isOk) { toast(r.error, 'error'); input.value = ''; return; }
       var field = kind === 'signature' ? 'signature_link' : 'photo_link';
       var patch = {}; patch[field] = r.link;
-      saveProfile(patch).then(function (sv) {
+      saveProfile(patch, tg).then(function (sv) {
         if (!sv.isOk) { toast('อัปโหลดแล้วแต่บันทึกไม่สำเร็จ: ' + sv.error, 'error'); return; }
         toast(kind === 'signature' ? 'บันทึกลายเซ็นแล้ว' : 'บันทึกรูปโปรไฟล์แล้ว');
         refreshAvatar();
@@ -494,10 +529,12 @@
     });
   };
 
-  window.profileClearFile = function (kind) {
+  window.profileClearFile = function (kind, forOther) {
+    var tg = forOther ? currentTarget() : null;
+    if (forOther && !tg) return;
     var field = kind === 'signature' ? 'signature_link' : 'photo_link';
     var patch = {}; patch[field] = '';
-    saveProfile(patch).then(function (r) {
+    saveProfile(patch, tg).then(function (r) {
       if (!r.isOk) { toast('ลบไม่สำเร็จ: ' + r.error, 'error'); return; }
       toast('ลบแล้ว');
       refreshAvatar();
@@ -510,9 +547,10 @@
      ถ้าอัปโหลดดิบ ๆ เบราว์เซอร์จะครอปกลางภาพให้เอง ซึ่งมักตัดหัวหรือตัดคางขาด
      จึงให้เลือกเองว่าจะเอาส่วนไหน แล้วส่งขึ้นเป็นรูปจัตุรัสที่ครอปแล้ว */
   var CROPPABLE = ['png', 'jpg', 'jpeg'];
-  var VIEW = 280;        // ขนาดกรอบที่เห็นบนจอ
-  var OUT = 512;         // ขนาดไฟล์ที่บันทึกจริง
+  var VIEW = 320;        // ขนาดกรอบที่เห็นบนจอตอนครอป
+  var OUT = 640;         // ขนาดไฟล์ที่บันทึกจริง เท่ากับรูปโปรไฟล์ของ LINE
   var crop = null;       // { img, url, scale, base, x, y }
+  var cropTarget = null; // คนที่จะตั้งรูปให้ — ว่าง = ของตัวเอง
 
   function cropDraw() {
     if (!crop) return;
@@ -528,7 +566,8 @@
     ctx.drawImage(crop.img, crop.x, crop.y, w, h);
   }
 
-  function openCropper(file) {
+  function openCropper(file, target) {
+    cropTarget = target || null;
     var url = URL.createObjectURL(file);
     var img = new Image();
     img.onload = function () { buildCropUI(img, url); };
@@ -549,7 +588,12 @@
     wrap.innerHTML = '<div class="bg-white rounded-2xl p-5 w-full max-w-sm">'
       + '<h3 class="font-bold mb-1">ครอปรูปโปรไฟล์</h3>'
       + '<p class="text-xs text-gray-500 mb-3">ลากรูปเพื่อเลื่อน และเลื่อนแถบด้านล่างเพื่อย่อ-ขยาย '
-      + 'ส่วนที่อยู่ในวงกลมคือส่วนที่จะแสดงจริง</p>'
+      + 'ส่วนที่อยู่ในวงกลมคือส่วนที่จะแสดงจริง · บันทึกเป็นรูป ' + OUT + '×' + OUT + ' พิกเซล</p>'
+      // ขยายจากต้นฉบับที่เล็กกว่านี้ รูปจะเบลอ บอกไว้ก่อนดีกว่าให้ไปเห็นตอนบันทึกแล้ว
+      + (Math.min(img.width, img.height) < OUT
+        ? '<p class="text-xs text-amber-600 mb-3">รูปต้นฉบับมีขนาด ' + img.width + '×' + img.height
+          + ' พิกเซล เล็กกว่า ' + OUT + '×' + OUT + ' ที่ระบบเก็บ รูปที่ได้อาจไม่คมชัดนัก</p>'
+        : '')
       + '<div class="relative mx-auto overflow-hidden rounded-xl" style="width:' + VIEW + 'px;height:' + VIEW + 'px">'
       + '<canvas id="profileCropCanvas" width="' + VIEW + '" height="' + VIEW + '"'
       + ' class="block touch-none cursor-move"></canvas>'
@@ -627,10 +671,11 @@
         toast('ครอปรูปไม่สำเร็จ', 'error'); return;
       }
       var file = new File([blob], 'profile.png', { type: 'image/png' });
-      uploadProfileFile(file, 'profile').then(function (r) {
+      var tg = cropTarget; cropTarget = null;
+      uploadProfileFile(file, 'profile', tg).then(function (r) {
         var t = document.getElementById('loadingToast'); if (t) t.remove();
         if (!r.isOk) { toast(r.error, 'error'); return; }
-        saveProfile({ photo_link: r.link }).then(function (sv) {
+        saveProfile({ photo_link: r.link }, tg).then(function (sv) {
           if (!sv.isOk) { toast('อัปโหลดแล้วแต่บันทึกไม่สำเร็จ: ' + sv.error, 'error'); return; }
           toast('บันทึกรูปโปรไฟล์แล้ว');
           refreshAvatar();
@@ -709,6 +754,98 @@
     }, 'image/png');
   };
 
+  /* ================= ผู้ดูแลระบบตั้งรูป/ลายเซ็นให้ผู้อื่น =================
+     เปิดเฉพาะบทบาท admin และฐานข้อมูลบังคับซ้ำอีกชั้น
+     บทบาทอื่นถึงจะแก้หน้าเว็บให้ปุ่มโผล่ ก็เขียนของคนอื่นไม่ได้อยู่ดี */
+  function isAdmin() { return (window.APP && APP.currentRole) === 'admin'; }
+
+  // รายชื่อผู้ใช้ที่มีบัญชีเข้าระบบ — โปรไฟล์ผูกกับบัญชี จึงตั้งให้คนที่ไม่มีบัญชีไม่ได้
+  function manageableUsers() {
+    var seen = {};
+    return get('user').filter(function (u) {
+      if (s(u.is_active) === '0' || s(u.is_active) === 'ปิด') return false;
+      var k = keyOfRecord(u);
+      if (!k || seen[k]) return false;
+      seen[k] = 1;
+      return true;
+    }).sort(function (a, b) { return s(a.name).localeCompare(s(b.name)); });
+  }
+
+  function currentTarget() {
+    var key = s(window.APP && APP._profileTarget);
+    if (!key) return null;
+    var u = manageableUsers().find(function (x) { return keyOfRecord(x) === key; });
+    if (!u) return null;
+    var uid = s(window.APP && APP._profileTargetUid);
+    if (!uid) return null;
+    return { uid: uid, key: key, name: s(u.name), role: s(u.role) };
+  }
+
+  // ขอรหัสผู้ใช้ของเป้าหมายจากฐานข้อมูล (เปิดให้เฉพาะผู้ดูแลระบบ)
+  window.profileSetTarget = function (key) {
+    APP._profileTarget = s(key);
+    APP._profileTargetUid = '';
+    if (!APP._profileTarget) { renderCurrentPage(); return; }
+    var c = client();
+    if (!c) return;
+    c.rpc('ems_user_uid', { p_key: APP._profileTarget }).then(function (r) {
+      APP._profileTargetUid = s(r && r.data);
+      if (!APP._profileTargetUid) toast('ผู้ใช้รายนี้ยังไม่มีบัญชีเข้าระบบ จึงตั้งรูปให้ไม่ได้', 'error');
+      renderCurrentPage();
+    }).catch(function (e) {
+      toast('ค้นบัญชีไม่สำเร็จ: ' + (e && e.message), 'error');
+    });
+  };
+
+  function adminCard() {
+    if (!isAdmin()) return '';
+    var users = manageableUsers();
+    var key = s(window.APP && APP._profileTarget);
+    var uid = s(window.APP && APP._profileTargetUid);
+    var prof = uid ? profileByUid(uid) : null;
+    var picked = users.find(function (x) { return keyOfRecord(x) === key; });
+
+    var body;
+    if (!key) {
+      body = '<p class="text-sm text-gray-400 text-center py-6">เลือกผู้ใช้ด้านบนก่อน</p>';
+    } else if (!uid) {
+      body = '<p class="text-sm text-amber-600 text-center py-6">กำลังค้นบัญชีของผู้ใช้รายนี้ '
+        + 'หรือผู้ใช้รายนี้ยังไม่มีบัญชีเข้าระบบ</p>';
+    } else {
+      body = '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">'
+        + '<div><p class="text-xs font-semibold text-gray-600 mb-1">รูปโปรไฟล์</p>'
+        + fileBox('profile', s(prof && prof.photo_link), 'รูปโปรไฟล์',
+          'เลือกไฟล์รูปแล้วครอปให้พอดีกรอบ · บันทึกเป็น ' + OUT + '×' + OUT + ' พิกเซล', true) + '</div>'
+        + '<div><p class="text-xs font-semibold text-gray-600 mb-1">ลายเซ็น</p>'
+        + fileBox('signature', s(prof && prof.signature_link), 'ลายเซ็น',
+          'รองรับ .png .jpg .jpeg .svg .pdf — ไม่เกิน 5 MB', true) + '</div>'
+        + '</div>';
+    }
+
+    return '<div class="bg-white rounded-2xl p-5 border border-amber-200">'
+      + '<h3 class="font-bold mb-1 flex items-center gap-2">'
+      + '<i data-lucide="users-round" class="w-5 h-5 text-amber-600"></i>'
+      + 'ตั้งรูปโปรไฟล์และลายเซ็นให้ผู้อื่น</h3>'
+      + '<p class="text-xs text-gray-500 mb-3">เฉพาะผู้ดูแลระบบ · '
+      + 'ลายเซ็นที่ตั้งให้จะถูกนำไปขึ้นในเอกสารแทนเจ้าตัว '
+      + 'ควรทำเมื่อได้รับความยินยอมจากเจ้าของลายเซ็นแล้วเท่านั้น</p>'
+      + '<label class="block text-xs text-gray-600 mb-1">เลือกผู้ใช้</label>'
+      + '<select onchange="profileSetTarget(this.value)"'
+      + ' class="w-full sm:max-w-lg border rounded-xl px-3 py-2 text-sm mb-3">'
+      + '<option value="">-- เลือกผู้ใช้ --</option>'
+      + users.map(function (u) {
+        var k = keyOfRecord(u);
+        return '<option value="' + esc(k) + '"' + (k === key ? ' selected' : '') + '>'
+          + esc(s(u.name) || k) + ' — ' + esc(ROLE_LABEL[s(u.role)] || s(u.role)) + '</option>';
+      }).join('')
+      + '</select>'
+      + (picked && uid
+        ? '<p class="text-xs text-gray-500 mb-2">กำลังตั้งให้ <b>' + esc(s(picked.name) || key) + '</b></p>'
+        : '')
+      + body
+      + '</div>';
+  }
+
   /* ================= การ์ดข้อมูลส่วนบุคคลในหน้าหลัก ================= */
   function myInfoCard() {
     var u = (window.APP && APP.currentUser) || {};
@@ -731,16 +868,22 @@
     }
     rows = rows.filter(function (x) { return s(x[1]); });
 
+    /* กรอบรูปใหญ่แบบโปรไฟล์ LINE — กำหนดขนาดไว้ที่กรอบ ไม่ใช่ที่ตัวรูป
+       รูปโหลดทีหลัง ถ้าขนาดอยู่ที่ตัวรูป หน้าจอจะกระตุกตอนรูปมาถึง */
+    var FRAME = 'w-28 h-28 sm:w-36 sm:h-36 rounded-2xl overflow-hidden flex-shrink-0'
+      + ' flex items-center justify-center';
     var avatar = canShow(d.photo_link)
-      ? imgTag(d.photo_link, 'w-16 h-16 rounded-2xl object-cover border border-blue-100', 'รูปโปรไฟล์')
-      : '<div class="w-16 h-16 rounded-2xl bg-primaryLight flex items-center justify-center">'
-        + '<i data-lucide="user" class="w-7 h-7 text-primary"></i></div>';
+      ? '<button type="button" onclick="profileViewPhoto()" title="ดูรูปขนาดเต็ม"'
+        + ' class="' + FRAME + ' border border-blue-100 bg-surface">'
+        + imgTag(d.photo_link, 'w-full h-full object-cover', 'รูปโปรไฟล์') + '</button>'
+      : '<div class="' + FRAME + ' bg-primaryLight">'
+        + '<i data-lucide="user" class="w-12 h-12 text-primary"></i></div>';
 
     return '<div class="bg-white rounded-2xl p-5 border border-blue-100 mb-4">'
       + '<div class="flex items-start gap-4 flex-wrap">'
       + avatar
       + '<div class="flex-1 min-w-[180px]">'
-      + '<p class="text-lg font-bold text-gray-800">' + esc(full || 'ผู้ใช้') + '</p>'
+      + '<p class="text-xl sm:text-2xl font-bold text-gray-800">' + esc(full || 'ผู้ใช้') + '</p>'
       + '<p class="text-xs text-gray-500">' + esc(ROLE_LABEL[APP.currentRole] || '') + '</p>'
       + '</div>'
       + '<button onclick="navigateTo(\'profile\')"'
