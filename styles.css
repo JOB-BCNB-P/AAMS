@@ -1031,3 +1031,18 @@ body.ems-viewas #emsViewAsBar { animation: emsViewAsIn .18s ease-out; }
 /* ตัวเลขและรหัสไม่ควรถูกหักกลาง อ่านผิดได้ */
 .ems-main .font-mono,
 .ems-main .tabular-nums { overflow-wrap: normal; }
+
+
+/* ═══════════ กรอบไอคอนสี่เหลี่ยมจัตุรัสต้องไม่ถูกบีบ ═══════════
+   การ์ดสถิติวางไอคอนไว้ในกรอบขนาดตายตัวข้างข้อความ
+   แต่กรอบไม่ได้สั่งห้ามย่อ พอชื่อยาวหรือการ์ดแคบ กรอบจะถูกบีบจนแคบกว่าไอคอน
+   ไอคอนจึงล้นออกมาทับตัวหนังสือ เห็นชัดที่สุดบนแท็บเล็ต */
+.ems-main .flex>.w-8.h-8,
+.ems-main .flex>.w-9.h-9,
+.ems-main .flex>.w-10.h-10,
+.ems-main .flex>.w-11.h-11,
+.ems-main .flex>.w-12.h-12,
+.ems-main .flex>.w-14.h-14,
+.ems-main .flex>.w-16.h-16 {
+  flex-shrink: 0;
+}

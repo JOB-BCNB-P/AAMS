@@ -13,6 +13,21 @@
   <title>ระบบบริหารจัดการงานวิชาการ (AAMs)</title>
   <link rel="icon" href="https://cdn.jsdelivr.net/gh/JOB-BCNB-P/LOGO/Logo%20Thai.png">
 
+  <!-- ตัวสร้างสไตล์แบบสด ๆ ของ Tailwind ต้องใช้ requestIdleCallback
+       ซึ่ง Safari บน iPad/iPhone รุ่นก่อนหน้ายังไม่มี ผลคือคลาสที่เกิดจากหน้าจอ
+       ที่วาดด้วยจาวาสคริปต์ (เช่น grid-cols-7 ของปฏิทิน) จะไม่ถูกสร้างขึ้นเลย
+       หน้าเว็บจึงเพี้ยนเฉพาะบนแท็บเล็ต ทั้งที่จอคอมพิวเตอร์ปกติดี -->
+  <script>
+    if (typeof window.requestIdleCallback !== 'function') {
+      window.requestIdleCallback = function (cb) {
+        var t = Date.now();
+        return setTimeout(function () {
+          cb({ didTimeout: false, timeRemaining: function () { return Math.max(0, 50 - (Date.now() - t)); } });
+        }, 1);
+      };
+      window.cancelIdleCallback = function (id) { clearTimeout(id); };
+    }
+  </script>
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -31,7 +46,11 @@
       }
     }
   </script>
-  <link rel="stylesheet" href="styles.css?v=20260924t-tablet">
+  <!-- สไตล์ของ Tailwind ที่คอมไพล์ไว้ล่วงหน้าจากโค้ดในโปรเจกต์
+       มาพร้อมเว็บโดยตรง ไม่ต้องรอ CDN และไม่ต้องอาศัยการสร้างสไตล์ตอนใช้งาน
+       จึงแสดงผลเหมือนกันทุกเครื่อง ทั้งคอมพิวเตอร์ แท็บเล็ต และมือถือ -->
+  <link rel="stylesheet" href="tailwind.css?v=20260925a-prebuilt">
+  <link rel="stylesheet" href="styles.css?v=20260925a-prebuilt">
 </head>
 
 <body class="bg-gray-50">
@@ -233,18 +252,18 @@
     </div>
   </div>
 
-  <script>window.__APP_VER = '20260924t-tablet';</script>
-  <script src="config.js?v=20260924t"></script>
-  <script src="supabase-db.js?v=20260924t"></script>
-  <script src="auth.js?v=20260924t"></script>
-  <script src="grad-images.js?v=20260924t"></script>
-  <script src="app.js?v=20260924t"></script>
-  <script src="app-patch.js?v=20260924t"></script>
-  <script src="workload.js?v=20260924t"></script>
-  <script src="curriculum.js?v=20260924t"></script>
-  <script src="plo.js?v=20260924t"></script>
-  <script src="eval.js?v=20260924t"></script>
-  <script src="profile.js?v=20260924t"></script>
+  <script>window.__APP_VER = '20260925a-prebuilt';</script>
+  <script src="config.js?v=20260925a"></script>
+  <script src="supabase-db.js?v=20260925a"></script>
+  <script src="auth.js?v=20260925a"></script>
+  <script src="grad-images.js?v=20260925a"></script>
+  <script src="app.js?v=20260925a"></script>
+  <script src="app-patch.js?v=20260925a"></script>
+  <script src="workload.js?v=20260925a"></script>
+  <script src="curriculum.js?v=20260925a"></script>
+  <script src="plo.js?v=20260925a"></script>
+  <script src="eval.js?v=20260925a"></script>
+  <script src="profile.js?v=20260925a"></script>
 </body>
 
 </html>
