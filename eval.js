@@ -2084,7 +2084,14 @@
      ================================================================ */
   function csvCell(v) {
     var x = String(v == null ? '' : v);
+    var keep = csvKeepZero(x);
+    if (keep) return keep;
     return /[",\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x;
+  }
+  /* ตัวเลขที่ขึ้นต้นด้วยศูนย์ (รหัสวิชา รหัสนักศึกษา เลขบัตร) ต้องส่งออกเป็นข้อความ
+     ไม่งั้น Excel เปิดไฟล์แล้วตัดศูนย์หน้าทิ้ง รหัสจะผิดทันที */
+  function csvKeepZero(t) {
+    return /^0[0-9]{2,}$/.test(t) ? '="' + t + '"' : null;
   }
   function csvDownload(name, rows) {
     var text = '﻿' + rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n');

@@ -738,15 +738,10 @@
       + '<th class="px-4 py-3 font-semibold text-center">นักศึกษา</th>'
       + '<th class="px-4 py-3 font-semibold text-center">ปรับเฉพาะราย</th></tr></thead>'
       + '<tbody>' + table + '</tbody>'
-      + '<tfoot><tr class="border-t-2 bg-surface font-semibold"><td class="px-4 py-3" colspan="2">รวมทั้งปีการศึกษา</td>'
-      + MISSIONS.map(function (m) {
-        var s = cells.reduce(function (a, x) { return a + x.c.weighted[m.key]; }, 0);
-        return '<td class="px-3 py-3 text-center tabular-nums">' + fx(s) + '</td>';
-      }).join('')
-      + '<td class="px-4 py-3 text-center text-primary tabular-nums">' + fx(grand) + '</td>'
-      + '<td class="px-3 py-3 text-center tabular-nums">'
-      + fx(cells.reduce(function (a, x) { return a + targetOf(x.plan).frame; }, 0)) + '</td>'
-      + '<td class="px-4 py-3 text-center tabular-nums">' + cohortTotal + '</td><td></td></tr></tfoot></table></div>'
+      /* แถว "รวมทั้งปีการศึกษา" ถูกตัดออกตามที่ผู้ใช้ขอ
+         ยอดรวมทั้งปียังดูได้ที่หัวการ์ด ("รวม X ชม.ถ่วงน้ำหนัก") เหมือนเดิม
+         และการบวกข้ามชั้นปีต่างกันในแถวเดียวก็ทำให้ตีความผิดได้ง่าย */
+      + '</table></div>'
       + '<p class="text-xs text-gray-500 mt-3"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>'
       + 'ตัวเลขบนคือชั่วโมงหลังถ่วงน้ำหนักตามสัดส่วนพันธกิจ ตัวเลขสีจางด้านล่างคือชั่วโมงจริงก่อนถ่วงน้ำหนัก</p></div></div>';
 
@@ -1504,8 +1499,15 @@
   var CSV_COLS = ['mission', 'kind', 'subject_name', 'activity', 'pieces', 'hours',
     'date_from', 'date_to', 'time_from', 'time_to', 'students'];
 
+  /* ตัวเลขที่ขึ้นต้นด้วยศูนย์ (รหัสวิชา รหัสนักศึกษา เลขบัตร) ต้องส่งออกเป็นข้อความ
+     ไม่งั้น Excel เปิดไฟล์แล้วตัดศูนย์หน้าทิ้ง รหัสจะผิดทันที */
+  function csvKeepZero(t) {
+    return /^0[0-9]{2,}$/.test(t) ? '="' + t + '"' : null;
+  }
   function csvCell(v) {
     var t = String(v == null ? '' : v);
+    var keep = csvKeepZero(t);
+    if (keep) return keep;
     return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
   }
   function csvDownload(name, rows) {

@@ -1401,6 +1401,41 @@ function downloadCSVTemplate(type, fields) {
 
 function triggerCSVUpload(type) { document.getElementById('csvInput_' + type).click() }
 
+/* ======================== รหัสที่มีศูนย์นำหน้า ========================
+   Excel มองรหัสวิชา 0101300035 เป็นตัวเลข แล้วตัดศูนย์หน้าทิ้งเหลือ 101300035
+   บางครั้งก็แปลงเป็นรูปแบบยกกำลัง (1.013E+08) หรือเติม .0 ต่อท้าย
+   ตอนนำเข้าจึงต้องซ่อมกลับให้ครบ ไม่งั้นรหัสจะไม่ตรงกับหลักสูตรและผูกข้อมูลไม่ติด
+
+   ความยาวมาตรฐานของแต่ละรหัส ดูจากข้อมูลจริงในระบบ
+   รหัสที่มีตัวอักษรปน (เช่น GE 101) ไม่ต้องเติมอะไร Excel ไม่แตะอยู่แล้ว */
+const CODE_WIDTHS = { subject_code: 10, student_id: 11, national_id: 13 };
+
+function fixLeadingZeroCode(value, field) {
+  const width = CODE_WIDTHS[field];
+  // ล้างเปลือกที่ Excel ห่อมา : ="0101300035" หรือ =0101300035 หรือ "0101300035"
+  let s = String(value == null ? '' : value).trim().replace(/^=/, '').replace(/["']/g, '').trim();
+  if (!s || !width) return s;
+  s = s.replace(/\.0+$/, '');                    // 101300035.0 → 101300035
+  /* รูปแบบยกกำลัง (1.013E+08) เสียหลักท้ายไปแล้วตั้งแต่ Excel บันทึก
+     กู้คืนตัวเลขจริงไม่ได้ ทำได้แค่คลี่ออกมาให้เป็นตัวเลขปกติ
+     แล้วให้ผู้ใช้เห็นว่าผิดจะได้แก้เอง ดีกว่าเก็บเป็น 1.013E+08 ซึ่งใช้งานต่อไม่ได้เลย */
+  if (/^[0-9.]+e[+-]?[0-9]+$/i.test(s)) {
+    const n = Number(s);
+    if (isFinite(n)) s = String(Math.round(n));
+  }
+  if (!/^[0-9]+$/.test(s)) return s;              // มีตัวอักษรปน ปล่อยไว้ตามเดิม
+  if (s.length >= width) return s;                // ยาวพอแล้ว หรือยาวกว่ามาตรฐาน ไม่แตะ
+  return s.padStart(width, '0');
+}
+
+/* เขียนค่าลงไฟล์ CSV ให้ Excel ไม่กินศูนย์หน้าตอนเปิดไฟล์
+   ใช้รูปแบบ ="0101300035" ซึ่ง Excel อ่านเป็นข้อความ */
+function csvCodeCell(value, field) {
+  const s = String(value == null ? '' : value);
+  if (!CODE_WIDTHS[field] || !/^0[0-9]+$/.test(s)) return s;
+  return '="' + s + '"';
+}
+
 async function handleCSVUpload(e, type, fieldsStr) {
   const file = e.target.files[0]; if (!file) return;
   const text = await file.text();
@@ -1412,7 +1447,7 @@ async function handleCSVUpload(e, type, fieldsStr) {
     if (count + getDataByType(type).length >= 999) { showToast('ข้อมูลเต็ม (สูงสุด 999 รายการ)', 'error'); break }
     const vals = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
     const obj = { type, created_at: new Date().toISOString() };
-    headers.forEach((h, idx) => { obj[h] = vals[idx] || '' });
+    headers.forEach((h, idx) => { obj[h] = fixLeadingZeroCode(vals[idx] || '', h) });
     const r = await GSheetDB.create(obj);
 
     if (r.isOk) count++;
@@ -2253,6 +2288,50 @@ function currentAcademicYearBE() {
 // ======================== SUBJECTS ========================
 // ---- รหัสหน่วยกิตรายวิชา: น(ท-ป-อ) = หน่วยกิตรวม(ทฤษฎี-ปฏิบัติ/ทดลอง-ศึกษาด้วยตนเอง) ----
 // หมายเหตุ: ค่าหน่วยกิตรวม (credits) ยังเป็นตัวเลขเหมือนเดิม ใช้คำนวณ GPA ได้ตามปกติ
+/* ประเภทรายวิชา (ทฤษฎี / ปฏิบัติ / ทฤษฎีและปฏิบัติ)
+   เก็บในคอลัมน์ theory_practice ซึ่งหน้าติดตามการส่งและหน้าประเมินผลรายวิชา
+   อ่านไปใช้อยู่แล้ว จึงผูกกันได้ทันทีโดยไม่ต้องกรอกซ้ำ */
+const SUBJECT_TYPES = ['ทฤษฎี', 'ปฏิบัติ', 'ทฤษฎีและปฏิบัติ'];
+
+// เดาจากชั่วโมงเรียนเมื่อยังไม่เคยระบุไว้ — ไม่บันทึกทับ แค่ใช้แสดงและตั้งค่าเริ่มต้นให้
+function subjectTypeOf(s) {
+  const t = norm(s && s.theory_practice);
+  if (t) return t;
+  const th = parseFloat(norm(s && s.hours_theory)) || 0;
+  const lab = parseFloat(norm(s && s.hours_lab)) || 0;
+  if (th > 0 && lab > 0) return 'ทฤษฎีและปฏิบัติ';
+  if (lab > 0) return 'ปฏิบัติ';
+  if (th > 0) return 'ทฤษฎี';
+  return '';
+}
+
+// ป้ายสีของประเภทรายวิชา ใช้ทั้งในตารางรายวิชาและหน้าอื่น ๆ
+function subjectTypeBadge(s) {
+  const t = subjectTypeOf(s);
+  if (!t) return '<span class="text-gray-300">-</span>';
+  const guessed = !norm(s && s.theory_practice);
+  const color = t === 'ปฏิบัติ' ? 'bg-emerald-50 text-emerald-700'
+    : t === 'ทฤษฎีและปฏิบัติ' ? 'bg-indigo-50 text-indigo-700'
+      : 'bg-blue-50 text-blue-700';
+  const hint = guessed ? ' title="ยังไม่ได้ระบุไว้ ระบบเดาจากชั่วโมงทฤษฎี/ปฏิบัติให้"' : '';
+  return '<span class="px-2 py-0.5 rounded-full text-xs whitespace-nowrap ' + color + '"' + hint + '>'
+    + htmlEsc(t) + (guessed ? ' *' : '') + '</span>';
+}
+
+// ช่องเลือกประเภทรายวิชาในฟอร์มเพิ่ม/แก้ไข
+function subjectTypeField(s) {
+  const cur = norm(s && s.theory_practice);
+  const opts = SUBJECT_TYPES.map(t =>
+    `<option value="${t}"${cur === t ? ' selected' : ''}>${t}</option>`).join('');
+  const guess = subjectTypeOf(s);
+  return `<div><label class="block text-xs text-gray-600 mb-1">ประเภทรายวิชา</label>
+    <select name="theory_practice" class="w-full border rounded-xl px-3 py-2 text-sm">
+      <option value="">-- ไม่ระบุ --</option>${opts}
+    </select>
+    ${!cur && guess ? `<p class="text-[11px] text-gray-400 mt-1">ยังไม่ได้ระบุ ระบบใช้ "${guess}" ตามชั่วโมงเรียนไปก่อน</p>` : ''}
+  </div>`;
+}
+
 function creditCode(s) {
   if (!s) return '';
   const c = norm(s.credits);
@@ -2364,7 +2443,7 @@ function subjectsPage() {
 
   let headerHtml = `<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
     <h2 class="text-xl font-bold text-gray-800"><i data-lucide="book-open" class="w-6 h-6 inline mr-2"></i>รายวิชาที่เปิดสอน</h2>
-    ${isAdmin ? `<div class="flex gap-2"><button onclick="showAddSubjectModal()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มรายวิชา</button>${csvUploadBtn('subject', 'subject_code,subject_name,coordinator,department,year_level,batch,room,credits,hours_theory,hours_lab,hours_self,semester,academic_year')}</div>` : ''}
+    ${isAdmin ? `<div class="flex gap-2"><button onclick="showAddSubjectModal()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มรายวิชา</button>${csvUploadBtn('subject', 'subject_code,subject_name,subject_name_en,theory_practice,coordinator,department,year_level,batch,room,credits,hours_theory,hours_lab,hours_self,semester,academic_year')}</div>` : ''}
   </div>`;
   headerHtml += yearPickerBar(pickerSubjects, 'ปีการศึกษา');
   if (isAdmin) headerHtml += creditInfoBox();
@@ -2452,7 +2531,7 @@ function subjectsPage() {
   </div>
   <div class="bg-white rounded-2xl border border-blue-100 overflow-hidden">
     <div class="overflow-x-auto"><table class="w-full text-sm">
-      <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">รหัสวิชา</th><th class="px-4 py-3 font-semibold">ชื่อรายวิชา</th><th class="px-4 py-3 font-semibold">ผู้ประสานงาน</th><th class="px-4 py-3 font-semibold">ชั้นปี</th><th class="px-4 py-3 font-semibold">รุ่น</th><th class="px-4 py-3 font-semibold">หน่วยกิต</th><th class="px-4 py-3 font-semibold">ภาค/ปี</th><th class="px-4 py-3 font-semibold text-center">ข้อมูลรายวิชา</th>${isAdmin ? '<th class="px-4 py-3"></th>' : ''}</tr></thead>
+      <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">รหัสวิชา</th><th class="px-4 py-3 font-semibold">ชื่อรายวิชา</th><th class="px-4 py-3 font-semibold">ประเภท</th><th class="px-4 py-3 font-semibold">ผู้ประสานงาน</th><th class="px-4 py-3 font-semibold">ชั้นปี</th><th class="px-4 py-3 font-semibold">รุ่น</th><th class="px-4 py-3 font-semibold">หน่วยกิต</th><th class="px-4 py-3 font-semibold">ภาค/ปี</th><th class="px-4 py-3 font-semibold text-center">ข้อมูลรายวิชา</th>${isAdmin ? '<th class="px-4 py-3"></th>' : ''}</tr></thead>
       <tbody>${paged.length ? paged.map(s => {
     const pdfKey = `${norm(s.subject_name)}|${normSem(s.semester)}|${norm(s.academic_year)}`;
     const pdfLink = trackingPdfMap[pdfKey];
@@ -2460,12 +2539,13 @@ function subjectsPage() {
       ? `<a href="${pdfLink}" target="_blank" title="ดูข้อมูลรายวิชา" class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200 hover:text-blue-800 transition"><i data-lucide="eye" class="w-4 h-4"></i></a>`
       : `<span class="text-xs text-gray-300" title="ยังไม่มีไฟล์ PDF">-</span>`;
     return `<tr class="border-t hover:bg-gray-50">
-        <td class="px-4 py-3 font-mono text-primary">${s.subject_code || ''}</td><td class="px-4 py-3"><div class="font-medium">${s.subject_name || ''}</div>${s.subject_name_en ? `<div class="text-xs text-gray-400 italic">${htmlEsc(s.subject_name_en)}</div>` : ''}</td><td class="px-4 py-3">${s.coordinator || ''}</td>
+        <td class="px-4 py-3 font-mono text-primary">${s.subject_code || ''}</td><td class="px-4 py-3"><div class="font-medium">${s.subject_name || ''}</div>${s.subject_name_en ? `<div class="text-xs text-gray-400 italic">${htmlEsc(s.subject_name_en)}</div>` : ''}</td>
+        <td class="px-4 py-3">${subjectTypeBadge(s)}</td><td class="px-4 py-3">${s.coordinator || ''}</td>
         <td class="px-4 py-3">${s.year_level || ''}</td><td class="px-4 py-3">${s.batch || '-'}</td><td class="px-4 py-3 font-mono">${creditCode(s)}</td>
         <td class="px-4 py-3">${semLabel(s.semester)}/${s.academic_year || ''}</td>
         <td class="px-4 py-3 text-center">${eyeCell}</td>
         ${isAdmin ? `<td class="px-4 py-3"><div class="flex gap-1"><button onclick="showImportGradesFromSubjectModal('${s.__backendId}')" class="text-green-500 hover:text-green-700" title="นำเข้ารายชื่อสร้างผลการเรียน"><i data-lucide="user-plus" class="w-4 h-4"></i></button><button onclick="showEditSubjectModal('${s.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${s.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>` : ''}</tr>`;
-  }).join('') : `<tr><td colspan="${isAdmin ? 9 : 8}" class="px-4 py-8 text-center text-gray-400">ไม่มีข้อมูล</td></tr>`}</tbody>
+  }).join('') : `<tr><td colspan="${isAdmin ? 10 : 9}" class="px-4 py-8 text-center text-gray-400">ไม่มีข้อมูล</td></tr>`}</tbody>
     </table></div>
   </div>
   ${paginationHTML(total, APP.pagination.perPage, APP.pagination.page, 'changePage')}`;
@@ -2490,6 +2570,7 @@ function showAddSubjectModal() {
         <div><label class="block text-xs text-gray-600 mb-1">ชั้นปี</label><select name="year_level" class="w-full border rounded-xl px-3 py-2 text-sm"><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
         <div><label class="block text-xs text-gray-600 mb-1">รุ่นที่</label><input name="batch" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น 28"></div>
         <div><label class="block text-xs text-gray-600 mb-1">ห้อง</label><input name="room" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
+        ${subjectTypeField({})}
         ${creditFields({})}
         <div><label class="block text-xs text-gray-600 mb-1">ภาคการศึกษา</label><select name="semester" class="w-full border rounded-xl px-3 py-2 text-sm"><option value="1">1</option><option value="2">2</option><option value="3">ฤดูร้อน</option></select></div>
         <div><label class="block text-xs text-gray-600 mb-1">ปีการศึกษา</label><input name="academic_year" class="w-full border rounded-xl px-3 py-2 text-sm" value="2568"></div>
@@ -11597,6 +11678,7 @@ function showEditSubjectModal(id) {
         <div><label class="block text-xs text-gray-600 mb-1">ชั้นปี</label><select name="year_level" class="w-full border rounded-xl px-3 py-2 text-sm"><option ${norm(s.year_level) === '1' ? 'selected' : ''}>1</option><option ${norm(s.year_level) === '2' ? 'selected' : ''}>2</option><option ${norm(s.year_level) === '3' ? 'selected' : ''}>3</option><option ${norm(s.year_level) === '4' ? 'selected' : ''}>4</option></select></div>
         <div><label class="block text-xs text-gray-600 mb-1">รุ่นที่</label><input name="batch" value="${s.batch || ''}" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น 28"></div>
         <div><label class="block text-xs text-gray-600 mb-1">ห้อง</label><input name="room" value="${s.room || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
+        ${subjectTypeField(s)}
         ${creditFields(s)}
         <div><label class="block text-xs text-gray-600 mb-1">ภาคการศึกษา</label><select name="semester" class="w-full border rounded-xl px-3 py-2 text-sm"><option value="1" ${normSem(s.semester) === '1' ? 'selected' : ''}>1</option><option value="2" ${normSem(s.semester) === '2' ? 'selected' : ''}>2</option><option value="3" ${normSem(s.semester) === '3' ? 'selected' : ''}>ฤดูร้อน</option></select></div>
         <div><label class="block text-xs text-gray-600 mb-1">ปีการศึกษา</label><input name="academic_year" value="${s.academic_year || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
