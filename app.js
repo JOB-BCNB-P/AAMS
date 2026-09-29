@@ -3,7 +3,7 @@ let APP = {
   currentUser: null, currentRole: null, currentPage: 'dashboard', sidebarOpen: false,
   allData: [],
   config: { system_title: 'ระบบบริหารจัดการงานวิชาการ (AAMs)', college_name: 'วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ' },
-  permissions: { admin: { dashboard: 1, ploAssess: 1, curriculum: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, services: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, settings: 1, loginLog: 1, advisors: 1, surveyManage: 1, workload: 1, evalCourse: 1, evalSetup: 1, evalReport: 1, evalMine: 1 }, academic: { dashboard: 1, ploAssess: 1, curriculum: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, services: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, settings: 1, advisors: 1, survey: 1, workload: 1, evalCourse: 1, evalSetup: 1, evalReport: 1, evalMine: 1 }, registrar: { dashboard: 1, ploAssess: 1, curriculum: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, services: 1, leave: 1, advisors: 1, survey: 1, evalCourse: 1, evalSetup: 1, evalReport: 1, evalMine: 1 }, deptHead: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, teacherDirectory: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, survey: 1, evalCourse: 1, evalReport: 1 }, teacher: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, tracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, survey: 1, evalCourse: 1, evalMine: 1 }, classTeacher: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, tracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, survey: 1, evalCourse: 1, evalMine: 1 }, student: { dashboard: 1, curriculum: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, leave: 1, survey: 1, evalCourse: 1, evalDo: 1 }, otherStaff: { dashboard: 1, curriculum: 1, services: 1, workload: 1, survey: 1 }, executive: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, alumni: 1, teacherDirectory: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, advisors: 1, survey: 1, workload: 1, evalCourse: 1, evalReport: 1 } },
+  permissions: { admin: { dashboard: 1, ploAssess: 1, curriculum: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, practicumSites: 1, alumni: 1, teacherDirectory: 1, services: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, settings: 1, loginLog: 1, advisors: 1, surveyManage: 1, workload: 1, evalCourse: 1, evalSetup: 1, evalReport: 1, evalMine: 1 }, academic: { dashboard: 1, ploAssess: 1, curriculum: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, practicumSites: 1, alumni: 1, teacherDirectory: 1, services: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, settings: 1, advisors: 1, survey: 1, workload: 1, evalCourse: 1, evalSetup: 1, evalReport: 1, evalMine: 1 }, registrar: { dashboard: 1, ploAssess: 1, curriculum: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, practicumSites: 1, alumni: 1, teacherDirectory: 1, services: 1, leave: 1, advisors: 1, survey: 1, evalCourse: 1, evalSetup: 1, evalReport: 1, evalMine: 1 }, deptHead: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, teacherDirectory: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, survey: 1, evalCourse: 1, evalReport: 1 }, teacher: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, tracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, survey: 1, evalCourse: 1, evalMine: 1 }, classTeacher: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, tracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, survey: 1, evalCourse: 1, evalMine: 1 }, student: { dashboard: 1, curriculum: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, leave: 1, survey: 1, evalCourse: 1, evalDo: 1 }, otherStaff: { dashboard: 1, curriculum: 1, services: 1, workload: 1, survey: 1 }, executive: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, practicumSites: 1, alumni: 1, teacherDirectory: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, advisors: 1, survey: 1, workload: 1, evalCourse: 1, evalReport: 1 } },
   filters: { semester: '', academicYear: '', search: '', yearLevel: '' },
   pagination: { page: 1, perPage: 10 }
 };
@@ -136,7 +136,7 @@ window.emsSaveHomeroom = async function (yr) {
 
 // ======================== LOGIN ACTIVITY LOG ========================
 // Save login/logout events to Google Sheet "login_log" tab
-const LOGIN_LOG_ROLE_LABEL = { otherStaff: 'เจ้าหน้าที่งานอื่นๆ', admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', teacher: 'อาจารย์', classTeacher: 'อาจารย์ประจำชั้น', student: 'นักศึกษา', executive: 'ผู้บริหาร', registrar: 'เจ้าหน้าที่งานทะเบียน', deptHead: 'ประธานสาขาวิชา' };
+const LOGIN_LOG_ROLE_LABEL = { otherStaff: 'เจ้าหน้าที่งานอื่นๆ', admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', teacher: 'อาจารย์', classTeacher: 'อาจารย์ประจำชั้น', student: 'นักศึกษา', executive: 'ผู้บริหาร', registrar: 'เจ้าหน้าที่งานทะเบียน', deptHead: 'ประธานสาขา' };
 // บทบาทที่ใช้ฟีเจอร์ลืม/เปลี่ยนรหัสผ่านผ่านอีเมลได้
 const PWD_SELF_ROLES = ['academic', 'executive', 'teacher', 'deptHead', 'classTeacher'];
 async function logLoginEvent(eventType, userInfo) {
@@ -185,7 +185,7 @@ function studentDatalistHTML(listId) {
   const students = getDataByType('student');
   return `<datalist id="${listId}">${students.map(s => `<option value="${s.student_id || ''}">${s.student_id || ''} — ${s.name || ''}</option>`).join('')}</datalist>`;
 }
-// รายการสาขาวิชา (รวมจากอาจารย์ + รายวิชา) สำหรับ dropdown ที่พิมพ์เองได้
+// รายการสาขา (รวมจากอาจารย์ + รายวิชา) สำหรับ dropdown ที่พิมพ์เองได้
 function deptDatalistHTML(listId) {
   const ds = [...new Set([...getDataByType('teacher').map(t => norm(t.department)), ...getDataByType('subject').map(s => norm(s.department))].filter(Boolean))].sort();
   return `<datalist id="${listId}">${ds.map(d => `<option value="${d}"></option>`).join('')}</datalist>`;
@@ -568,7 +568,7 @@ async function handleLogin() {
   } catch (e) { /* ignore */ }
   showScreen('mainApp');
   document.getElementById('currentUserName').textContent = APP.currentUser.name;
-  document.getElementById('currentUserRole').textContent = { admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', teacher: 'อาจารย์', classTeacher: 'อาจารย์ประจำชั้น', student: 'นักศึกษา', executive: 'ผู้บริหาร', registrar: 'เจ้าหน้าที่งานทะเบียน', deptHead: 'ประธานสาขาวิชา' }[APP.currentRole];
+  document.getElementById('currentUserRole').textContent = { admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', teacher: 'อาจารย์', classTeacher: 'อาจารย์ประจำชั้น', student: 'นักศึกษา', executive: 'ผู้บริหาร', registrar: 'เจ้าหน้าที่งานทะเบียน', deptHead: 'ประธานสาขา' }[APP.currentRole];
   const _cpb = document.getElementById('changePwBtn');
   if (_cpb) _cpb.classList.toggle('hidden', !PWD_SELF_ROLES.includes(APP.currentRole));
   buildSidebar();
@@ -618,6 +618,7 @@ function buildSidebar() {
   if (p.specialTeachers) regSub.push({ id: 'specialTeachers', label: 'ข้อมูลอาจารย์พิเศษ' });
   if (p.alumni) regSub.push({ id: 'alumni', label: 'ข้อมูลศิษย์เก่า' });
   if (p.subjects) regSub.push({ id: 'subjects', label: 'รายวิชาที่เปิดสอน' });
+  if (p.practicumSites) regSub.push({ id: 'practicumSites', label: 'ข้อมูลแหล่งฝึกภาคปฏิบัติ' });
   if (regSub.length) items.push({ id: 'registration', icon: 'book-open', label: 'ระบบทะเบียน', sub: regSub });
 
   // ผลการศึกษา: 1.ผลการเรียน 2.ผลสอบภาษาอังกฤษ
@@ -752,7 +753,7 @@ function activeStudents(list) { return (list || []).filter(isActiveStudent); }
 
 // ======================== ROLE HELPERS (RBAC) ========================
 // สิทธิ์ "แก้ไขเต็มที่เหมือน admin" สำหรับหน้าทั่วไป: admin / งานวิชาการ / งานทะเบียน
-// + ประธานสาขาวิชา (deptHead) ให้แก้ไขได้เฉพาะหน้าติดตามการส่ง และทำเนียบอาจารย์
+// + ประธานสาขา (deptHead) ให้แก้ไขได้เฉพาะหน้าติดตามการส่ง และทำเนียบอาจารย์
 function isAdminRole() {
   const r = APP.currentRole;
   if (r === 'admin' || r === 'academic' || r === 'registrar') return true;
@@ -762,13 +763,13 @@ function isAdminRole() {
 // สิทธิ์ระดับ admin-only เดิม (ข้อมูลอาจารย์ ฯลฯ) — ให้งานทะเบียนทำได้เหมือน admin
 function isAdminOnlyRole() { const r = APP.currentRole; return r === 'admin' || r === 'registrar'; }
 
-// ======================== DEPARTMENT (สาขาวิชา) HELPERS ========================
+// ======================== DEPARTMENT (สาขา) HELPERS ========================
 function deptEq(a, b) { return norm(a) !== '' && norm(a) === norm(b); }
 // รายวิชา 1 วิชารองรับได้หลายสาขา — คั่นด้วย , ; หรือ /
 function splitDepts(v) { return norm(v).split(/[,;/]+/).map(x => x.trim()).filter(Boolean); }
 function subjectDeptsOf(s) { return splitDepts(s && s.department); }
 function subjectHasDept(s, dept) { const d = norm(dept); return d !== '' && subjectDeptsOf(s).some(x => norm(x) === d); }
-// หาสาขาวิชา (อาจมีหลายสาขา) ของ tracking record โดยจับคู่กับรายวิชา ด้วยรหัสวิชาก่อน แล้วชื่อวิชา
+// หาสาขา (อาจมีหลายสาขา) ของ tracking record โดยจับคู่กับรายวิชา ด้วยรหัสวิชาก่อน แล้วชื่อวิชา
 function trackingDeptsOf(t) {
   const subs = getDataByType('subject');
   const code = norm(t.subject_code), name = norm(t.subject_name);
@@ -777,18 +778,18 @@ function trackingDeptsOf(t) {
   return m ? subjectDeptsOf(m) : [];
 }
 function trackingHasDept(t, dept) { const d = norm(dept); return d !== '' && trackingDeptsOf(t).some(x => norm(x) === d); }
-// สาขาวิชาของผู้ใช้ปัจจุบัน (ประธานสาขาวิชา) — ผูกจากชื่ออาจารย์ตอน login
+// สาขาของผู้ใช้ปัจจุบัน (ประธานสาขา) — ผูกจากชื่ออาจารย์ตอน login
 function currentDept() { return norm(APP.currentUser && APP.currentUser.department); }
-// รายการสาขาวิชาทั้งหมดจากรายวิชา (กระจายกรณีมีหลายสาขาต่อวิชา)
+// รายการสาขาทั้งหมดจากรายวิชา (กระจายกรณีมีหลายสาขาต่อวิชา)
 function allSubjectDepts() { const set = new Set(); getDataByType('subject').forEach(s => subjectDeptsOf(s).forEach(d => set.add(d))); return [...set].sort(); }
-// ตัวกรองสาขาวิชาในหน้าติดตามการส่ง (admin = dropdown, ประธานสาขา = ป้ายสาขาตัวเอง)
+// ตัวกรองสาขาในหน้าติดตามการส่ง (admin = dropdown, ประธานสาขา = ป้ายสาขาตัวเอง)
 function trackingDeptFilterHTML(filterKey, selectedDept) {
   if (APP.currentRole === 'deptHead') {
-    return `<label class="text-sm font-medium text-gray-700 ml-2">สาขาวิชา:</label><span class="text-sm font-semibold text-primary px-3 py-2 bg-primaryLight rounded-lg">${currentDept() || '— ไม่พบสาขา —'}</span>`;
+    return `<label class="text-sm font-medium text-gray-700 ml-2">สาขา:</label><span class="text-sm font-semibold text-primary px-3 py-2 bg-primaryLight rounded-lg">${currentDept() || '— ไม่พบสาขา —'}</span>`;
   }
   const depts = allSubjectDepts();
   if (!depts.length) return '';
-  return `<label class="text-sm font-medium text-gray-700 ml-2"><i data-lucide="git-branch" class="w-4 h-4 inline mr-1"></i>สาขาวิชา:</label>
+  return `<label class="text-sm font-medium text-gray-700 ml-2"><i data-lucide="git-branch" class="w-4 h-4 inline mr-1"></i>สาขา:</label>
     <select onchange="APP.filters.${filterKey}=this.value;renderCurrentPage()" class="border border-gray-200 rounded-xl px-3 py-2 text-sm">
       <option value="">-- ทุกสาขา --</option>
       ${depts.map(d => `<option value="${d}" ${selectedDept === d ? 'selected' : ''}>${d}</option>`).join('')}
@@ -1469,6 +1470,7 @@ function getPageContent(page, role) {
     case 'engResults': return engResultsPage();
     case 'teachers': return teachersPage();
     case 'specialTeachers': return specialTeachersPage();
+    case 'practicumSites': return practicumSitesPage();
     case 'alumni': return alumniPage();
     case 'teacherDirectory': return teacherDirectoryPage();
     case 'services': return servicesPage();
@@ -1553,6 +1555,37 @@ function dashboardPage() {
     const _specialYears = [...new Set(_specialTeachers.map(t => norm(t.academic_year)).filter(Boolean))].sort().reverse();
     const _selSpecialYear = APP.filters._dashSpecialYear || '';
     const specialTeacherCount = _selSpecialYear ? _specialTeachers.filter(t => norm(t.academic_year) === _selSpecialYear).length : _specialTeachers.length;
+    /* แหล่งฝึกภาคปฏิบัติ — เลือกปีการศึกษาได้แบบเดียวกับการ์ดอาจารย์พิเศษ
+       นับ "แหล่งฝึก" จากชื่อที่ไม่ซ้ำ ไม่ใช่จำนวนแถว เพราะแหล่งฝึกหนึ่งแห่ง
+       มีได้หลายหอผู้ป่วยและหลายรายวิชา ถ้านับแถวจะเกินจริงหลายเท่า */
+    const _sites = getDataByType('practicum_site');
+    const _siteYears = [...new Set(_sites.map(x => norm(x.academic_year)).filter(Boolean))].sort().reverse();
+    const _selSiteYear = APP.filters._dashSiteYear || '';
+    const _sitesInYear = _selSiteYear ? _sites.filter(x => norm(x.academic_year) === _selSiteYear) : _sites;
+    const siteCount = countDistinctField(_sitesInYear, 'site_name');
+    const mentorCount = countDistinctField(_sitesInYear, 'mentor', true);
+    const yearPickerFor = (key, cur, years) =>
+      `<div class="mt-3 pt-3 border-t border-gray-100">
+        <select onchange="APP.filters.${key}=this.value;renderCurrentPage()" class="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white">
+          <option value="">ทุกปีการศึกษา</option>
+          ${years.map(y => '<option value="' + y + '"' + (cur === y ? ' selected' : '') + '>ปีการศึกษา ' + y + '</option>').join('')}
+        </select>
+      </div>`;
+    const yearSuffix = y => y ? '(ปี ' + y + ')' : '(ทุกปี)';
+    const practicumSiteCard = `<div class="card-stat bg-white rounded-2xl p-5 border border-blue-100">
+      <div class="flex items-center gap-4">
+        <div class="w-12 h-12 bg-teal-500 rounded-xl flex items-center justify-center"><i data-lucide="hospital" class="w-6 h-6 text-white"></i></div>
+        <div class="min-w-0"><p class="text-sm text-gray-500">จำนวนแหล่งฝึกปฏิบัติ ${yearSuffix(_selSiteYear)}</p><p class="text-2xl font-bold text-gray-800">${siteCount} <span class="text-sm font-normal text-gray-500">แห่ง</span></p></div>
+      </div>
+      ${yearPickerFor('_dashSiteYear', _selSiteYear, _siteYears)}
+    </div>`;
+    const mentorCard = `<div class="card-stat bg-white rounded-2xl p-5 border border-blue-100">
+      <div class="flex items-center gap-4">
+        <div class="w-12 h-12 bg-rose-500 rounded-xl flex items-center justify-center"><i data-lucide="user-check" class="w-6 h-6 text-white"></i></div>
+        <div class="min-w-0"><p class="text-sm text-gray-500">พยาบาลพี่เลี้ยง/อาจารย์พี่เลี้ยง ${yearSuffix(_selSiteYear)}</p><p class="text-2xl font-bold text-gray-800">${mentorCount} <span class="text-sm font-normal text-gray-500">คน</span></p></div>
+      </div>
+      ${yearPickerFor('_dashSiteYear', _selSiteYear, _siteYears)}
+    </div>`;
     const specialTeacherCard = `<div class="card-stat bg-white rounded-2xl p-5 border border-blue-100">
       <div class="flex items-center gap-4">
         <div class="w-12 h-12 bg-indigo-500 rounded-xl flex items-center justify-center"><i data-lucide="user-plus" class="w-6 h-6 text-white"></i></div>
@@ -1585,9 +1618,11 @@ function dashboardPage() {
       ${statCard('graduation-cap', 'อาจารย์ลาศึกษาต่อ', studyLeaveCount, 'คน', 'bg-purple-500')}
       ${specialTeacherCard}
       ${statCard('check-circle', 'นักศึกษาสอบผ่านภาษาอังกฤษ', engPassStudentIds.length, 'คน', 'bg-amber-500')}
+      ${practicumSiteCard}
+      ${mentorCard}
     </div>
-    <h3 class="font-bold mb-3 text-gray-800">จำนวนอาจารย์แยกสาขาวิชา</h3>
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">${deptCards || '<p class="text-gray-400 text-sm col-span-3">ไม่มีข้อมูลสาขาวิชา</p>'}</div>
+    <h3 class="font-bold mb-3 text-gray-800">จำนวนอาจารย์ทั้งหมด (แยกสาขา)</h3>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">${deptCards || '<p class="text-gray-400 text-sm col-span-3">ไม่มีข้อมูลสาขา</p>'}</div>
     <h3 class="font-bold mb-3 text-gray-800">นักศึกษารายชั้นปี</h3>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
       ${yearLevelCardsHTML(students, engPassRecords, _canEditHr)}
@@ -1727,7 +1762,7 @@ function studentDisplayName(s) {
 }
 
 // หมวดหมู่สาเหตุการลาออก/พักการศึกษา
-const STATUS_REASONS = ['เปลี่ยนสาขาวิชา', 'การเงิน', 'การเรียน', 'สุขภาพ', 'อื่นๆ'];
+const STATUS_REASONS = ['เปลี่ยนสาขา', 'การเงิน', 'การเรียน', 'สุขภาพ', 'อื่นๆ'];
 function statusReasonField(value) {
   const v = norm(value);
   const extra = v && !STATUS_REASONS.includes(v) ? `<option selected>${v}</option>` : '';
@@ -1855,7 +1890,7 @@ function studentRetentionAnalyticsHTML() {
 
   // --- สาเหตุการลาออก (แยกหมวดหมู่) → กราฟวงกลม แสดง % และจำนวน ---
   const resignStudents = nonGrad.filter(s => norm(s.status) === 'ลาออก');
-  const catPalette = { 'เปลี่ยนสาขาวิชา': '#3b82f6', 'การเงิน': '#f59e0b', 'การเรียน': '#8b5cf6', 'สุขภาพ': '#ef4444', 'อื่นๆ': '#94a3b8', 'ไม่ระบุ': '#cbd5e1' };
+  const catPalette = { 'เปลี่ยนสาขา': '#3b82f6', 'การเงิน': '#f59e0b', 'การเรียน': '#8b5cf6', 'สุขภาพ': '#ef4444', 'อื่นๆ': '#94a3b8', 'ไม่ระบุ': '#cbd5e1' };
   const reasonCount = {};
   resignStudents.forEach(s => { let k = norm(s.status_reason) || 'ไม่ระบุ'; if (k !== 'ไม่ระบุ' && !STATUS_REASONS.includes(k)) k = 'อื่นๆ'; reasonCount[k] = (reasonCount[k] || 0) + 1; });
   const reasonSegs = Object.entries(reasonCount).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ label: k, value: v, color: catPalette[k] || '#64748b' }));
@@ -1863,7 +1898,7 @@ function studentRetentionAnalyticsHTML() {
     <p class="text-sm font-semibold text-gray-600 mb-1"><i data-lucide="pie-chart" class="w-4 h-4 inline mr-1"></i>สาเหตุการลาออก (แยกตามหมวดหมู่)</p>
     <p class="text-xs text-gray-400 mb-3">ลาออก ${cResign} · พักการศึกษา ${cLeave} · โอนย้าย ${cTransfer} คน</p>
     ${resignStudents.length ? svgDonut(reasonSegs, 'ลาออก') : '<p class="text-sm text-gray-400">ยังไม่มีข้อมูลการลาออกในขอบเขตนี้</p>'}
-    <p class="text-[11px] text-gray-400 mt-2">* เลือก "สาเหตุ" จากหมวดหมู่ในฟอร์มนักศึกษา (เปลี่ยนสาขาวิชา/การเงิน/การเรียน/สุขภาพ/อื่นๆ)</p>
+    <p class="text-[11px] text-gray-400 mt-2">* เลือก "สาเหตุ" จากหมวดหมู่ในฟอร์มนักศึกษา (เปลี่ยนสาขา/การเงิน/การเรียน/สุขภาพ/อื่นๆ)</p>
   </div>`;
 
   // --- ตารางเปรียบเทียบรับเข้า (รายรุ่น) vs กำลังศึกษา ---
@@ -2571,7 +2606,7 @@ function showAddSubjectModal() {
       <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *</label><input name="subject_name" required class="w-full border rounded-xl px-3 py-2 text-sm"></div>
       <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา (ภาษาอังกฤษ) <span class="text-gray-400">(เติมอัตโนมัติจากหลักสูตรเมื่อรหัสวิชาตรงกัน)</span></label><input name="subject_name_en" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น English for Academic Purposes"></div>
       <div><label class="block text-xs text-gray-600 mb-1">อาจารย์ผู้ประสานงาน <span class="text-gray-400">(เลือกจากทะเบียนอาจารย์ · หลายคนคั่นด้วย ,)</span></label>${coordComboHTML('addSubjectCoord', '')}</div>
-      <div><label class="block text-xs text-gray-600 mb-1">สาขาวิชาที่รับผิดชอบ <span class="text-gray-400">(มี 2 สาขา คั่นด้วย ,)</span></label><input name="department" list="subjectDeptList" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เลือก/พิมพ์ เช่น การพยาบาลผู้ใหญ่, การพยาบาลชุมชน">${deptDatalistHTML('subjectDeptList')}</div>
+      <div><label class="block text-xs text-gray-600 mb-1">สาขาที่รับผิดชอบ <span class="text-gray-400">(มี 2 สาขา คั่นด้วย ,)</span></label><input name="department" list="subjectDeptList" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เลือก/พิมพ์ เช่น การพยาบาลผู้ใหญ่, การพยาบาลชุมชน">${deptDatalistHTML('subjectDeptList')}</div>
       <div class="grid grid-cols-2 gap-3">
         <div><label class="block text-xs text-gray-600 mb-1">ชั้นปี</label><select name="year_level" class="w-full border rounded-xl px-3 py-2 text-sm"><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
         <div><label class="block text-xs text-gray-600 mb-1">รุ่นที่</label><input name="batch" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น 28"></div>
@@ -5492,23 +5527,23 @@ function teachersPage() {
 
   const deptFilter = `<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">
     <div class="flex items-center gap-3">
-      <label class="text-sm font-medium text-gray-700">สาขาวิชา:</label>
+      <label class="text-sm font-medium text-gray-700">สาขา:</label>
       <select onchange="APP.filters._teacherDept=this.value;APP.pagination.page=1;renderCurrentPage()" class="border border-gray-200 rounded-xl px-3 py-2 text-sm">
-        <option value="">-- เลือกสาขาวิชา --</option>
+        <option value="">-- เลือกสาขา --</option>
         ${allDepts.map(d => `<option value="${d}" ${selectedDept === d ? 'selected' : ''}>${d}</option>`).join('')}
       </select>
       ${selectedDept ? `<span class="text-xs text-gray-500">แสดงสาขา: ${selectedDept}</span>` : ''}
     </div>
   </div>`;
 
-  // Executive & Academic sees basic info only (ชื่อ-สกุล, ตำแหน่ง, สาขาวิชา, โทร, E-mail)
+  // Executive & Academic sees basic info only (ชื่อ-สกุล, ตำแหน่ง, สาขา, โทร, E-mail)
   if (isExecutive || isAcademic) {
     if (!selectedDept) {
       return `<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h2 class="text-xl font-bold text-gray-800"><i data-lucide="briefcase" class="w-6 h-6 inline mr-2"></i>ข้อมูลอาจารย์</h2>
       </div>
       ${deptFilter}
-      ${noYearSelectedMsg('อาจารย์ (กรุณาเลือกสาขาวิชา)')}`;
+      ${noYearSelectedMsg('อาจารย์ (กรุณาเลือกสาขา)')}`;
     }
     return `<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
       <h2 class="text-xl font-bold text-gray-800"><i data-lucide="briefcase" class="w-6 h-6 inline mr-2"></i>ข้อมูลอาจารย์</h2>
@@ -5517,7 +5552,7 @@ function teachersPage() {
     ${filterBar({ semester: false, year: false })}
     <div class="bg-white rounded-2xl border border-blue-100 overflow-hidden">
       <div class="overflow-x-auto"><table class="w-full text-sm">
-        <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold">ตำแหน่ง</th><th class="px-4 py-3 font-semibold">สาขาวิชา</th><th class="px-4 py-3 font-semibold">สถานะ</th><th class="px-4 py-3 font-semibold">โทร</th><th class="px-4 py-3 font-semibold">E-mail</th></tr></thead>
+        <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold">ตำแหน่ง</th><th class="px-4 py-3 font-semibold">สาขา</th><th class="px-4 py-3 font-semibold">สถานะ</th><th class="px-4 py-3 font-semibold">โทร</th><th class="px-4 py-3 font-semibold">E-mail</th></tr></thead>
         <tbody>${paged.length ? paged.map(t => {
       const st = norm(t.teacher_status) || 'ปฏิบัติงานอยู่'; const stColor = teacherStatusColor(st); return `<tr class="border-t hover:bg-gray-50">
           <td class="px-4 py-3 font-medium">${t.name || ''}</td><td class="px-4 py-3">${t.position || ''}</td>
@@ -5534,7 +5569,7 @@ function teachersPage() {
       ${isAdmin ? `<div class="flex gap-2"><button onclick="showAddTeacherModal()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มอาจารย์</button></div>` : ''}
     </div>
     ${deptFilter}
-    ${noYearSelectedMsg('อาจารย์ (กรุณาเลือกสาขาวิชา)')}`;
+    ${noYearSelectedMsg('อาจารย์ (กรุณาเลือกสาขา)')}`;
   }
 
   return `<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -5545,7 +5580,7 @@ function teachersPage() {
   ${filterBar({ semester: false, year: false })}
   <div class="bg-white rounded-2xl border border-blue-100 overflow-hidden">
     <div class="overflow-x-auto"><table class="w-full text-sm">
-      <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold">ตำแหน่ง</th><th class="px-4 py-3 font-semibold">สาขาวิชา</th><th class="px-4 py-3 font-semibold">สถานะ</th><th class="px-4 py-3"></th></tr></thead>
+      <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold">ตำแหน่ง</th><th class="px-4 py-3 font-semibold">สาขา</th><th class="px-4 py-3 font-semibold">สถานะ</th><th class="px-4 py-3"></th></tr></thead>
       <tbody>${paged.length ? paged.map(t => {
     const st = norm(t.teacher_status) || 'ปฏิบัติงานอยู่'; const stColor = teacherStatusColor(st); return `<tr class="border-t hover:bg-gray-50">
         <td class="px-4 py-3 font-medium">${t.name || ''}</td><td class="px-4 py-3">${t.position || ''}</td>
@@ -5565,7 +5600,7 @@ function advisorInfoPage() {
   const isAdmin = isAdminRole();
   const students = getDataByType('student');
   const teachers = getDataByType('teacher');
-  const NO_DEPT = 'ไม่ระบุสาขาวิชา';
+  const NO_DEPT = 'ไม่ระบุสาขา';
 
   // ----- จับคู่ชื่ออาจารย์ที่ปรึกษากับทะเบียนอาจารย์ (ยืดหยุ่นเรื่องเว้นวรรค/คำนำหน้า) -----
   const TITLES = ['ผศ.ดร.', 'รศ.ดร.', 'ศ.ดร.', 'ผศ.', 'รศ.', 'ศ.', 'ดร.', 'อ.', 'อาจารย์', 'ว่าที่ร.ต.', 'ว่าที่ร้อยตรี', 'น.ส.', 'นางสาว', 'นาง', 'นาย', 'นพ.', 'พญ.'];
@@ -5650,7 +5685,7 @@ function advisorInfoPage() {
   }
 
   // ---------- มุมมองรายชื่ออาจารย์ที่ปรึกษา ----------
-  // ตัวเลือกสาขาวิชา (ดันตัวเลือก "ไม่ระบุสาขาวิชา" ไว้ท้ายสุด)
+  // ตัวเลือกสาขา (ดันตัวเลือก "ไม่ระบุสาขา" ไว้ท้ายสุด)
   const depts = [...new Set(advisors.map(a => a.dept))].sort((a, b) => a === NO_DEPT ? 1 : b === NO_DEPT ? -1 : a.localeCompare(b, 'th'));
   if (selectedDept) advisors = advisors.filter(a => a.dept === selectedDept);
   const searchVal = APP.filters._advisorSearch || '';
@@ -5658,9 +5693,9 @@ function advisorInfoPage() {
 
   const deptFilter = `<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">
     <div class="flex items-center gap-3 flex-wrap">
-      <label class="text-sm font-medium text-gray-700"><i data-lucide="filter" class="w-4 h-4 inline mr-1"></i>สาขาวิชา:</label>
+      <label class="text-sm font-medium text-gray-700"><i data-lucide="filter" class="w-4 h-4 inline mr-1"></i>สาขา:</label>
       <select onchange="APP.filters._advisorDept=this.value;APP.filters._advisorSearch='';APP.pagination.page=1;renderCurrentPage()" class="border border-gray-200 rounded-xl px-3 py-2 text-sm">
-        <option value="">-- ทุกสาขาวิชา --</option>
+        <option value="">-- ทุกสาขา --</option>
         ${depts.map(d => `<option value="${d}" ${selectedDept === d ? 'selected' : ''}>${d}</option>`).join('')}
       </select>
       ${selectedDept ? `<span class="text-xs text-gray-500">แสดงสาขา: ${selectedDept}</span>` : ''}
@@ -5695,7 +5730,7 @@ function advisorInfoPage() {
     </div>
   </details>`;
 
-  // ----- พาเนล: อาจารย์ที่ยังไม่มีนักศึกษาในความดูแล (ไม่รวมผู้ที่ลาออก, เคารพตัวกรองสาขาวิชา) -----
+  // ----- พาเนล: อาจารย์ที่ยังไม่มีนักศึกษาในความดูแล (ไม่รวมผู้ที่ลาออก, เคารพตัวกรองสาขา) -----
   let freeTeachers = teachers.filter(t => norm(t.name) && !TEACHER_STATUS_GONE.includes(norm(t.teacher_status || '')) && !advisorMap[nameKey(t.name)]);
   if (selectedDept) freeTeachers = freeTeachers.filter(t => (norm(t.department) || NO_DEPT) === selectedDept);
   freeTeachers.sort((a, b) => norm(a.name).localeCompare(norm(b.name), 'th'));
@@ -5755,12 +5790,12 @@ function showAssignAdvisorToStudent(id) {
     .sort((a, b) => norm(a.name).localeCompare(norm(b.name), 'th'));
   const rows = tList.map(t => {
     const nm = norm(t.name).replace(/'/g, "\\'");
-    return `<button onclick="advisorDoAssign('${s.__backendId}','${nm}')" class="adv-asg-row w-full text-left px-3 py-2 border-b hover:bg-blue-50 text-sm" data-search="${(norm(t.name) + ' ' + norm(t.department)).toLowerCase().replace(/"/g, '')}"><span class="font-medium text-gray-800">${norm(t.name)}</span> <span class="text-xs text-gray-400">· ${norm(t.department) || 'ไม่ระบุสาขาวิชา'}</span></button>`;
+    return `<button onclick="advisorDoAssign('${s.__backendId}','${nm}')" class="adv-asg-row w-full text-left px-3 py-2 border-b hover:bg-blue-50 text-sm" data-search="${(norm(t.name) + ' ' + norm(t.department)).toLowerCase().replace(/"/g, '')}"><span class="font-medium text-gray-800">${norm(t.name)}</span> <span class="text-xs text-gray-400">· ${norm(t.department) || 'ไม่ระบุสาขา'}</span></button>`;
   }).join('');
   showModal('กำหนดอาจารย์ที่ปรึกษา', `
     <div class="space-y-3">
       <p class="text-sm text-gray-600">เลือกอาจารย์ที่ปรึกษาให้ <strong class="text-primary">${s.name || ''}</strong></p>
-      <div class="relative"><i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-400"></i><input type="text" placeholder="ค้นหาชื่อ/สาขาวิชา..." class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm" oninput="advisorFilterAssignList(this.value)"></div>
+      <div class="relative"><i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-400"></i><input type="text" placeholder="ค้นหาชื่อ/สาขา..." class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm" oninput="advisorFilterAssignList(this.value)"></div>
       <div class="border border-gray-200 rounded-xl max-h-80 overflow-y-auto" id="advAsgList">${rows || '<p class="px-3 py-6 text-center text-gray-400 text-sm">ไม่มีรายชื่ออาจารย์</p>'}</div>
     </div>`, null, 'max-w-lg');
   setTimeout(() => lucide.createIcons(), 50);
@@ -5985,6 +6020,191 @@ async function doPromoteYear(fromYear) {
 // ======================== ข้อมูลอาจารย์พิเศษ (ระบบทะเบียน) ========================
 // เก็บในแท็บ special_teacher: ปีการศึกษา→academic_year, ชื่อ(รวมคำนำหน้า)→name,
 // ตำแหน่ง→academic_position, หน่วยงาน→agency, ระดับวุฒิ→edu_level
+/* ======================== ข้อมูลแหล่งฝึกภาคปฏิบัติ ========================
+   หนึ่งแถว = รายวิชา × แหล่งฝึก × หอผู้ป่วย × พี่เลี้ยง
+   แหล่งฝึกหนึ่งแห่งจึงมีได้หลายแถว ตอนนับจำนวนต้องนับชื่อที่ไม่ซ้ำ ไม่ใช่นับแถว */
+
+// นับค่าที่ไม่ซ้ำในคอลัมน์หนึ่ง — split=true สำหรับช่องที่ใส่หลายคนคั่นด้วยจุลภาค
+function countDistinctField(rows, field, split) {
+  const set = new Set();
+  (rows || []).forEach(r => {
+    const raw = norm(r && r[field]);
+    if (!raw) return;
+    if (split) raw.split(/[,;\n]+/).forEach(x => { const v = norm(x); if (v) set.add(v); });
+    else set.add(raw);
+  });
+  return set.size;
+}
+
+// รายชื่อพี่เลี้ยงในแถวเดียว แสดงเรียงลงมาทีละคน อ่านง่ายกว่าต่อกันยาว ๆ
+function mentorListHTML(v) {
+  const items = norm(v).split(/[,;\n]+/).map(x => norm(x)).filter(Boolean);
+  if (!items.length) return '<span class="text-gray-300">-</span>';
+  if (items.length === 1) return htmlEsc(items[0]);
+  return items.map(x => `<div class="py-0.5">• ${htmlEsc(x)}</div>`).join('');
+}
+
+function practicumSitesPage() {
+  const isAdmin = isAdminRole();
+  const all = getDataByType('practicum_site');
+  const years = [...new Set(all.map(x => norm(x.academic_year)).filter(Boolean))].sort((a, b) => b.localeCompare(a));
+  const selYear = APP.filters._siteYear || '';
+  const kw = norm(APP.filters._siteSearch || '').toLowerCase();
+
+  let data = selYear ? all.filter(x => norm(x.academic_year) === selYear) : all.slice();
+  if (kw) {
+    data = data.filter(x => [x.subject_code, x.subject_name, x.site_name, x.ward, x.mentor]
+      .map(v => norm(v).toLowerCase()).join(' ').includes(kw));
+  }
+  data.sort((a, b) => norm(b.academic_year).localeCompare(norm(a.academic_year))
+    || norm(a.site_name).localeCompare(norm(b.site_name))
+    || norm(a.ward).localeCompare(norm(b.ward)));
+
+  const total = data.length;
+  const paged = paginate(data);
+  const startNo = (APP.pagination.page - 1) * APP.pagination.perPage;
+
+  // การ์ดนับตามที่กรองอยู่ จะได้ตรงกับตารางที่เห็น
+  const cards = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+    ${statCard('hospital', 'จำนวนแหล่งฝึกปฏิบัติ' + (selYear ? ' (ปี ' + selYear + ')' : ''),
+      countDistinctField(data, 'site_name'), 'แห่ง', 'bg-teal-500')}
+    ${statCard('user-check', 'พยาบาลพี่เลี้ยง/อาจารย์พี่เลี้ยง' + (selYear ? ' (ปี ' + selYear + ')' : ''),
+      countDistinctField(data, 'mentor', true), 'คน', 'bg-rose-500')}
+    ${statCard('book-open', 'รายวิชาที่มีการฝึกปฏิบัติ' + (selYear ? ' (ปี ' + selYear + ')' : ''),
+      countDistinctField(data, 'subject_name'), 'วิชา', 'bg-indigo-500')}
+  </div>`;
+
+  return `<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <h2 class="text-xl font-bold text-gray-800"><i data-lucide="hospital" class="w-6 h-6 inline mr-2"></i>ข้อมูลแหล่งฝึกภาคปฏิบัติ</h2>
+    ${isAdmin ? `<div class="flex gap-2"><button onclick="showAddPracticumSiteModal()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มแหล่งฝึก</button>${csvUploadBtn('practicum_site', 'academic_year,semester,subject_code,subject_name,site_name,ward,mentor,note')}</div>` : ''}
+  </div>
+  ${cards}
+  <div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">
+    <div class="flex items-center gap-3 flex-wrap">
+      <label class="text-sm font-medium text-gray-700">ปีการศึกษา:</label>
+      <select onchange="APP.filters._siteYear=this.value;APP.pagination.page=1;renderCurrentPage()" class="border border-gray-200 rounded-xl px-3 py-2 text-sm">
+        <option value="">-- ทุกปีการศึกษา --</option>
+        ${years.map(y => `<option value="${y}" ${selYear === y ? 'selected' : ''}>${y}</option>`).join('')}
+      </select>
+      <div class="relative flex-1 min-w-[200px] max-w-xs ml-auto">
+        <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-400"></i>
+        <input type="text" value="${(APP.filters._siteSearch || '').replace(/"/g, '&quot;')}" placeholder="ค้นหารายวิชา / แหล่งฝึก / หอผู้ป่วย / พี่เลี้ยง..." class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm" oninput="clearTimeout(window._siteSearchTimer);window._siteSearchTimer=setTimeout(()=>{APP.filters._siteSearch=this.value;APP.pagination.page=1;renderCurrentPage()},300)">
+      </div>
+    </div>
+    <p class="text-xs text-gray-500 mt-2"><i data-lucide="list" class="w-3 h-3 inline mr-0.5"></i>พบ ${total} รายการ${kw ? ` จากคำค้น "${htmlEsc(kw)}"` : ''}</p>
+  </div>
+  <div class="bg-white rounded-2xl border border-blue-100 overflow-hidden">
+    <div class="overflow-x-auto"><table class="w-full text-sm">
+      <thead><tr class="bg-surface text-left">
+        <th class="px-4 py-3 font-semibold">ลำดับ</th>
+        <th class="px-4 py-3 font-semibold">รายวิชา</th>
+        <th class="px-4 py-3 font-semibold">แหล่งฝึก</th>
+        <th class="px-4 py-3 font-semibold">หอผู้ป่วย/ตึกผู้ป่วย (Ward)</th>
+        <th class="px-4 py-3 font-semibold">พยาบาลพี่เลี้ยง/อาจารย์พี่เลี้ยง</th>
+        ${isAdmin ? '<th class="px-4 py-3"></th>' : ''}</tr></thead>
+      <tbody>${paged.length ? paged.map((x, i) => `<tr class="border-t hover:bg-gray-50">
+        <td class="px-4 py-3 align-top text-gray-500 tabular-nums">${startNo + i + 1}</td>
+        <td class="px-4 py-3 align-top"><div class="font-medium">${htmlEsc(norm(x.subject_name)) || '<span class="text-gray-300">-</span>'}</div>${norm(x.subject_code) ? `<div class="text-xs text-gray-400 font-mono">${htmlEsc(norm(x.subject_code))}</div>` : ''}</td>
+        <td class="px-4 py-3 align-top">${htmlEsc(norm(x.site_name)) || '<span class="text-gray-300">-</span>'}</td>
+        <td class="px-4 py-3 align-top">${htmlEsc(norm(x.ward)) || '<span class="text-gray-300">-</span>'}</td>
+        <td class="px-4 py-3 align-top">${mentorListHTML(x.mentor)}</td>
+        ${isAdmin ? `<td class="px-4 py-3 align-top"><div class="flex gap-1"><button onclick="showEditPracticumSiteModal('${x.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${x.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>` : ''}</tr>`).join('') : `<tr><td colspan="${isAdmin ? 6 : 5}" class="px-4 py-8 text-center text-gray-400">ยังไม่มีข้อมูลแหล่งฝึก${selYear ? ' ในปีการศึกษา ' + selYear : ''}</td></tr>`}</tbody>
+    </table></div>
+  </div>
+  ${paginationHTML(total, APP.pagination.perPage, APP.pagination.page, 'changePage')}`;
+}
+
+// ฟอร์มใช้ร่วมกันทั้งเพิ่มและแก้ไข จะได้ไม่หลุดไม่ตรงกัน
+function practicumSiteFormBody(x) {
+  x = x || {};
+  const v = k => htmlEsc(norm(x[k]));
+  const curYear = norm(x.academic_year) || String(new Date().getFullYear() + 543);
+  return `<div class="grid grid-cols-2 gap-3">
+      <div><label class="block text-xs text-gray-600 mb-1">ปีการศึกษา *</label><input name="academic_year" required value="${curYear}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
+      <div><label class="block text-xs text-gray-600 mb-1">ภาคการศึกษา</label><select name="semester" class="w-full border rounded-xl px-3 py-2 text-sm">
+        <option value="">-- ไม่ระบุ --</option>
+        ${[['1', '1'], ['2', '2'], ['3', 'ฤดูร้อน']].map(s => `<option value="${s[0]}"${normSem(x.semester) === s[0] ? ' selected' : ''}>${s[1]}</option>`).join('')}
+      </select></div>
+    </div>
+    <div><label class="block text-xs text-gray-600 mb-1">รายวิชา <span class="text-gray-400">(เลือกจากรายวิชาที่เปิดสอน)</span></label>
+      <select id="siteSubjectSelect" class="w-full border rounded-xl px-3 py-2 text-sm bg-white">
+        <option value="">-- เลือกรายวิชา หรือพิมพ์เองด้านล่าง --</option>${subjectPickOptionsHTML()}
+      </select></div>
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="block text-xs text-gray-600 mb-1">รหัสวิชา</label><input name="subject_code" id="siteSubjectCode" value="${v('subject_code')}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
+      <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *</label><input name="subject_name" required value="${v('subject_name')}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
+    </div>
+    <div><label class="block text-xs text-gray-600 mb-1">แหล่งฝึก *</label><input name="site_name" required list="practicumSiteList" value="${v('site_name')}" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น โรงพยาบาลราชวิถี">${practicumSiteDatalistHTML()}</div>
+    <div><label class="block text-xs text-gray-600 mb-1">หอผู้ป่วย/ตึกผู้ป่วย (Ward)</label><input name="ward" value="${v('ward')}" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น อายุรกรรมชาย"></div>
+    <div><label class="block text-xs text-gray-600 mb-1">พยาบาลพี่เลี้ยง/อาจารย์พี่เลี้ยง <span class="text-gray-400">(หลายคนคั่นด้วย ,)</span></label><input name="mentor" value="${v('mentor')}" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น นางสมศรี ใจดี, นายมานะ ตั้งใจ"></div>
+    <div><label class="block text-xs text-gray-600 mb-1">หมายเหตุ</label><input name="note" value="${v('note')}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>`;
+}
+
+// รายชื่อแหล่งฝึกที่เคยบันทึกไว้ ใช้เป็นตัวช่วยพิมพ์ จะได้สะกดตรงกันทุกแถว
+function practicumSiteDatalistHTML() {
+  const names = [...new Set(getDataByType('practicum_site').map(x => norm(x.site_name)).filter(Boolean))].sort();
+  return `<datalist id="practicumSiteList">${names.map(n => `<option value="${htmlEsc(n)}">`).join('')}</datalist>`;
+}
+
+// เลือกรายวิชาแล้วเติมรหัสและชื่อให้เอง
+function bindPracticumSubjectPick() {
+  const sel = document.getElementById('siteSubjectSelect');
+  if (!sel) return;
+  sel.onchange = () => {
+    const opt = sel.options[sel.selectedIndex];
+    const id = opt && opt.dataset.id;
+    const subj = id ? APP.allData.find(d => String(d.__backendId) === String(id)) : null;
+    if (!subj) return;
+    const form = sel.closest('form');
+    if (!form) return;
+    const code = form.querySelector('[name="subject_code"]');
+    const name = form.querySelector('[name="subject_name"]');
+    if (code) code.value = norm(subj.subject_code);
+    if (name) name.value = norm(subj.subject_name);
+  };
+}
+
+function showAddPracticumSiteModal() {
+  showModal('เพิ่มแหล่งฝึกภาคปฏิบัติ', `
+    <form id="addPracticumSiteForm" class="space-y-3">
+      ${practicumSiteFormBody({})}
+      <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึก</button>
+    </form>`);
+  bindPracticumSubjectPick();
+  document.getElementById('addPracticumSiteForm').onsubmit = async (e) => {
+    e.preventDefault();
+    await withLoading(e.target, async () => {
+      const obj = { type: 'practicum_site', created_at: new Date().toISOString() };
+      new FormData(e.target).forEach((v, k) => obj[k] = v);
+      const r = await GSheetDB.create(obj);
+      if (r.isOk) { showToast('เพิ่มสำเร็จ'); closeModal(); } else showToast('เกิดข้อผิดพลาด', 'error');
+    });
+  };
+}
+
+function showEditPracticumSiteModal(id) {
+  const x = APP.allData.find(d => d.__backendId === id);
+  if (!x) return;
+  showModal('แก้ไขแหล่งฝึกภาคปฏิบัติ', `
+    <form id="editPracticumSiteForm" class="space-y-3">
+      ${practicumSiteFormBody(x)}
+      <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึก</button>
+    </form>`);
+  bindPracticumSubjectPick();
+  document.getElementById('editPracticumSiteForm').onsubmit = async (e) => {
+    e.preventDefault();
+    await withLoading(e.target, async () => {
+      // แก้บนระเบียนเดิม เพื่อให้รหัสแถวและคอลัมน์อื่นที่ไม่ได้อยู่ในฟอร์มยังอยู่ครบ
+      const rec = APP.allData.find(d => d.__backendId === id);
+      if (!rec) { showToast('ไม่พบรายการนี้แล้ว', 'error'); return; }
+      new FormData(e.target).forEach((v, k) => rec[k] = v);
+      const r = await GSheetDB.update(rec);
+      if (r.isOk) { showToast('บันทึกแล้ว'); closeModal(); renderCurrentPage(); }
+      else showToast('เกิดข้อผิดพลาด: ' + (r.error || ''), 'error');
+    });
+  };
+}
+
 function specialTeachersPage() {
   const isAdmin = isAdminOnlyRole();
   const all = getDataByType('special_teacher');
@@ -6351,7 +6571,7 @@ function showTeacherDetail(id) {
   const _tst = norm(t.teacher_status) || 'ปฏิบัติงานอยู่';
   const stBadge = teacherStatusBadge(_tst);
   showModal('ข้อมูลอาจารย์', `<div class="grid grid-cols-2 gap-3">
-    ${infoRow('ชื่อ-สกุล', t.name)}${infoRow('ตำแหน่ง', t.position)}${infoRow('สาขาวิชา', t.department)}
+    ${infoRow('ชื่อ-สกุล', t.name)}${infoRow('ตำแหน่ง', t.position)}${infoRow('สาขา', t.department)}
     <div><p class="text-xs text-gray-500">สถานะ</p><p class="font-medium mt-1">${stBadge}</p></div>
     ${infoRow('โทร', t.phone)}${infoRow('E-mail', t.email)}${infoRow('ชั้นปีที่รับผิดชอบ', t.responsible_year)}
     ${TEACHER_STATUS_NEEDS_PLACE.includes(_tst) ? infoRow('สถานที่ปฏิบัติงาน', t.work_place) : ''}
@@ -6366,7 +6586,7 @@ function showAddTeacherModal() {
       <div><label class="block text-xs text-gray-600 mb-1">ชื่อ-สกุล</label><input name="name" required class="w-full border rounded-xl px-3 py-2 text-sm"></div>
       <div class="grid grid-cols-2 gap-3">
         <div><label class="block text-xs text-gray-600 mb-1">ตำแหน่ง</label><input name="position" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
-        <div><label class="block text-xs text-gray-600 mb-1">สาขาวิชา</label><input name="department" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
+        <div><label class="block text-xs text-gray-600 mb-1">สาขา</label><input name="department" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
         <div><label class="block text-xs text-gray-600 mb-1">โทรศัพท์</label><input name="phone" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
         <div><label class="block text-xs text-gray-600 mb-1">E-mail</label><input name="email" type="email" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
         <div><label class="block text-xs text-gray-600 mb-1">ชั้นปีที่รับผิดชอบ (ถ้ามี)</label><select name="responsible_year" class="w-full border rounded-xl px-3 py-2 text-sm"><option value="">ไม่มี</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
@@ -6533,7 +6753,7 @@ function expDetailList(values) {
   }).join('') + '</ul>';
 }
 
-// สาขาวิชามาตรฐาน (สำหรับแดชบอร์ดสรุปตามสาขา)
+// สาขามาตรฐาน (สำหรับแดชบอร์ดสรุปตามสาขา)
 const NURSING_BRANCHES = [
   'การพยาบาลผู้ใหญ่และผู้สูงอายุ',
   'การพยาบาลเด็ก',
@@ -6542,14 +6762,14 @@ const NURSING_BRANCHES = [
   'การพยาบาลจิตเวชและสุขภาพจิต'
 ];
 
-// ฟิลด์เสริมสำหรับป้อนแดชบอร์ดสรุป: สาขาวิชา + ระดับวุฒิ + กลุ่มสาขาวุฒิ
+// ฟิลด์เสริมสำหรับป้อนแดชบอร์ดสรุป: สาขา + ระดับวุฒิ + กลุ่มสาขาวุฒิ
 function branchEduFields(t) {
   t = t || {};
   const opt = (v, cur) => `<option ${norm(cur) === v ? 'selected' : ''}>${v}</option>`;
   return `
   <div class="p-3 bg-blue-50 rounded-xl border border-blue-100 space-y-2">
     <p class="text-xs font-semibold text-primary"><i data-lucide="bar-chart-3" class="w-3 h-3 inline"></i> ข้อมูลสำหรับแดชบอร์ดสรุป</p>
-    <div><label class="block text-xs text-gray-600 mb-1">สาขาวิชา</label>
+    <div><label class="block text-xs text-gray-600 mb-1">สาขา</label>
       <input name="nursing_branch" list="branchList" value="${(t.nursing_branch || '').replace(/"/g, '&quot;')}" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เลือกหรือพิมพ์สาขา">
       <datalist id="branchList">${NURSING_BRANCHES.map(b => `<option value="${b}"></option>`).join('')}</datalist>
     </div>
@@ -6830,7 +7050,7 @@ function renderDirectoryDataSection(paged, total, counts, activeTab, isAdmin) {
 function teacherDirectoryPage() {
   const isAdmin = isAdminRole();
   let allData = applyFilters(directoryRecords());
-  // ประธานสาขาวิชา: เห็นเฉพาะอาจารย์ในสาขาเดียวกัน (จับคู่ด้วย nursing_branch)
+  // ประธานสาขา: เห็นเฉพาะอาจารย์ในสาขาเดียวกัน (จับคู่ด้วย nursing_branch)
   if (APP.currentRole === 'deptHead') { const _d = currentDept(); allData = allData.filter(x => deptEq(norm(x.nursing_branch), _d)); }
 
   // Academic year filter
@@ -6874,7 +7094,7 @@ function teacherDirectoryPage() {
   <div class="flex flex-wrap items-center gap-2 mb-4">
     ${viewBtn('list', 'รายชื่ออาจารย์', 'list')}
     ${viewBtn('summary', 'สรุปอัตรากำลัง', 'bar-chart-3')}
-    ${viewBtn('branch', 'สรุปตามสาขาวิชา', 'git-branch')}
+    ${viewBtn('branch', 'สรุปตามสาขา', 'git-branch')}
   </div>
 
   <div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">
@@ -6933,7 +7153,7 @@ function showTeacherDirectoryDetail(id) {
         ${infoRow('เลขบัตรประชาชน', maskNationalId(t.national_id))}
         ${infoRow('เลขใบประกอบวิชาชีพ', t.license_no)}
         ${infoRow('ตำแหน่งทางวิชาการ', t.academic_position)}
-        ${infoRow('สาขาวิชา', t.nursing_branch)}
+        ${infoRow('สาขา', t.nursing_branch)}
         ${infoRow('ระดับวุฒิ', [t.edu_level, t.edu_field].filter(Boolean).join(' · '))}
         ${infoRow('ปีการศึกษา', t.academic_year)}
       </div>
@@ -7558,7 +7778,7 @@ function printDirectorySummary(year) {
   showToast('เปิดหน้าต่างพิมพ์แล้ว — เลือก "Save as PDF" ได้');
 }
 
-// ======================== แดชบอร์ดที่ 2 — สรุปตามสาขาวิชา ========================
+// ======================== แดชบอร์ดที่ 2 — สรุปตามสาขา ========================
 const DB_EDU_KEYS = [
   { key: 'phd_nursing', label: 'ปริญญาเอกในสาขาการพยาบาล', short: 'ป.เอก พยาบาล', color: '#7c3aed' },
   { key: 'phd_related', label: 'ปริญญาเอกในสาขาที่สัมพันธ์ทางการพยาบาล', short: 'ป.เอก สัมพันธ์ฯ', color: '#a78bfa' },
@@ -7606,8 +7826,8 @@ function directoryBranchView(year, isAdmin) {
   if (!shown.length) {
     return `<div class="bg-white rounded-2xl p-8 border border-blue-100 text-center text-gray-400">
       <i data-lucide="git-branch" class="w-10 h-10 mx-auto mb-2"></i>
-      <p>ยังไม่มีข้อมูลสาขาวิชาของอาจารย์ประจำหลักสูตร ปีการศึกษา ${year}</p>
-      <p class="text-xs mt-1">กรุณาระบุ "สาขาวิชา" และ "ระดับวุฒิ/กลุ่มสาขาวุฒิ" ในข้อมูลอาจารย์ ${isAdmin ? 'หรือกดปุ่ม "แก้ไขตัวเลขตามสาขา" เพื่อกรอกเอง' : ''}</p>
+      <p>ยังไม่มีข้อมูลสาขาของอาจารย์ประจำหลักสูตร ปีการศึกษา ${year}</p>
+      <p class="text-xs mt-1">กรุณาระบุ "สาขา" และ "ระดับวุฒิ/กลุ่มสาขาวุฒิ" ในข้อมูลอาจารย์ ${isAdmin ? 'หรือกดปุ่ม "แก้ไขตัวเลขตามสาขา" เพื่อกรอกเอง' : ''}</p>
     </div>`;
   }
 
@@ -7617,7 +7837,7 @@ function directoryBranchView(year, isAdmin) {
     <div class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col justify-center">
       <p class="text-3xl font-bold text-primary">${grand}</p>
       <p class="text-sm text-gray-600 mt-1">อาจารย์ประจำหลักสูตร</p>
-      <p class="text-xs text-gray-400 mt-1">จำแนกได้ ${shown.length} สาขาวิชา</p>
+      <p class="text-xs text-gray-400 mt-1">จำแนกได้ ${shown.length} สาขา</p>
     </div>
     <div class="bg-white rounded-2xl p-5 border border-blue-100 lg:col-span-2">
       <h3 class="font-bold text-gray-800 mb-3 text-sm"><i data-lucide="graduation-cap" class="w-4 h-4 inline mr-1"></i>ภาพรวมวุฒิการศึกษา (ทุกสาขา)</h3>
@@ -7641,9 +7861,9 @@ function directoryBranchView(year, isAdmin) {
 
   // รายงานข้อความตามรูปต้นฉบับ
   html += `<div class="bg-white rounded-2xl p-5 border border-blue-100" id="dbTextReport">
-    <h3 class="font-bold text-gray-800 mb-3"><i data-lucide="file-text" class="w-5 h-5 inline mr-1"></i>สรุปจำนวนอาจารย์ประจำหลักสูตรจำแนกตามสาขาวิชา ปีการศึกษา ${year}</h3>
+    <h3 class="font-bold text-gray-800 mb-3"><i data-lucide="file-text" class="w-5 h-5 inline mr-1"></i>สรุปจำนวนอาจารย์ประจำหลักสูตรจำแนกตามสาขา ปีการศึกษา ${year}</h3>
     <div class="text-sm text-gray-700 leading-relaxed">
-      <p class="mb-2">ปีการศึกษา ${year} วิทยาลัยฯ มีอาจารย์ประจำหลักสูตร จำนวนทั้งหมด <b>${grand}</b> คน แยกตามสาขาวิชาและวุฒิการศึกษา มีดังนี้</p>
+      <p class="mb-2">ปีการศึกษา ${year} วิทยาลัยฯ มีอาจารย์ประจำหลักสูตร จำนวนทั้งหมด <b>${grand}</b> คน แยกตามสาขาและวุฒิการศึกษา มีดังนี้</p>
       <div class="space-y-3 pl-2">
         ${shown.map(b => `<div>
           <p class="font-semibold">- สาขา${b} จำนวนทั้งหมด ${bTotal(b)} คน</p>
@@ -7683,7 +7903,7 @@ function showEditBranchSummaryModal(year) {
     <form id="dbForm" style="max-height:70vh;overflow-y:auto;padding-right:4px">
       <div class="bg-blue-50 rounded-xl p-3 text-xs text-blue-800 mb-3">แก้ไขได้ทุกช่อง — ทั้งชื่อสาขาและตัวเลข · <b>สาขาที่ยังไม่เคยแก้:</b> ช่องว่างใช้ค่า auto (ตัวเลขจางใน placeholder) · <b>สาขาที่แก้แล้ว:</b> ช่องว่าง = 0 · ต้องการค่าใดให้กรอกตัวเลขลงไป (ล้างทุกช่องในสาขา = กลับไปใช้ auto)</div>
       <button type="button" onclick="dbBranchAutoFill()" class="mb-3 text-sm px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"><i data-lucide="wand-2" class="w-4 h-4 inline"></i> เติมค่าอัตโนมัติ</button>
-      <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-500"><th class="px-1 py-1 text-left">สาขาวิชา</th>${DB_EDU_KEYS.map(k => `<th class="px-1 py-1">${k.short}</th>`).join('')}</tr></thead>
+      <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-gray-500"><th class="px-1 py-1 text-left">สาขา</th>${DB_EDU_KEYS.map(k => `<th class="px-1 py-1">${k.short}</th>`).join('')}</tr></thead>
       <tbody id="dbRows">${rows}</tbody></table></div>
       <button type="button" onclick="dbAddBranchRow()" class="mt-2 text-xs text-primary hover:underline">＋ เพิ่มสาขาใหม่</button>
       <button type="submit" class="w-full mt-3 bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึก</button>
@@ -10016,7 +10236,7 @@ function userGuidePage() {
   ${sec('log-in', '2. การเข้าสู่ระบบ', `
     <p>หน้าเข้าสู่ระบบให้เลือกบทบาทก่อน แล้วกรอกข้อมูลตามแต่ละบทบาท:</p>
     ${li([
-    '<b>บุคลากร/อาจารย์ ทุกบทบาท</b> (ผู้ดูแลระบบ · เจ้าหน้าที่งานวิชาการ · งานทะเบียน · ประธานสาขาวิชา · ผู้บริหาร · อาจารย์ · อาจารย์ประจำชั้น): กดปุ่ม <b>เข้าสู่ระบบด้วย Google</b> ด้วยบัญชี <b>@bcn.ac.th</b> ของวิทยาลัยเท่านั้น — ไม่มีรหัสผ่านแยกของระบบนี้ จึงไม่ต้องจำและไม่มีเมนูลืมรหัสผ่าน',
+    '<b>บุคลากร/อาจารย์ ทุกบทบาท</b> (ผู้ดูแลระบบ · เจ้าหน้าที่งานวิชาการ · งานทะเบียน · ประธานสาขา · ผู้บริหาร · อาจารย์ · อาจารย์ประจำชั้น): กดปุ่ม <b>เข้าสู่ระบบด้วย Google</b> ด้วยบัญชี <b>@bcn.ac.th</b> ของวิทยาลัยเท่านั้น — ไม่มีรหัสผ่านแยกของระบบนี้ จึงไม่ต้องจำและไม่มีเมนูลืมรหัสผ่าน',
     '<b>นักศึกษา:</b> เข้าได้ 2 ทาง — <b>เลขบัตรประชาชน 13 หลัก</b> (ไม่ต้องใช้รหัสผ่าน ระบบสร้างบัญชีให้อัตโนมัติในการเข้าใช้ครั้งแรก) หรือปุ่ม <b>เข้าสู่ระบบด้วย Google</b> ด้วยบัญชีของวิทยาลัย <b>รหัสนักศึกษา@bcn.ac.th</b>',
     'เข้าสู่ระบบไม่ได้ — บุคลากรติดต่อผู้ดูแลระบบเพื่อตรวจสอบสิทธิ์ ส่วนนักศึกษาติดต่องานทะเบียนเพื่อตรวจสอบเลขบัตรประชาชนในทะเบียน',
   ])}
@@ -10034,7 +10254,7 @@ function userGuidePage() {
 
   ${sec('book-open', '4. ระบบทะเบียน', `
     <p><b>ข้อมูลนักศึกษา</b> — เลือกชั้นปี (1-4) หรือ "ผู้สำเร็จการศึกษา" เพื่อดูรายชื่อ; ผู้ดูแลเพิ่ม/แก้ไข/ลบ และนำเข้าด้วย CSV ได้ มีปุ่ม <b>เลื่อนชั้นปี</b> (ดูข้อ 5) สถานภาพมี กำลังศึกษา / พักการศึกษา / ลาออก / สำเร็จการศึกษา (ระบบจะนับเฉพาะผู้ที่กำลังศึกษาในหน้าหลัก)</p>
-    <p><b>ข้อมูลอาจารย์</b> — เลือกสาขาวิชาเพื่อดูรายชื่อ ผู้ดูแลเพิ่ม/แก้ไข/ลบได้</p>
+    <p><b>ข้อมูลอาจารย์</b> — เลือกสาขาเพื่อดูรายชื่อ ผู้ดูแลเพิ่ม/แก้ไข/ลบได้</p>
     <p><b>ข้อมูลอาจารย์พิเศษ</b> — บันทึกอาจารย์พิเศษ (ปีการศึกษา, คำนำหน้า, ชื่อ, ตำแหน่ง, หน่วยงาน, ระดับวุฒิ) กรองตามปีการศึกษาได้ และทำเนียบอาจารย์สามารถดึงข้อมูลจากที่นี่ไปใช้ได้</p>
     <p><b>ข้อมูลศิษย์เก่า</b> — รายชื่อผู้สำเร็จการศึกษา (คำนำหน้า, ชื่อ, รุ่น, สถานภาพ, สถานที่ปฏิบัติงาน, วันเข้า/จบการศึกษา, วันที่บันทึก) กรองตามรุ่นได้ ระบบจะเพิ่มให้อัตโนมัติเมื่อเลื่อนชั้นปี 4 เป็นสำเร็จการศึกษา</p>
     <p><b>ปฏิทินกิจกรรมวิชาการ</b> — รายการกิจกรรม/กำหนดการของวิทยาลัย</p>
@@ -10172,7 +10392,7 @@ async function pwOtpConfirm(mode) {
 function changeSettingsTab(t) { APP._settingsTab = t; renderCurrentPage(); }
 
 function passwordLogSection() {
-  const roleLabels = { admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อาจารย์ประจำชั้น', deptHead: 'ประธานสาขาวิชา', registrar: 'เจ้าหน้าที่งานทะเบียน', student: 'นักศึกษา' };
+  const roleLabels = { admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อาจารย์ประจำชั้น', deptHead: 'ประธานสาขา', registrar: 'เจ้าหน้าที่งานทะเบียน', student: 'นักศึกษา' };
   const actionLabels = { forgot: 'ลืมรหัสผ่าน (รีเซ็ตผ่านอีเมล)', reset: 'ลืมรหัสผ่าน (รีเซ็ตผ่านอีเมล)', change: 'เปลี่ยนรหัสผ่านในระบบ' };
   let logs = getDataByType('password_log').slice();
   logs.sort((a, b) => String(b.created_at || b.timestamp || '').localeCompare(String(a.created_at || a.timestamp || '')));
@@ -10304,7 +10524,7 @@ function resetToDefaultConfig() {
 // ======================== จัดการผู้ใช้งาน ========================
 // การเข้าสู่ระบบปัจจุบัน: บุคลากรใช้บัญชี Google ของวิทยาลัย (อีเมล @bcn.ac.th)
 // นักศึกษาใช้เลขบัตรประชาชนซึ่งอยู่ในทะเบียนนักศึกษา — ระบบนี้ไม่มีรหัสผ่านของตัวเอง
-const USER_ROLE_LABELS = { admin: 'ผู้ดูแลระบบ', otherStaff: 'เจ้าหน้าที่งานอื่นๆ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'เจ้าหน้าที่งานทะเบียน', deptHead: 'ประธานสาขาวิชา', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อาจารย์ประจำชั้น', student: 'นักศึกษา' };
+const USER_ROLE_LABELS = { admin: 'ผู้ดูแลระบบ', otherStaff: 'เจ้าหน้าที่งานอื่นๆ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'เจ้าหน้าที่งานทะเบียน', deptHead: 'ประธานสาขา', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อาจารย์ประจำชั้น', student: 'นักศึกษา' };
 const USER_STAFF_ROLES = ['admin', 'academic', 'registrar', 'deptHead', 'executive', 'teacher', 'classTeacher', 'otherStaff'];
 function emsLoginDomain() { return (window.EMS_CONFIG && EMS_CONFIG.ALLOWED_DOMAIN) || 'bcn.ac.th'; }
 function userRoleOptionsHTML(selected) {
@@ -10416,7 +10636,7 @@ function onUserRoleChange(role) {
     fieldsDiv.innerHTML = `<div><label class="block text-xs text-gray-600 mb-1">อีเมลของวิทยาลัย *</label>
       <input name="email" type="email" required class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="ชื่อผู้ใช้@${emsLoginDomain()}">
       <p class="text-[11px] text-gray-400 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ต้องตรงกับบัญชี Google ของวิทยาลัยที่ผู้ใช้ใช้จริง จึงจะเข้าสู่ระบบได้</p></div>
-      ${role === 'deptHead' ? `<div><label class="block text-xs text-gray-600 mb-1">สาขาวิชา <span class="text-gray-400">(เว้นว่างได้ ระบบจะอิงชื่อ-สกุลให้ตรงกับข้อมูลอาจารย์)</span></label>
+      ${role === 'deptHead' ? `<div><label class="block text-xs text-gray-600 mb-1">สาขา <span class="text-gray-400">(เว้นว่างได้ ระบบจะอิงชื่อ-สกุลให้ตรงกับข้อมูลอาจารย์)</span></label>
       <input name="department" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น การพยาบาลผู้ใหญ่"></div>` : ''}`;
   } else {
     fieldsDiv.innerHTML = '';
@@ -11679,7 +11899,7 @@ function showEditSubjectModal(id) {
       <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา</label><input name="subject_name" value="${s.subject_name || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
       <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา (ภาษาอังกฤษ)</label><input name="subject_name_en" value="${htmlEsc(s.subject_name_en || '')}" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="ตามหลักสูตร"></div>
       <div><label class="block text-xs text-gray-600 mb-1">ผู้ประสานงาน <span class="text-gray-400">(เลือกจากทะเบียนอาจารย์ · หลายคนคั่นด้วย ,)</span></label>${coordComboHTML('editSubjectCoord', s.coordinator || '')}</div>
-      <div><label class="block text-xs text-gray-600 mb-1">สาขาวิชาที่รับผิดชอบ <span class="text-gray-400">(มี 2 สาขา คั่นด้วย ,)</span></label><input name="department" list="editSubjectDeptList" value="${(s.department || '').replace(/"/g, '&quot;')}" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เลือก/พิมพ์ คั่นด้วย , ถ้ามี 2 สาขา">${deptDatalistHTML('editSubjectDeptList')}</div>
+      <div><label class="block text-xs text-gray-600 mb-1">สาขาที่รับผิดชอบ <span class="text-gray-400">(มี 2 สาขา คั่นด้วย ,)</span></label><input name="department" list="editSubjectDeptList" value="${(s.department || '').replace(/"/g, '&quot;')}" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เลือก/พิมพ์ คั่นด้วย , ถ้ามี 2 สาขา">${deptDatalistHTML('editSubjectDeptList')}</div>
       <div class="grid grid-cols-2 gap-3">
         <div><label class="block text-xs text-gray-600 mb-1">ชั้นปี</label><select name="year_level" class="w-full border rounded-xl px-3 py-2 text-sm"><option ${norm(s.year_level) === '1' ? 'selected' : ''}>1</option><option ${norm(s.year_level) === '2' ? 'selected' : ''}>2</option><option ${norm(s.year_level) === '3' ? 'selected' : ''}>3</option><option ${norm(s.year_level) === '4' ? 'selected' : ''}>4</option></select></div>
         <div><label class="block text-xs text-gray-600 mb-1">รุ่นที่</label><input name="batch" value="${s.batch || ''}" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น 28"></div>
@@ -11848,7 +12068,7 @@ function showEditTeacherModal(id) {
       <div><label class="block text-xs text-gray-600 mb-1">ชื่อ-สกุล</label><input name="name" value="${t.name || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
       <div class="grid grid-cols-2 gap-3">
         <div><label class="block text-xs text-gray-600 mb-1">ตำแหน่ง</label><input name="position" value="${t.position || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
-        <div><label class="block text-xs text-gray-600 mb-1">สาขาวิชา</label><input name="department" value="${t.department || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
+        <div><label class="block text-xs text-gray-600 mb-1">สาขา</label><input name="department" value="${t.department || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
         <div><label class="block text-xs text-gray-600 mb-1">โทรศัพท์</label><input name="phone" value="${t.phone || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
         <div><label class="block text-xs text-gray-600 mb-1">E-mail</label><input name="email" value="${t.email || ''}" type="email" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
         <div><label class="block text-xs text-gray-600 mb-1">ชั้นปีที่รับผิดชอบ</label><select name="responsible_year" class="w-full border rounded-xl px-3 py-2 text-sm"><option value="">ไม่มี</option><option ${norm(t.responsible_year) === '1' ? 'selected' : ''}>1</option><option ${norm(t.responsible_year) === '2' ? 'selected' : ''}>2</option><option ${norm(t.responsible_year) === '3' ? 'selected' : ''}>3</option><option ${norm(t.responsible_year) === '4' ? 'selected' : ''}>4</option></select></div>
@@ -11956,7 +12176,7 @@ function showEditLeaveModal(id) {
 // และผู้ใช้จะได้ปุ่มสลับมุมมองบนหัวเว็บโดยอัตโนมัติเมื่อมีมากกว่า 1 บทบาท
 const EXTRA_ROLE_CHOICES = [
   ['classTeacher', 'อาจารย์ประจำชั้น'],
-  ['deptHead', 'ประธานสาขาวิชา'],
+  ['deptHead', 'ประธานสาขา'],
   ['executive', 'ผู้บริหาร'],
   ['teacher', 'อาจารย์'],
   ['academic', 'เจ้าหน้าที่งานวิชาการ'],
@@ -12031,7 +12251,7 @@ function showEditUserModal(id) {
         <input name="email" value="${u.email || ''}" type="email" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="ชื่อผู้ใช้@${emsLoginDomain()}">
         <p class="text-[11px] text-gray-400 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ต้องตรงกับบัญชี Google ของวิทยาลัยที่ผู้ใช้ใช้จริง มิฉะนั้นจะเข้าสู่ระบบไม่ได้</p></div>
 
-      <div><label class="block text-xs text-gray-600 mb-1">สาขาวิชา <span class="text-gray-400">(ประธานสาขาวิชา)</span></label>
+      <div><label class="block text-xs text-gray-600 mb-1">สาขา <span class="text-gray-400">(ประธานสาขา)</span></label>
         <input name="department" value="${u.department || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
 
       <div><label class="block text-xs text-gray-600 mb-1">ชั้นปีที่รับผิดชอบ <span class="text-gray-400">(อาจารย์ประจำชั้น)</span></label>
@@ -12121,7 +12341,7 @@ lucide.createIcons();
 const SURVEY_DEVICES = ['คอมพิวเตอร์ตั้งโต๊ะ / โน้ตบุ๊ก', 'แท็บเล็ต', 'โทรศัพท์มือถือ'];
 const SURVEY_FREQ = ['ทุกวัน', '2-3 ครั้งต่อสัปดาห์', 'สัปดาห์ละครั้ง', 'เดือนละครั้ง', 'นานๆ ครั้ง / ตามที่จำเป็น'];
 const SURVEY_RATING_LABELS = { 5: 'มากที่สุด', 4: 'มาก', 3: 'ปานกลาง', 2: 'น้อย', 1: 'น้อยที่สุด' };
-const SURVEY_ROLE_LABEL = { otherStaff: 'เจ้าหน้าที่งานอื่นๆ', admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'เจ้าหน้าที่งานทะเบียน', deptHead: 'ประธานสาขาวิชา', executive: 'ผู้บริหาร', teacher: 'อาจารย์ / อาจารย์ที่ปรึกษา', classTeacher: 'อาจารย์ประจำชั้น', student: 'นักศึกษา' };
+const SURVEY_ROLE_LABEL = { otherStaff: 'เจ้าหน้าที่งานอื่นๆ', admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'เจ้าหน้าที่งานทะเบียน', deptHead: 'ประธานสาขา', executive: 'ผู้บริหาร', teacher: 'อาจารย์ / อาจารย์ที่ปรึกษา', classTeacher: 'อาจารย์ประจำชั้น', student: 'นักศึกษา' };
 
 // ชุดคำถามเริ่มต้น (อิงแบบประเมินที่ร่างไว้) — admin กดสร้างให้ปีการศึกษาที่เลือกได้
 const SURVEY_DEFAULT_QUESTIONS = [
@@ -12141,7 +12361,7 @@ const SURVEY_DEFAULT_QUESTIONS = [
   { section: 'ด้านความถูกต้องและครบถ้วนของข้อมูล', q_type: 'rating', question_text: 'ผลการเรียนและการคำนวณเกรดเฉลี่ยสะสม (GPAX) มีความถูกต้อง' },
   { section: 'ด้านความถูกต้องและครบถ้วนของข้อมูล', q_type: 'rating', question_text: 'เอกสารที่ออกจากระบบ (ใบรายงานผลการเรียน/Transcript/รายงาน PDF) ถูกต้องครบถ้วน' },
   { section: 'ด้านความถูกต้องและครบถ้วนของข้อมูล', q_type: 'rating', question_text: 'ข้อมูลที่บันทึก/แก้ไข ถูกจัดเก็บได้อย่างถูกต้องและแสดงผลทันที' },
-  { section: 'ด้านความถูกต้องและครบถ้วนของข้อมูล', q_type: 'rating', question_text: 'ตัวกรองและการค้นหา (ชั้นปี รุ่น สาขาวิชา ปีการศึกษา) แสดงผลตรงตามที่ต้องการ' },
+  { section: 'ด้านความถูกต้องและครบถ้วนของข้อมูล', q_type: 'rating', question_text: 'ตัวกรองและการค้นหา (ชั้นปี รุ่น สาขา ปีการศึกษา) แสดงผลตรงตามที่ต้องการ' },
 
   { section: 'ด้านฟังก์ชันและความสามารถของระบบ', q_type: 'rating', question_text: 'ระบบทะเบียน (นักศึกษา/อาจารย์/อาจารย์พิเศษ/ศิษย์เก่า/ปฏิทิน/รายวิชา) ตอบโจทย์การทำงาน' },
   { section: 'ด้านฟังก์ชันและความสามารถของระบบ', q_type: 'rating', question_text: 'ระบบข้อมูลอาจารย์ที่ปรึกษา (ดูนักศึกษาในความดูแล เชื่อมผลการเรียน/ผลสอบ) ใช้งานสะดวก' },

@@ -23,7 +23,7 @@
   var ROLE_LABEL = {
     otherStaff: 'เจ้าหน้าที่งานอื่นๆ',
     admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'เจ้าหน้าที่งานทะเบียน',
-    deptHead: 'ประธานสาขาวิชา', executive: 'ผู้บริหาร', teacher: 'อาจารย์',
+    deptHead: 'ประธานสาขา', executive: 'ผู้บริหาร', teacher: 'อาจารย์',
     classTeacher: 'อาจารย์ประจำชั้น', student: 'นักศึกษา'
   };
 

@@ -40,6 +40,7 @@ const EMSDB = (() => {
     // หน้าเว็บดึงเฉพาะที่ต้องใช้ผ่าน ems_plo_scores() แทน
     'plo_setting', 'plo_band', 'plo_clo',
     'app_setting',      // ค่าตั้งที่ผู้ดูแลแก้ได้เอง เช่น จำนวนสัปดาห์ต่อภาคการศึกษา
+    'practicum_site',   // แหล่งฝึกภาคปฏิบัติ : รายวิชา × แหล่งฝึก × หอผู้ป่วย × พี่เลี้ยง
     'user_profile',     // ข้อมูลส่วนตัวที่ผู้ใช้แต่ละคนแก้เอง (ชื่อ เบอร์โทร รูป ลายเซ็น)
     // ระบบประเมินผลรายวิชา — เฉพาะโครงของแบบประเมิน
     // คำตอบรายคน (eval_response / eval_answer) อ่านเมื่อเปิดหน้ารายงานเท่านั้น
@@ -58,7 +59,8 @@ const EMSDB = (() => {
     'tracking', 'result_tracking', 'grade_tracking', 'file_tracking',
     'doc_request',
     'workload_plan', 'workload_student', 'workload_rate',
-    'plo_setting', 'plo_band', 'plo_clo'
+    'plo_setting', 'plo_band', 'plo_clo',
+    'practicum_site'   // นักศึกษาไม่มีสิทธิ์อ่าน (RLS กันไว้แล้ว) จึงไม่ต้องเรียกให้เสียเวลา
   ]);
 
   const META = ['id', 'created_at', 'updated_at', 'extra', 'auth_user_id'];
