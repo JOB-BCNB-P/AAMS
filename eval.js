@@ -108,7 +108,11 @@
   }
   function defaultSet(dim, courseType) {
     var list = setsOf(dim).filter(function (x) { return s(x.status) !== 'เลิกใช้'; });
-    var fit = list.filter(function (x) { return !s(x.course_type) || s(x.course_type) === s(courseType); });
+    var want = baseCourseType(courseType);
+    var fit = list.filter(function (x) {
+      var ct = s(x.course_type);
+      return !ct || ct === s(courseType) || baseCourseType(ct) === want;
+    });
     var pick = fit.filter(function (x) { return s(x.is_default); })[0] || fit[0];
     return pick ? s(pick.set_code) : '';
   }
@@ -125,12 +129,24 @@
     }).sort(function (a, b) { return num(a.sort_order) - num(b.sort_order); });
   }
 
-  // ประเภทวิชา — ใช้ค่าที่ระบุไว้ ถ้าไม่ได้ระบุจึงเดาจากชั่วโมงปฏิบัติ
+  /* ประเภทวิชามี 4 แบบ : ทฤษฎี / ทฤษฎีและทดลอง / ทฤษฎีและปฏิบัติ / ปฏิบัติ
+     "ทดลอง" คือห้องปฏิบัติการของวิทยาลัย ส่วน "ปฏิบัติ" คือฝึกในแหล่งฝึก
+     ถ้ายังไม่ได้ระบุไว้ จำเป็นต้องเดาจากชั่วโมงเพื่อให้สร้างแบบประเมินได้
+     แต่จะเดาอย่างระวัง — ช่อง "ป" อาจเป็นทดลองก็ได้ จึงไม่เดาว่าเป็นวิชาปฏิบัติ */
   function courseTypeOf(subj) {
     var t = s(subj && subj.theory_practice);
     if (t) return t;
-    return num(subj && subj.hours_lab) > 0 ? 'ปฏิบัติ' : 'ทฤษฎี';
+    return num(subj && subj.hours_lab) > 0 ? 'ทฤษฎีและทดลอง' : 'ทฤษฎี';
   }
+
+  /* ชุดคำถามเดิมติดป้ายไว้แค่ "ทฤษฎี" กับ "ปฏิบัติ"
+     จึงย่อประเภทย่อยลงมาให้ตรงกับป้ายเดิม ไม่ต้องไปไล่แก้ชุดคำถามที่มีอยู่ */
+  function baseCourseType(t) {
+    return String(t || '').indexOf('ปฏิบัติ') >= 0 ? 'ปฏิบัติ' : 'ทฤษฎี';
+  }
+
+  // วิชาที่ฝึกในแหล่งฝึกเท่านั้นที่ต้องประเมินแหล่งฝึก วิชาที่มีแต่ทดลองไม่ต้อง
+  function hasPracticum(t) { return String(t || '').indexOf('ปฏิบัติ') >= 0; }
 
   function formCodeOf(subj, year, sem) {
     var base = 'EV' + s(year) + s(sem) + '-' + (s(subj.subject_code) || 'X') + '-' + (s(subj.year_level) || '0');
@@ -661,7 +677,7 @@
         released: '', released_at: '', released_by: '',
         set_course: defaultSet('course', ct),
         set_teacher: defaultSet('teacher', ct),
-        set_site: ct === 'ปฏิบัติ' ? defaultSet('site', ct) : '',
+        set_site: hasPracticum(ct) ? defaultSet('site', ct) : '',
         set_engage: defaultSet('engage', ct),
         min_respondents: '5', sd_mode: 'sample', mean_mode: 'item',
         show_comment_teacher: '', updated_by: who()

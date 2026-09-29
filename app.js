@@ -2291,44 +2291,50 @@ function currentAcademicYearBE() {
 /* ประเภทรายวิชา (ทฤษฎี / ปฏิบัติ / ทฤษฎีและปฏิบัติ)
    เก็บในคอลัมน์ theory_practice ซึ่งหน้าติดตามการส่งและหน้าประเมินผลรายวิชา
    อ่านไปใช้อยู่แล้ว จึงผูกกันได้ทันทีโดยไม่ต้องกรอกซ้ำ */
-const SUBJECT_TYPES = ['ทฤษฎี', 'ปฏิบัติ', 'ทฤษฎีและปฏิบัติ'];
+/* "ทดลอง" กับ "ปฏิบัติ" ไม่ใช่สิ่งเดียวกัน
+     ทดลอง  = เรียนในห้องปฏิบัติการของวิทยาลัย (กายวิภาค จุลชีววิทยา ฯลฯ)
+     ปฏิบัติ = ฝึกปฏิบัติการพยาบาลในแหล่งฝึก
+   ทั้งสองอย่างนับอยู่ในช่อง "ป" ของ น(ท-ป-อ) เหมือนกัน ระบบจึงแยกจากชั่วโมงเรียนไม่ได้
+   ต้องให้ผู้รับผิดชอบระบุเอง */
+const SUBJECT_TYPES = ['ทฤษฎี', 'ทฤษฎีและทดลอง', 'ทฤษฎีและปฏิบัติ', 'ปฏิบัติ'];
 
-// เดาจากชั่วโมงเรียนเมื่อยังไม่เคยระบุไว้ — ไม่บันทึกทับ แค่ใช้แสดงและตั้งค่าเริ่มต้นให้
-function subjectTypeOf(s) {
-  const t = norm(s && s.theory_practice);
-  if (t) return t;
-  const th = parseFloat(norm(s && s.hours_theory)) || 0;
-  const lab = parseFloat(norm(s && s.hours_lab)) || 0;
-  if (th > 0 && lab > 0) return 'ทฤษฎีและปฏิบัติ';
-  if (lab > 0) return 'ปฏิบัติ';
-  if (th > 0) return 'ทฤษฎี';
-  return '';
-}
+// อ่านค่าที่ระบุไว้เท่านั้น ไม่เดาให้ เพราะเดาผิดแล้วกระทบถึงแบบประเมินที่ระบบสร้าง
+function subjectTypeOf(s) { return norm(s && s.theory_practice); }
+
+/* วิชาที่มีการฝึกปฏิบัติในแหล่งฝึก ต้องประเมินแหล่งฝึกด้วย
+   ส่วนวิชาที่มีแต่ทดลองในห้องปฏิบัติการ ไม่ต้อง */
+function subjectHasPracticum(t) { return String(t || '').indexOf('ปฏิบัติ') >= 0; }
 
 // ป้ายสีของประเภทรายวิชา ใช้ทั้งในตารางรายวิชาและหน้าอื่น ๆ
 function subjectTypeBadge(s) {
   const t = subjectTypeOf(s);
-  if (!t) return '<span class="text-gray-300">-</span>';
-  const guessed = !norm(s && s.theory_practice);
+  if (!t) {
+    return '<span class="px-2 py-0.5 rounded-full text-xs whitespace-nowrap bg-gray-100 text-gray-400"'
+      + ' title="ยังไม่ได้ระบุประเภทรายวิชา — แก้ไขรายวิชาเพื่อระบุ">รอระบุ</span>';
+  }
   const color = t === 'ปฏิบัติ' ? 'bg-emerald-50 text-emerald-700'
     : t === 'ทฤษฎีและปฏิบัติ' ? 'bg-indigo-50 text-indigo-700'
-      : 'bg-blue-50 text-blue-700';
-  const hint = guessed ? ' title="ยังไม่ได้ระบุไว้ ระบบเดาจากชั่วโมงทฤษฎี/ปฏิบัติให้"' : '';
-  return '<span class="px-2 py-0.5 rounded-full text-xs whitespace-nowrap ' + color + '"' + hint + '>'
-    + htmlEsc(t) + (guessed ? ' *' : '') + '</span>';
+      : t === 'ทฤษฎีและทดลอง' ? 'bg-amber-50 text-amber-700'
+        : 'bg-blue-50 text-blue-700';
+  return '<span class="px-2 py-0.5 rounded-full text-xs whitespace-nowrap ' + color + '">'
+    + htmlEsc(t) + '</span>';
+}
+
+// ตัวเลือกประเภทรายวิชา ใช้ร่วมกันทุกหน้า จะได้ไม่หลุดไม่ตรงกัน
+function subjectTypeOptionsHTML(cur) {
+  const c = norm(cur);
+  return '<option value="">-- ไม่ระบุ --</option>'
+    + SUBJECT_TYPES.map(t =>
+      `<option value="${t}"${c === t ? ' selected' : ''}>${t}</option>`).join('');
 }
 
 // ช่องเลือกประเภทรายวิชาในฟอร์มเพิ่ม/แก้ไข
 function subjectTypeField(s) {
-  const cur = norm(s && s.theory_practice);
-  const opts = SUBJECT_TYPES.map(t =>
-    `<option value="${t}"${cur === t ? ' selected' : ''}>${t}</option>`).join('');
-  const guess = subjectTypeOf(s);
   return `<div><label class="block text-xs text-gray-600 mb-1">ประเภทรายวิชา</label>
     <select name="theory_practice" class="w-full border rounded-xl px-3 py-2 text-sm">
-      <option value="">-- ไม่ระบุ --</option>${opts}
+      ${subjectTypeOptionsHTML(s && s.theory_practice)}
     </select>
-    ${!cur && guess ? `<p class="text-[11px] text-gray-400 mt-1">ยังไม่ได้ระบุ ระบบใช้ "${guess}" ตามชั่วโมงเรียนไปก่อน</p>` : ''}
+    <p class="text-[11px] text-gray-400 mt-1">ทดลอง = ห้องปฏิบัติการของวิทยาลัย · ปฏิบัติ = ฝึกในแหล่งฝึก</p>
   </div>`;
 }
 
@@ -8157,7 +8163,7 @@ function showAddTrackingModal() {
       <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *</label><select name="subject_name" id="trackingSubjectSelect" required class="w-full border rounded-xl px-3 py-2 text-sm"><option value="">-- เลือกรายวิชา --</option>${subjectOptions}</select></div>
       <input type="hidden" name="subject_code" id="trackingSubjectCode">
       <div class="grid grid-cols-2 gap-3">
-        <div><label class="block text-xs text-gray-600 mb-1">ทฤษฎี/ปฏิบัติ</label><select name="theory_practice" class="w-full border rounded-xl px-3 py-2 text-sm"><option>ทฤษฎี</option><option>ปฏิบัติ</option></select></div>
+        <div><label class="block text-xs text-gray-600 mb-1">ทฤษฎี/ปฏิบัติ</label><select name="theory_practice" class="w-full border rounded-xl px-3 py-2 text-sm">${subjectTypeOptionsHTML('')}</select></div>
         <div><label class="block text-xs text-gray-600 mb-1">ชั้นปี</label><select name="year_level" class="w-full border rounded-xl px-3 py-2 text-sm"><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
         <div><label class="block text-xs text-gray-600 mb-1">ห้อง</label><input name="room" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
         <div><label class="block text-xs text-gray-600 mb-1">ภาคการศึกษา</label><select name="semester" class="w-full border rounded-xl px-3 py-2 text-sm"><option value="1">1</option><option value="2">2</option><option value="3">ฤดูร้อน</option></select></div>
@@ -8393,7 +8399,7 @@ function showAddResultTrackingModal() {
       <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *</label><select name="subject_name" id="resultTrackingSubjectSelect" required class="w-full border rounded-xl px-3 py-2 text-sm"><option value="">-- เลือกรายวิชา --</option>${subjectOptions}</select></div>
       <input type="hidden" name="subject_code" id="resultTrackingSubjectCode">
       <div class="grid grid-cols-2 gap-3">
-        <div><label class="block text-xs text-gray-600 mb-1">ทฤษฎี/ปฏิบัติ</label><select name="theory_practice" class="w-full border rounded-xl px-3 py-2 text-sm"><option>ทฤษฎี</option><option>ปฏิบัติ</option></select></div>
+        <div><label class="block text-xs text-gray-600 mb-1">ทฤษฎี/ปฏิบัติ</label><select name="theory_practice" class="w-full border rounded-xl px-3 py-2 text-sm">${subjectTypeOptionsHTML('')}</select></div>
         <div><label class="block text-xs text-gray-600 mb-1">ชั้นปี</label><select name="year_level" class="w-full border rounded-xl px-3 py-2 text-sm"><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
         <div><label class="block text-xs text-gray-600 mb-1">ภาคการศึกษา</label><select name="semester" class="w-full border rounded-xl px-3 py-2 text-sm"><option value="1">1</option><option value="2">2</option><option value="3">ฤดูร้อน</option></select></div>
         <div><label class="block text-xs text-gray-600 mb-1">ปีการศึกษา</label><input name="academic_year" value="2568" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
@@ -8555,7 +8561,7 @@ function showAddGradeTrackingModal() {
       <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *</label><select name="subject_name" id="gradeTrackingSubjectSelect" required class="w-full border rounded-xl px-3 py-2 text-sm"><option value="">-- เลือกรายวิชา --</option>${subjectOptions}</select></div>
       <input type="hidden" name="subject_code" id="gradeTrackingSubjectCode">
       <div class="grid grid-cols-2 gap-3">
-        <div><label class="block text-xs text-gray-600 mb-1">ทฤษฎี/ปฏิบัติ</label><select name="theory_practice" class="w-full border rounded-xl px-3 py-2 text-sm"><option>ทฤษฎี</option><option>ปฏิบัติ</option></select></div>
+        <div><label class="block text-xs text-gray-600 mb-1">ทฤษฎี/ปฏิบัติ</label><select name="theory_practice" class="w-full border rounded-xl px-3 py-2 text-sm">${subjectTypeOptionsHTML('')}</select></div>
         <div><label class="block text-xs text-gray-600 mb-1">ชั้นปี</label><select name="year_level" class="w-full border rounded-xl px-3 py-2 text-sm"><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
         <div><label class="block text-xs text-gray-600 mb-1">ภาคการศึกษา</label><select name="semester" class="w-full border rounded-xl px-3 py-2 text-sm"><option value="1">1</option><option value="2">2</option><option value="3">ฤดูร้อน</option></select></div>
         <div><label class="block text-xs text-gray-600 mb-1">ปีการศึกษา</label><input name="academic_year" value="2568" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
@@ -8718,7 +8724,7 @@ function showAddFileTrackingModal() {
       <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *</label><select name="subject_name" id="fileTrackingSubjectSelect" required class="w-full border rounded-xl px-3 py-2 text-sm"><option value="">-- เลือกรายวิชา --</option>${subjectOptions}</select></div>
       <input type="hidden" name="subject_code" id="fileTrackingSubjectCode">
       <div class="grid grid-cols-2 gap-3">
-        <div><label class="block text-xs text-gray-600 mb-1">ทฤษฎี/ปฏิบัติ</label><select name="theory_practice" class="w-full border rounded-xl px-3 py-2 text-sm"><option>ทฤษฎี</option><option>ปฏิบัติ</option></select></div>
+        <div><label class="block text-xs text-gray-600 mb-1">ทฤษฎี/ปฏิบัติ</label><select name="theory_practice" class="w-full border rounded-xl px-3 py-2 text-sm">${subjectTypeOptionsHTML('')}</select></div>
         <div><label class="block text-xs text-gray-600 mb-1">ชั้นปี</label><select name="year_level" class="w-full border rounded-xl px-3 py-2 text-sm"><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
         <div><label class="block text-xs text-gray-600 mb-1">ภาคการศึกษา</label><select name="semester" class="w-full border rounded-xl px-3 py-2 text-sm"><option value="1">1</option><option value="2">2</option><option value="3">ฤดูร้อน</option></select></div>
         <div><label class="block text-xs text-gray-600 mb-1">ปีการศึกษา</label><input name="academic_year" value="2568" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
@@ -11911,7 +11917,7 @@ function showEditTrackingModal(id) {
     <form id="editTrackingForm" class="space-y-3">
       <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา</label><input name="subject_name" value="${t.subject_name || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
       <div class="grid grid-cols-2 gap-3">
-        <div><label class="block text-xs text-gray-600 mb-1">ทฤษฎี/ปฏิบัติ</label><select name="theory_practice" class="w-full border rounded-xl px-3 py-2 text-sm"><option ${t.theory_practice === 'ทฤษฎี' ? 'selected' : ''}>ทฤษฎี</option><option ${t.theory_practice === 'ปฏิบัติ' ? 'selected' : ''}>ปฏิบัติ</option></select></div>
+        <div><label class="block text-xs text-gray-600 mb-1">ทฤษฎี/ปฏิบัติ</label><select name="theory_practice" class="w-full border rounded-xl px-3 py-2 text-sm">${subjectTypeOptionsHTML(t.theory_practice)}</select></div>
         <div><label class="block text-xs text-gray-600 mb-1">ชั้นปี</label><select name="year_level" class="w-full border rounded-xl px-3 py-2 text-sm"><option ${norm(t.year_level) === '1' ? 'selected' : ''}>1</option><option ${norm(t.year_level) === '2' ? 'selected' : ''}>2</option><option ${norm(t.year_level) === '3' ? 'selected' : ''}>3</option><option ${norm(t.year_level) === '4' ? 'selected' : ''}>4</option></select></div>
         <div><label class="block text-xs text-gray-600 mb-1">ห้อง</label><input name="room" value="${t.room || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
         <div><label class="block text-xs text-gray-600 mb-1">ภาคการศึกษา</label><select name="semester" class="w-full border rounded-xl px-3 py-2 text-sm"><option value="1" ${norm(t.semester) === '1' ? 'selected' : ''}>1</option><option value="2" ${norm(t.semester) === '2' ? 'selected' : ''}>2</option></select></div>
