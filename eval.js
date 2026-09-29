@@ -59,6 +59,7 @@
         // ฝั่งนักศึกษา
         doForm: '', myResp: {}, myLoaded: false, myLoading: false, myError: '',
         ans: {}, ansLoaded: false, ansLoading: false,
+        myGroup: {},        // { form_code: ชื่อกลุ่มย่อยของนักศึกษาคนนี้ }
         // รายงาน
         rpt: null, mine: null
       };
@@ -127,6 +128,53 @@
     return get('eval_target').filter(function (t) {
       return s(t.form_code) === c && (!kind || s(t.target_kind) === kind);
     }).sort(function (a, b) { return num(a.sort_order) - num(b.sort_order); });
+  }
+
+
+  /* ================================================================
+     กลุ่มย่อยของวิชาปฏิบัติ
+     ----------------------------------------------------------------
+     วิชาปฏิบัติแบ่งนักศึกษาเป็นกลุ่ม แต่ละกลุ่มฝึกกับอาจารย์นิเทศชุดหนึ่ง
+     ที่แหล่งฝึกหนึ่ง นักศึกษาจึงควรประเมินเฉพาะอาจารย์ของกลุ่มตัวเอง
+     ไม่ใช่อาจารย์ทุกคนที่ชื่ออยู่ในรายวิชา
+
+     เก็บอย่างไร
+       eval_group   หนึ่งแถวต่อหนึ่งกลุ่ม : ชื่อกลุ่ม รายชื่อนักศึกษา แหล่งฝึก หอผู้ป่วย
+       eval_target  เพิ่มคอลัมน์ group_name — ว่างแปลว่าทุกคนในรายวิชาประเมิน
+       eval_answer  เพิ่มคอลัมน์ target_group — อาจารย์คนเดียวสอนหลายกลุ่มจึงแยกผลได้
+
+     นักศึกษาอ่านตาราง eval_group ไม่ได้ (จะเห็นรายชื่อทั้งห้อง)
+     จึงถามชื่อกลุ่มของตัวเองผ่าน ems_eval_my_groups() แทน
+     ================================================================ */
+  function groupsOf(code) {
+    var c = s(code);
+    return get('eval_group').filter(function (g) { return s(g.form_code) === c; })
+      .sort(function (a, b) {
+        return (num(a.sort_order) - num(b.sort_order))
+          || s(a.group_name).localeCompare(s(b.group_name), 'th');
+      });
+  }
+  function splitIds(v) {
+    return s(v).split(',').map(function (x) { return s(x); }).filter(Boolean);
+  }
+  function groupMembers(g) { return splitIds(g && g.students); }
+
+  // ชื่อกลุ่มที่ปรากฏบนรายชื่ออาจารย์ — ใช้ได้ทั้งฝั่งเจ้าหน้าที่และฝั่งนักศึกษา
+  // เพราะอ่านจาก eval_target ซึ่งนักศึกษาโหลดมาอยู่แล้ว
+  function targetGroups(code) {
+    var seen = {}, out = [];
+    targetsOf(code, 'teacher').forEach(function (t) {
+      var g = s(t.group_name);
+      if (g && !seen[g]) { seen[g] = 1; out.push(g); }
+    });
+    return out.sort(function (a, b) { return a.localeCompare(b, 'th'); });
+  }
+  function isGrouped(code) { return targetGroups(code).length > 0; }
+
+  // กลุ่มของนักศึกษาที่ล็อกอินอยู่ ในแบบประเมินหนึ่ง
+  function myGroupIn(code) {
+    var st = state();
+    return s((st.myGroup || {})[s(code)]);
   }
 
   /* ประเภทวิชามี 4 แบบ : ทฤษฎี / ทฤษฎีและทดลอง / ทฤษฎีและปฏิบัติ / ปฏิบัติ
@@ -545,12 +593,22 @@
 
     var rows = list.map(function (f) {
       var dims = DIMS.filter(function (d) { return s(f[SET_FIELD[d[0]]]); });
-      var tNames = targetsOf(f.form_code, 'teacher').map(function (t) { return s(t.target_name); });
+      var tNames = targetsOf(f.form_code, 'teacher').map(function (t) {
+        return s(t.target_name) + (s(t.group_name) ? ' · ' + s(t.group_name) : '');
+      });
       var sNames = targetsOf(f.form_code, 'site').map(function (t) { return s(t.target_name); });
       var nT = tNames.length, nS = sNames.length;
       var warn = [];
       if (s(f.set_teacher) && !nT) warn.push('ยังไม่ระบุอาจารย์ผู้สอน');
       if (s(f.set_site) && !nS) warn.push('ยังไม่ระบุแหล่งฝึก');
+      // วิชาที่แบ่งกลุ่มแล้ว คนที่ตกหล่นจะเปิดแบบประเมินแล้วไม่เห็นอาจารย์นิเทศ
+      var gAll = groupsOf(f.form_code);
+      if (gAll.length) {
+        var inG = {};
+        gAll.forEach(function (g) { groupMembers(g).forEach(function (sid) { inG[sid] = 1; }); });
+        var miss = studentsOfForm(f).filter(function (x) { return !inG[s(x.student_id)]; }).length;
+        if (miss) warn.push('ยังไม่ได้เข้ากลุ่ม ' + miss + ' คน');
+      }
       return '<tr class="border-t border-gray-50 hover:bg-gray-50">'
         + '<td class="px-3 py-2"><p class="font-medium text-gray-800">' + esc(s(f.subject_name)) + '</p>'
         + '<p class="text-xs font-mono text-gray-400">' + esc(s(f.subject_code)) + '</p></td>'
@@ -708,6 +766,8 @@
     if (!confirm('ลบแบบประเมินของ "' + s(f.subject_name) + '" ใช่หรือไม่\n(ลบได้เฉพาะแบบที่ยังไม่มีผู้ตอบ)')) return;
     var tg = targetsOf(code);
     for (var i = 0; i < tg.length; i++) await GSheetDB.delete(tg[i], { noRefresh: true });
+    var gg = groupsOf(code);
+    for (var gi = 0; gi < gg.length; gi++) await GSheetDB.delete(gg[gi], { noRefresh: true });
     var r = await GSheetDB.delete(f);
     if (!r || !r.isOk) { showToast('ลบไม่สำเร็จ · ' + ((r && r.error) || ''), 'error'); return; }
     showToast('ลบแบบประเมินแล้ว'); renderCurrentPage();
@@ -732,8 +792,16 @@
         headings: headingsOf(f.form_code).map(function (h) {
           return { id: h.__rowIndex, position: s(h.position) || 'top', title: s(h.title), note: s(h.note) };
         }),
-        teachers: targetsOf(f.form_code, 'teacher').map(function (t) { return { name: s(t.target_name), ref: s(t.target_ref) }; }),
-        sites: targetsOf(f.form_code, 'site').map(function (t) { return { name: s(t.target_name), ref: '' }; })
+        teachers: targetsOf(f.form_code, 'teacher').map(function (t) {
+          return { name: s(t.target_name), ref: s(t.target_ref), group: s(t.group_name) };
+        }),
+        sites: targetsOf(f.form_code, 'site').map(function (t) { return { name: s(t.target_name), ref: '' }; }),
+        groups: groupsOf(f.form_code).map(function (g) {
+          return {
+            id: g.__rowIndex, name: s(g.group_name), students: groupMembers(g),
+            site_name: s(g.site_name), ward: s(g.ward), note: s(g.note)
+          };
+        })
       };
     }
     return st.draft;
@@ -750,8 +818,11 @@
     var name = s(el && el.value);
     if (!name) { showToast('กรุณาระบุชื่อ', 'error'); return; }
     var arr = kind === 'teacher' ? d.teachers : d.sites;
-    if (arr.some(function (x) { return x.name === name; })) { showToast('มีชื่อนี้อยู่แล้ว', 'error'); return; }
-    arr.push({ name: name, ref: '' });
+    // ชื่อซ้ำได้ถ้าอยู่คนละกลุ่ม แต่ช่องนี้เพิ่มแบบ "ไม่ผูกกลุ่ม" จึงห้ามซ้ำกับของที่ไม่ผูกกลุ่ม
+    if (arr.some(function (x) { return x.name === name && !s(x.group); })) {
+      showToast('มีชื่อนี้อยู่แล้ว', 'error'); return;
+    }
+    arr.push({ name: name, ref: '', group: '' });
     if (el) el.value = '';
     renderCurrentPage();
   };
@@ -779,7 +850,10 @@
     var rows = arr.length ? arr.map(function (x, i) {
       return '<div class="flex items-center gap-2 px-3 py-2 border-t border-gray-50">'
         + '<span class="w-6 text-xs text-gray-400 text-center">' + (i + 1) + '</span>'
-        + '<span class="flex-1 text-sm text-gray-800">' + esc(x.name) + '</span>'
+        + '<span class="flex-1 text-sm text-gray-800">' + esc(x.name)
+        + (s(x.group)
+          ? ' <span class="text-xs text-primary bg-primaryLight rounded px-1.5 py-0.5">' + esc(s(x.group)) + '</span>'
+          : '') + '</span>'
         + '<button onclick="evalDelTarget(\'' + kind + '\',' + i + ')" class="text-gray-300 hover:text-red-600 p-1" title="เอาออก">'
         + '<i data-lucide="x" class="w-4 h-4"></i></button></div>';
     }).join('') : '<p class="px-3 py-4 text-center text-sm text-gray-400 border-t border-gray-50">ยังไม่มีรายชื่อ</p>';
@@ -798,6 +872,259 @@
       + '<button onclick="evalAddTarget(\'' + kind + '\')" class="px-3 py-2 rounded-xl bg-primary text-white text-sm hover:bg-primaryDark">เพิ่ม</button>'
       + '</div></div>';
   }
+
+
+  /* ================================================================
+     การ์ด "กลุ่มย่อยของวิชาปฏิบัติ" ในหน้าตั้งค่าแบบประเมิน
+     ----------------------------------------------------------------
+     หนึ่งกลุ่ม = ชื่อกลุ่ม + อาจารย์นิเทศของกลุ่ม + แหล่งฝึก/หอผู้ป่วย + รายชื่อนักศึกษา
+     อาจารย์ที่เลือกไว้ในกลุ่ม จะถูกบันทึกเป็นแถวใน eval_target พร้อมชื่อกลุ่ม
+     อาจารย์คนเดียวกันอยู่ได้หลายกลุ่ม จะมีหลายแถว ชื่อซ้ำแต่กลุ่มต่างกัน
+     ================================================================ */
+  function groupBox(f, d) {
+    var gs = d.groups || [];
+    var inGroup = {};
+    gs.forEach(function (g) { (g.students || []).forEach(function (sid) { inGroup[s(sid)] = g.name; }); });
+    var all = studentsOfForm(f);
+    var left = all.filter(function (x) { return !inGroup[s(x.student_id)]; }).length;
+
+    var rows = gs.length ? gs.map(function (g, i) {
+      var tNames = (d.teachers || []).filter(function (t) { return s(t.group) === s(g.name); })
+        .map(function (t) { return t.name; });
+      return '<div class="px-4 py-3 border-t border-gray-50">'
+        + '<div class="flex flex-wrap items-start gap-2">'
+        + '<span class="w-6 text-xs text-gray-400 text-center pt-1">' + (i + 1) + '</span>'
+        + '<div class="flex-1 min-w-[14rem]">'
+        + '<p class="text-sm font-semibold text-gray-800">' + esc(g.name)
+        + ' <span class="font-normal text-gray-400">· นักศึกษา ' + (g.students || []).length + ' คน</span></p>'
+        + '<p class="text-xs text-gray-600 mt-0.5">อาจารย์นิเทศ: '
+        + (tNames.length ? esc(tNames.join(', ')) : '<span class="text-amber-600">ยังไม่ได้ระบุ</span>') + '</p>'
+        + (s(g.site_name) || s(g.ward)
+          ? '<p class="text-xs text-gray-400">' + esc([s(g.site_name), s(g.ward)].filter(Boolean).join(' · ')) + '</p>' : '')
+        + '</div>'
+        + '<span class="flex items-center whitespace-nowrap">'
+        + '<button onclick="evalGroupEdit(' + i + ')" class="p-1 rounded text-gray-300 hover:text-primary" title="แก้ไขกลุ่ม"><i data-lucide="pencil" class="w-4 h-4"></i></button>'
+        + '<button onclick="evalGroupDelete(' + i + ')" class="p-1 rounded text-gray-300 hover:text-red-600" title="ลบกลุ่ม"><i data-lucide="trash-2" class="w-4 h-4"></i></button>'
+        + '</span></div></div>';
+    }).join('')
+      : '<p class="px-4 py-4 text-center text-sm text-gray-400 border-t border-gray-50">'
+      + 'ยังไม่แบ่งกลุ่ม — ตอนนี้นักศึกษาทุกคนในรายวิชาจะประเมินอาจารย์ทุกคน</p>';
+
+    return '<div class="bg-white rounded-2xl border border-blue-100 overflow-hidden mb-4">'
+      + '<div class="px-4 py-3 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2">'
+      + '<div><p class="font-semibold text-gray-800 text-sm">กลุ่มย่อยของวิชาปฏิบัติ '
+      + '<span class="font-normal text-gray-400">(' + gs.length + ' กลุ่ม)</span></p>'
+      + '<p class="text-xs text-gray-500 mt-0.5">นักศึกษาจะประเมินเฉพาะอาจารย์นิเทศของกลุ่มตัวเอง '
+      + 'ส่วนการประเมินแหล่งฝึกยังประเมินครบทุกแห่งเหมือนเดิม</p></div>'
+      + '<button onclick="evalGroupAdd()" class="px-3 py-1.5 rounded-lg bg-primary text-white text-xs hover:bg-primaryDark inline-flex items-center gap-1">'
+      + '<i data-lucide="plus" class="w-3.5 h-3.5"></i>เพิ่มกลุ่ม</button></div>'
+      + rows
+      + (gs.length
+        ? '<div class="px-4 py-2 border-t border-gray-100 text-xs '
+        + (left ? 'text-amber-700 bg-amber-50' : 'text-gray-500') + '">'
+        + (left
+          ? 'ยังเหลือนักศึกษาอีก ' + left + ' คนที่ยังไม่ได้อยู่กลุ่มใด — คนเหล่านี้จะเปิดแบบประเมินแล้วไม่เห็นอาจารย์นิเทศ'
+          : 'นักศึกษาทุกคนในรายวิชาถูกจัดกลุ่มครบแล้ว') + '</div>'
+        : '')
+      + '</div>';
+  }
+
+  // นักศึกษาที่เรียนรายวิชานี้ ใช้กฎเดียวกับตอนขึ้นแบบประเมินให้นักศึกษาเห็น
+  function studentsOfForm(f) {
+    return get('student').filter(function (x) { return ownsForm(x, f); })
+      .sort(function (a, b) { return s(a.student_id).localeCompare(s(b.student_id)); });
+  }
+
+  // ชื่ออาจารย์ที่เลือกได้ = รายชื่อในระบบ รวมกับชื่อที่พิมพ์เองไว้แล้วในรายวิชานี้
+  function groupTeacherChoices(d) {
+    var seen = {}, out = [];
+    teacherOptions().concat((d.teachers || []).map(function (t) { return t.name; }))
+      .forEach(function (n) { n = s(n); if (n && !seen[n]) { seen[n] = 1; out.push(n); } });
+    return out.sort(function (a, b) { return a.localeCompare(b, 'th'); });
+  }
+
+  function groupFormHTML(f, d, i) {
+    var g = i >= 0 ? (d.groups || [])[i] : null;
+    var cur = g || { name: '', students: [], site_name: '', ward: '', note: '' };
+    var mine = {};
+    (cur.students || []).forEach(function (x) { mine[s(x)] = 1; });
+    var myT = {};
+    (d.teachers || []).forEach(function (t) { if (g && s(t.group) === s(g.name)) myT[s(t.name)] = 1; });
+
+    // นักศึกษาที่อยู่กลุ่มอื่นแล้ว ติ๊กซ้ำไม่ได้ กันคนเดียวอยู่สองกลุ่ม
+    var taken = {};
+    (d.groups || []).forEach(function (x, xi) {
+      if (xi === i) return;
+      (x.students || []).forEach(function (sid) { taken[s(sid)] = x.name; });
+    });
+
+    var tList = groupTeacherChoices(d).map(function (n) {
+      return '<label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface text-sm">'
+        + '<input type="checkbox" class="rounded eg-teacher" value="' + esc(n) + '"' + (myT[n] ? ' checked' : '') + '>'
+        + '<span class="text-gray-800">' + esc(n) + '</span></label>';
+    }).join('');
+    var tBoxes = '<div id="evalGroupTeachers" class="border border-gray-200 rounded-xl p-1 max-h-44 overflow-y-auto">'
+      + (tList || '<p class="text-xs text-gray-400 px-2 py-2 eg-empty">ยังไม่มีรายชื่ออาจารย์ในระบบ — พิมพ์เพิ่มได้ในช่องด้านล่าง</p>')
+      + '</div>';
+
+    var sBoxes = studentsOfForm(f).map(function (x) {
+      var sid = s(x.student_id);
+      var other = taken[sid];
+      return '<label class="flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm '
+        + (other ? 'opacity-50' : 'hover:bg-surface') + '">'
+        + '<input type="checkbox" class="rounded eg-student" value="' + esc(sid) + '"'
+        + (mine[sid] ? ' checked' : '') + (other ? ' disabled' : '') + '>'
+        + '<span class="font-mono text-xs text-gray-400">' + esc(sid) + '</span>'
+        + '<span class="text-gray-800 flex-1">' + esc(s(x.name)) + '</span>'
+        + (other ? '<span class="text-[11px] text-gray-400">อยู่ ' + esc(other) + '</span>' : '')
+        + '</label>';
+    }).join('') || '<p class="text-xs text-gray-400 px-2 py-2">ไม่พบนักศึกษาของรายวิชานี้ในระบบ</p>';
+
+    return '<form id="evalGroupForm" class="space-y-3">'
+      + '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">'
+      + '<div><label class="block text-xs text-gray-600 mb-1">ชื่อกลุ่ม *</label>'
+      + '<input name="name" required value="' + esc(cur.name) + '" placeholder="เช่น กลุ่ม 1" '
+      + 'class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"></div>'
+      + '<div><label class="block text-xs text-gray-600 mb-1">แหล่งฝึก</label>'
+      + '<input name="site_name" value="' + esc(cur.site_name) + '" placeholder="เช่น รพ.ตำรวจ" '
+      + 'class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"></div>'
+      + '<div><label class="block text-xs text-gray-600 mb-1">หอผู้ป่วย/ตึก</label>'
+      + '<input name="ward" value="' + esc(cur.ward) + '" placeholder="เช่น อายุรกรรม 6ก" '
+      + 'class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"></div>'
+      + '</div>'
+
+      + '<div><p class="text-xs text-gray-600 mb-1">อาจารย์นิเทศของกลุ่มนี้</p>'
+      + tBoxes
+      + '<div class="flex gap-2 mt-2">'
+      + '<input id="evalGroupNewTeacher" placeholder="พิมพ์ชื่ออาจารย์ที่ยังไม่มีในรายการ" '
+      + 'class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm">'
+      + '<button type="button" onclick="evalGroupAddTeacher()" class="px-3 py-2 rounded-xl bg-surface text-primary text-sm border border-blue-100">เพิ่มชื่อ</button>'
+      + '</div></div>'
+
+      + '<div><div class="flex flex-wrap items-center justify-between gap-2 mb-1">'
+      + '<p class="text-xs text-gray-600">นักศึกษาในกลุ่มนี้ <span id="evalGroupCount" class="text-primary font-semibold"></span></p>'
+      + '<div class="flex gap-2">'
+      + '<input id="evalGroupFind" oninput="evalGroupFilter()" placeholder="ค้นหารหัส/ชื่อ" '
+      + 'class="border border-gray-200 rounded-lg px-2 py-1 text-xs w-40">'
+      + '<button type="button" onclick="evalGroupTickAll(true)" class="text-xs text-primary hover:underline">เลือกที่เห็นทั้งหมด</button>'
+      + '<button type="button" onclick="evalGroupTickAll(false)" class="text-xs text-gray-500 hover:underline">ล้างที่เห็น</button>'
+      + '</div></div>'
+      + '<div id="evalGroupStudents" class="border border-gray-200 rounded-xl p-1 max-h-64 overflow-y-auto">' + sBoxes + '</div>'
+      + '<p class="text-xs text-gray-400 mt-1">คนที่อยู่กลุ่มอื่นแล้วจะติ๊กไม่ได้ — เอาออกจากกลุ่มเดิมก่อน</p></div>'
+
+      + '<div><label class="block text-xs text-gray-600 mb-1">หมายเหตุ</label>'
+      + '<input name="note" value="' + esc(cur.note) + '" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"></div>'
+      + '</form>';
+  }
+
+  window.evalGroupFilter = function () {
+    var q = s(document.getElementById('evalGroupFind') && document.getElementById('evalGroupFind').value).toLowerCase();
+    var box = document.getElementById('evalGroupStudents');
+    if (!box) return;
+    Array.prototype.forEach.call(box.querySelectorAll('label'), function (l) {
+      l.style.display = (!q || l.textContent.toLowerCase().indexOf(q) >= 0) ? '' : 'none';
+    });
+  };
+  window.evalGroupTickAll = function (on) {
+    var box = document.getElementById('evalGroupStudents');
+    if (!box) return;
+    Array.prototype.forEach.call(box.querySelectorAll('label'), function (l) {
+      if (l.style.display === 'none') return;
+      var c = l.querySelector('input.eg-student');
+      if (c && !c.disabled) c.checked = !!on;
+    });
+    evalGroupCount();
+  };
+  window.evalGroupCount = function () {
+    var el = document.getElementById('evalGroupCount');
+    var box = document.getElementById('evalGroupStudents');
+    if (!el || !box) return;
+    el.textContent = '(' + box.querySelectorAll('input.eg-student:checked').length + ' คน)';
+  };
+  window.evalGroupAddTeacher = function () {
+    var inp = document.getElementById('evalGroupNewTeacher');
+    var name = s(inp && inp.value);
+    if (!name) return;
+    var d = state().draft; if (!d) return;
+    // เพิ่มเป็นชื่อที่เลือกได้ทันที โดยยังไม่ผูกกลุ่ม รอกดบันทึกกลุ่มถึงจะผูก
+    var box = document.getElementById('evalGroupForm');
+    if (!box) return;
+    if (box.querySelector('input.eg-teacher[value="' + name.replace(/"/g, '\\"') + '"]')) {
+      showToast('มีชื่อนี้อยู่แล้ว', 'error'); return;
+    }
+    var wrap = document.getElementById('evalGroupTeachers');
+    if (!wrap) return;
+    var empty = wrap.querySelector('.eg-empty');
+    if (empty) empty.remove();
+    var lab = document.createElement('label');
+    lab.className = 'flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface text-sm';
+    lab.innerHTML = '<input type="checkbox" class="rounded eg-teacher" value="' + esc(name) + '" checked>'
+      + '<span class="text-gray-800">' + esc(name) + '</span>';
+    wrap.appendChild(lab);
+    inp.value = '';
+  };
+
+  window.evalGroupAdd = function () {
+    var st = state(), f = formByCode(st.form), d = st.draft;
+    if (!f || !d) return;
+    showModal('เพิ่มกลุ่มย่อย', groupFormHTML(f, d, -1),
+      function () { return window.evalGroupSave(-1); }, 'max-w-3xl');
+    setTimeout(function () {
+      var box = document.getElementById('evalGroupStudents');
+      if (box) box.addEventListener('change', window.evalGroupCount);
+      window.evalGroupCount();
+    }, 60);
+  };
+  window.evalGroupEdit = function (i) {
+    var st = state(), f = formByCode(st.form), d = st.draft;
+    if (!f || !d || !(d.groups || [])[i]) return;
+    showModal('แก้ไขกลุ่มย่อย', groupFormHTML(f, d, i),
+      function () { return window.evalGroupSave(i); }, 'max-w-3xl');
+    setTimeout(function () {
+      var box = document.getElementById('evalGroupStudents');
+      if (box) box.addEventListener('change', window.evalGroupCount);
+      window.evalGroupCount();
+    }, 60);
+  };
+  window.evalGroupSave = function (i) {
+    var d = state().draft; if (!d) return;
+    var form = document.getElementById('evalGroupForm'); if (!form) return;
+    var name = s(form.name.value);
+    if (!name) { showToast('กรุณาตั้งชื่อกลุ่ม', 'error'); return; }
+    if (!d.groups) d.groups = [];
+    var dup = d.groups.some(function (g, gi) { return gi !== i && s(g.name) === name; });
+    if (dup) { showToast('มีกลุ่มชื่อนี้อยู่แล้ว', 'error'); return; }
+
+    var students = Array.prototype.map.call(form.querySelectorAll('input.eg-student:checked'), function (c) { return s(c.value); });
+    var teachers = Array.prototype.map.call(form.querySelectorAll('input.eg-teacher:checked'), function (c) { return s(c.value); });
+
+    var old = i >= 0 ? d.groups[i] : null;
+    var oldName = old ? s(old.name) : '';
+    var row = {
+      id: old ? old.id : null, name: name, students: students,
+      site_name: s(form.site_name.value), ward: s(form.ward.value), note: s(form.note.value)
+    };
+    if (i >= 0) d.groups[i] = row; else d.groups.push(row);
+
+    // ผูกอาจารย์เข้ากลุ่มใหม่ — ล้างของกลุ่มนี้ทิ้งก่อน (ทั้งชื่อเดิมและชื่อใหม่ เผื่อเปลี่ยนชื่อกลุ่ม)
+    // แถวที่ไม่ได้ผูกกลุ่ม (group ว่าง) ไม่ยุ่ง เพราะเป็นอาจารย์ที่ทุกคนประเมิน
+    d.teachers = (d.teachers || []).filter(function (t) {
+      var g = s(t.group);
+      return g !== name && !(oldName && g === oldName);
+    });
+    teachers.forEach(function (n) { d.teachers.push({ name: n, ref: '', group: name }); });
+
+    closeModal();
+    renderCurrentPage();
+  };
+  window.evalGroupDelete = function (i) {
+    var d = state().draft; if (!d) return;
+    var g = (d.groups || [])[i]; if (!g) return;
+    if (!confirm('ลบกลุ่ม "' + g.name + '" ใช่หรือไม่\nอาจารย์นิเทศของกลุ่มนี้จะถูกเอาออกจากรายการด้วย')) return;
+    d.teachers = (d.teachers || []).filter(function (t) { return s(t.group) !== s(g.name); });
+    d.groups.splice(i, 1);
+    renderCurrentPage();
+  };
 
   /* ================================================================
      การ์ด "ด้านที่ประเมินและชุดข้อคำถาม"
@@ -1178,7 +1505,9 @@
 
     var teacherBox = s(d.set_teacher)
       ? targetBox('teacher', 'อาจารย์ผู้สอนที่ถูกประเมิน',
-        'นักศึกษาจะได้ประเมินอาจารย์ทุกคนในรายการนี้ คนละ ' + countRating(d.set_teacher) + ' ข้อ',
+        ((d.groups || []).length
+          ? 'ชื่อที่มีป้ายกลุ่ม จะให้เฉพาะนักศึกษาในกลุ่มนั้นประเมิน ส่วนชื่อที่ไม่มีป้าย ทุกคนประเมิน · คนละ '
+          : 'นักศึกษาจะได้ประเมินอาจารย์ทุกคนในรายการนี้ คนละ ') + countRating(d.set_teacher) + ' ข้อ',
         d.teachers, 'evalTeacherList', teacherOptions())
       : '';
     var siteBox = s(d.set_site)
@@ -1187,8 +1516,15 @@
         d.sites, '', null)
       : '';
 
+    /* จำนวนข้อที่ "นักศึกษาหนึ่งคน" ต้องตอบ
+       วิชาที่แบ่งกลุ่ม แต่ละคนประเมินเฉพาะอาจารย์ของกลุ่มตัวเอง
+       จึงนับอาจารย์ที่ไม่ผูกกลุ่ม บวกกับกลุ่มที่มีอาจารย์มากที่สุด */
+    var freeT = d.teachers.filter(function (t) { return !s(t.group); }).length;
+    var perG = {};
+    d.teachers.forEach(function (t) { if (s(t.group)) perG[s(t.group)] = (perG[s(t.group)] || 0) + 1; });
+    var maxG = Object.keys(perG).reduce(function (m, k) { return Math.max(m, perG[k]); }, 0);
     var totalItems = (s(d.set_course) ? countRating(d.set_course) : 0)
-      + (s(d.set_teacher) ? countRating(d.set_teacher) * d.teachers.length : 0)
+      + (s(d.set_teacher) ? countRating(d.set_teacher) * (freeT + maxG) : 0)
       + (s(d.set_site) ? countRating(d.set_site) * d.sites.length : 0)
       + (s(d.set_engage) ? countRating(d.set_engage) : 0);
 
@@ -1218,6 +1554,9 @@
 
       + (teacherBox || siteBox
         ? '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">' + teacherBox + siteBox + '</div>' : '')
+
+      // ข.2 กลุ่มย่อย — เฉพาะวิชาที่มีภาคปฏิบัติและมีการประเมินอาจารย์
+      + (s(d.set_teacher) && hasPracticum(d.course_type || f.course_type) ? groupBox(f, d) : '')
 
       // ข. ช่วงเวลาและสถานะ
       + '<div class="bg-white rounded-2xl border border-blue-100 p-4 mb-4">'
@@ -1294,15 +1633,23 @@
     if (!r || !r.isOk) { showToast('บันทึกไม่สำเร็จ · ' + ((r && r.error) || ''), 'error'); return; }
 
     // เป้าหมาย — เทียบของเดิมกับของใหม่ แล้วแก้เฉพาะส่วนที่ต่าง
+    // อาจารย์คนเดียวอยู่ได้หลายกลุ่ม แถวจึงซ้ำชื่อได้ ต้องเทียบด้วยกลุ่มด้วย
     var want = [];
-    if (s(d.set_teacher)) d.teachers.forEach(function (x, i) { want.push({ kind: 'teacher', name: x.name, ref: x.ref, order: i + 1 }); });
-    if (s(d.set_site)) d.sites.forEach(function (x, i) { want.push({ kind: 'site', name: x.name, ref: '', order: i + 1 }); });
+    if (s(d.set_teacher)) d.teachers.forEach(function (x, i) {
+      want.push({ kind: 'teacher', name: x.name, ref: x.ref, group: s(x.group), order: i + 1 });
+    });
+    if (s(d.set_site)) d.sites.forEach(function (x, i) {
+      want.push({ kind: 'site', name: x.name, ref: '', group: '', order: i + 1 });
+    });
 
     var have = targetsOf(st.form);
     var keep = {};
     for (var i = 0; i < want.length; i++) {
       var w = want[i];
-      var hit = have.find(function (t) { return s(t.target_kind) === w.kind && s(t.target_name) === w.name; });
+      var hit = have.find(function (t) {
+        return !keep[t.__rowIndex] && s(t.target_kind) === w.kind
+          && s(t.target_name) === w.name && s(t.group_name) === w.group;
+      });
       if (hit) {
         keep[hit.__rowIndex] = 1;
         if (num(hit.sort_order) !== w.order) {
@@ -1311,7 +1658,7 @@
       } else {
         await GSheetDB.create({
           type: 'eval_target', form_code: st.form, target_kind: w.kind,
-          target_name: w.name, target_ref: w.ref, sort_order: w.order,
+          target_name: w.name, target_ref: w.ref, group_name: w.group, sort_order: w.order,
           status: 'ใช้งาน', updated_by: who()
         }, { noRefresh: true });
       }
@@ -1341,8 +1688,33 @@
       if (!keepH[haveH[hj].__rowIndex]) await GSheetDB.delete(haveH[hj], { noRefresh: true });
     }
 
+    /* กลุ่มย่อย — เทียบของเดิมกับของใหม่ด้วยชื่อกลุ่ม
+       กลุ่มที่หายไปจากรายการถือว่าถูกลบ พร้อมอาจารย์ของกลุ่มนั้นที่ถูกลบไปแล้วข้างบน */
+    var haveG = groupsOf(st.form), keepG = {};
+    for (var gi = 0; gi < (d.groups || []).length; gi++) {
+      var g = d.groups[gi];
+      var gRow = g.id ? haveG.filter(function (x) { return String(x.__rowIndex) === String(g.id); })[0] : null;
+      if (!gRow) gRow = haveG.filter(function (x) { return s(x.group_name) === s(g.name) && !keepG[x.__rowIndex]; })[0];
+      var gPayload = {
+        type: 'eval_group', form_code: st.form, group_name: s(g.name),
+        students: (g.students || []).join(','), site_name: s(g.site_name),
+        ward: s(g.ward), note: s(g.note), sort_order: gi + 1,
+        status: 'ใช้งาน', updated_by: who()
+      };
+      if (gRow) {
+        keepG[gRow.__rowIndex] = 1;
+        await GSheetDB.update(Object.assign({}, gRow, gPayload), { noRefresh: true });
+      } else {
+        await GSheetDB.create(gPayload, { noRefresh: true });
+      }
+    }
+    for (var gj = 0; gj < haveG.length; gj++) {
+      if (!keepG[haveG[gj].__rowIndex]) await GSheetDB.delete(haveG[gj], { noRefresh: true });
+    }
+
     await GSheetDB.refreshTab('eval_form');
     await GSheetDB.refreshTab('eval_target');
+    await GSheetDB.refreshTab('eval_group');
     await GSheetDB.refreshTab('eval_heading');
     st.draft = null;
     if (!quiet) { showToast('บันทึกการตั้งค่าแล้ว'); renderCurrentPage(); }
@@ -1418,8 +1790,16 @@
   function answerBlocks(f) {
     var out = [];
     if (s(f.set_course)) out.push({ dim: 'course', set: s(f.set_course), kind: '', name: '', title: DIM_NAME.course });
+    // อาจารย์ที่ผูกกับกลุ่มย่อย จะขึ้นให้เฉพาะนักศึกษาในกลุ่มนั้น
+    // ที่ไม่ได้ผูกกลุ่ม (ช่อง group_name ว่าง) ทุกคนในรายวิชายังประเมินเหมือนเดิม
+    var myG = myGroupIn(f.form_code);
     if (s(f.set_teacher)) targetsOf(f.form_code, 'teacher').forEach(function (t) {
-      out.push({ dim: 'teacher', set: s(f.set_teacher), kind: 'teacher', name: s(t.target_name), title: 'อาจารย์ผู้สอน — ' + s(t.target_name) });
+      var g = s(t.group_name);
+      if (g && g !== myG) return;
+      out.push({
+        dim: 'teacher', set: s(f.set_teacher), kind: 'teacher', name: s(t.target_name), group: g,
+        title: 'อาจารย์ผู้สอน — ' + s(t.target_name) + (g ? ' · ' + g : '')
+      });
     });
     if (s(f.set_site)) targetsOf(f.form_code, 'site').forEach(function (t) {
       out.push({ dim: 'site', set: s(f.set_site), kind: 'site', name: s(t.target_name), title: 'แหล่งฝึกภาคปฏิบัติ — ' + s(t.target_name) });
@@ -1488,6 +1868,9 @@
       if (r.error) throw new Error(r.error.message);
       st.myResp = {};
       (r.data || []).forEach(function (x) { st.myResp[s(x.form_code)] = x; });
+      // กลุ่มย่อยของตัวเอง — ตอบมาเฉพาะของคนที่ล็อกอิน ไม่เห็นรายชื่อเพื่อน
+      try { st.myGroup = (await rpc('ems_eval_my_groups')) || {}; }
+      catch (e2) { st.myGroup = {}; }
       st.myError = '';
     } catch (e) { st.myError = String(e.message || e); }
     st.myLoaded = true; st.myLoading = false;
@@ -1515,6 +1898,18 @@
     var blocks = answerBlocks(f);
     var total = ratingCount(f);
     var answered = Object.keys(st.ans).filter(function (k) { return s(st.ans[k]) !== ''; }).length;
+
+    /* วิชาที่แบ่งกลุ่มย่อย แต่ยังไม่มีชื่อเราอยู่ในกลุ่มไหนเลย
+       ถ้าปล่อยผ่าน นักศึกษาจะไม่เห็นอาจารย์นิเทศของตัวเองแล้วนึกว่าระบบเสีย
+       จึงบอกให้ชัดว่าต้องไปให้ใครแก้ */
+    var myG = myGroupIn(f.form_code);
+    if (isGrouped(f.form_code) && !myG) {
+      return '<div class="mb-3"><button onclick="evalBackToForms()" class="text-sm text-gray-500 hover:text-primary inline-flex items-center gap-1">'
+        + '<i data-lucide="arrow-left" class="w-4 h-4"></i>กลับไปรายการแบบประเมิน</button></div>'
+        + warnBox('รายวิชานี้แบ่งนักศึกษาเป็นกลุ่มย่อย แต่ยังไม่พบชื่อของคุณในกลุ่มใด',
+          'กรุณาแจ้งอาจารย์ผู้รับผิดชอบรายวิชาหรืองานวิชาการให้เพิ่มชื่อของคุณเข้ากลุ่มก่อน '
+          + 'จึงจะประเมินอาจารย์นิเทศของกลุ่มตัวเองได้');
+    }
 
     var body = blocks.map(function (b, bi) {
       var items = itemsOf(b.set);
@@ -1663,6 +2058,7 @@
         payload.push({
           form_code: s(f.form_code), dimension: b.dim, set_code: b.set,
           item_code: s(it.item_code), target_kind: b.kind || null, target_name: b.name || null,
+          target_group: b.group || '',
           score: isText ? null : Number(v), text_answer: isText ? v : null
         });
       });
@@ -2178,6 +2574,8 @@
         + '<th class="px-3 py-2 font-semibold text-center">แปลผล</th></tr></thead><tbody>'
         + secRows + '</tbody></table>') : '')
 
+      + groupTable(d)
+
       + (itemRows ? tableWrap('สรุปรายข้อ — รวมทุกรายวิชา', '<table class="w-full text-sm"><thead><tr class="bg-surface text-left">'
         + '<th class="px-3 py-2 font-semibold text-center">ลำดับ</th>'
         + '<th class="px-3 py-2 font-semibold">รหัสข้อ</th>'
@@ -2190,6 +2588,44 @@
         + itemRows + '</tbody></table>') : '')
 
       + cmtBox;
+  }
+
+  /* ผลแยกรายกลุ่มย่อย สำหรับวิชาปฏิบัติที่แบ่งกลุ่ม
+     อาจารย์คนเดียวสอนหลายกลุ่มได้ ตารางนี้จึงตอบว่าแต่ละกลุ่มให้คะแนนต่างกันแค่ไหน */
+  function groupTable(d) {
+    var gs = (d.groups || []);
+    if (!gs.length) return '';
+    var rows = gs.map(function (x, i) {
+      var name = '<span class="font-mono text-primary">' + esc(s(x.subject_code)) + '</span> ' + esc(s(x.subject_name));
+      if (!x.visible) {
+        return '<tr class="border-t border-gray-50 bg-amber-50">'
+          + '<td class="px-3 py-2 text-center text-gray-400">' + (i + 1) + '</td>'
+          + '<td class="px-3 py-2">' + name + '</td>'
+          + '<td class="px-3 py-2 font-medium text-gray-800">' + esc(s(x.group_name)) + '</td>'
+          + '<td class="px-3 py-2 text-center text-gray-500">' + x.n_resp + '</td>'
+          + '<td class="px-3 py-2 text-center text-xs text-amber-700" colspan="4">'
+          + 'ยังเปิดเผยไม่ได้ — ผู้ตอบไม่ถึงเกณฑ์ ' + x.min + ' คน</td></tr>';
+      }
+      return '<tr class="border-t border-gray-50">'
+        + '<td class="px-3 py-2 text-center text-gray-400">' + (i + 1) + '</td>'
+        + '<td class="px-3 py-2">' + name + '</td>'
+        + '<td class="px-3 py-2 font-medium text-gray-800">' + esc(s(x.group_name)) + '</td>'
+        + '<td class="px-3 py-2 text-center text-gray-500">' + x.n_resp + '</td>'
+        + '<td class="px-3 py-2 text-center text-gray-500">' + x.n + '</td>'
+        + meanCell(x.mean, x.sd) + '</tr>';
+    }).join('');
+    return tableWrap('ผลแยกรายกลุ่มย่อย (วิชาปฏิบัติ)',
+      '<table class="w-full text-sm"><thead><tr class="bg-surface text-left">'
+      + '<th class="px-3 py-2 font-semibold text-center">ลำดับ</th>'
+      + '<th class="px-3 py-2 font-semibold">รายวิชา</th>'
+      + '<th class="px-3 py-2 font-semibold">กลุ่ม</th>'
+      + '<th class="px-3 py-2 font-semibold text-center">ผู้ตอบ</th>'
+      + '<th class="px-3 py-2 font-semibold text-center">จำนวนคำตอบ</th>'
+      + '<th class="px-3 py-2 font-semibold text-center">Mean</th>'
+      + '<th class="px-3 py-2 font-semibold text-center">SD</th>'
+      + '<th class="px-3 py-2 font-semibold text-center">แปลผล</th></tr></thead><tbody>'
+      + rows + '</tbody></table>',
+      'ผู้ตอบของกลุ่มนับเฉพาะคนที่ประเมินรายนี้ในกลุ่มนั้น จึงใช้เกณฑ์ขั้นต่ำแยกรายกลุ่ม');
   }
 
   /* ================================================================
@@ -2360,6 +2796,25 @@
           [fx(x.mean), 'c'], [fx(x.sd), 'c'], [esc(bandOf(x.mean)[1]), 'c']]);
       }).join('') + '</tbody></table>';
 
+    if ((d.groups || []).length) {
+      body += '<h3>ผลแยกรายกลุ่มย่อย (วิชาปฏิบัติ)</h3><table>'
+        + pHead([['ลำดับ', 'c'], ['รหัสวิชา', 'c'], ['ชื่อรายวิชา'], ['กลุ่ม'], ['ผู้ตอบ', 'c'],
+          ['n', 'c'], ['Mean', 'c'], ['S.D.', 'c'], ['แปลผล', 'c']])
+        + '<tbody>' + d.groups.map(function (x, i) {
+          if (!x.visible) {
+            return '<tr class="hid"><td class="c">' + (i + 1) + '</td>'
+              + '<td class="c">' + esc(s(x.subject_code)) + '</td>'
+              + '<td>' + esc(s(x.subject_name)) + '</td>'
+              + '<td>' + esc(s(x.group_name)) + '</td>'
+              + '<td class="c">' + x.n_resp + '</td>'
+              + '<td class="c" colspan="4">ยังเปิดเผยไม่ได้ — ผู้ตอบไม่ถึงเกณฑ์ ' + x.min + ' คน</td></tr>';
+          }
+          return pRow([[i + 1, 'c'], [esc(s(x.subject_code)), 'c'], [esc(s(x.subject_name))],
+            [esc(s(x.group_name))], [x.n_resp, 'c'], [x.n, 'c'],
+            [fx(x.mean), 'c'], [fx(x.sd), 'c'], [esc(bandOf(x.mean)[1]), 'c']]);
+        }).join('') + '</tbody></table>';
+    }
+
     if ((d.sections || []).length) {
       body += '<h3>สรุปรายหมวดคำถาม</h3><table>'
         + pHead([['หมวด'], ['n', 'c'], ['Mean', 'c'], ['S.D.', 'c'], ['แปลผล', 'c']])
@@ -2409,6 +2864,15 @@
         x.visible ? x.n : '', x.visible ? fx(x.mean) : '', x.visible ? fx(x.sd) : '',
         x.visible ? bandOf(x.mean)[1] : '', x.visible ? 'เปิดเผยผลได้' : 'ผู้ตอบไม่ถึงเกณฑ์']);
     });
+    if ((d.groups || []).length) {
+      rows.push([], ['ผลแยกรายกลุ่มย่อย'],
+        ['รหัสวิชา', 'ชื่อรายวิชา', 'กลุ่ม', 'ผู้ตอบ', 'เกณฑ์ขั้นต่ำ', 'จำนวนคำตอบ', 'Mean', 'SD', 'แปลผล', 'สถานะ']);
+      d.groups.forEach(function (x) {
+        rows.push([s(x.subject_code), s(x.subject_name), s(x.group_name), x.n_resp, x.min,
+          x.visible ? x.n : '', x.visible ? fx(x.mean) : '', x.visible ? fx(x.sd) : '',
+          x.visible ? bandOf(x.mean)[1] : '', x.visible ? 'เปิดเผยผลได้' : 'ผู้ตอบไม่ถึงเกณฑ์']);
+      });
+    }
     if ((d.sections || []).length) {
       rows.push([], ['สรุปรายหมวดคำถาม'], ['หมวด', 'จำนวนคำตอบ', 'Mean', 'SD', 'แปลผล']);
       d.sections.forEach(function (x) {
@@ -2468,7 +2932,7 @@
         'ผลประเมินจะเปิดให้ดูเมื่อผู้ดูแลระบบหรือเจ้าหน้าที่งานวิชาการกดส่งผลให้');
     }
     if (!m.data) { loadMine(); return head + loadingBox('กำลังคำนวณผล…'); }
-    return head + mineBody(m.data, m.comments, cur);
+    return head + mineBody(m.data, m.comments, cur) + myGroupBox(m.groups);
   }
 
   async function loadMyForms() {
@@ -2482,7 +2946,7 @@
   }
   window.evalPickMine = function (code) {
     var m = state().mine;
-    m.code = s(code); m.data = null; m.comments = null;
+    m.code = s(code); m.data = null; m.comments = null; m.groups = null;
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
   };
   async function loadMine() {
@@ -2499,9 +2963,47 @@
         try { m.comments = await rpc('ems_eval_comments', { p_form: m.code, p_teacher: who() }); }
         catch (e2) { m.comments = []; }
       }
+      /* ค่าเฉลี่ยรายกลุ่มย่อยของตัวเอง — วิชาปฏิบัติที่แบ่งกลุ่มเท่านั้นที่จะมีข้อมูล
+         ฐานข้อมูลคืนมาเฉพาะกลุ่มที่เราสอน และเฉพาะกลุ่มที่ผู้ตอบถึงเกณฑ์ขั้นต่ำ */
+      try {
+        var g = await rpc('ems_eval_group_scores', { p_form: m.code });
+        m.groups = (g && !g.error) ? g : null;
+      } catch (e3) { m.groups = null; }
     } catch (e) { m.error = String(e.message || e); }
     m.loading2 = false;
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  }
+
+  /* ตารางค่าเฉลี่ยรายกลุ่มย่อยของอาจารย์เจ้าตัว
+     แสดงเฉพาะค่าเฉลี่ยตามที่ตกลงกันไว้ ไม่ลงรายข้อ ไม่บอกว่าใครตอบ
+     กลุ่มที่ผู้ตอบไม่ถึงเกณฑ์ บอกเพียงว่ายังเปิดเผยไม่ได้ ไม่โชว์ตัวเลข */
+  function myGroupBox(g) {
+    if (!g || !g.rows || !g.rows.length) return '';
+    var rows = g.rows.filter(function (x) { return s(x.group_name) !== ''; });
+    if (!rows.length) return '';
+    var vis = rows.filter(function (x) { return x.visible; });
+    var body = rows.map(function (x, i) {
+      return '<tr class="border-t border-gray-50' + (x.visible ? '' : ' bg-amber-50') + '">'
+        + '<td class="px-3 py-2 text-center text-gray-400">' + (i + 1) + '</td>'
+        + '<td class="px-3 py-2 font-medium text-gray-800">' + esc(s(x.group_name)) + '</td>'
+        + '<td class="px-3 py-2 text-center text-gray-500">' + x.n_resp + '</td>'
+        + (x.visible
+          ? '<td class="px-3 py-2 text-center font-semibold text-gray-800">' + fx(x.mean) + '</td>'
+            + '<td class="px-3 py-2 text-center">' + bandBadge(x.mean) + '</td>'
+          : '<td class="px-3 py-2 text-center text-xs text-amber-700" colspan="2">'
+            + 'ยังเปิดเผยไม่ได้ — ผู้ตอบไม่ถึงเกณฑ์ ' + g.min + ' คน</td>')
+        + '</tr>';
+    }).join('');
+    return tableWrap('ค่าเฉลี่ยของคุณ แยกตามกลุ่มย่อย'
+      + ' <span class="font-normal text-gray-400">(' + vis.length + ' จาก ' + rows.length + ' กลุ่ม)</span>',
+      '<table class="w-full text-sm"><thead><tr class="bg-surface text-left">'
+      + '<th class="px-3 py-2 font-semibold text-center">ลำดับ</th>'
+      + '<th class="px-3 py-2 font-semibold">กลุ่ม</th>'
+      + '<th class="px-3 py-2 font-semibold text-center">ผู้ตอบ</th>'
+      + '<th class="px-3 py-2 font-semibold text-center">ค่าเฉลี่ย</th>'
+      + '<th class="px-3 py-2 font-semibold text-center">แปลผล</th></tr></thead><tbody>'
+      + body + '</tbody></table>',
+      'นับเกณฑ์ผู้ตอบขั้นต่ำแยกรายกลุ่ม กลุ่มเล็กจึงอาจยังไม่แสดงผล');
   }
 
   function mineBody(d, comments, cur) {

@@ -579,6 +579,7 @@
   // เก็บเป็น "รหัสไฟล์" ไม่ใช่ที่อยู่ ลิงก์จึงไม่เสียแม้มีคนเปลี่ยนชื่อหรือย้ายโฟลเดอร์ใน Drive
   function isDriveFile(link) { return typeof link === 'string' && link.indexOf('gd:') === 0; }
   function driveViewUrl(link) { return 'https://drive.google.com/file/d/' + String(link).slice(3) + '/view'; }
+  function driveIdOf(link) { return isDriveFile(link) ? String(link).slice(3) : ''; }
   window.emsIsDriveFile = isDriveFile;
   window.emsDriveViewUrl = driveViewUrl;
 
@@ -640,7 +641,7 @@
   }
 
   // เรียก Edge Function "drive-sync" ให้ย้ายไฟล์จากพื้นที่พักไปยังไดรฟ์ที่แชร์ของวิทยาลัย
-  async function emsDriveSync(rec, storagePath, originalName) {
+  async function emsDriveSync(rec, storagePath, originalName, existingId) {
     try {
       var code = String(rec.subject_code || '').trim();
       var name = String(rec.subject_name || '').trim();
@@ -649,8 +650,10 @@
       var yr = String(rec.academic_year || '').trim();
       var suffix = (sem ? ' ภาค' + sem : '') + (yr ? '-' + yr : '');
       var driveName = nice ? (nice + suffix + '.pdf') : originalName;
-      var existing = (String(rec.file_link || '').indexOf('gd:') === 0)
-        ? String(rec.file_link).slice(3) : '';
+      // ผู้เรียกต้องส่งรหัสไฟล์เดิมมาเอง เพราะตอนนี้ rec.file_link ถูกเขียนทับ
+      // ด้วยลิงก์ของไฟล์พักไปแล้ว ถ้าไปอ่านจากตรงนี้จะได้ค่าว่างเสมอ
+      // แล้วไดรฟ์จะสร้างไฟล์ใหม่ซ้อนขึ้นเรื่อย ๆ ทุกครั้งที่อัปโหลดทับ
+      var existing = existingId != null ? String(existingId || '') : driveIdOf(rec.file_link);
 
       var res = await GSheetDB.client().functions.invoke('drive-sync', {
         body: {
@@ -698,6 +701,9 @@
     if (btn) { btn.disabled = true; btn.textContent = 'กำลังอัปโหลด...'; }
     pdfMsg('กำลังอัปโหลด ' + file.name + ' (' + (file.size / 1048576).toFixed(1) + ' MB)');
 
+    // จำรหัสไฟล์บนไดรฟ์ของเดิมไว้ก่อน เพราะอีกสองบรรทัดถัดไปจะเขียนทับ rec.file_link
+    var prevDrive = driveIdOf(rec.file_link);
+
     var up = await GSheetDB.uploadFile(rec.type, rec.__rowIndex, file);
     if (!up.isOk) {
       pdfMsg(up.error, 'err');
@@ -711,7 +717,7 @@
     // ---- ย้ายต่อไปเก็บที่ Google Drive ของวิทยาลัย (แยกปีการศึกษา/หมวดเอกสาร) ----
     // ถ้าย้ายไม่สำเร็จ ไฟล์ยังอยู่ในพื้นที่จัดเก็บของระบบและใช้งานได้ตามปกติ
     pdfMsg('กำลังย้ายไฟล์ไปเก็บที่ Google Drive...');
-    var sync = await emsDriveSync(rec, up.path, file.name);
+    var sync = await emsDriveSync(rec, up.path, file.name, prevDrive);
     if (sync.isOk) {
       rec.file_link = 'gd:' + sync.fileId;
     }
@@ -720,8 +726,10 @@
     if (btn) { btn.disabled = false; btn.textContent = 'อัปโหลดไฟล์'; }
     if (!r.isOk) { pdfMsg('อัปโหลดไฟล์สำเร็จ แต่บันทึกลงฐานข้อมูลไม่สำเร็จ: ' + r.error, 'err'); return; }
 
+    var swept = Number(sync['ลบไฟล์ซ้ำทิ้งแล้ว'] || 0);
     pdfMsg(sync.isOk
       ? 'เก็บไว้ที่ Google Drive แล้ว — โฟลเดอร์ ' + (sync['โฟลเดอร์'] || '')
+        + (prevDrive || swept ? ' (เขียนทับไฟล์เดิม' + (swept ? ' และลบไฟล์ซ้ำเก่าออก ' + swept + ' ไฟล์' : '') + ')' : '')
       : 'อัปโหลดเรียบร้อยแล้ว (เก็บในพื้นที่ของระบบ — ' + (sync.error || 'ยังไม่ได้เชื่อม Google Drive') + ')');
     setTimeout(function () {
       closeModal();
@@ -739,11 +747,18 @@
   window.emsRemoveTrackingFile = async function (id) {
     var rec = APP.allData.find(function (d) { return d.__backendId === id; });
     if (!rec) return;
-    var onDrive = isDriveFile(rec.file_link);
-    if (!confirm(onDrive
-      ? 'นำไฟล์ออกจากรายวิชานี้?\n\nไฟล์ตัวจริงยังอยู่ใน Google Drive ของวิทยาลัย ลบได้ที่ไดรฟ์โดยตรงหากต้องการ'
-      : 'ยืนยันการลบไฟล์ PDF ของรายวิชานี้?')) return;
-    if (!onDrive) {
+    var driveId = driveIdOf(rec.file_link);
+    if (!confirm('ยืนยันการลบไฟล์ PDF ของรายวิชานี้?'
+      + (driveId ? '\n\nไฟล์บน Google Drive ของวิทยาลัยจะถูกลบไปด้วย' : ''))) return;
+    if (driveId) {
+      // ลบบนไดรฟ์จริง ไม่ปล่อยค้างเป็นไฟล์กำพร้าที่ไม่มีอะไรอ้างถึงอีกแล้ว
+      var rm = await GSheetDB.client().functions.invoke('drive-sync', {
+        body: { mode: 'remove', kind: 'tracking', fileId: driveId }
+      });
+      var rmData = (rm && rm.data) || {};
+      if (rm && rm.error) { pdfMsg('ลบไฟล์บนไดรฟ์ไม่สำเร็จ กรุณาลองใหม่', 'err'); return; }
+      if (!rmData['ลบบนไดรฟ์']) { pdfMsg('ลบไฟล์บนไดรฟ์ไม่สำเร็จ: ' + (rmData.error || ''), 'err'); return; }
+    } else {
       var d = await GSheetDB.deleteFile(rec.file_link);
       if (!d.isOk) { pdfMsg('ลบไฟล์ไม่สำเร็จ: ' + d.error, 'err'); return; }
     }
