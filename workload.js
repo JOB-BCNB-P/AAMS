@@ -381,12 +381,24 @@
     });
   }
   function myRoles() { return (APP._roles && APP._roles.length) ? APP._roles : [APP.currentRole]; }
+
+  /* ---------------- มุมมองของนักศึกษา ----------------
+     นักศึกษาบันทึกภาระงานของตนเองได้ 4 ด้าน (ไม่รวมด้านวิชาการ ซึ่งวิทยาลัยกำหนดให้)
+     และเห็นได้เฉพาะของตัวเองเท่านั้น ฐานข้อมูลกันไว้อีกชั้นด้วยกฎ RLS
+     จึงต่อให้แก้หน้าเว็บก็อ่านหรือเขียนของคนอื่นไม่ได้ */
+  var STUDENT_MISSIONS = ['research', 'service', 'student', 'personal'];
+  function isStudentView() { return norm(APP.currentRole) === 'student'; }
+  function meRec() { return (APP.currentUser && APP.currentUser.data) || {}; }
+  function mySid() { return norm(meRec().student_id); }
+  function myLevel() { return norm(meRec().year_level) || '1'; }
   function canEdit() {
+    if (isStudentView()) return !!mySid();
     return myRoles().some(function (r) { return r === 'admin' || r === 'academic' || r === 'otherStaff'; });
   }
   // ผู้ดูแลระบบ/งานวิชาการ แก้ได้ทุกพันธกิจ
   // เจ้าหน้าที่งานอื่นๆ แก้ได้เฉพาะพันธกิจที่ได้รับมอบหมาย และไม่รวมการเรียนการสอน
   function myMissions() {
+    if (isStudentView()) return mySid() ? STUDENT_MISSIONS.slice() : [];
     if (myRoles().some(function (r) { return r === 'admin' || r === 'academic'; })) {
       return MISSIONS.map(function (m) { return m.key; });
     }
@@ -406,8 +418,211 @@
     try { return buildWorkloadPage(); } finally { MEMO = null; }
   };
 
+  /* ---------------- นักศึกษาบันทึกภาระงานของตนเอง ----------------
+     เขียนลงแถวของตัวเองในตาราง workload_student เท่านั้น
+     ข้อควรระวังที่สำคัญ : แถวของตัวเองจะ "แทนที่" แผนของชั้นปีในด้านนั้น
+     ถ้าเพิ่มรายการแรกโดยไม่คัดลอกของเดิมมาก่อน รายการที่วิทยาลัยกำหนดไว้จะหายไป
+     จึงต้องคัดลอกรายการจากแผนมาตั้งต้นเสมอ แล้วค่อยต่อท้ายด้วยรายการของตัวเอง */
+
+  function selfSeedRows(sid, year, sem, m) {
+    var ovr = overrideOf(sid, year, sem);
+    if (ovr && norm(ovr[m.field]) !== '') return rows(ovr, m).slice();
+    var plan = planOf(year, myLevel(), sem);
+    if (!plan) return [];
+    // เอาเฉพาะรายการที่มีผลกับนักศึกษาคนนี้
+    return rows(plan, m).filter(function (r) { return appliesTo(r, sid); })
+      .map(function (r) { return JSON.parse(JSON.stringify(r)); });
+  }
+
+  async function selfSave(mkey, sem, list) {
+    var st = state(), sid = mySid();
+    var m = missionOf(mkey);
+    if (!m || !sid) return;
+    if (!canEditMission(mkey)) { showToast('ด้านนี้บันทึกเองไม่ได้', 'error'); return; }
+    var who = (APP.currentUser && APP.currentUser.name) || sid;
+
+    showToast('กำลังบันทึก...');
+    try { await GSheetDB.refreshTab('workload_student'); } catch (e) { /* ใช้ข้อมูลที่มีอยู่ */ }
+
+    var cur = overrideOf(sid, st.year, sem);
+    var mt = meta(cur);
+    mt[mkey] = { by: who, at: stampNow() };
+    var payload = {
+      type: 'workload_student', student_id: sid, academic_year: st.year,
+      year_level: myLevel(), semester: sem, updated_by: who, meta_json: JSON.stringify(mt)
+    };
+    payload[m.field] = JSON.stringify(list);
+    var r = cur ? await GSheetDB.update(Object.assign({}, cur, payload)) : await GSheetDB.create(payload);
+    if (r && r.isOk) { showToast('บันทึกแล้ว'); renderCurrentPage(); }
+    else showToast('บันทึกไม่สำเร็จ: ' + ((r && r.error) || ''), 'error');
+  }
+
+  window.wlSelfAdd = function (mkey) {
+    var m = missionOf(mkey);
+    if (!m || !isStudentView()) return;
+    var st = state();
+    showModal('เพิ่ม' + m.label, ''
+      + '<form id="wlSelfForm" class="space-y-3">'
+      + '<div><label class="block text-xs text-gray-600 mb-1">ภาคการศึกษา</label>'
+      + '<select name="sem" class="w-full border rounded-xl px-3 py-2 text-sm">'
+      + SEMS.map(function (s) { return '<option value="' + s + '"' + (s === st.sem ? ' selected' : '') + '>' + esc(semName(s)) + '</option>'; }).join('')
+      + '</select></div>'
+      + '<div><label class="block text-xs text-gray-600 mb-1">ชื่อรายการ *</label>'
+      + '<input name="name" required class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น เข้าร่วมโครงการจิตอาสา"></div>'
+      + '<div><label class="block text-xs text-gray-600 mb-1">จำนวนชั่วโมง *</label>'
+      + '<input name="hours" type="number" min="0" step="0.5" required class="w-full border rounded-xl px-3 py-2 text-sm"></div>'
+      + '<div><label class="block text-xs text-gray-600 mb-1">รายละเอียดเพิ่มเติม</label>'
+      + '<input name="note" class="w-full border rounded-xl px-3 py-2 text-sm"></div>'
+      + '<p class="text-[11px] text-gray-400">รายการที่บันทึกเองจะมีป้ายกำกับไว้ และลบเองได้ '
+      + 'ส่วนรายการที่วิทยาลัยกำหนดจะแก้ไม่ได้</p>'
+      + '<button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึก</button>'
+      + '</form>');
+    document.getElementById('wlSelfForm').onsubmit = function (ev) {
+      ev.preventDefault();
+      var f = ev.target;
+      var sem = f.sem.value;
+      var item = {
+        name: String(f.name.value || '').trim(),
+        hours: n(f.hours.value),
+        note: String(f.note.value || '').trim(),
+        self: 1,                       // ป้ายว่าเป็นรายการที่นักศึกษาบันทึกเอง
+        by: (APP.currentUser && APP.currentUser.name) || mySid(),
+        at: stampNow()
+      };
+      if (!item.name) { showToast('กรุณากรอกชื่อรายการ', 'error'); return; }
+      if (!(item.hours > 0)) { showToast('จำนวนชั่วโมงต้องมากกว่า 0', 'error'); return; }
+      var list = selfSeedRows(mySid(), state().year, sem, missionOf(mkey));
+      list.push(item);
+      closeModal();
+      selfSave(mkey, sem, list);
+    };
+  };
+
+  window.wlSelfRemove = function (mkey, sem, rank) {
+    if (!isStudentView()) return;
+    var m = missionOf(mkey);
+    if (!m) return;
+    var sid = mySid(), st = state();
+    var ovr = overrideOf(sid, st.year, sem);
+    var list = ovr ? rows(ovr, m).slice() : [];
+    // หา "รายการที่บันทึกเอง ลำดับที่ rank" ภายในภาคนี้
+    var target = -1, seen = 0;
+    for (var i = 0; i < list.length; i++) {
+      if (!list[i] || !list[i].self) continue;
+      if (seen === rank) { target = i; break; }
+      seen++;
+    }
+    if (target < 0) { showToast('ไม่พบรายการที่จะลบ อาจมีการแก้ไขจากที่อื่น', 'error'); return; }
+    if (!confirm('ลบรายการ "' + (list[target].name || '') + '" ใช่หรือไม่')) return;
+    list.splice(target, 1);
+    selfSave(mkey, sem, list);
+  };
+
+  /* ---------------- หน้าภาระงานของนักศึกษา ----------------
+     ต่างจากหน้าของเจ้าหน้าที่ตรงที่ไม่มีการเลือกชั้นปีหรือรายบุคคล
+     เพราะทุกอย่างผูกกับบัญชีที่ล็อกอินอยู่แล้ว เหลือแค่เลือกปีการศึกษา */
+  function studentWorkloadPage() {
+    var st = state();
+    var sid = mySid();
+    if (!sid) {
+      return '<div class="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center">'
+        + '<i data-lucide="alert-triangle" class="w-8 h-8 mx-auto mb-2 text-amber-500"></i>'
+        + '<p class="text-sm text-amber-800">ยังไม่พบรหัสนักศึกษาของบัญชีนี้ จึงแสดงภาระงานให้ไม่ได้</p>'
+        + '<p class="text-xs text-amber-700 mt-1">กรุณาติดต่องานทะเบียนเพื่อตรวจสอบข้อมูล</p></div>';
+    }
+    var years = wlYears();
+    if (!years.length) years = [st.year || String(new Date().getFullYear() + 543)];
+    if (years.indexOf(st.year) < 0) st.year = years[0];
+    var lv = myLevel();
+
+    // รวมรายการของทุกภาคการศึกษาในปีที่เลือก แยกตามพันธกิจ
+    var byMission = {};
+    var grand = 0;
+    MISSIONS.forEach(function (m) { byMission[m.key] = []; });
+    SEMS.forEach(function (sm) {
+      var plan = planOf(st.year, lv, sm);
+      var ovr = overrideOf(sid, st.year, sm);
+      MISSIONS.forEach(function (m) {
+        var useOvr = ovr && norm(ovr[m.field]) !== '';
+        var src = useOvr ? ovr : plan;
+        if (!src) return;
+        // นับลำดับของรายการที่บันทึกเองภายในภาคนี้ไว้เลย ตอนลบจะได้ชี้ตัวถูก
+        var selfRank = 0;
+        rows(src, m).forEach(function (r) {
+          if (!appliesTo(r, sid)) return;
+          var isSelf = !!(r && r.self);
+          byMission[m.key].push({ sm: sm, r: r, self: isSelf, rank: isSelf ? selfRank++ : -1 });
+          grand += n(r.hours);
+        });
+      });
+    });
+
+    var head = '<div class="flex flex-wrap items-center justify-between gap-3 mb-5">'
+      + '<div><h2 class="text-xl font-bold text-gray-800"><i data-lucide="gauge" class="w-6 h-6 inline mr-2"></i>ภาระงานของฉัน</h2>'
+      + '<p class="text-sm text-gray-500 mt-0.5">' + esc(norm(meRec().name)) + ' · รหัส ' + esc(sid)
+      + ' · ชั้นปีที่ ' + esc(lv) + '</p></div>'
+      + '<div class="flex items-center gap-2"><label class="text-sm text-gray-500">ปีการศึกษา</label>'
+      + '<select onchange="wlSet(\'year\', this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm">'
+      + years.map(function (y) { return '<option ' + (y === st.year ? 'selected' : '') + '>' + esc(y) + '</option>'; }).join('')
+      + '</select></div></div>';
+
+    var sum = '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-5">'
+      + MISSIONS.map(function (m) {
+        var items = byMission[m.key];
+        var h = items.reduce(function (a, x) { return a + n(x.r.hours); }, 0);
+        return '<div class="bg-white rounded-2xl p-4 border border-blue-100">'
+          + '<div class="flex items-center gap-2 mb-1">'
+          + '<span style="width:10px;height:10px;border-radius:50%;background:' + m.color + ';display:inline-block"></span>'
+          + '<span class="text-sm text-gray-600">' + esc(m.short) + '</span></div>'
+          + '<p class="text-2xl font-bold text-gray-800 tabular-nums">' + fx(h)
+          + ' <span class="text-sm font-normal text-gray-500">ชม.</span></p>'
+          + '<p class="text-xs text-gray-400">' + items.length + ' รายการ'
+          + (grand ? ' · ' + (Math.round(h / grand * 1000) / 10) + '% ของทั้งหมด' : '') + '</p></div>';
+      }).join('')
+      + '</div>';
+
+    var blocks = MISSIONS.map(function (m) {
+      var items = byMission[m.key];
+      var mine = STUDENT_MISSIONS.indexOf(m.key) >= 0;
+      var list = items.length
+        ? '<div class="ems-tablewrap"><table class="w-full text-sm"><thead><tr class="bg-surface text-left">'
+          + '<th class="px-3 py-2 font-semibold">ภาค</th>'
+          + '<th class="px-3 py-2 font-semibold">รายการ</th>'
+          + '<th class="px-3 py-2 font-semibold text-center">ชั่วโมง</th>'
+          + '<th class="px-3 py-2 font-semibold text-center">ที่มา</th>'
+          + (mine ? '<th class="px-3 py-2"></th>' : '') + '</tr></thead><tbody>'
+          + items.map(function (x) {
+            return '<tr class="border-t">'
+              + '<td class="px-3 py-2 whitespace-nowrap">' + esc(semName(x.sm)) + '</td>'
+              + '<td class="px-3 py-2">' + esc(norm(x.r.name) || norm(x.r.title) || '-') + '</td>'
+              + '<td class="px-3 py-2 text-center tabular-nums">' + fx(x.r.hours) + '</td>'
+              + '<td class="px-3 py-2 text-center">'
+              + (x.self ? '<span class="px-2 py-0.5 rounded-full text-xs bg-emerald-50 text-emerald-700">ฉันบันทึกเอง</span>'
+                        : '<span class="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">วิทยาลัยกำหนด</span>') + '</td>'
+              + (mine ? '<td class="px-3 py-2 text-center">'
+                + (x.self ? '<button onclick="wlSelfRemove(\'' + m.key + '\',\'' + x.sm + '\',' + x.rank + ')" class="text-red-400 hover:text-red-600" title="ลบรายการนี้"><i data-lucide="trash-2" class="w-4 h-4"></i></button>' : '')
+                + '</td>' : '')
+              + '</tr>';
+          }).join('')
+          + '</tbody></table></div>'
+        : '<p class="text-sm text-gray-400 py-3">ยังไม่มีรายการในด้านนี้</p>';
+
+      return '<div class="bg-white rounded-2xl p-5 border border-blue-100 mb-4">'
+        + '<div class="flex flex-wrap items-center justify-between gap-2 mb-3">'
+        + '<h3 class="font-bold flex items-center gap-2">'
+        + '<span style="width:10px;height:10px;border-radius:50%;background:' + m.color + ';display:inline-block"></span>'
+        + esc(m.label) + '</h3>'
+        + (mine ? '<button onclick="wlSelfAdd(\'' + m.key + '\')" class="flex items-center gap-1 px-3 py-1.5 bg-primary text-white rounded-xl text-xs hover:bg-primaryDark"><i data-lucide="plus" class="w-3.5 h-3.5"></i>เพิ่มรายการ</button>'
+          : '<span class="text-xs text-gray-400">ด้านนี้วิทยาลัยเป็นผู้กำหนด</span>')
+        + '</div>' + list + '</div>';
+    }).join('');
+
+    return head + sum + blocks;
+  }
+
   function buildWorkloadPage() {
     var st = state();
+    if (isStudentView()) return studentWorkloadPage();
     var years = wlYears();
     // แท็บเดิม 3 แท็บ ย้ายไปเป็นเมนูย่อยใต้เมนู "ภาระงานนักศึกษา" ในแถบเมนูซ้ายแล้ว
     // หน้านี้จึงแสดงเฉพาะหัวข้อของเมนูย่อยที่กำลังเปิดอยู่
@@ -2152,6 +2367,23 @@
       if (!nav || nav.querySelector('[data-page="workloadSummary"]')) return;
 
       var here = APP.currentPage;
+
+      /* นักศึกษาใช้หน้าเดียวคือภาระงานของตัวเอง เมนูย่อยอีกสองอัน
+         (กรอกภาระงานทั้งชั้นปี และเกณฑ์หน่วยชั่วโมง) เป็นงานของเจ้าหน้าที่ */
+      if (norm(APP.currentRole) === 'student') {
+        var one = document.createElement('button');
+        one.setAttribute('onclick', "navigateTo('workloadSummary')");
+        one.setAttribute('data-page', 'workloadSummary');
+        one.className = 'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition '
+          + (here === 'workloadSummary' || here === 'workload'
+            ? 'bg-primaryLight text-primary font-semibold'
+            : 'text-gray-700 hover:bg-surface hover:text-primary');
+        one.innerHTML = '<i data-lucide="gauge" class="w-5 h-5 flex-shrink-0"></i>ภาระงานของฉัน';
+        insertNav(nav, one, '[data-page="survey"], [data-page="services"]');
+        if (window.lucide) lucide.createIcons();
+        return;
+      }
+
       var open = here === 'workload' || WL_SUB.some(function (s) { return s[0] === here; });
       var box = document.createElement('div');
       box.className = 'dropdown-item' + (open ? ' dropdown-open' : '');

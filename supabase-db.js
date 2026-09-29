@@ -58,7 +58,6 @@ const EMSDB = (() => {
     'alumni', 'app_user', 'user', 'login_log', 'password_log',
     'tracking', 'result_tracking', 'grade_tracking', 'file_tracking',
     'doc_request',
-    'workload_plan', 'workload_student', 'workload_rate',
     'plo_setting', 'plo_band', 'plo_clo',
     'practicum_site'   // นักศึกษาไม่มีสิทธิ์อ่าน (RLS กันไว้แล้ว) จึงไม่ต้องเรียกให้เสียเวลา
   ]);

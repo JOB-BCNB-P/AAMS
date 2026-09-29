@@ -1762,7 +1762,12 @@
      ================================================================ */
   function rptState() {
     var st = state();
-    if (!st.rpt) st.rpt = { code: '', data: null, comments: null, loading: false, error: '' };
+    if (!st.rpt) st.rpt = {
+      mode: 'course',
+      code: '', data: null, comments: null, loading: false, error: '',
+      tgt: '', tdata: null, tcomments: null, tloading: false, terror: '', tkey: ''
+    };
+    if (!st.rpt.mode) st.rpt.mode = 'course';
     return st.rpt;
   }
   window.evalPickReport = function (code) {
@@ -1771,49 +1776,144 @@
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
   };
 
+  /* สลับมุมมองรายงาน : ภาพรวมรายวิชา / รายอาจารย์ / รายแหล่งฝึก
+     สองมุมมองหลังมองข้ามรายวิชา จึงตอบคำถามว่า "อาจารย์คนนี้ทั้งภาคการศึกษาได้เท่าไร" ได้ */
+  var RPT_MODES = [
+    ['course', 'ภาพรวมรายวิชา', 'book-open'],
+    ['teacher', 'รายอาจารย์', 'user'],
+    ['site', 'รายแหล่งฝึก', 'building-2']
+  ];
+  window.evalRptMode = function (m) {
+    var r = rptState();
+    r.mode = (m === 'teacher' || m === 'site') ? m : 'course';
+    r.tgt = ''; r.tdata = null; r.tcomments = null; r.terror = ''; r.tkey = '';
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  };
+  window.evalPickTarget = function (name) {
+    var r = rptState();
+    r.tgt = s(name); r.tdata = null; r.tcomments = null; r.terror = ''; r.tkey = '';
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  };
+
   function canReport() {
     var p = (APP.permissions && APP.permissions[APP.currentRole]) || {};
     return !!p.evalReport;
+  }
+
+  // แบบประเมินของปี/ภาคที่เลือกอยู่ เรียงตามชั้นปีแล้วรหัสวิชา
+  function rptForms() {
+    var st = state();
+    return forms().filter(function (f) {
+      return s(f.academic_year) === st.year && s(f.semester) === st.sem;
+    }).sort(function (a, b) {
+      return (num(a.year_level) - num(b.year_level)) || s(a.subject_code).localeCompare(s(b.subject_code));
+    });
+  }
+
+  /* รายชื่ออาจารย์หรือแหล่งฝึกทั้งหมดที่ถูกประเมินในปี/ภาคนี้ พร้อมจำนวนวิชาที่ปรากฏ
+     อ่านจากตารางเป้าหมายที่โหลดมาแล้ว ไม่ต้องยิงฐานข้อมูลเพิ่มเพื่อทำรายการให้เลือก */
+  function rptTargets(kind) {
+    var codes = {}, out = [], seen = {};
+    rptForms().forEach(function (f) { codes[s(f.form_code)] = 1; });
+    get('eval_target').forEach(function (t) {
+      if (!codes[s(t.form_code)]) return;
+      if (s(t.target_kind) !== kind) return;
+      var nm = s(t.target_name);
+      if (!nm) return;
+      if (!seen[nm]) { seen[nm] = { name: nm, n: 0 }; out.push(seen[nm]); }
+      seen[nm].n++;
+    });
+    return out.sort(function (a, b) { return a.name.localeCompare(b.name, 'th'); });
   }
 
   function reportPage() {
     if (!canReport()) return noPerm();
     var st = state(), r = rptState();
     var ys = yearsList();
-    var list = forms().filter(function (f) {
-      return s(f.academic_year) === st.year && s(f.semester) === st.sem;
-    }).sort(function (a, b) {
-      return (num(a.year_level) - num(b.year_level)) || s(a.subject_code).localeCompare(s(b.subject_code));
-    });
+    var list = rptForms();
     if (r.code && !list.some(function (f) { return s(f.form_code) === r.code; })) r.code = '';
 
+    var tgts = r.mode === 'course' ? [] : rptTargets(r.mode);
+    if (r.tgt && !tgts.some(function (x) { return x.name === r.tgt; })) {
+      r.tgt = ''; r.tdata = null; r.tcomments = null; r.terror = '';
+    }
+
+    var tabs = '<div class="flex flex-wrap gap-1 bg-surface rounded-xl p-1 mb-3">'
+      + RPT_MODES.map(function (m) {
+        var on = r.mode === m[0];
+        return '<button onclick="evalRptMode(\'' + m[0] + '\')" class="px-3 py-1.5 rounded-lg text-sm inline-flex items-center gap-1.5 '
+          + (on ? 'bg-white text-primary font-semibold shadow-sm' : 'text-gray-600 hover:text-primary') + '">'
+          + '<i data-lucide="' + m[2] + '" class="w-4 h-4"></i>' + esc(m[1]) + '</button>';
+      }).join('') + '</div>';
+
+    var picker = r.mode === 'course'
+      ? selectHTML({
+        label: 'รายวิชา', icon: 'book-open', value: r.code, on: 'evalPickReport(this.value)', width: 'min-w-[22rem]',
+        options: [['', '— เลือกรายวิชา —']].concat(list.map(function (f) {
+          return [s(f.form_code), s(f.subject_code) + ' ' + s(f.subject_name)];
+        }))
+      })
+      : selectHTML({
+        label: r.mode === 'teacher' ? 'อาจารย์ผู้สอน' : 'แหล่งฝึกภาคปฏิบัติ',
+        icon: r.mode === 'teacher' ? 'user' : 'building-2',
+        value: r.tgt, on: 'evalPickTarget(this.value)', width: 'min-w-[22rem]',
+        options: [['', tgts.length
+          ? (r.mode === 'teacher' ? '— เลือกอาจารย์ —' : '— เลือกแหล่งฝึก —')
+          : '— ยังไม่มีรายชื่อในปี/ภาคนี้ —']].concat(tgts.map(function (x) {
+            return [x.name, x.name + ' (' + x.n + ' วิชา)'];
+          }))
+      });
+
+    var acts = '';
+    if (r.mode === 'course' && r.code && r.data && r.data.visible) {
+      acts = '<div class="ml-auto flex flex-wrap gap-2">'
+        + (canManage() ? releaseButton(formByCode(r.code)) : '')
+        + btn('evalExportReport()', 'download', 'ส่งออกสรุป (CSV)', 'border border-gray-200 text-gray-700 hover:bg-gray-50')
+        + btn('evalPrintReport()', 'file-text', 'ดาวน์โหลด PDF', 'bg-primary text-white hover:bg-primaryDark')
+        + '</div>';
+    } else if (r.mode !== 'course' && r.tgt && r.tdata && !r.terror) {
+      acts = '<div class="ml-auto flex flex-wrap gap-2">'
+        + btn('evalExportTarget()', 'download', 'ส่งออกสรุป (CSV)', 'border border-gray-200 text-gray-700 hover:bg-gray-50')
+        + btn('evalPrintTarget()', 'file-text', 'ดาวน์โหลด PDF', 'bg-primary text-white hover:bg-primaryDark')
+        + '</div>';
+    }
+
     var bar = '<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">'
+      + tabs
       + '<div class="flex flex-wrap items-end gap-3">'
       + selectHTML({
         label: 'ปีการศึกษา', icon: 'calendar', value: st.year, on: "evalSetState('year',this.value)",
         options: ys.length ? ys.map(function (y) { return [y, y]; }) : [[st.year, st.year || '-']]
       })
       + selectHTML({ label: 'ภาคการศึกษา', icon: 'layers', value: st.sem, on: "evalSetState('sem',this.value)", options: SEMS })
-      + selectHTML({
-        label: 'รายวิชา', icon: 'book-open', value: r.code, on: 'evalPickReport(this.value)', width: 'min-w-[22rem]',
-        options: [['', '— เลือกรายวิชา —']].concat(list.map(function (f) {
-          return [s(f.form_code), s(f.subject_code) + ' ' + s(f.subject_name)];
-        }))
-      })
-      + (r.code && r.data && r.data.visible
-        ? '<div class="ml-auto flex flex-wrap gap-2">'
-        + (canManage() ? releaseButton(formByCode(r.code)) : '')
-        + btn('evalExportReport()', 'download', 'ส่งออกสรุป (CSV)', 'border border-gray-200 text-gray-700 hover:bg-gray-50')
-        + '</div>' : '')
+      + picker + acts
       + '</div></div>';
 
-    var head = header('ภาพรวมผลประเมินรายวิชา', 'bar-chart-3',
-      'ค่าเฉลี่ยและส่วนเบี่ยงเบนมาตรฐาน คิดจากคำตอบทั้งหมดในระบบทุกครั้งที่เปิดดู') + bar;
+    var ttl = r.mode === 'teacher' ? 'ผลประเมินรายอาจารย์'
+      : r.mode === 'site' ? 'ผลประเมินรายแหล่งฝึก' : 'ภาพรวมผลประเมินรายวิชา';
+    var sub = r.mode === 'course'
+      ? 'ค่าเฉลี่ยและส่วนเบี่ยงเบนมาตรฐาน คิดจากคำตอบทั้งหมดในระบบทุกครั้งที่เปิดดู'
+      : 'รวมทุกรายวิชาที่' + (r.mode === 'teacher' ? 'อาจารย์ท่านนี้สอน' : 'ใช้แหล่งฝึกนี้') + 'ในปี/ภาคที่เลือก '
+      + 'รายวิชาที่ผู้ตอบยังไม่ถึงเกณฑ์ขั้นต่ำจะไม่ถูกนับเข้าค่าเฉลี่ย';
+    var head = header(ttl, 'bar-chart-3', sub) + bar;
 
-    if (!r.code) return head + emptyBox('เลือกรายวิชาเพื่อดูผลประเมิน');
-    if (r.error) return head + warnBox('โหลดผลไม่สำเร็จ', r.error);
-    if (!r.data) { loadReport(); return head + loadingBox('กำลังคำนวณผลประเมิน…'); }
-    return head + reportBody(formByCode(r.code), r.data, r.comments);
+    if (r.mode === 'course') {
+      if (!r.code) return head + emptyBox('เลือกรายวิชาเพื่อดูผลประเมิน');
+      if (r.error) return head + warnBox('โหลดผลไม่สำเร็จ', r.error);
+      if (!r.data) { loadReport(); return head + loadingBox('กำลังคำนวณผลประเมิน…'); }
+      return head + reportBody(formByCode(r.code), r.data, r.comments);
+    }
+
+    if (!tgts.length) {
+      return head + emptyBox(r.mode === 'teacher'
+        ? 'ยังไม่มีอาจารย์ผู้สอนที่ถูกกำหนดให้ประเมินในปี/ภาคนี้'
+        : 'ยังไม่มีแหล่งฝึกที่ถูกกำหนดให้ประเมินในปี/ภาคนี้',
+        'กำหนดรายชื่อได้ในหน้าตั้งค่าแบบประเมิน');
+    }
+    if (!r.tgt) return head + emptyBox(r.mode === 'teacher' ? 'เลือกอาจารย์เพื่อดูผลประเมิน' : 'เลือกแหล่งฝึกเพื่อดูผลประเมิน');
+    if (r.terror) return head + warnBox('โหลดผลไม่สำเร็จ', r.terror);
+    if (!r.tdata) { loadTargetReport(); return head + loadingBox('กำลังรวมผลทุกรายวิชา…'); }
+    return head + targetBody(r.tdata, r.tcomments);
   }
 
   async function loadReport() {
@@ -1832,6 +1932,29 @@
     r.loading = false;
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
   }
+
+  /* โหลดผลของเป้าหมายรายหนึ่งข้ามทุกรายวิชา
+     จำคำขอไว้ด้วยกุญแจ ปี|ภาค|ชนิด|ชื่อ กันการยิงซ้ำตอนหน้าจอวาดใหม่ */
+  async function loadTargetReport() {
+    var st = state(), r = rptState();
+    var key = st.year + '|' + st.sem + '|' + r.mode + '|' + r.tgt;
+    if (r.tloading || r.tkey === key) return;
+    r.tloading = true; r.tkey = key;
+    var args = { p_year: st.year, p_sem: st.sem, p_kind: r.mode, p_target: r.tgt };
+    try {
+      var d = await rpc('ems_eval_by_target', args);
+      if (d && d.error) {
+        throw new Error(d.error === 'forbidden'
+          ? 'บทบาทของคุณไม่มีสิทธิ์ดูรายงานนี้' : 'พารามิเตอร์ของรายงานไม่ถูกต้อง');
+      }
+      r.tdata = d;
+      try { r.tcomments = await rpc('ems_eval_comments_by_target', args); }
+      catch (e2) { r.tcomments = []; }
+    } catch (e) { r.terror = String(e.message || e); r.tkey = ''; }
+    r.tloading = false;
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  }
+
 
   function meanCell(m, sd) {
     return '<td class="px-3 py-2 text-center font-semibold text-gray-800">' + fx(m) + '</td>'
@@ -1951,6 +2074,362 @@
       + itemTables
       + cmtBox;
   }
+
+
+  /* ================================================================
+     F3ก — ผลประเมินรายอาจารย์ / รายแหล่งฝึก (ข้ามรายวิชา)
+     ================================================================ */
+  function kindWord(k) { return k === 'site' ? 'แหล่งฝึก' : 'อาจารย์'; }
+
+  function targetBody(d, comments) {
+    var rows = d.rows || [], ov = d.overall || {};
+    var vis = rows.filter(function (x) { return x.visible; });
+    var hid = rows.filter(function (x) { return !x.visible; });
+
+    if (!vis.length) {
+      return warnBox('ยังเปิดเผยผลไม่ได้ — พบ ' + rows.length + ' รายวิชา แต่ยังไม่มีวิชาใดมีผู้ตอบถึงเกณฑ์ขั้นต่ำ',
+        'เกณฑ์นี้ตั้งไว้เพื่อไม่ให้ย้อนกลับไปเดาได้ว่าใครให้คะแนนเท่าไร ปรับได้ในหน้าตั้งค่าแบบประเมิน');
+    }
+
+    var courseRows = rows.map(function (x, i) {
+      var name = '<span class="font-mono text-primary">' + esc(s(x.subject_code)) + '</span> ' + esc(s(x.subject_name));
+      if (!x.visible) {
+        return '<tr class="border-t border-gray-50 bg-amber-50">'
+          + '<td class="px-3 py-2 text-center text-gray-400">' + (i + 1) + '</td>'
+          + '<td class="px-3 py-2">' + name + '</td>'
+          + '<td class="px-3 py-2 text-center text-gray-500">' + esc(s(x.year_level) || '-') + '</td>'
+          + '<td class="px-3 py-2 text-center text-gray-500">' + x.n_resp + '</td>'
+          + '<td class="px-3 py-2 text-center text-xs text-amber-700" colspan="4">'
+          + 'ยังเปิดเผยไม่ได้ — ผู้ตอบไม่ถึงเกณฑ์ ' + x.min + ' คน</td></tr>';
+      }
+      return '<tr class="border-t border-gray-50">'
+        + '<td class="px-3 py-2 text-center text-gray-400">' + (i + 1) + '</td>'
+        + '<td class="px-3 py-2">' + name + '</td>'
+        + '<td class="px-3 py-2 text-center text-gray-500">' + esc(s(x.year_level) || '-') + '</td>'
+        + '<td class="px-3 py-2 text-center text-gray-500">' + x.n_resp + '</td>'
+        + '<td class="px-3 py-2 text-center text-gray-500">' + x.n + '</td>'
+        + meanCell(x.mean, x.sd) + '</tr>';
+    }).join('');
+
+    var secRows = (d.sections || []).map(function (x) {
+      return '<tr class="border-t border-gray-50">'
+        + '<td class="px-3 py-2">' + esc(s(x.section)) + '</td>'
+        + '<td class="px-3 py-2 text-center text-gray-500">' + x.n + '</td>'
+        + meanCell(x.mean, x.sd) + '</tr>';
+    }).join('');
+
+    var itemRows = (d.items || []).map(function (x, i) {
+      return '<tr class="border-t border-gray-50">'
+        + '<td class="px-3 py-2 text-center text-gray-400">' + (i + 1) + '</td>'
+        + '<td class="px-3 py-2 font-mono text-primary whitespace-nowrap">' + esc(s(x.item_code)) + '</td>'
+        + '<td class="px-3 py-2 text-xs text-gray-500">' + esc(s(x.section) || '—') + '</td>'
+        + '<td class="px-3 py-2">' + esc(s(x.text) || '(ไม่พบข้อความคำถาม)') + '</td>'
+        + '<td class="px-3 py-2 text-center text-gray-500">' + x.n + '</td>'
+        + meanCell(x.mean, x.sd) + '</tr>';
+    }).join('');
+
+    var cmt = comments || [];
+    var cmtBox = cmt.length
+      ? tableWrap('ข้อเสนอแนะปลายเปิดที่เขียนถึง' + kindWord(d.kind) + 'ท่านนี้ '
+        + '<span class="font-normal text-gray-400">(' + cmt.length + ' ข้อความ)</span>',
+        '<div class="divide-y divide-gray-50">' + cmt.map(function (x) {
+          return '<div class="px-4 py-3">'
+            + '<p class="text-xs text-gray-400 mb-0.5">' + esc(s(x.subject_code)) + ' ' + esc(s(x.subject_name)) + '</p>'
+            + '<p class="text-sm text-gray-700">' + esc(s(x.text_answer)) + '</p></div>';
+        }).join('') + '</div>',
+        'ไม่ระบุตัวผู้เขียน — ตารางคำตอบไม่เก็บรหัสนักศึกษา')
+      : '';
+
+    return '<div class="bg-white rounded-2xl border border-blue-100 p-4 mb-4">'
+      + '<p class="text-xs text-gray-500">' + esc(kindWord(d.kind)) + '</p>'
+      + '<p class="text-lg font-bold text-gray-800">' + esc(s(d.target)) + '</p>'
+      + '<p class="text-xs text-gray-500 mt-0.5">ปีการศึกษา ' + esc(s(d.year))
+      + ' · ' + esc((SEMS.find(function (x) { return x[0] === s(d.semester); }) || ['', 'ภาคการศึกษา ' + s(d.semester)])[1])
+      + '</p></div>'
+
+      + '<div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">'
+      + statCard('book-open', 'รายวิชาที่นำมาคิด', d.courses || 0, 'วิชา', 'bg-blue-500')
+      + statCard('calculator', 'ค่าเฉลี่ยรวมทุกวิชา', fx(ov.mean), bandOf(ov.mean)[1], 'bg-emerald-500')
+      + statCard('sigma', 'SD รวมทุกวิชา', fx(ov.sd), '(n−1)', 'bg-sky-500')
+      + statCard('list-checks', 'จำนวนคำตอบ', ov.n || 0, 'คำตอบ', 'bg-purple-500')
+      + '</div>'
+
+      + (hid.length ? '<div class="bg-amber-50 border border-amber-200 rounded-2xl p-3 mb-4">'
+        + '<p class="text-xs text-amber-800"><i data-lucide="alert-triangle" class="w-4 h-4 inline mr-1"></i>'
+        + 'มี ' + hid.length + ' รายวิชาที่ผู้ตอบยังไม่ถึงเกณฑ์ขั้นต่ำ จึงไม่ถูกนับเข้าค่าเฉลี่ยรวม '
+        + 'แสดงไว้ในตารางด้านล่างเพื่อให้เห็นว่ามีอยู่</p></div>' : '')
+
+      + tableWrap('ผลรายวิชา', '<table class="w-full text-sm"><thead><tr class="bg-surface text-left">'
+        + '<th class="px-3 py-2 font-semibold text-center">ลำดับ</th>'
+        + '<th class="px-3 py-2 font-semibold">รายวิชา</th>'
+        + '<th class="px-3 py-2 font-semibold text-center">ชั้นปี</th>'
+        + '<th class="px-3 py-2 font-semibold text-center">ผู้ตอบ</th>'
+        + '<th class="px-3 py-2 font-semibold text-center">จำนวนคำตอบ</th>'
+        + '<th class="px-3 py-2 font-semibold text-center">Mean</th>'
+        + '<th class="px-3 py-2 font-semibold text-center">SD</th>'
+        + '<th class="px-3 py-2 font-semibold text-center">แปลผล</th></tr></thead><tbody>'
+        + courseRows + '</tbody></table>', 'เรียงตามชั้นปีและรหัสวิชา')
+
+      + (secRows ? tableWrap('สรุปรายหมวดคำถาม', '<table class="w-full text-sm"><thead><tr class="bg-surface text-left">'
+        + '<th class="px-3 py-2 font-semibold">หมวด</th>'
+        + '<th class="px-3 py-2 font-semibold text-center">จำนวนคำตอบ</th>'
+        + '<th class="px-3 py-2 font-semibold text-center">Mean</th>'
+        + '<th class="px-3 py-2 font-semibold text-center">SD</th>'
+        + '<th class="px-3 py-2 font-semibold text-center">แปลผล</th></tr></thead><tbody>'
+        + secRows + '</tbody></table>') : '')
+
+      + (itemRows ? tableWrap('สรุปรายข้อ — รวมทุกรายวิชา', '<table class="w-full text-sm"><thead><tr class="bg-surface text-left">'
+        + '<th class="px-3 py-2 font-semibold text-center">ลำดับ</th>'
+        + '<th class="px-3 py-2 font-semibold">รหัสข้อ</th>'
+        + '<th class="px-3 py-2 font-semibold">หมวด</th>'
+        + '<th class="px-3 py-2 font-semibold">ข้อคำถาม</th>'
+        + '<th class="px-3 py-2 font-semibold text-center">จำนวนคำตอบ</th>'
+        + '<th class="px-3 py-2 font-semibold text-center">Mean</th>'
+        + '<th class="px-3 py-2 font-semibold text-center">SD</th>'
+        + '<th class="px-3 py-2 font-semibold text-center">แปลผล</th></tr></thead><tbody>'
+        + itemRows + '</tbody></table>') : '')
+
+      + cmtBox;
+  }
+
+  /* ================================================================
+     F3ข — ดาวน์โหลดเป็น PDF
+     ใช้หน้าต่างพิมพ์ของเบราว์เซอร์ ("บันทึกเป็น PDF") เพราะการสร้าง PDF
+     ฝั่งหน้าเว็บยังวางฟอนต์ไทยได้ไม่น่าเชื่อถือ สระและวรรณยุกต์ลอยเสมอ
+     ================================================================ */
+  var PRINT_CSS = ''
+    + "@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap');"
+    + "*{font-family:'Sarabun',sans-serif;box-sizing:border-box}"
+    + 'body{margin:0;padding:10mm 12mm;color:#111827}'
+    + 'h1{font-size:17px;text-align:center;margin:0 0 2px}'
+    + 'h2{font-size:13px;text-align:center;font-weight:400;color:#374151;margin:0 0 2px}'
+    + 'h3{font-size:13px;color:#14507f;margin:14px 0 4px;border-bottom:1px solid #d1e6f9;padding-bottom:3px}'
+    + '.meta{text-align:center;color:#6b7280;font-size:11px;margin:4px 0 10px}'
+    + '.who{border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;margin-bottom:8px}'
+    + '.who .k{font-size:10px;color:#6b7280}'
+    + '.who .v{font-size:14px;font-weight:700;color:#14507f}'
+    + 'table{width:100%;border-collapse:collapse;margin-top:4px}'
+    + 'th,td{border:1px solid #cbd5e1;padding:4px 6px;font-size:11px;vertical-align:top}'
+    + 'th{background:#eaf2fb;text-align:left}'
+    + '.c{text-align:center;white-space:nowrap}'
+    + '.hid{background:#fffbeb;color:#92400e}'
+    + '.summary{display:flex;gap:6px;margin:8px 0}'
+    + '.box{flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:7px;text-align:center}'
+    + '.box .n{font-size:18px;font-weight:700;color:#1e6fba}'
+    + '.box .l{font-size:10px;color:#6b7280}'
+    + '.cmt{border:1px solid #e5e7eb;border-radius:6px;padding:5px 8px;margin:4px 0;font-size:11px}'
+    + '.cmt .src{font-size:10px;color:#6b7280}'
+    + '.foot{margin-top:14px;font-size:10px;color:#6b7280;border-top:1px solid #e5e7eb;padding-top:5px}'
+    + '@media print{@page{size:A4;margin:10mm}h3,tr,.cmt{page-break-inside:avoid}thead{display:table-header-group}}';
+
+  function printDoc(title, inner) {
+    var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + esc(title) + '</title>'
+      + '<style>' + PRINT_CSS + '</style></head><body>' + inner
+      + '<script>window.onload=function(){setTimeout(function(){window.print()},350)}<\/script>'
+      + '</body></html>';
+    var w = window.open('', '_blank');
+    if (!w) { showToast('กรุณาอนุญาต Popup เพื่อดาวน์โหลด PDF', 'error'); return; }
+    w.document.write(html); w.document.close();
+  }
+  function collegeName() {
+    return (APP.config && APP.config.college_name) || 'วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ';
+  }
+  function semLabel(v) {
+    var f = SEMS.find(function (x) { return x[0] === s(v); });
+    return f ? f[1] : ('ภาคการศึกษา ' + s(v));
+  }
+  function printedAt() {
+    try { return new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' }); }
+    catch (e) { return today(); }
+  }
+  function bandFoot() {
+    return '<div class="foot">เกณฑ์แปลผล: 4.51–5.00 มากที่สุด · 3.51–4.50 มาก · 2.51–3.50 ปานกลาง · '
+      + '1.51–2.50 น้อย · 1.00–1.50 น้อยที่สุด | ระบบบริหารจัดการงานวิชาการ (AAMs) · ' + esc(collegeName()) + '</div>';
+  }
+  function pRow(cells) {
+    return '<tr>' + cells.map(function (c) {
+      return '<td' + (c[1] ? ' class="' + c[1] + '"' : '') + (c[2] ? ' colspan="' + c[2] + '"' : '') + '>' + c[0] + '</td>';
+    }).join('') + '</tr>';
+  }
+  function pHead(cols) {
+    return '<thead><tr>' + cols.map(function (c) {
+      return '<th' + (c[1] ? ' class="' + c[1] + '"' : '') + '>' + esc(c[0]) + '</th>';
+    }).join('') + '</tr></thead>';
+  }
+
+  window.evalPrintReport = function () {
+    var r = rptState();
+    if (r.mode !== 'course' || !r.data || !r.data.visible) { showToast('ยังไม่มีผลให้ดาวน์โหลด', 'error'); return; }
+    var f = formByCode(r.code) || {}, d = r.data;
+    var ovI = d.overall_item || {}, ovD = d.overall_dim || {};
+    var main = s(d.mean_mode) === 'dimension' ? ovD.mean : ovI.mean;
+
+    var body = '<h1>รายงานสรุปผลประเมินรายวิชา</h1><h2>' + esc(collegeName()) + '</h2>'
+      + '<div class="meta">ปีการศึกษา ' + esc(s(f.academic_year)) + ' · ' + esc(semLabel(f.semester))
+      + ' · พิมพ์เมื่อ ' + esc(printedAt()) + '</div>'
+      + '<div class="who"><div class="k">รายวิชา</div><div class="v">'
+      + esc(s(f.subject_code) + ' ' + s(f.subject_name)) + '</div>'
+      + '<div class="k">ชั้นปี ' + esc(s(f.year_level) || '-')
+      + (s(f.course_type) ? ' · ประเภท ' + esc(s(f.course_type)) : '')
+      + (s(f.coordinator) ? ' · ผู้รับผิดชอบรายวิชา ' + esc(s(f.coordinator)) : '') + '</div></div>'
+      + '<div class="summary">'
+      + '<div class="box"><div class="n">' + d.n + '</div><div class="l">จำนวนผู้ตอบ (คน)</div></div>'
+      + '<div class="box"><div class="n">' + fx(main) + '</div><div class="l">ค่าเฉลี่ยรวมทุกด้าน</div></div>'
+      + '<div class="box"><div class="n">' + fx(ovI.sd) + '</div><div class="l">S.D. '
+      + (s(d.sd_mode) === 'population' ? '(n)' : '(n−1)') + '</div></div>'
+      + '<div class="box"><div class="n">' + esc(bandOf(main)[1]) + '</div><div class="l">ระดับการแปลผล</div></div>'
+      + '</div>';
+
+    body += '<h3>สรุปรายด้าน</h3><table>'
+      + pHead([['ด้าน'], ['n', 'c'], ['Mean', 'c'], ['S.D.', 'c'], ['แปลผล', 'c']]) + '<tbody>'
+      + (d.dimensions || []).map(function (x) {
+        return pRow([[esc(DIM_NAME[x.dimension] || x.dimension)], [x.n, 'c'], [fx(x.mean), 'c'],
+          [fx(x.sd), 'c'], [esc(bandOf(x.mean)[1]), 'c']]);
+      }).join('') + '</tbody></table>';
+
+    ['teacher', 'site'].forEach(function (k) {
+      var tg = (d.targets || []).filter(function (x) { return x.kind === k; });
+      if (!tg.length) return;
+      body += '<h3>' + (k === 'site' ? 'ผลประเมินแหล่งฝึกภาคปฏิบัติ' : 'ผลประเมินอาจารย์ผู้สอน') + '</h3><table>'
+        + pHead([['อันดับ', 'c'], ['ชื่อ'], ['n', 'c'], ['Mean', 'c'], ['S.D.', 'c'], ['แปลผล', 'c']]) + '<tbody>'
+        + tg.map(function (x, i) {
+          return pRow([[i + 1, 'c'], [esc(s(x.name))], [x.n, 'c'], [fx(x.mean), 'c'],
+            [fx(x.sd), 'c'], [esc(bandOf(x.mean)[1]), 'c']]);
+        }).join('') + '</tbody></table>';
+    });
+
+    var byDim = {};
+    (d.items_all || []).forEach(function (x) { (byDim[x.dimension] = byDim[x.dimension] || []).push(x); });
+    Object.keys(byDim).forEach(function (k) {
+      body += '<h3>ผลรายข้อ — ' + esc(DIM_NAME[k] || k) + '</h3><table>'
+        + pHead([['ลำดับ', 'c'], ['รหัสข้อ', 'c'], ['หมวด'], ['ข้อคำถาม'], ['n', 'c'], ['Mean', 'c'], ['S.D.', 'c'], ['แปลผล', 'c']])
+        + '<tbody>' + byDim[k].map(function (x, i) {
+          return pRow([[i + 1, 'c'], [esc(s(x.item_code)), 'c'], [esc(s(x.section) || '-')],
+            [esc(s(x.text) || '-')], [x.n, 'c'], [fx(x.mean), 'c'], [fx(x.sd), 'c'], [esc(bandOf(x.mean)[1]), 'c']]);
+        }).join('') + '</tbody></table>';
+    });
+
+    var cmt = r.comments || [];
+    if (cmt.length) {
+      body += '<h3>ข้อเสนอแนะปลายเปิด (' + cmt.length + ' ข้อความ · ไม่ระบุตัวผู้เขียน)</h3>'
+        + cmt.map(function (x) {
+          return '<div class="cmt"><div class="src">' + esc(DIM_NAME[x.dimension] || x.dimension)
+            + (s(x.target_name) ? ' · ' + esc(s(x.target_name)) : '') + '</div>' + esc(s(x.text_answer)) + '</div>';
+        }).join('');
+    }
+
+    printDoc('สรุปผลประเมิน ' + s(f.subject_code) + ' ' + s(f.subject_name), body + bandFoot());
+  };
+
+  window.evalPrintTarget = function () {
+    var r = rptState(), d = r.tdata;
+    if (r.mode === 'course' || !d) { showToast('ยังไม่มีผลให้ดาวน์โหลด', 'error'); return; }
+    var ov = d.overall || {};
+    var rows = d.rows || [];
+    var ttl = d.kind === 'site' ? 'รายงานสรุปผลประเมินแหล่งฝึกภาคปฏิบัติ' : 'รายงานสรุปผลประเมินอาจารย์ผู้สอน';
+
+    var body = '<h1>' + ttl + '</h1><h2>' + esc(collegeName()) + '</h2>'
+      + '<div class="meta">ปีการศึกษา ' + esc(s(d.year)) + ' · ' + esc(semLabel(d.semester))
+      + ' · พิมพ์เมื่อ ' + esc(printedAt()) + '</div>'
+      + '<div class="who"><div class="k">' + esc(kindWord(d.kind)) + '</div>'
+      + '<div class="v">' + esc(s(d.target)) + '</div>'
+      + '<div class="k">นำมาคิด ' + (d.courses || 0) + ' รายวิชา'
+      + ((d.hidden || 0) ? ' · อีก ' + d.hidden + ' รายวิชายังเปิดเผยผลไม่ได้เพราะผู้ตอบไม่ถึงเกณฑ์' : '')
+      + '</div></div>'
+      + '<div class="summary">'
+      + '<div class="box"><div class="n">' + (d.courses || 0) + '</div><div class="l">รายวิชาที่นำมาคิด</div></div>'
+      + '<div class="box"><div class="n">' + fx(ov.mean) + '</div><div class="l">ค่าเฉลี่ยรวมทุกวิชา</div></div>'
+      + '<div class="box"><div class="n">' + fx(ov.sd) + '</div><div class="l">S.D. (n−1)</div></div>'
+      + '<div class="box"><div class="n">' + esc(bandOf(ov.mean)[1]) + '</div><div class="l">ระดับการแปลผล</div></div>'
+      + '</div>';
+
+    body += '<h3>ผลรายวิชา</h3><table>'
+      + pHead([['ลำดับ', 'c'], ['รหัสวิชา', 'c'], ['ชื่อรายวิชา'], ['ชั้นปี', 'c'], ['ผู้ตอบ', 'c'],
+        ['n', 'c'], ['Mean', 'c'], ['S.D.', 'c'], ['แปลผล', 'c']])
+      + '<tbody>' + rows.map(function (x, i) {
+        if (!x.visible) {
+          return '<tr class="hid">' + '<td class="c">' + (i + 1) + '</td>'
+            + '<td class="c">' + esc(s(x.subject_code)) + '</td>'
+            + '<td>' + esc(s(x.subject_name)) + '</td>'
+            + '<td class="c">' + esc(s(x.year_level) || '-') + '</td>'
+            + '<td class="c">' + x.n_resp + '</td>'
+            + '<td class="c" colspan="4">ยังเปิดเผยไม่ได้ — ผู้ตอบไม่ถึงเกณฑ์ ' + x.min + ' คน</td></tr>';
+        }
+        return pRow([[i + 1, 'c'], [esc(s(x.subject_code)), 'c'], [esc(s(x.subject_name))],
+          [esc(s(x.year_level) || '-'), 'c'], [x.n_resp, 'c'], [x.n, 'c'],
+          [fx(x.mean), 'c'], [fx(x.sd), 'c'], [esc(bandOf(x.mean)[1]), 'c']]);
+      }).join('') + '</tbody></table>';
+
+    if ((d.sections || []).length) {
+      body += '<h3>สรุปรายหมวดคำถาม</h3><table>'
+        + pHead([['หมวด'], ['n', 'c'], ['Mean', 'c'], ['S.D.', 'c'], ['แปลผล', 'c']])
+        + '<tbody>' + d.sections.map(function (x) {
+          return pRow([[esc(s(x.section))], [x.n, 'c'], [fx(x.mean), 'c'], [fx(x.sd), 'c'],
+            [esc(bandOf(x.mean)[1]), 'c']]);
+        }).join('') + '</tbody></table>';
+    }
+
+    if ((d.items || []).length) {
+      body += '<h3>สรุปรายข้อ — รวมทุกรายวิชา</h3><table>'
+        + pHead([['ลำดับ', 'c'], ['รหัสข้อ', 'c'], ['หมวด'], ['ข้อคำถาม'], ['n', 'c'], ['Mean', 'c'], ['S.D.', 'c'], ['แปลผล', 'c']])
+        + '<tbody>' + d.items.map(function (x, i) {
+          return pRow([[i + 1, 'c'], [esc(s(x.item_code)), 'c'], [esc(s(x.section) || '-')],
+            [esc(s(x.text) || '-')], [x.n, 'c'], [fx(x.mean), 'c'], [fx(x.sd), 'c'], [esc(bandOf(x.mean)[1]), 'c']]);
+        }).join('') + '</tbody></table>';
+    }
+
+    var cmt = r.tcomments || [];
+    if (cmt.length) {
+      body += '<h3>ข้อเสนอแนะปลายเปิด (' + cmt.length + ' ข้อความ · ไม่ระบุตัวผู้เขียน)</h3>'
+        + cmt.map(function (x) {
+          return '<div class="cmt"><div class="src">' + esc(s(x.subject_code) + ' ' + s(x.subject_name))
+            + '</div>' + esc(s(x.text_answer)) + '</div>';
+        }).join('');
+    }
+
+    printDoc(ttl + ' ' + s(d.target), body + bandFoot());
+  };
+
+  window.evalExportTarget = function () {
+    var r = rptState(), d = r.tdata;
+    if (r.mode === 'course' || !d) { showToast('ยังไม่มีผลให้ส่งออก', 'error'); return; }
+    var ov = d.overall || {};
+    var rows = [
+      [d.kind === 'site' ? 'รายงานสรุปผลประเมินแหล่งฝึกภาคปฏิบัติ' : 'รายงานสรุปผลประเมินอาจารย์ผู้สอน'],
+      [kindWord(d.kind), s(d.target)],
+      ['ปีการศึกษา', s(d.year), 'ภาคการศึกษา', s(d.semester)],
+      ['รายวิชาที่นำมาคิด', d.courses || 0, 'รายวิชาที่ยังเปิดเผยผลไม่ได้', d.hidden || 0],
+      ['ค่าเฉลี่ยรวมทุกวิชา', fx(ov.mean), 'SD', fx(ov.sd), 'จำนวนคำตอบ', ov.n || 0, 'แปลผล', bandOf(ov.mean)[1]],
+      [],
+      ['ผลรายวิชา'],
+      ['ลำดับ', 'รหัสวิชา', 'ชื่อรายวิชา', 'ชั้นปี', 'ผู้ตอบ', 'เกณฑ์ขั้นต่ำ', 'จำนวนคำตอบ', 'Mean', 'SD', 'แปลผล', 'สถานะ']
+    ];
+    (d.rows || []).forEach(function (x, i) {
+      rows.push([i + 1, s(x.subject_code), s(x.subject_name), s(x.year_level), x.n_resp, x.min,
+        x.visible ? x.n : '', x.visible ? fx(x.mean) : '', x.visible ? fx(x.sd) : '',
+        x.visible ? bandOf(x.mean)[1] : '', x.visible ? 'เปิดเผยผลได้' : 'ผู้ตอบไม่ถึงเกณฑ์']);
+    });
+    if ((d.sections || []).length) {
+      rows.push([], ['สรุปรายหมวดคำถาม'], ['หมวด', 'จำนวนคำตอบ', 'Mean', 'SD', 'แปลผล']);
+      d.sections.forEach(function (x) {
+        rows.push([s(x.section), x.n, fx(x.mean), fx(x.sd), bandOf(x.mean)[1]]);
+      });
+    }
+    if ((d.items || []).length) {
+      rows.push([], ['สรุปรายข้อ รวมทุกรายวิชา'], ['รหัสข้อ', 'หมวด', 'ข้อคำถาม', 'จำนวนคำตอบ', 'Mean', 'SD', 'แปลผล']);
+      d.items.forEach(function (x) {
+        rows.push([s(x.item_code), s(x.section), s(x.text), x.n, fx(x.mean), fx(x.sd), bandOf(x.mean)[1]]);
+      });
+    }
+    if ((r.tcomments || []).length) {
+      rows.push([], ['ข้อเสนอแนะปลายเปิด (ไม่ระบุตัวผู้เขียน)'], ['รหัสวิชา', 'ชื่อรายวิชา', 'ข้อความ']);
+      r.tcomments.forEach(function (x) {
+        rows.push([s(x.subject_code), s(x.subject_name), s(x.text_answer)]);
+      });
+    }
+    csvDownload('สรุปผลประเมิน_' + kindWord(d.kind) + '_' + s(d.target) + '_' + s(d.year) + '-' + s(d.semester) + '.csv', rows);
+    showToast('ส่งออกไฟล์แล้ว');
+  };
 
   /* ---------------- ผลประเมินของอาจารย์เจ้าตัว ----------------
      เห็นได้ต่อเมื่องานวิชาการกด "ส่งผล" ให้แล้วเท่านั้น

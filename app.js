@@ -3,7 +3,7 @@ let APP = {
   currentUser: null, currentRole: null, currentPage: 'dashboard', sidebarOpen: false,
   allData: [],
   config: { system_title: 'ระบบบริหารจัดการงานวิชาการ (AAMs)', college_name: 'วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ' },
-  permissions: { admin: { dashboard: 1, ploAssess: 1, curriculum: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, practicumSites: 1, alumni: 1, teacherDirectory: 1, services: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, settings: 1, loginLog: 1, advisors: 1, surveyManage: 1, workload: 1, evalCourse: 1, evalSetup: 1, evalReport: 1, evalMine: 1 }, academic: { dashboard: 1, ploAssess: 1, curriculum: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, practicumSites: 1, alumni: 1, teacherDirectory: 1, services: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, settings: 1, advisors: 1, survey: 1, workload: 1, evalCourse: 1, evalSetup: 1, evalReport: 1, evalMine: 1 }, registrar: { dashboard: 1, ploAssess: 1, curriculum: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, practicumSites: 1, alumni: 1, teacherDirectory: 1, services: 1, leave: 1, advisors: 1, survey: 1, evalCourse: 1, evalSetup: 1, evalReport: 1, evalMine: 1 }, deptHead: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, teacherDirectory: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, survey: 1, evalCourse: 1, evalReport: 1 }, teacher: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, tracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, survey: 1, evalCourse: 1, evalMine: 1 }, classTeacher: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, tracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, survey: 1, evalCourse: 1, evalMine: 1 }, student: { dashboard: 1, curriculum: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, leave: 1, survey: 1, evalCourse: 1, evalDo: 1 }, otherStaff: { dashboard: 1, curriculum: 1, services: 1, workload: 1, survey: 1 }, executive: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, practicumSites: 1, alumni: 1, teacherDirectory: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, advisors: 1, survey: 1, workload: 1, evalCourse: 1, evalReport: 1 } },
+  permissions: { admin: { dashboard: 1, ploAssess: 1, curriculum: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, practicumSites: 1, alumni: 1, teacherDirectory: 1, services: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, settings: 1, loginLog: 1, advisors: 1, surveyManage: 1, workload: 1, evalCourse: 1, evalSetup: 1, evalReport: 1, evalMine: 1 }, academic: { dashboard: 1, ploAssess: 1, curriculum: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, practicumSites: 1, alumni: 1, teacherDirectory: 1, services: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, settings: 1, advisors: 1, survey: 1, workload: 1, evalCourse: 1, evalSetup: 1, evalReport: 1, evalMine: 1 }, registrar: { dashboard: 1, ploAssess: 1, curriculum: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, practicumSites: 1, alumni: 1, teacherDirectory: 1, services: 1, leave: 1, advisors: 1, survey: 1, evalCourse: 1, evalSetup: 1, evalReport: 1, evalMine: 1 }, deptHead: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, teacherDirectory: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, survey: 1, evalCourse: 1, evalReport: 1 }, teacher: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, tracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, survey: 1, evalCourse: 1, evalMine: 1 }, classTeacher: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, tracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, survey: 1, evalCourse: 1, evalMine: 1 }, student: { dashboard: 1, curriculum: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, leave: 1, survey: 1, evalCourse: 1, evalDo: 1, workload: 1 }, otherStaff: { dashboard: 1, curriculum: 1, services: 1, workload: 1, survey: 1 }, executive: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, practicumSites: 1, alumni: 1, teacherDirectory: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, advisors: 1, survey: 1, workload: 1, evalCourse: 1, evalReport: 1 } },
   filters: { semester: '', academicYear: '', search: '', yearLevel: '' },
   pagination: { page: 1, perPage: 10 }
 };
@@ -1574,7 +1574,7 @@ function dashboardPage() {
     const yearSuffix = y => y ? '(ปี ' + y + ')' : '(ทุกปี)';
     const practicumSiteCard = `<div class="card-stat bg-white rounded-2xl p-5 border border-blue-100">
       <div class="flex items-center gap-4">
-        <div class="w-12 h-12 bg-teal-500 rounded-xl flex items-center justify-center"><i data-lucide="hospital" class="w-6 h-6 text-white"></i></div>
+        <div class="w-12 h-12 bg-teal-500 rounded-xl flex items-center justify-center"><i data-lucide="building-2" class="w-6 h-6 text-white"></i></div>
         <div class="min-w-0"><p class="text-sm text-gray-500">จำนวนแหล่งฝึกปฏิบัติ ${yearSuffix(_selSiteYear)}</p><p class="text-2xl font-bold text-gray-800">${siteCount} <span class="text-sm font-normal text-gray-500">แห่ง</span></p></div>
       </div>
       ${yearPickerFor('_dashSiteYear', _selSiteYear, _siteYears)}
@@ -3720,7 +3720,7 @@ function gradesPage() {
       filteredList = studentList.filter(s => (s.name || '').toLowerCase().includes(q) || (s.student_id || '').toLowerCase().includes(q));
     }
     studentSelector = `${advisorSelector}<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">
-      <label class="block text-sm font-medium text-gray-700 mb-2"><i data-lucide="user-search" class="w-4 h-4 inline mr-1"></i>เลือกนักศึกษา</label>
+      <label class="block text-sm font-medium text-gray-700 mb-2"><i data-lucide="search" class="w-4 h-4 inline mr-1"></i>เลือกนักศึกษา</label>
       <div class="flex gap-2 mb-2">
         <div class="flex-1 relative"><i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-400"></i><input type="text" placeholder="พิมพ์ค้นหาชื่อหรือรหัส..." value="${searchVal}" class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm" oninput="clearTimeout(window._gradeSearchTimer);window._gradeSearchTimer=setTimeout(()=>{APP.filters._gradeSearch=this.value;APP.filters._gradeStudent='';APP.pagination.page=1;renderCurrentPage()},300)"></div>
       </div>
@@ -3771,7 +3771,7 @@ function gradesPage() {
   // Show prompt if no student selected (non-student roles)
   let noSelectionMsg = '';
   if (!isStudent && !selectedStudentName) {
-    noSelectionMsg = `<div class="bg-white rounded-2xl border border-blue-100 p-8 text-center text-gray-400"><i data-lucide="user-search" class="w-10 h-10 mx-auto mb-3 text-gray-300"></i><p>กรุณาเลือกนักศึกษาเพื่อดูผลการเรียน</p></div>`;
+    noSelectionMsg = `<div class="bg-white rounded-2xl border border-blue-100 p-8 text-center text-gray-400"><i data-lucide="search" class="w-10 h-10 mx-auto mb-3 text-gray-300"></i><p>กรุณาเลือกนักศึกษาเพื่อดูผลการเรียน</p></div>`;
   }
 
   return `<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -4840,7 +4840,7 @@ function engResultsPage() {
       filteredList = studentList.filter(s => (s.name || '').toLowerCase().includes(q) || (s.student_id || '').toLowerCase().includes(q));
     }
     studentSelector = `${advisorSelector}<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">
-      <label class="block text-sm font-medium text-gray-700 mb-2"><i data-lucide="user-search" class="w-4 h-4 inline mr-1"></i>เลือกนักศึกษา</label>
+      <label class="block text-sm font-medium text-gray-700 mb-2"><i data-lucide="search" class="w-4 h-4 inline mr-1"></i>เลือกนักศึกษา</label>
       <div class="flex gap-2 mb-2">
         <div class="flex-1 relative"><i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-400"></i><input type="text" placeholder="พิมพ์ค้นหาชื่อหรือรหัส..." value="${searchVal}" class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm" oninput="clearTimeout(window._engSearchTimer);window._engSearchTimer=setTimeout(()=>{APP.filters._engSearch=this.value;APP.filters._engStudent='';APP.pagination.page=1;renderCurrentPage()},300)"></div>
       </div>
@@ -4868,7 +4868,7 @@ function engResultsPage() {
   // Show prompt if no student selected
   let noSelectionMsg = '';
   if (!isStudent && !selectedStudentName) {
-    noSelectionMsg = `<div class="bg-white rounded-2xl border border-blue-100 p-8 text-center text-gray-400"><i data-lucide="user-search" class="w-10 h-10 mx-auto mb-3 text-gray-300"></i><p>กรุณาเลือกนักศึกษาเพื่อดูผลสอบภาษาอังกฤษ</p></div>`;
+    noSelectionMsg = `<div class="bg-white rounded-2xl border border-blue-100 p-8 text-center text-gray-400"><i data-lucide="search" class="w-10 h-10 mx-auto mb-3 text-gray-300"></i><p>กรุณาเลือกนักศึกษาเพื่อดูผลสอบภาษาอังกฤษ</p></div>`;
   }
 
   // Build summary stats (pass/fail counts only)
@@ -5703,7 +5703,7 @@ function advisorInfoPage() {
   </div>`;
 
   const searchBox = `<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">
-    <label class="block text-sm font-medium text-gray-700 mb-2"><i data-lucide="user-search" class="w-4 h-4 inline mr-1"></i>ค้นหาอาจารย์ที่ปรึกษา</label>
+    <label class="block text-sm font-medium text-gray-700 mb-2"><i data-lucide="search" class="w-4 h-4 inline mr-1"></i>ค้นหาอาจารย์ที่ปรึกษา</label>
     <div class="relative"><i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-400"></i><input type="text" placeholder="พิมพ์ชื่ออาจารย์ที่ปรึกษา..." value="${searchVal}" class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm" oninput="clearTimeout(window._advisorSearchTimer);window._advisorSearchTimer=setTimeout(()=>{APP.filters._advisorSearch=this.value;APP.pagination.page=1;renderCurrentPage()},300)"></div>
     <p class="text-xs text-gray-400 mt-2">คลิกการ์ดรายชื่อด้านล่างเพื่อดูนักศึกษาในความดูแล</p>
   </div>`;
@@ -6066,7 +6066,7 @@ function practicumSitesPage() {
 
   // การ์ดนับตามที่กรองอยู่ จะได้ตรงกับตารางที่เห็น
   const cards = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-    ${statCard('hospital', 'จำนวนแหล่งฝึกปฏิบัติ' + (selYear ? ' (ปี ' + selYear + ')' : ''),
+    ${statCard('building-2', 'จำนวนแหล่งฝึกปฏิบัติ' + (selYear ? ' (ปี ' + selYear + ')' : ''),
       countDistinctField(data, 'site_name'), 'แห่ง', 'bg-teal-500')}
     ${statCard('user-check', 'พยาบาลพี่เลี้ยง/อาจารย์พี่เลี้ยง' + (selYear ? ' (ปี ' + selYear + ')' : ''),
       countDistinctField(data, 'mentor', true), 'คน', 'bg-rose-500')}
@@ -6075,7 +6075,7 @@ function practicumSitesPage() {
   </div>`;
 
   return `<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-    <h2 class="text-xl font-bold text-gray-800"><i data-lucide="hospital" class="w-6 h-6 inline mr-2"></i>ข้อมูลแหล่งฝึกภาคปฏิบัติ</h2>
+    <h2 class="text-xl font-bold text-gray-800"><i data-lucide="building-2" class="w-6 h-6 inline mr-2"></i>ข้อมูลแหล่งฝึกภาคปฏิบัติ</h2>
     ${isAdmin ? `<div class="flex gap-2"><button onclick="showAddPracticumSiteModal()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มแหล่งฝึก</button>${csvUploadBtn('practicum_site', 'academic_year,semester,subject_code,subject_name,site_name,ward,mentor,note')}</div>` : ''}
   </div>
   ${cards}
@@ -6829,11 +6829,15 @@ function combineName(form) {
 }
 
 // Helper: mask national ID — show first 9 digits, last 4 as xxxx
+/* เลขบัตรประชาชนยังเก็บไว้เป็นประวัติ แต่ไม่ใช้เข้าระบบแล้ว
+   จึงเปิดให้เห็นเฉพาะผู้ดูแลระบบ และปิดบังสามตัวท้ายไว้เสมอ
+   บทบาทอื่นไม่เห็นเลข ไม่ว่ากรณีใด รวมถึงตอนผู้ดูแลกดดูในมุมมองบทบาทอื่น
+   (APP.currentRole เปลี่ยนตามมุมมองที่กำลังดูอยู่ จึงกันได้ในตัว) */
 function maskNationalId(nid) {
-  if (!nid) return '-';
-  const s = String(nid).trim();
-  if (s.length < 5) return s;
-  return s.substring(0, s.length - 4) + 'xxxx';
+  const s = String(nid == null ? '' : nid).trim();
+  if (!s) return '-';
+  if (APP.currentRole !== 'admin') return '<span class="text-gray-400">เฉพาะผู้ดูแลระบบ</span>';
+  return s.length <= 3 ? 'xxx' : s.substring(0, s.length - 3) + 'xxx';
 }
 
 // แสดงระยะเวลาเป็น "X ปี Y เดือน" (รองรับกรณีไม่ถึงปี)
@@ -9538,7 +9542,7 @@ function leavePage() {
     const _q = v => String(v == null ? '' : v).replace(/"/g, '&quot;');
 
     const leaveFormCard = `<div class="bg-white rounded-2xl p-5 border border-blue-100">
-      <h3 class="font-bold mb-4 flex items-center gap-2"><i data-lucide="file-pen-line" class="w-5 h-5 text-primary"></i>บันทึกข้อมูลการลา</h3>
+      <h3 class="font-bold mb-4 flex items-center gap-2"><i data-lucide="file-edit" class="w-5 h-5 text-primary"></i>บันทึกข้อมูลการลา</h3>
       <form id="leaveForm" class="space-y-4" oninput="leaveDocRefresh()" onchange="leaveDocRefresh()">
 
         <div>
@@ -9708,7 +9712,7 @@ function leavePage() {
 
     const leaveBody = (!isStudent && !leaveForRec)
       ? `<div class="bg-white rounded-2xl border border-blue-100 p-8 text-center text-gray-400">
-          <i data-lucide="user-search" class="w-12 h-12 mx-auto mb-3 text-gray-300"></i>
+          <i data-lucide="search" class="w-12 h-12 mx-auto mb-3 text-gray-300"></i>
           <p class="text-sm">เลือกนักศึกษาด้านบนก่อน แบบฟอร์มและใบลาตัวอย่างจะขึ้นให้กรอก</p>
         </div>`
       : `<div class="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">${leaveFormCard}${leaveDocCard}</div>`;
@@ -9823,7 +9827,7 @@ function leavePage() {
   // ถ้า user เป็น role ที่ต้องเลือกนักศึกษา แต่ยังไม่ได้เลือก → แสดง empty state แทนตาราง+summary
   const emptyStateMsg = requireStudentSelection
     ? `<div class="bg-white rounded-2xl border border-blue-100 p-8 text-center text-gray-400">
-        <i data-lucide="user-search" class="w-12 h-12 mx-auto mb-3 text-gray-300"></i>
+        <i data-lucide="search" class="w-12 h-12 mx-auto mb-3 text-gray-300"></i>
         <p class="text-sm">กรุณาเลือกนักศึกษาจากตัวกรองด้านบน เพื่อดูข้อมูลการลา</p>
       </div>`
     : '';

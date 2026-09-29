@@ -54,23 +54,19 @@
     var gbox = el('googleLoginBox');
 
     if (mode === 'student') {
-      /* ---------- นักศึกษา: เลขบัตรประชาชน 13 หลัก ---------- */
+      /* ---------- นักศึกษา: เข้าด้วยอีเมลของวิทยาลัย เหมือนบุคลากร ----------
+         เดิมใช้เลขบัตรประชาชน ซึ่งเป็นข้อมูลอ่อนไหวและพิมพ์ผิดง่าย
+         ตอนนี้นักศึกษาทุกคนมีอีเมล @bcn.ac.th และมีบัญชีในระบบแล้ว จึงใช้ช่องทางเดียวกันได้ */
       f.innerHTML =
-        '<div class="mb-4">' +
-        '  <label class="block text-sm font-medium text-gray-700 mb-2">เลขบัตรประชาชน 13 หลัก</label>' +
-        '  <input type="text" id="studentNID" maxlength="13" inputmode="numeric" autocomplete="off"' +
-        '    class="ems-input" placeholder="กรอกเลขบัตรประชาชน 13 หลัก"' +
-        '    onkeypress="if(event.key===\'Enter\')handleLogin()">' +
-        '</div>' +
-        '<div class="bg-blue-50 border border-blue-100 rounded-xl p-3 -mt-1 mb-1">' +
-        '  <p class="text-xs text-gray-600">ระบบจะสร้างบัญชีให้อัตโนมัติในการเข้าใช้ครั้งแรก</p>' +
-        '  <p class="text-xs text-gray-600 mt-1">หรือกดปุ่ม <b>เข้าสู่ระบบด้วย Google</b> ด้านล่าง ' +
-        '     ด้วยบัญชีของวิทยาลัย (<b>รหัสนักศึกษา@' + (CFG.ALLOWED_DOMAIN || 'bcn.ac.th') + '</b>)</p>' +
-        '  <p class="text-xs text-gray-500 mt-1">หากเข้าสู่ระบบไม่ได้ กรุณาติดต่องานทะเบียนเพื่อตรวจสอบข้อมูล</p>' +
+        '<div class="bg-blue-50 border border-blue-100 rounded-xl p-4">' +
+        '  <p class="text-sm text-gray-700 font-medium mb-1">เข้าสู่ระบบด้วยบัญชี Google ของวิทยาลัย</p>' +
+        '  <p class="text-xs text-gray-600">ใช้อีเมล <b>รหัสนักศึกษา@' + (CFG.ALLOWED_DOMAIN || 'bcn.ac.th') + '</b> ' +
+        '     กดปุ่มด้านล่างเพื่อเข้าสู่ระบบ ไม่ต้องกรอกเลขบัตรประชาชนอีกต่อไป</p>' +
+        '  <p class="text-xs text-gray-500 mt-2">หากเข้าสู่ระบบไม่ได้ กรุณาติดต่องานทะเบียนเพื่อตรวจสอบอีเมลของท่าน</p>' +
         '</div>';
-      if (btn) { btn.classList.remove('hidden'); btn.style.display = ''; }
-      if (divider) divider.classList.remove('hidden');
-      if (gbox) gbox.classList.remove('hidden');   // นักศึกษาเลือกได้ทั้งเลขบัตรประชาชนและ Google
+      if (btn) { btn.classList.add('hidden'); btn.style.display = 'none'; }
+      if (divider) divider.classList.add('hidden');
+      if (gbox) gbox.classList.remove('hidden');
     } else {
       /* ---------- บุคลากร/อาจารย์: เข้าสู่ระบบด้วย Google เท่านั้น ---------- */
       f.innerHTML =
@@ -92,30 +88,7 @@
     var mode = el('loginRole') ? el('loginRole').value : 'staff';
     setErr('');
 
-    if (mode === 'student') {
-      var nid = (el('studentNID') && el('studentNID').value || '').trim();
-      if (!/^\d{13}$/.test(nid)) { setErr('กรุณากรอกเลขบัตรประชาชน 13 หลัก'); return; }
-      busy(true);
-      showScreen('loadingScreen');
-      var sres = await GSheetDB.studentLogin(nid);
-      busy(false);
-      if (!sres || !sres.isOk) {
-        showScreen('loginScreen');
-        setErr(sres && sres.error ? sres.error : 'ไม่พบข้อมูลนักศึกษา กรุณาตรวจสอบเลขบัตรประชาชน');
-        return;
-      }
-      var stu = sres.student || {};
-      if (norm(stu.status) === 'สำเร็จการศึกษา' || norm(stu.year_level) === 'จบ') {
-        await GSheetDB.logout();
-        showScreen('loginScreen');
-        setErr('บัญชีนี้เป็นผู้สำเร็จการศึกษาแล้ว ไม่สามารถเข้าสู่ระบบได้');
-        return;
-      }
-      await emsEnterApp(GSheetDB.profile() || { role: 'student', name: stu.name, student: stu });
-      return;
-    }
-
-    // ---------- บุคลากร/อาจารย์: Google เท่านั้น ----------
+    // ---------- ทุกบทบาทเข้าด้วย Google ของวิทยาลัย ----------
     if (typeof window.handleGoogleLogin === 'function') { window.handleGoogleLogin(); return; }
 
     var email = (el('staffEmail') && el('staffEmail').value || '').trim();

@@ -711,7 +711,7 @@
       + '<form id="profileForm" class="bg-white rounded-2xl p-5 border border-blue-100 space-y-4"'
       + ' onsubmit="return profileSubmit(event)">'
       + '<h3 class="font-bold flex items-center gap-2">'
-      + '<i data-lucide="id-card" class="w-5 h-5 text-primary"></i>ข้อมูลที่คุณแก้เองได้</h3>'
+      + '<i data-lucide="contact" class="w-5 h-5 text-primary"></i>ข้อมูลที่คุณแก้เองได้</h3>'
       + '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">'
       + '<div><label class="block text-xs text-gray-600 mb-1">คำนำหน้า</label>'
       + '<input name="title_prefix" value="' + esc(d.title_prefix) + '" placeholder="เช่น นางสาว"' + RO
@@ -1162,7 +1162,7 @@
 
     return '<div class="bg-white rounded-2xl p-5 border border-amber-200">'
       + '<h3 class="font-bold mb-1 flex items-center gap-2">'
-      + '<i data-lucide="users-round" class="w-5 h-5 text-amber-600"></i>'
+      + '<i data-lucide="users" class="w-5 h-5 text-amber-600"></i>'
       + 'ตั้งรูปโปรไฟล์และลายเซ็นให้ผู้อื่น</h3>'
       + '<p class="text-xs text-gray-500 mb-3">เฉพาะผู้ดูแลระบบ · '
       + 'ลายเซ็นที่ตั้งให้จะถูกนำไปขึ้นในเอกสารแทนเจ้าตัว '
