@@ -9,7 +9,7 @@ const have = new Set(
   fs.readFileSync(path.join(__dirname, 'lucide_0.263.0_names.txt'), 'utf8')
     .split('\n').map(x => x.trim()).filter(Boolean)
 );
-const FILES = ['index.html', 'app.js', 'app-patch.js', 'eval.js', 'counsel.js', 'profile.js', 'workload.js', 'curriculum.js', 'plo.js'];
+const FILES = ['index.html', 'app.js', 'app-patch.js', 'eval.js', 'counsel.js', 'wellbeing.js', 'profile.js', 'workload.js', 'curriculum.js', 'plo.js'];
 
 let pass = 0, fail = 0, total = 0;
 const missing = {};

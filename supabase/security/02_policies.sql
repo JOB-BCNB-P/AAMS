@@ -318,14 +318,8 @@ create policy ev_head_read on public.eval_heading for select to authenticated us
 create policy ev_head_write on public.eval_heading for all to authenticated
   using (ems.is_full()) with check (ems.is_full());
 
--- กลุ่มย่อยของวิชาปฏิบัติ — ในตารางมีรายชื่อนักศึกษาทั้งกลุ่ม
--- นักศึกษาจึงอ่านตรง ๆ ไม่ได้ ต้องถามชื่อกลุ่มของตัวเองผ่าน ems_eval_my_groups()
-alter table public.eval_group enable row level security;
-drop policy if exists eg_read on public.eval_group;
-drop policy if exists eg_write on public.eval_group;
-create policy eg_read on public.eval_group for select to public using (ems.is_staff());
-create policy eg_write on public.eval_group for all to public
-  using (ems.is_full()) with check (ems.is_full());
+-- กลุ่มย่อยของวิชาปฏิบัติ — ย้ายไปนิยามรวมกับตารางใหม่อื่น ๆ ท้ายไฟล์
+-- (ของเดิมเขียน to public ซึ่งต่างจากตารางอื่น จึงแก้ให้เป็น authenticated ทั้งหมด)
 
 -- คำตอบของนักศึกษา : เจ้าตัวแก้ได้จนกว่าจะกด "ส่งแล้ว" หลังจากนั้นแก้ไม่ได้อีก
 alter table public.eval_response enable row level security;
@@ -527,3 +521,135 @@ create policy p_admin on public._backup_subject_code_fix for all to public
 -- ไม่มีนโยบาย = ไม่มีใครอ่านผ่าน API ได้ อ่านได้เฉพาะ Edge Function ที่ใช้ service role
 -- ห้ามเพิ่มนโยบายให้ตารางนี้ (เครื่องมือตรวจของ Supabase จะเตือนว่า "ไม่มีนโยบาย" — ถูกต้องแล้ว)
 alter table public.drive_link enable row level security;
+
+-- ===========================================================================
+-- ส่วนที่เพิ่มภายหลัง — ประเมินแบบกลุ่มย่อย · ระบบให้คำปรึกษา · สุขภาพและความประพฤติ
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- eval_group — กลุ่มย่อยของรายวิชาปฏิบัติ
+-- ---------------------------------------------------------------------------
+-- นักศึกษาอ่านไม่ได้ เพราะจะรู้ว่าเพื่อนคนไหนอยู่กลุ่มใครและย้อนหาผู้ประเมินได้
+alter table public.eval_group enable row level security;
+drop policy if exists eg_read  on public.eval_group;
+drop policy if exists eg_write on public.eval_group;
+create policy eg_read  on public.eval_group for select to authenticated using (ems.is_staff());
+create policy eg_write on public.eval_group for all    to authenticated
+  using (ems.is_full()) with check (ems.is_full());
+
+-- ---------------------------------------------------------------------------
+-- counsel_session — บันทึกการให้คำปรึกษา
+-- ---------------------------------------------------------------------------
+-- อาจารย์เห็นและแก้เฉพาะของตน · ผู้ดูแล/วิชาการ/ทะเบียน เห็นทั้งหมด
+-- เจ้าหน้าที่งานอื่นๆ เห็นเฉพาะรายการที่ตั้งสถานะว่า "ส่งต่อ" เท่านั้น
+alter table public.counsel_session enable row level security;
+drop policy if exists cs_read   on public.counsel_session;
+drop policy if exists cs_insert on public.counsel_session;
+drop policy if exists cs_update on public.counsel_session;
+drop policy if exists cs_delete on public.counsel_session;
+create policy cs_read on public.counsel_session for select to authenticated
+  using (ems.counsel_sees_all()
+      or ems.counsel_is_owner(advisor_name)
+      or (ems.counsel_is_referral_staff() and coalesce(refer_status,'') = 'ส่งต่อ'));
+create policy cs_insert on public.counsel_session for insert to authenticated
+  with check (ems.counsel_sees_all() or ems.counsel_is_owner(advisor_name));
+create policy cs_update on public.counsel_session for update to authenticated
+  using (ems.counsel_sees_all() or ems.counsel_is_owner(advisor_name))
+  with check (ems.counsel_sees_all() or ems.counsel_is_owner(advisor_name));
+create policy cs_delete on public.counsel_session for delete to authenticated
+  using (ems.counsel_sees_all() or ems.counsel_is_owner(advisor_name));
+
+-- ---------------------------------------------------------------------------
+-- counsel_student — รายชื่อนักศึกษาในแต่ละครั้ง (มีบันทึกส่วนตัวรายคน)
+-- ---------------------------------------------------------------------------
+-- สิทธิ์อิงจากรายการแม่เสมอ จึงไม่มีทางเห็นบันทึกส่วนตัวของครั้งที่ตนไม่มีสิทธิ์
+alter table public.counsel_student enable row level security;
+drop policy if exists cst_read  on public.counsel_student;
+drop policy if exists cst_write on public.counsel_student;
+create policy cst_read on public.counsel_student for select to authenticated
+  using (exists (select 1 from public.counsel_session s
+                 where s.session_code = counsel_student.session_code
+                   and (ems.counsel_sees_all()
+                     or ems.counsel_is_owner(s.advisor_name)
+                     or (ems.counsel_is_referral_staff() and coalesce(s.refer_status,'') = 'ส่งต่อ'))));
+create policy cst_write on public.counsel_student for all to authenticated
+  using (exists (select 1 from public.counsel_session s
+                 where s.session_code = counsel_student.session_code
+                   and (ems.counsel_sees_all() or ems.counsel_is_owner(s.advisor_name))))
+  with check (exists (select 1 from public.counsel_session s
+                 where s.session_code = counsel_student.session_code
+                   and (ems.counsel_sees_all() or ems.counsel_is_owner(s.advisor_name))));
+
+-- ---------------------------------------------------------------------------
+-- counsel_option — ประเภทประเด็นปัญหาและช่องทางการให้คำปรึกษา
+-- ---------------------------------------------------------------------------
+alter table public.counsel_option enable row level security;
+drop policy if exists co_read  on public.counsel_option;
+drop policy if exists co_write on public.counsel_option;
+create policy co_read  on public.counsel_option for select to authenticated using (ems.is_staff());
+create policy co_write on public.counsel_option for all    to authenticated
+  using (ems.has_any_role(array['admin','academic']))
+  with check (ems.has_any_role(array['admin','academic']));
+
+-- ---------------------------------------------------------------------------
+-- counsel_log — ประวัติการเปลี่ยนแปลง
+-- ---------------------------------------------------------------------------
+-- เขียนได้เสมอแต่ลบไม่ได้และแก้ไม่ได้ ประวัติจึงย้อนแก้ไม่ได้
+alter table public.counsel_log enable row level security;
+drop policy if exists cl_read   on public.counsel_log;
+drop policy if exists cl_insert on public.counsel_log;
+create policy cl_read on public.counsel_log for select to authenticated
+  using (exists (select 1 from public.counsel_session s
+                 where s.session_code = counsel_log.session_code
+                   and (ems.counsel_sees_all() or ems.counsel_is_owner(s.advisor_name))));
+create policy cl_insert on public.counsel_log for insert to authenticated with check (true);
+
+-- ---------------------------------------------------------------------------
+-- student_health — ข้อมูล สบช.โมเดล
+-- ---------------------------------------------------------------------------
+-- อ่าน  ผู้ดูแล/วิชาการ/ทะเบียน · เจ้าหน้าที่งานอื่นๆ · อาจารย์ที่ปรึกษาของนักศึกษารายนั้น
+--       และตัวนักศึกษาเองเห็นของตัวเอง
+-- เขียน เฉพาะผู้ที่ผู้ดูแลติ๊กสิทธิ์ให้ และแก้/ลบได้เฉพาะแถวที่ตนกรอก
+--       เทียบจาก recorded_uid ซึ่งมาจากระบบยืนยันตัวตน ปลอมไม่ได้
+alter table public.student_health enable row level security;
+drop policy if exists sh_write  on public.student_health;
+drop policy if exists sh_read   on public.student_health;
+drop policy if exists sh_insert on public.student_health;
+drop policy if exists sh_update on public.student_health;
+drop policy if exists sh_delete on public.student_health;
+create policy sh_read on public.student_health for select to authenticated
+  using (ems.is_full()
+      or ems.has_any_role(array['otherStaff'])
+      or ems.owns_student(student_id)
+      or student_id = ems.my_student_id());
+create policy sh_insert on public.student_health for insert to authenticated
+  with check (ems.can_enter_health());
+create policy sh_update on public.student_health for update to authenticated
+  using (ems.owns_record(recorded_uid) and ems.can_enter_health())
+  with check (ems.owns_record(recorded_uid) and ems.can_enter_health());
+create policy sh_delete on public.student_health for delete to authenticated
+  using (ems.owns_record(recorded_uid) and ems.can_enter_health());
+
+-- ---------------------------------------------------------------------------
+-- student_conduct — ข้อมูลความประพฤติ
+-- ---------------------------------------------------------------------------
+-- กติกาเดียวกับตารางสุขภาพ แต่ใช้สิทธิ์คนละใบ
+alter table public.student_conduct enable row level security;
+drop policy if exists sh_write  on public.student_conduct;
+drop policy if exists sh_read   on public.student_conduct;
+drop policy if exists sc_read   on public.student_conduct;
+drop policy if exists sc_insert on public.student_conduct;
+drop policy if exists sc_update on public.student_conduct;
+drop policy if exists sc_delete on public.student_conduct;
+create policy sc_read on public.student_conduct for select to authenticated
+  using (ems.is_full()
+      or ems.has_any_role(array['otherStaff'])
+      or ems.owns_student(student_id)
+      or student_id = ems.my_student_id());
+create policy sc_insert on public.student_conduct for insert to authenticated
+  with check (ems.can_enter_conduct());
+create policy sc_update on public.student_conduct for update to authenticated
+  using (ems.owns_record(recorded_uid) and ems.can_enter_conduct())
+  with check (ems.owns_record(recorded_uid) and ems.can_enter_conduct());
+create policy sc_delete on public.student_conduct for delete to authenticated
+  using (ems.owns_record(recorded_uid) and ems.can_enter_conduct());

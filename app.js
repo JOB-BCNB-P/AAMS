@@ -10581,6 +10581,8 @@ function showAddUserModal() {
       <div id="userNameBox"><label class="block text-xs text-gray-600 mb-1">ชื่อ-สกุล *</label>
         <input name="name" required class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น นางสาวสมหญิง ใจดี"></div>
       ${extraRolesFieldHTML({})}
+
+      ${dataEntryRightsFieldHTML({})}
       ${workloadMissionFieldHTML({})}
       <div id="userRespYearBox" class="hidden"><label class="block text-xs text-gray-600 mb-1">ชั้นปีที่รับผิดชอบ <span class="text-gray-400">(อาจารย์ประจำชั้น)</span></label>
         <select name="responsible_year" class="w-full border rounded-xl px-3 py-2 text-sm">
@@ -10628,6 +10630,7 @@ function showAddUserModal() {
     if (extra) obj.extra_roles = extra;
     const wlm = collectWorkloadMissions('addUserForm');
     if (wlm) obj.workload_missions = wlm;
+    if (role !== 'student') Object.assign(obj, collectDataEntryRights('addUserForm'));
 
     await withLoading(e.target, async () => {
       const r = await GSheetDB.create(obj);
@@ -12245,6 +12248,34 @@ function collectWorkloadMissions(formId) {
     .map(c => c.getAttribute('data-wl-mission')).join(',');
 }
 
+// สิทธิ์บันทึกข้อมูลสุขภาพและความประพฤติ — ให้เป็นรายคน ไม่ผูกกับชื่อหน่วยงาน
+// เพราะเจ้าหน้าที่ย้ายงานกันได้ และฐานข้อมูลบังคับซ้ำอีกชั้นด้วย RLS
+// (ems.can_enter_health / ems.can_enter_conduct) ถึงจะแก้หน้าจอก็เขียนไม่ผ่าน
+const DATA_ENTRY_RIGHTS = [
+  ['can_health', 'บันทึกข้อมูล สบช.โมเดล', 'ผลตรวจสุขภาพรายภาคการศึกษา — มักเป็นงานบริการวิชาการ'],
+  ['can_conduct', 'บันทึกข้อมูลความประพฤติ', 'พฤติกรรมที่ต้องตักเตือนและพฤติกรรมดีเด่น — มักเป็นงานกิจการนักศึกษา']
+];
+function dataEntryRightsFieldHTML(u) {
+  const on = (k) => ['1', 'true', 'ใช่'].includes(String((u && u[k]) || '').trim());
+  const boxes = DATA_ENTRY_RIGHTS.map(([k, label, hint]) => `<label class="flex items-start gap-2 bg-surface rounded-lg px-2.5 py-2 cursor-pointer text-sm">
+    <input type="checkbox" data-entry-right="${k}" ${on(k) ? 'checked' : ''} class="w-4 h-4 mt-0.5 rounded border-gray-300 text-primary focus:ring-primary">
+    <span><span class="font-medium">${label}</span><span class="block text-[11px] text-gray-500">${hint}</span></span></label>`).join('');
+  return `<div>
+    <label class="block text-xs text-gray-600 mb-1">สิทธิ์บันทึกข้อมูลนักศึกษา <span class="text-gray-400">(เลือกได้หลายข้อ)</span></label>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${boxes}</div>
+    <p class="text-[11px] text-gray-400 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ผู้ที่ได้รับสิทธิ์จะเห็นเมนู <b>บันทึกข้อมูลนักศึกษา</b> และแก้ไข/ลบได้เฉพาะรายการที่ตนกรอกเอง</p>
+  </div>`;
+}
+function collectDataEntryRights(formId) {
+  const out = {};
+  const form = document.getElementById(formId);
+  DATA_ENTRY_RIGHTS.forEach(([k]) => { out[k] = ''; });
+  if (!form) return out;
+  form.querySelectorAll('[data-entry-right]').forEach(el => {
+    out[el.getAttribute('data-entry-right')] = el.checked ? '1' : '';
+  });
+  return out;
+}
 function collectExtraRoles(formId) {
   const form = document.getElementById(formId);
   if (!form) return '';
@@ -12267,6 +12298,8 @@ function showEditUserModal(id) {
       ${extraRolesFieldHTML(u)}
 
       ${isStudent ? '' : workloadMissionFieldHTML(u)}
+
+      ${isStudent ? '' : dataEntryRightsFieldHTML(u)}
 
       ${isStudent ? `
       <div><label class="block text-xs text-gray-600 mb-1">รหัสนักศึกษา</label>
@@ -12312,6 +12345,7 @@ function showEditUserModal(id) {
     if (rec) {
       rec.extra_roles = collectExtraRoles('editUserForm');
       rec.workload_missions = collectWorkloadMissions('editUserForm');
+      Object.assign(rec, collectDataEntryRights('editUserForm'));
     }
     editRecord(id, 'editUserForm');
   };

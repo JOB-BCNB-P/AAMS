@@ -87,8 +87,11 @@ t('นักศึกษาแก้คำตอบไม่ได้หลั�
   });
 });
 t('กลุ่มย่อยของแบบประเมิน นักศึกษาอ่านไม่ได้', () => {
-  const i = SQL.indexOf('create policy eg_read on public.eval_group');
-  assert.ok(/ems\.is_staff\(\)/.test(SQL.slice(i, i + 120)), 'ไม่ได้จำกัดด้วย is_staff()');
+  // ยอมให้เว้นวรรคกี่ช่องก็ได้ ไม่งั้นจัดรูปแบบไฟล์ใหม่แล้วการทดสอบพังทั้งที่นโยบายถูก
+  const m = SQL.match(/create policy\s+eg_read\s+on\s+public\.eval_group[^;]*/);
+  assert.ok(m, 'ไม่พบนโยบาย eg_read ในไฟล์');
+  assert.ok(/ems\.is_staff\(\)/.test(m[0]), 'ไม่ได้จำกัดด้วย is_staff()');
+  assert.ok(/to\s+authenticated/.test(m[0]), 'ควรจำกัดเฉพาะผู้ที่ล็อกอินแล้ว');
 });
 
 console.log('\n' + (fail ? '✗ ' : '✓ ') + 'ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
