@@ -185,7 +185,9 @@ table th {
   /* 16px กัน iOS ซูมอัตโนมัติตอนแตะช่องกรอก */
   background: #fff;
   outline: none;
-  transition: border-color .15s, box-shadow .15s;
+  transition: border-color 150ms cubic-bezier(.4, 0, .2, 1),
+              box-shadow 150ms cubic-bezier(.4, 0, .2, 1),
+              background-color 150ms cubic-bezier(.4, 0, .2, 1);
 }
 
 .ems-input:focus {
@@ -202,7 +204,10 @@ table th {
   padding: .7rem 1.25rem;
   border-radius: .75rem;
   box-shadow: 0 4px 14px rgba(30, 111, 186, .25);
-  transition: background .2s, box-shadow .2s;
+  transition: background-color 150ms cubic-bezier(.4, 0, .2, 1),
+              box-shadow 150ms cubic-bezier(.4, 0, .2, 1),
+              color 150ms cubic-bezier(.4, 0, .2, 1),
+              transform 150ms cubic-bezier(.4, 0, .2, 1);
 }
 
 .ems-btn-primary:hover:not(:disabled) {
@@ -218,7 +223,10 @@ table th {
   width: 40px;
   height: 40px;
   border-radius: .625rem;
-  transition: background .15s;
+  transition: background-color 150ms cubic-bezier(.4, 0, .2, 1),
+              color 150ms cubic-bezier(.4, 0, .2, 1),
+              box-shadow 150ms cubic-bezier(.4, 0, .2, 1),
+              transform 150ms cubic-bezier(.4, 0, .2, 1);
 }
 
 .ems-icon-btn:hover {
@@ -339,13 +347,24 @@ table th {
 }
 
 .card-stat {
-  transition: transform .2s, box-shadow .2s;
+  /* เดิมหน่วงแค่ transform กับ box-shadow  แต่การ์ดพวกนี้เปลี่ยนสีขอบตอนชี้ด้วย
+     สีขอบจึงกระโดดเปลี่ยนสวนทางกับตัวการ์ดที่ค่อย ๆ ยกขึ้น */
+  transition: transform 150ms cubic-bezier(.4, 0, .2, 1),
+              box-shadow 150ms cubic-bezier(.4, 0, .2, 1),
+              border-color 150ms cubic-bezier(.4, 0, .2, 1),
+              background-color 150ms cubic-bezier(.4, 0, .2, 1),
+              color 150ms cubic-bezier(.4, 0, .2, 1);
 }
 
 @media (hover: hover) {
   .card-stat:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(30, 111, 186, .15);
+  }
+
+  .card-stat:active {
+    transform: translateY(-1px) scale(.995);
+    transition-duration: 60ms;
   }
 }
 
@@ -448,39 +467,50 @@ button:disabled {
 }
 
 /* การเคลื่อนไหวของปุ่มเวลาเอาเมาส์ไปชี้ (ทำเฉพาะเครื่องที่มีเมาส์ บนมือถือรบกวนสายตา)
-     แถบเมนูด้านข้าง : ขยับเล็กน้อย
-     ปุ่มอื่นทั้งหมด : ไม่ขยับ แค่ "นูนขึ้น" เหมือนการ์ดสถิติในหน้าหลัก */
+
+   เขียนใหม่ทั้งบล็อก  ของเดิมมีสามจุดที่ทำให้รู้สึกกระตุก
+   1) เมนูด้านข้างสั่งให้ "สั่นบิดซ้ายขวา" สามองศาทุกครั้งที่ชี้
+      ตัวหนังสือไทยมีสระบนล่าง พอบิดแล้วอ่านยากและดูกระตุกกว่าดูลื่น
+   2) ปุ่มทุกปุ่มกระโดดขึ้นสองพิกเซล รวมปุ่มไอคอนเล็ก ๆ ในตาราง
+      ทั้งแถวเลยดูสั่นตอนเลื่อนเมาส์ผ่าน
+   3) หน่วงเวลาใส่ไว้แค่ transform กับ box-shadow  ไม่ได้ใส่ให้สีพื้น
+      สีจึงกระโดดเปลี่ยนทันทีในเฟรมเดียว ซึ่งเป็นตัวที่ตาจับได้ชัดที่สุด
+
+   ของใหม่  เมนูเลื่อนเข้าแนวนอนเล็กน้อยแทนการสั่น
+            ปุ่มที่มีพื้นสีทึบยกขึ้นหนึ่งพิกเซลพร้อมเงาอ่อน
+            ปุ่มไอคอนโปร่งใสไม่ขยับ เปลี่ยนแค่สีพื้น
+            ทุกอย่างหน่วง 150 มิลลิวินาทีเท่ากันหมด  */
 @media (hover: hover) and (pointer: fine) {
-  @keyframes btnWobble {
-    0%, 100% { transform: rotate(0deg); }
-    15% { transform: rotate(-3deg); }
-    30% { transform: rotate(2.5deg); }
-    45% { transform: rotate(-2deg); }
-    60% { transform: rotate(1.5deg); }
-    75% { transform: rotate(-0.8deg); }
-  }
 
-  button:not(:disabled):not(.btn-spin) {
-    transition: transform .2s, box-shadow .2s;
-  }
-
-  button:hover:not(:disabled):not(.btn-spin) {
-    transform: translateY(-2px);
-  }
-
-  /* ใส่เงาเฉพาะปุ่มที่มีพื้นหลังทึบ
-     ปุ่มไอคอนโปร่งใสในตารางถ้าใส่เงาจะดูเหมือนลอยอยู่เฉย ๆ
-     (ตัวเลือกนี้จับเฉพาะคลาสพื้นหลังจริง ไม่จับ hover:bg-... ที่เป็นสีตอนชี้) */
+  /* ปุ่มที่มีพื้นหลังทึบ = ปุ่มการกระทำหลัก ยกขึ้นเล็กน้อยให้รู้ว่าชี้อยู่
+     ตัวเลือกนี้จับเฉพาะคลาสพื้นหลังจริง ไม่จับ hover:bg-... ที่เป็นสีตอนชี้ */
   button[class*=" bg-"]:hover:not(:disabled):not(.btn-spin),
   button[class^="bg-"]:hover:not(:disabled):not(.btn-spin) {
-    box-shadow: 0 8px 25px rgba(30, 111, 186, .15);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(30, 111, 186, .18);
   }
 
-  /* แถบเมนูด้านข้าง — ให้ขยับได้เหมือนเดิม */
+  button[class*=" bg-"]:active:not(:disabled):not(.btn-spin),
+  button[class^="bg-"]:active:not(:disabled):not(.btn-spin) {
+    transform: translateY(0) scale(.985);
+    box-shadow: 0 1px 3px rgba(30, 111, 186, .20);
+  }
+
+  /* แถบเมนูด้านข้าง — เลื่อนเข้าแนวนอน ไม่สั่น ไม่บิด
+     รายการเมนูอยู่ชิดกันในแนวตั้ง การขยับขึ้นลงจะดูเหมือนรายการอื่นขยับตาม */
   #sidebarNav button:hover:not(:disabled):not(.btn-spin) {
-    transform: none;
+    transform: translateX(3px);
     box-shadow: none;
-    animation: btnWobble .5s ease;
+    animation: none;
+  }
+
+  #sidebarNav button:active:not(:disabled):not(.btn-spin) {
+    transform: translateX(3px) scale(.99);
+  }
+
+  /* แถวในตารางเปลี่ยนสีพื้นอย่างเดียว ไม่ขยับ เพราะทั้งแถวจะดูสั่น */
+  tbody tr:hover {
+    background-color: rgba(239, 246, 255, .7);
   }
 }
 
@@ -558,13 +588,9 @@ details[open]>summary .chev {
 .gender-card:hover .grad-wave { opacity: 1; }
 
 /* ---------------- เคารพการตั้งค่า "ลดการเคลื่อนไหว" ---------------- */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: .01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: .01ms !important;
-  }
-}
+/* หมายเหตุ  การรองรับ "ลดการเคลื่อนไหว" ย้ายไปรวมไว้ท้ายไฟล์ที่เดียว
+   พร้อมกับการสั่งหยุดการขยับของปุ่มและเมนูด้วย
+   ถ้าแยกสองที่ จะมีคนแก้ที่หนึ่งแล้วลืมอีกที่ */
 
 /* ---------------- โหมดพิมพ์ ---------------- */
 @media print {
@@ -1045,4 +1071,188 @@ body.ems-viewas #emsViewAsBar { animation: emsViewAsIn .18s ease-out; }
 .ems-main .flex>.w-14.h-14,
 .ems-main .flex>.w-16.h-16 {
   flex-shrink: 0;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   การตอบสนองของปุ่มและเมนูให้ลื่นไหล
+   ───────────────────────────────────────────────────────────────
+   ปัญหาเดิม  ปุ่มในระบบมี 405 จุด แต่ส่วนใหญ่เขียนแค่ hover:bg-*
+   เวลาเอาเมาส์ไปชี้ สีจึงกระโดดเปลี่ยนทันทีในเฟรมเดียว รู้สึกกระตุก
+   และกดแล้วไม่มีอะไรตอบกลับ ผู้ใช้ไม่แน่ใจว่ากดติดหรือยัง
+
+   แก้ที่นี่ที่เดียวแทนการไล่เติมคลาสทีละปุ่ม  เพราะ
+   1) ครอบคลุมปุ่มที่มีอยู่และปุ่มที่จะเพิ่มในอนาคตโดยไม่ต้องจำ
+   2) ไม่ต้องแตะตรรกะการทำงานของหน้าใด ๆ ระบบจึงไม่สั่นคลอน
+   3) แก้กลับหรือปรับความเร็วได้จากจุดเดียว
+
+   ใช้เวลา 150 มิลลิวินาที ซึ่งเป็นช่วงที่ตารับรู้ว่าเปลี่ยนอย่างนุ่มนวล
+   แต่ยังไม่รู้สึกว่าระบบตอบสนองช้า
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ---------- 1) ปุ่มและสิ่งที่กดได้ทุกชนิด ---------- */
+button,
+[role="button"],
+a,
+label[for],
+summary,
+select,
+input[type="checkbox"],
+input[type="radio"],
+input[type="file"]::file-selector-button {
+  transition-property: background-color, border-color, color, fill, stroke,
+                       box-shadow, opacity, transform;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(.4, 0, .2, 1);
+}
+
+/* ช่องกรอกข้อความให้ลื่นด้วย แต่ไม่ต้องขยับตำแหน่ง */
+input:not([type="checkbox"]):not([type="radio"]),
+textarea {
+  transition-property: background-color, border-color, box-shadow;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(.4, 0, .2, 1);
+}
+
+/* ---------- 2) แรงตอบกลับตอนกด ----------
+   ยุบลงเล็กน้อยแล้วเด้งกลับ ให้รู้ว่ากดติดแล้ว
+   ใช้ค่าน้อยมากเพราะปุ่มจำนวนมากอยู่ในตาราง ถ้าขยับเยอะจะดูรก */
+button:not(:disabled):active,
+[role="button"]:not([aria-disabled="true"]):active,
+input[type="file"]::file-selector-button:active {
+  transform: translateY(1px) scale(.985);
+  transition-duration: 60ms;
+}
+
+/* หมายเหตุ  การยกตัวของปุ่มพื้นสีอยู่ในบล็อก @media (hover: hover) ด้านบนแล้ว
+   จงใจไม่เขียนซ้ำที่นี่ เพราะถ้าสองที่กำหนดระยะยกไม่เท่ากัน
+   ปุ่มจะยกคนละระยะแล้วแต่ว่ากฎไหนชนะ ซึ่งไล่หาทีหลังยากมาก */
+
+/* ---------- 4) ปุ่มที่ถูกปิดไว้ต้องไม่ตอบสนอง ----------
+   ระหว่างบันทึกข้อมูล ระบบจะปิดปุ่มไว้กันกดซ้ำ
+   ถ้ายังยุบตามนิ้วอยู่ ผู้ใช้จะเข้าใจผิดว่ากดได้แล้วกดรัว */
+button:disabled,
+button[aria-disabled="true"],
+[role="button"][aria-disabled="true"] {
+  transform: none !important;
+  box-shadow: none !important;
+  cursor: not-allowed;
+}
+
+/* ---------- 5) ขอบเรืองตอนใช้แป้นพิมพ์ ----------
+   ผู้ใช้ที่กด Tab ไล่ช่องต้องเห็นว่าตอนนี้อยู่ที่ปุ่มไหน
+   ใช้ :focus-visible จึงไม่ขึ้นตอนคลิกเมาส์ ซึ่งจะดูรก */
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
+/* ---------- 6) เมนูด้านข้าง ----------
+   ตัวเลือกต้องตรงกับโครงสร้างจริงของหน้า มิฉะนั้นกฎจะไม่ทำงานโดยไม่มีอะไรเตือน
+   แถบเมนูคือ <aside id="sidebar"> ข้างในมี <nav id="sidebarNav">
+   เมนูย่อยคือ .dropdown-menu ซึ่งกางด้วยการเติมคลาส .dropdown-open ที่ตัวครอบ */
+#sidebarNav button,
+#sidebarNav a,
+#sidebar button,
+#sidebar a {
+  transition-property: background-color, border-color, color, box-shadow, transform;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(.4, 0, .2, 1);
+}
+
+/* เมนูย่อยที่กางออก ให้ค่อย ๆ ปรากฏแทนการกระโดดขึ้นมาทั้งก้อน */
+.dropdown-open > .dropdown-menu {
+  animation: emsSlideDown 180ms cubic-bezier(.4, 0, .2, 1);
+}
+
+@keyframes emsSlideDown {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ลูกศรของเมนูที่กางได้ ให้ค่อย ๆ หมุน
+   ตัวหมุนสั่งจาก JavaScript ด้วย style.transform = rotate(180deg)
+   ตรงนี้แค่เติมการหน่วงเวลาให้ ไม่ได้ไปยุ่งกับตรรกะการกาง */
+#sidebarNav [data-lucide="chevron-down"],
+#sidebarNav svg.lucide-chevron-down,
+button [data-lucide="chevron-down"],
+button svg.lucide-chevron-down {
+  transition: transform 180ms cubic-bezier(.4, 0, .2, 1);
+}
+
+/* ---------- 7) ไอคอนในปุ่มขยับตามปุ่ม ---------- */
+button:not(:disabled):hover > svg {
+  transition: transform 150ms cubic-bezier(.4, 0, .2, 1);
+}
+
+/* ---------- 8) แถวในตารางและการ์ดที่กดได้ ----------
+   สีตอนชี้อยู่ในบล็อก @media (hover: hover) ด้านบน ตรงนี้ใส่เฉพาะการหน่วงเวลา */
+tbody tr,
+.ems-main .cursor-pointer {
+  transition: background-color 150ms cubic-bezier(.4, 0, .2, 1),
+              box-shadow 150ms cubic-bezier(.4, 0, .2, 1);
+}
+
+/* ---------- 9) หน้าต่างซ้อนและกล่องข้อความแจ้งเตือน ---------- */
+#modalOverlay,
+[id$="Modal"],
+.ems-modal {
+  transition: opacity 180ms cubic-bezier(.4, 0, .2, 1);
+}
+
+/* ---------- 10) บนมือถือและแท็บเล็ต ----------
+   เบราว์เซอร์บนมือถือหน่วงการกดไว้ราว 300 มิลลิวินาทีเพื่อรอดูว่าจะกดสองครั้งไหม
+   touch-action บอกว่าไม่ต้องรอ ปุ่มจึงตอบสนองทันที
+   และตัดกรอบเทาที่ Android ขึ้นให้ตอนแตะ ซึ่งทับกับสีปุ่มของเราเอง */
+button,
+[role="button"],
+a,
+select,
+summary,
+label[for] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* ---------- 11) เลื่อนหน้าจอแบบนุ่ม ---------- */
+html {
+  scroll-behavior: smooth;
+}
+
+.ems-main,
+.ems-sidebar {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---------- 12) เคารพการตั้งค่าของผู้ใช้ ----------
+   ผู้ใช้บางคนตั้งระบบปฏิบัติการไว้ว่าลดการเคลื่อนไหว
+   เพราะเวียนศีรษะหรือไวต่อภาพเคลื่อนไหว ต้องปิดให้หมด
+   สีที่เปลี่ยนตอนชี้ยังอยู่ครบ เพียงแต่ไม่ขยับและไม่หน่วงเวลา */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  button:hover,
+  button:active,
+  [role="button"]:hover,
+  [role="button"]:active,
+  #sidebarNav button:hover,
+  #sidebarNav button:active {
+    transform: none !important;
+    animation: none !important;
+  }
 }
