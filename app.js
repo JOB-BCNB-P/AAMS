@@ -469,7 +469,9 @@ function updateLoginFields() {
   if (role === 'admin') {
     f.innerHTML = `<div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-2">รหัสผ่าน 6 หลัก</label><input type="password" id="adminPass" maxlength="6" pattern="[0-9]{6}" class="w-full border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-primary outline-none" placeholder="กรอกรหัสผ่าน 6 หลัก" onkeypress="if(event.key==='Enter')handleLogin()"></div>`;
   } else if (role === 'student') {
-    f.innerHTML = `<div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-2">เลขบัตรประชาชน 13 หลัก</label><input type="text" id="studentNID" maxlength="13" class="w-full border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-primary outline-none" placeholder="กรอกเลขบัตรประชาชน 13 หลัก" onkeypress="if(event.key==='Enter')handleLogin()"></div>`;
+    // นักศึกษาเข้าด้วยบัญชี Google ของวิทยาลัยเหมือนบุคลากร ไม่มีช่องให้กรอกอะไร
+    f.innerHTML = `<div class="bg-blue-50 border border-blue-100 rounded-xl p-3 text-sm text-gray-700">`
+      + `ใช้บัญชี Google ของวิทยาลัย <b>รหัสนักศึกษา@bcn.ac.th</b> กดปุ่มด้านล่างเพื่อเข้าสู่ระบบ</div>`;
   } else if (role === 'executive' || role === 'classTeacher' || role === 'registrar' || role === 'deptHead') {
     f.innerHTML = `<div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-2">Username</label><input type="text" id="loginUsername" class="w-full border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-primary outline-none" placeholder="กรอก Username"></div><div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-2">รหัสผ่าน</label><input type="password" id="loginUserPass" class="w-full border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-primary focus:border-primary outline-none" placeholder="รหัสผ่าน" onkeypress="if(event.key==='Enter')handleLogin()"></div>`;
   } else {
@@ -486,20 +488,15 @@ async function handleLogin() {
   const err = document.getElementById('loginError');
   err.classList.add('hidden');
 
-  // ===== นักศึกษา: ตรวจฝั่งเซิร์ฟเวอร์ (เลขบัตรไม่ถูกส่งมาเทียบในเบราว์เซอร์) =====
+  // ===== นักศึกษาเข้าด้วยบัญชี Google เหมือนบุคลากร =====
+  // ช่องทางเลขบัตรประชาชนถูกยกเลิกแล้ว ทั้งฝั่งหน้าเว็บและ Edge Function
   if (role === 'student') {
-    const nid = document.getElementById('studentNID').value.trim();
-    if (!/^\d{13}$/.test(nid)) { err.textContent = 'กรุณากรอกเลขบัตรประชาชน 13 หลัก'; err.classList.remove('hidden'); return }
-    const loginBtn0 = document.querySelector('#loginScreen button[onclick="handleLogin()"]');
-    if (loginBtn0) { loginBtn0.disabled = true; loginBtn0.textContent = 'กำลังตรวจสอบ...'; }
-    showScreen('loadingScreen');  // แสดงหน้าโหลดข้อมูลระหว่างดึงข้อมูล (เหมือนบทบาทอื่น)
-    const sres = await GSheetDB.studentLogin(nid);
-    if (loginBtn0) { loginBtn0.disabled = false; loginBtn0.textContent = 'เข้าสู่ระบบ'; }
-    if (!sres || !sres.isOk || !sres.student) { showScreen('loginScreen'); err.textContent = 'ไม่พบข้อมูลนักศึกษา กรุณาตรวจสอบเลขบัตรประชาชน'; err.classList.remove('hidden'); return }
-    const stu = sres.student;
-    if (norm(stu.status) === 'สำเร็จการศึกษา' || norm(stu.year_level) === 'จบ') { showScreen('loginScreen'); err.textContent = 'บัญชีนี้เป็นผู้สำเร็จการศึกษาแล้ว ไม่สามารถเข้าสู่ระบบได้'; err.classList.remove('hidden'); return }
-    APP.currentUser = { name: stu.name, role: 'student', data: stu };
-  } else {
+    if (typeof window.handleGoogleLogin === 'function') { window.handleGoogleLogin(); return; }
+    err.textContent = 'กรุณาเข้าสู่ระบบด้วยบัญชี Google ของวิทยาลัย';
+    err.classList.remove('hidden');
+    return;
+  }
+  {
     // ===== บุคลากร: ตรวจรหัสผ่านฝั่งเซิร์ฟเวอร์ (Apps Script) — รหัสผ่านไม่ถูกเทียบในเบราว์เซอร์ =====
     let identifier = '', password = '';
     if (role === 'admin') {
@@ -2303,13 +2300,36 @@ function showStudentDetail(id) {
   const s = APP.allData.find(d => d.__backendId === id);
   if (!s) return;
   showModal('ข้อมูลนักศึกษา', `<div class="grid grid-cols-2 gap-3">
-    ${infoRow('ชื่อ-สกุล', s.name)}${infoRow('รหัสนักศึกษา', s.student_id)}${infoRow('เลขบัตรประชาชน', maskNationalId(s.national_id))}${infoRow('รุ่นที่', s.batch)}
+    ${infoRow('ชื่อ-สกุล', s.name)}${infoRow('รหัสนักศึกษา', s.student_id)}${infoRow('เลขบัตรประชาชน', '<span id="stuNidBox" class="text-gray-400">กำลังตรวจสอบ…</span>')}${infoRow('รุ่นที่', s.batch)}
     ${infoRow('สถานภาพ', s.status)}${infoRow('ชั้นปี', s.year_level)}${infoRow('ห้อง', s.room)}${infoRow('เพศ', s.gender ? s.gender : (studentGender(s) === 'M' ? 'ชาย (จากคำนำหน้า)' : studentGender(s) === 'F' ? 'หญิง (จากคำนำหน้า)' : '-'))}
     ${infoRow('โทร', s.phone)}${infoRow('E-mail', s.email)}${infoRow('ผู้ปกครอง', s.parent_name)}${infoRow('โทรผู้ปกครอง', s.parent_phone)}${infoRow('อาจารย์ที่ปรึกษา', s.advisor)}
     ${infoRow('ทุนต้นสังกัด', s.scholarship)}${infoRow('โครงการที่สมัคร', s.admission_project)}${infoRow('รอบการสมัคร', s.admission_round)}
     ${infoRow('ประเภทการเข้าศึกษา', s.entry_type || 'รับปกติ')}${isTransferIn(s) ? infoRow('สถาบันเดิม', s.transfer_from) + (norm(s.transfer_date) ? infoRow('วันที่โอนเข้า', s.transfer_date) : '') : ''}
     ${norm(s.status_date) ? infoRow('วันที่ลาออก/พักการศึกษา', s.status_date) : ''}${norm(s.status_reason) ? infoRow('สาเหตุลาออก/พักการศึกษา', s.status_reason) : ''}
   </div>`);
+  fillStudentNid(s.__backendId);
+}
+
+/* เลขบัตรประชาชนของนักศึกษาไม่ได้อยู่ในตาราง student แต่แยกไว้ที่ student_private
+   ซึ่งหน้าเว็บไม่ได้โหลดมาทั้งก้อน (ไม่มีเหตุผลให้ 800 เลขบัตรลงมาอยู่ในเบราว์เซอร์)
+   จึงถามทีละคนตอนเปิดดู และฐานข้อมูลเป็นคนปิดบังสามตัวท้ายให้ก่อนส่งกลับมา
+   เลขเต็มจึงไม่เคยออกจากเซิร์ฟเวอร์เลย */
+async function fillStudentNid(rowId) {
+  const box = document.getElementById('stuNidBox');
+  if (!box) return;
+  if (APP.currentRole !== 'admin') {
+    box.textContent = 'เฉพาะผู้ดูแลระบบ';
+    return;
+  }
+  try {
+    const { data, error } = await GSheetDB.client().rpc('ems_student_nid', { p_student_ref: rowId });
+    if (error) throw error;
+    const v = String(data == null ? '' : data).trim();
+    box.textContent = v || 'ไม่มีข้อมูล';
+    box.className = v ? 'font-mono text-gray-800' : 'text-gray-400';
+  } catch (e) {
+    box.textContent = 'อ่านข้อมูลไม่สำเร็จ';
+  }
 }
 
 // คำนวณปีการศึกษาปัจจุบัน (พ.ศ.) — ปีการศึกษาไทยเริ่ม มิ.ย.

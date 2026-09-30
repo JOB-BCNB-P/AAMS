@@ -9,7 +9,14 @@ node test_practicum.js        ข้อมูลแหล่งฝึกภา�
 node test_stuwl.js            ภาระงานนักศึกษา · เข้าระบบด้วยอีเมล · ปิดบังเลขบัตร
 node test_evalrpt.js          รายงานผลประเมินรายอาจารย์/แหล่งฝึก · PDF (ตรวจซอร์ส)
 node test_evalrpt_render.js   รายงานผลประเมิน · วาดหน้าจริงด้วยข้อมูลปลอม
+node test_evalgroup.js        กลุ่มย่อยวิชาปฏิบัติ · ใครประเมินใคร · ใครเห็นผลกลุ่มไหน
+node test_upload.js           ไฟล์แนบติดตามการส่ง · อัปโหลดทับไม่ให้สะสมบนไดรฟ์
+node test_rls_snapshot.js     สำเนานโยบายสิทธิ์ตรงกับของจริงในฐานข้อมูลหรือไม่
 ```
+
+`test_rls_snapshot.js` เทียบไฟล์ `supabase/security/02_policies.sql` กับ `rls_live.txt`
+ซึ่งเป็นรายการนโยบายที่ดึงมาจากฐานข้อมูลจริง ถ้าไม่ผ่านแปลว่าสำเนาเก่าไปแล้ว
+ให้รัน `supabase/security/90_export.sql` เอาของใหม่มาทับทั้งสองไฟล์
 
 `test_evalrpt.js` มีข้อหนึ่งที่ตรวจว่าไอคอน `data-lucide` ทุกชื่อในระบบ
 มีอยู่จริงใน lucide 0.263.0 (รุ่นที่ index.html โหลด) ข้อนี้ทำงานเมื่อ

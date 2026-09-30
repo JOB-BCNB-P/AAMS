@@ -466,28 +466,11 @@ const EMSDB = (() => {
   }
 
   // เข้าสู่ระบบนักศึกษาด้วยเลขบัตรประชาชน (ตรวจฝั่งเซิร์ฟเวอร์ผ่าน Edge Function)
-  async function studentLogin(nationalId) {
-    try {
-      const resp = await fetch(CFG.SUPABASE_URL + '/functions/v1/student-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: CFG.SUPABASE_KEY },
-        body: JSON.stringify({ national_id: nationalId })
-      });
-      const out = await resp.json();
-      if (!out || !out.isOk) return { isOk: false, error: (out && out.error) || 'เข้าสู่ระบบไม่สำเร็จ' };
-
-      await client().auth.setSession({
-        access_token: out.session.access_token,
-        refresh_token: out.session.refresh_token
-      });
-
-      await loadSchema();
-      const p = await loadProfile();
-      await fetchAllData();
-      const stu = (p && p.student) || out.student || {};
-      return { isOk: true, student: stu };
-    } catch (err) { return { isOk: false, error: String(err) }; }
-  }
+  /* เข้าระบบด้วยเลขบัตรประชาชนถูกยกเลิกแล้ว (29 ก.ย. 2569)
+     นักศึกษาใช้บัญชี Google ของวิทยาลัยเหมือนบุคลากร — รหัสนักศึกษา@bcn.ac.th
+     Edge Function "student-login" ถูกปิดที่ฝั่งเซิร์ฟเวอร์ด้วย จึงไม่เหลือทางเข้าด้วยเลขบัตร
+     เลขบัตรยังเก็บไว้ในตาราง student_private เป็นประวัติ อ่านได้ผ่าน ems_student_nid()
+     ซึ่งคืนค่าที่ปิดบังสามตัวท้ายมาแล้ว และเปิดให้เฉพาะผู้ดูแลระบบ */
 
   async function studentRefresh() {
     await fetchAllData();
@@ -681,7 +664,7 @@ const EMSDB = (() => {
   return {
     // ---- API เดิม (ชื่อเดียวกับ GSheetDB) ----
     init, refresh: fetchAllData, destroy, clearSession, debugTab, hasWriteAccess,
-    login, studentLogin, studentRefresh, appendNoRefresh,
+    login, studentRefresh, appendNoRefresh,
     requestPasswordOtp, resetPasswordOtp, surveySubmit,
     create, createMany, update, updateMany, delete: remove,
     getStoredConfig, storeConfig, clearConfig, extractSheetId,
