@@ -46,6 +46,9 @@ const EMSDB = (() => {
     // คำตอบรายคน (eval_response / eval_answer) อ่านเมื่อเปิดหน้ารายงานเท่านั้น
     'eval_itemset', 'eval_item', 'eval_form', 'eval_target', 'eval_heading',
     'eval_group',       // กลุ่มย่อยของวิชาปฏิบัติ พร้อมรายชื่อนักศึกษาในกลุ่ม
+    // ระบบให้คำปรึกษานักศึกษา + ข้อมูลประกอบที่ยังไม่มีที่เก็บเดิม
+    'counsel_session', 'counsel_student', 'counsel_option',
+    'student_health', 'student_conduct',
     'homeroom'          // ห้องเรียนประจำรายชั้นปี (เดิมเก็บในเครื่อง จึงไม่ข้ามอุปกรณ์)
   ];
 
@@ -61,8 +64,10 @@ const EMSDB = (() => {
     'doc_request',
     'plo_setting', 'plo_band', 'plo_clo',
     'practicum_site',  // นักศึกษาไม่มีสิทธิ์อ่าน (RLS กันไว้แล้ว) จึงไม่ต้องเรียกให้เสียเวลา
-    'eval_group'       // ในตารางมีรายชื่อนักศึกษาทั้งกลุ่ม นักศึกษาจึงถามชื่อกลุ่มของตัวเอง
+    'eval_group',      // ในตารางมีรายชื่อนักศึกษาทั้งกลุ่ม นักศึกษาจึงถามชื่อกลุ่มของตัวเอง
                        // ผ่าน ems_eval_my_groups() แทน ไม่ต้องเห็นรายชื่อเพื่อนทั้งห้อง
+    'counsel_session', 'counsel_student', 'counsel_option', 'student_conduct'
+    // หมายเหตุ: student_health ไม่ได้ข้าม เพราะนักศึกษาดูข้อมูลสุขภาพของตัวเองได้ (RLS กันไว้แล้ว)
   ]);
 
   const META = ['id', 'created_at', 'updated_at', 'extra', 'auth_user_id'];
