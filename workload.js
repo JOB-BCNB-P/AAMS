@@ -739,6 +739,21 @@
     st[k] = v;
     // ล้างร่างเฉพาะเมื่อเปลี่ยนขอบเขตข้อมูลที่กรอก — เปลี่ยนตัวกรองของหน้าสรุปไม่ต้องล้าง
     if (['year', 'level', 'sem', 'mode'].indexOf(k) !== -1) st.draft = null;
+
+    /* เลือกพันธกิจแล้วต้องเห็นช่องกรอกทันที
+       การ์ดทุกใบเริ่มต้นถูกยุบไว้เพื่อให้เห็นภาพรวมก่อน แต่พอเลือกพันธกิจเจาะจง
+       แล้วการ์ดยังยุบอยู่ ผู้ใช้จะเห็นแค่หัวข้อแล้วเข้าใจว่าหน้านี้กรอกอะไรไม่ได้
+       (ยิ่งตอนเลือกพันธกิจเดียว ปุ่ม "ขยายทั้งหมด" ก็ถูกซ่อนไปด้วย) */
+    if (k === 'mission') {
+      if (!st.fold) st.fold = {};
+      if (v) st.fold[v] = false;
+      else MISSIONS.forEach(function (m) { st.fold[m.key] = false; });
+    }
+    // เปิดกล่องกรอกครั้งแรก ให้กางการ์ดพันธกิจที่กำลังเลือกอยู่ด้วย
+    if (k === 'mode' && v) {
+      if (!st.fold) st.fold = {};
+      if (st.mission) st.fold[st.mission] = false;
+    }
     if (k === 'mView') st.mq = '';
     if (k === 'tab') {
       paintTab(v);
@@ -1401,7 +1416,31 @@
 
     var body;
     if (!list.length) {
-      body = '<p class="text-xs text-gray-400 py-2">ยังไม่มีรายการ</p>';
+      /* กล่องเปล่าต้องบอกให้ชัดว่าทำอะไรต่อ
+         ของเดิมขึ้นแค่ข้อความสีจาง "ยังไม่มีรายการ" ส่วนปุ่มเพิ่มแถวเป็นปุ่มเล็ก
+         อยู่มุมบนขวาปนกับปุ่มอื่น ผู้ใช้จึงเข้าใจว่าหน้านี้กรอกอะไรไม่ได้ */
+      body = locked
+        ? '<div class="text-center py-6 px-4 rounded-xl bg-gray-50 border border-dashed border-gray-200">'
+          + '<i data-lucide="lock" class="w-7 h-7 mx-auto text-gray-300 mb-2"></i>'
+          + '<p class="text-sm text-gray-500">บัญชีของคุณไม่ได้รับมอบหมายให้บันทึก' + esc(m.short) + '</p>'
+          + '<p class="text-xs text-gray-400 mt-1">ผู้ดูแลระบบกำหนดพันธกิจที่รับผิดชอบได้ที่ ตั้งค่าระบบ &gt; จัดการผู้ใช้งาน</p></div>'
+        : readonly
+          ? '<p class="text-xs text-gray-400 py-2">ยังไม่มีรายการ</p>'
+          : '<div class="text-center py-6 px-4 rounded-xl bg-surface/60 border border-dashed border-gray-200">'
+            + '<p class="text-sm text-gray-600 mb-1">ยังไม่มีรายการใน' + esc(m.label) + '</p>'
+            + '<p class="text-xs text-gray-400 mb-3">'
+            + (m.subject
+              ? 'ดึงรายวิชาที่เปิดสอนของชั้นปีและภาคนี้มาทั้งชุด แล้วกรอกจำนวนชิ้นงานกับเวลาที่ใช้'
+              : 'เพิ่มแถวแล้วกรอกชื่อกิจกรรมกับจำนวนชั่วโมง') + '</p>'
+            + '<div class="flex flex-wrap items-center justify-center gap-2">'
+            + (m.subject
+              ? '<button type="button" onclick="wlPullSubjects()" class="px-4 py-2 rounded-xl bg-primary text-white text-sm hover:bg-primaryDark">'
+                + '<i data-lucide="download" class="w-4 h-4 inline mr-1"></i>ดึงรายวิชาที่เปิดสอน</button>'
+              : '')
+            + '<button type="button" onclick="wlRowAdd(\'' + m.key + '\')" class="px-4 py-2 rounded-xl '
+            + (m.subject ? 'border border-gray-300 text-gray-600 hover:bg-gray-50' : 'bg-primary text-white hover:bg-primaryDark')
+            + ' text-sm"><i data-lucide="plus" class="w-4 h-4 inline mr-1"></i>เพิ่มรายการแรก</button>'
+            + '</div></div>';
     } else if (m.subject) {
       body = '<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="bg-surface text-left">'
         + '<th class="px-3 py-2 font-medium">รายวิชา</th><th class="px-3 py-2 font-medium text-center" style="width:8rem">จำนวนชิ้นงาน</th>'
