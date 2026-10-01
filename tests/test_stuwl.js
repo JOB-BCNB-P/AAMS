@@ -102,6 +102,80 @@ t('นักศึกษาโหลดตารางภาระงานไ�
   assert.ok(!seg.includes('workload_student'), 'ยังข้ามตารางของตัวเองอยู่');
 });
 
+
+/* ---------------------------------------------------------------
+   วาดหน้าของนักศึกษาจริง ๆ แล้วดูว่าชื่อรายการขึ้นถูกไหม
+   เรื่องนี้ทดสอบด้วยการอ่านโค้ดอย่างเดียวไม่พอ เพราะข้อบกพร่องเดิมคือ
+   อ่านช่อง name ซึ่ง "มีอยู่จริง" ในโค้ด แต่ไม่มีในข้อมูลที่วิทยาลัยกรอก
+   --------------------------------------------------------------- */
+console.log('\n[6] ชื่อรายการในหน้าของนักศึกษา');
+const vm = require('vm');
+function renderStudentPage() {
+  const PLAN = {
+    __backendId: 'PL1', academic_year: '2568', year_level: '1', semester: '1',
+    teaching_json: JSON.stringify([
+      { subject_code: '0101300102', subject_name: 'การพยาบาลพื้นฐาน', pieces: '6', hours: '48' }
+    ]),
+    research_json: JSON.stringify([
+      { kind: 'กิจกรรมที่', activity: 'อบรมการสืบค้นฐานข้อมูลวิจัย', hours: '6' }
+    ]),
+    service_json: '[]', student_json: '[]', personal_json: '[]'
+  };
+  const OVR = {
+    __backendId: 'OV1', student_id: '6611030101', academic_year: '2568', semester: '1',
+    research_json: JSON.stringify([
+      { kind: 'กิจกรรมที่', activity: 'อบรมการสืบค้นฐานข้อมูลวิจัย', hours: '6' },
+      { name: 'เข้าร่วมประชุมวิชาการ', note: 'มีเกียรติบัตร', hours: '3', self: 1 }
+    ])
+  };
+  const DATA = { workload_plan: [PLAN], workload_student: [OVR], workload_rate: [], subject: [], student: [] };
+  const sb = {
+    console,
+    APP: {
+      currentRole: 'student', currentPage: 'workload',
+      currentUser: { name: 'กนกพร เดชกล้า', data: { student_id: '6611030101', year_level: '1', name: 'กนกพร เดชกล้า' } },
+      filters: {}, pagination: { page: 1 }, permissions: { student: { workload: 1 } }
+    },
+    getDataByType: (t) => DATA[t] || [],
+    norm: (v) => String(v == null ? '' : v).trim(),
+    normSem: (v) => String(v == null ? '' : v).trim(),
+    showModal: () => { }, closeModal: () => { }, showToast: () => { },
+    renderCurrentPage: () => { }, navigateTo: () => { },
+    GSheetDB: { create: async () => ({ isOk: true }), update: async () => ({ isOk: true }), refreshTab: async () => { } },
+    document: { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], createElement: () => ({ setAttribute() { }, appendChild() { }, classList: { add() { } } }) },
+    setTimeout, clearTimeout, Promise
+  };
+  sb.window = sb;
+  sb.getPageContent = () => '';
+  sb.buildSidebar = () => { };
+  vm.createContext(sb);
+  new vm.Script(WL).runInContext(sb);
+  return sb.getPageContent('workload', 'student');
+}
+const page = renderStudentPage();
+
+t('พันธกิจด้านวิชาการ หัวตารางต้องเป็น "รายวิชา"', () => {
+  assert.ok(page.includes('>รายวิชา<'), 'ยังใช้หัวตารางกลาง ๆ อยู่');
+});
+t('พันธกิจอื่นหัวตารางเป็น "กิจกรรม"', () => {
+  assert.ok(page.includes('>กิจกรรม<'), 'หัวตารางของพันธกิจอื่นไม่ถูก');
+});
+t('แสดงชื่อรายวิชาที่วิทยาลัยกำหนดไว้จริง', () => {
+  assert.ok(page.includes('การพยาบาลพื้นฐาน'), 'ชื่อวิชาไม่ขึ้น');
+  assert.ok(page.includes('0101300102'), 'รหัสวิชาไม่ขึ้น');
+  assert.ok(page.includes('ชิ้นงาน 6'), 'จำนวนชิ้นงานไม่ขึ้น');
+});
+t('กิจกรรมของพันธกิจอื่นก็ต้องขึ้นชื่อ ไม่ใช่ขีดกลาง', () => {
+  assert.ok(page.includes('อบรมการสืบค้นฐานข้อมูลวิจัย'), 'ชื่อกิจกรรมไม่ขึ้น');
+});
+t('รายการที่นักศึกษาเพิ่มเองยังแสดงเหมือนเดิม', () => {
+  assert.ok(page.includes('เข้าร่วมประชุมวิชาการ'), 'ชื่อรายการของตัวเองหาย');
+  assert.ok(page.includes('มีเกียรติบัตร'), 'หมายเหตุหาย');
+});
+t('ไม่มีช่องชื่อที่เป็นขีดกลางเปล่า ๆ เหลืออยู่', () => {
+  assert.ok(!/<td class="px-3 py-2">-<\/td>/.test(page), 'ยังมีรายการที่แสดงเป็นขีดกลาง');
+});
+
 console.log('\n────────────────────────────');
 console.log('ผ่าน ' + pass + ' ข้อ · ไม่ผ่าน ' + fail + ' ข้อ');
 process.exit(fail ? 1 : 0);

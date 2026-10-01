@@ -87,10 +87,15 @@ function makeEnv(opts) {
     },
     document: {
       __els: els,
+      body: { appendChild() { }, removeChild() { } },
       getElementById: (id) => els[id] || null,
       querySelector: (q) => (els['#' + q] || null),
-      querySelectorAll: (q) => (els['*' + q] || [])
+      querySelectorAll: (q) => (els['*' + q] || []),
+      createElement: () => ({ click() { }, set href(v) { }, set download(v) { } })
     },
+    // จำลองการดาวน์โหลด เก็บเนื้อไฟล์ไว้ตรวจแทนการเขียนลงดิสก์จริง
+    Blob: function (parts) { sb.__file = (sb.__file || ''); sb.__fileText = parts.join(''); },
+    URL: { createObjectURL: () => 'blob:x', revokeObjectURL: () => { } },
     setTimeout, clearTimeout, Promise
   };
   sb.window = sb;
@@ -288,6 +293,122 @@ function setRow(w, sid, fields) {
     assert.ok(WB.includes('function keepForm()'), 'ไม่มีการเก็บค่าที่พิมพ์ไว้');
     const add = WB.slice(WB.indexOf('window.wbConductAdd'), WB.indexOf('window.wbConductDrop'));
     assert.ok(add.includes('keepForm()'), 'ไม่ได้เก็บก่อนวาดใหม่');
+  });
+
+  console.log('\n[4.5] แบบฟอร์ม · นำเข้า · ส่งออก');
+  w = makeEnv({ me: 'จนท.บริการวิชาการ', email: 'service@bcn.ac.th' });
+  t('หน้ามีปุ่มครบทั้งสามอย่างที่ขอ', () => {
+    const h = w.wellbeingPages.healthEntry();
+    assert.ok(h.includes('wbHealthForm()'), 'ไม่มีปุ่มดาวน์โหลดแบบฟอร์ม');
+    assert.ok(h.includes('wbHealthPickFile()'), 'ไม่มีปุ่มอัปโหลด');
+    assert.ok(h.includes('wbHealthExport()'), 'ไม่มีปุ่มดาวน์โหลดข้อมูล');
+    assert.ok(h.includes("wbHealthExport('all')"), 'ไม่มีปุ่มดาวน์โหลดทั้งหมด');
+    assert.ok(h.includes('id="wbHealthFile"'), 'ไม่มีช่องรับไฟล์');
+  });
+  t('แบบฟอร์มมีรายชื่อนักศึกษาของชั้นปีนั้นมาให้ครบ', () => {
+    w.wbHealthForm();
+    const f = w.__fileText;
+    assert.ok(f.includes('รหัสนักศึกษา') && f.includes('ส่วนสูง (เมตร)'), 'หัวตารางไม่ครบ');
+    assert.ok(f.includes('6611030101') && f.includes('6611030102'), 'ไม่มีรายชื่อนักศึกษา');
+    assert.ok(!f.includes('6611030201'), 'มีนักศึกษาชั้นปีอื่นปนมา');
+    assert.ok(!f.includes('พ้นสภาพ แล้ว'), 'มีคนที่ลาออกปนมา');
+  });
+  t('แบบฟอร์มเติมค่าที่เคยบันทึกไว้มาด้วย จะได้ใช้แก้ของเดิมได้', () => {
+    assert.ok(/6611030101,[^\n]*1\.65,69/.test(w.__fileText), 'ไม่ได้เติมค่าเดิม');
+  });
+  t('แบบฟอร์มผูกภาคและปีการศึกษาไว้ในไฟล์', () => {
+    const line = w.__fileText.split('\r\n')[1];
+    assert.ok(line.includes(',1,2568,'), 'ไม่ได้ระบุภาค/ปี กรอกกลับมาแล้วจะไม่รู้ว่าของภาคไหน');
+  });
+  t('ส่งออกข้อมูลพร้อม BMI และการแปลผล ไม่ต้องไปคำนวณเอง', () => {
+    w.wbHealthExport();
+    const f = w.__fileText;
+    assert.ok(f.includes('BMI') && f.includes('แปลผล BMI'), 'ไม่มีคอลัมน์ BMI');
+    assert.ok(f.includes('25.34'), 'ไม่ได้คำนวณ BMI');
+    assert.ok(f.includes('ผู้บันทึก'), 'ไม่รู้ว่าใครกรอก');
+  });
+  t('ส่งออกเฉพาะภาคที่เลือก กับส่งออกทั้งหมด ได้ผลต่างกัน', () => {
+    w.APP._wbHealth.semester = '2';
+    writes.length = 0;
+    w.wbHealthExport();
+    assert.ok(writes.some(x => x[0] === 'toast' && /ยังไม่มีข้อมูลในภาค/.test(x[1])), 'ไม่ได้กรองตามภาค');
+    w.wbHealthExport('all');
+    assert.ok(w.__fileText.includes('6611030101'), 'ส่งออกทั้งหมดแล้วยังว่าง');
+    w.APP._wbHealth.semester = '1';
+  });
+
+  console.log('\n[4.6] อ่านไฟล์ที่กรอกกลับมา');
+  function upload(text) {
+    return w.wbHealthUpload({ target: { files: [{ text: async () => text }], value: '' } });
+  }
+  const HEAD = 'รหัสนักศึกษา,ชื่อ-สกุล,ชั้นปี,ภาคการศึกษา,ปีการศึกษา,ส่วนสูง (เมตร),น้ำหนัก (กก.),น้ำตาลในเลือด,ชีพจร,ความดันบน,ความดันล่าง,หมายเหตุ';
+
+  await ta('ไฟล์ที่ไม่มีคอลัมน์รหัสนักศึกษา ต้องปฏิเสธ', async () => {
+    writes.length = 0;
+    await upload('ชื่อ,น้ำหนัก\nก,50');
+    assert.ok(writes.some(x => x[0] === 'toast' && /รหัสนักศึกษา/.test(x[1])), 'ไม่ได้เตือน');
+  });
+  await ta('อ่านแล้วยังไม่เขียนอะไร แค่สรุปให้ดูก่อน', async () => {
+    writes.length = 0;
+    // ใช้ 6611030201 เพราะยังไม่มีข้อมูลเดิม ส่วน 6611030102 เป็นของผู้อื่น จะถูกกันไว้
+    await upload(HEAD + '\n6611030201,มาลี สุขใจ,2,1,2568,1.58,48,90,70,115,70,\n');
+    assert.ok(!writes.some(x => x[0] === 'create' || x[0] === 'update'), 'เขียนทันทีโดยไม่ถาม');
+    assert.ok(/ตรวจก่อนนำเข้า/.test(w.__modalTitle), 'ไม่ได้แสดงสรุป');
+    assert.ok(w.__modal.includes('wbHealthImportConfirm()'), 'ไม่มีปุ่มยืนยัน');
+  });
+  await ta('แยกได้ว่าอันไหนเพิ่มใหม่ อันไหนแก้ของเดิม', async () => {
+    await upload(HEAD
+      + '\n6611030101,กนกพร เดชกล้า,1,1,2568,1.65,70,,,,,'      // มีอยู่แล้ว ของตัวเอง → แก้
+      + '\n6611030201,มาลี สุขใจ,2,1,2568,1.58,48,,,,,'          // ยังไม่มี → เพิ่ม
+      + '\n');
+    const plan = w.APP._wbHealth.importPlan;
+    assert.strictEqual(plan.edit.length, 1, 'นับรายการแก้ผิด');
+    assert.strictEqual(plan.add.length, 1, 'นับรายการเพิ่มผิด');
+  });
+  await ta('รหัสที่ไม่มีในทะเบียน ต้องไม่ถูกสร้างเป็นข้อมูลลอย', async () => {
+    await upload(HEAD + '\n9999999999,ไม่มีตัวตน,1,1,2568,1.60,55,,,,,\n');
+    const plan = w.APP._wbHealth.importPlan;
+    assert.strictEqual(plan.add.length + plan.edit.length, 0, 'ยอมรับรหัสที่ไม่มีจริง');
+    assert.ok(/ไม่พบรหัสนี้ในทะเบียน/.test(plan.error[0].why), 'เหตุผลไม่ชัด');
+  });
+  await ta('กรอกส่วนสูงเป็นเซนติเมตรในไฟล์ ก็ต้องจับได้เหมือนกรอกในหน้าจอ', async () => {
+    await upload(HEAD + '\n6611030102,ปรีชา ขยัน,1,1,2568,170,60,,,,,\n');
+    const plan = w.APP._wbHealth.importPlan;
+    assert.strictEqual(plan.add.length, 0, 'ยอมรับค่าที่ผิดหน่วย');
+    assert.ok(/เมตร/.test(plan.error[0].why), 'ไม่ได้บอกว่าผิดหน่วย');
+  });
+  await ta('แถวที่คนอื่นกรอกไว้ ไฟล์เขียนทับไม่ได้', async () => {
+    await upload(HEAD + '\n6611030102,ปรีชา ขยัน,1,1,2568,1.75,65,,,,,\n');
+    const plan = w.APP._wbHealth.importPlan;
+    assert.strictEqual(plan.edit.length, 0, 'ทับข้อมูลของคนอื่นได้');
+    assert.ok(/คนอื่น/.test(plan.error[0].why), 'ไม่ได้บอกว่าใครเป็นเจ้าของ');
+  });
+  await ta('แถวที่เว้นว่างไว้ ให้ข้าม ไม่ใช่ล้างข้อมูลเดิมทิ้ง', async () => {
+    await upload(HEAD + '\n6611030101,กนกพร เดชกล้า,1,1,2568,,,,,,,\n');
+    const plan = w.APP._wbHealth.importPlan;
+    assert.strictEqual(plan.skip.length, 1, 'ไม่ได้ข้าม');
+    assert.strictEqual(plan.edit.length, 0, 'เอาค่าว่างไปทับของเดิม');
+  });
+  await ta('ชื่อหรือหมายเหตุที่มีจุลภาค ต้องไม่ทำให้คอลัมน์เลื่อน', async () => {
+    await upload(HEAD + '\n6611030201,"สุขใจ, มาลี",2,1,2568,1.58,48,,,,,"ตรวจซ้ำ, นัดใหม่"\n');
+    const plan = w.APP._wbHealth.importPlan;
+    assert.strictEqual(plan.add.length, 1, 'อ่านแถวนี้ไม่ได้');
+    assert.strictEqual(plan.add[0].d.weight_kg, '48', 'คอลัมน์เลื่อน น้ำหนักกลายเป็น ' + plan.add[0].d.weight_kg);
+    assert.strictEqual(plan.add[0].d.note, 'ตรวจซ้ำ, นัดใหม่', 'หมายเหตุเพี้ยน');
+  });
+  await ta('กดยืนยันแล้วจึงเขียนลงระบบ พร้อมลงชื่อผู้นำเข้า', async () => {
+    await upload(HEAD + '\n6611030201,มาลี สุขใจ,2,1,2568,1.58,48,88,78,108,70,\n');
+    writes.length = 0;
+    await w.wbHealthImportConfirm();
+    const made = writes.filter(x => x[0] === 'create');
+    assert.strictEqual(made.length, 1, 'ไม่ได้บันทึก');
+    assert.strictEqual(made[0][1].recorded_by, 'จนท.บริการวิชาการ', 'ไม่ได้ลงชื่อ');
+    assert.strictEqual(made[0][1].semester, '1', 'ภาคการศึกษาไม่ตรงกับในไฟล์');
+    assert.ok(writes.some(x => x[0] === 'close'), 'ไม่ได้ปิดหน้าต่างหลังนำเข้า');
+  });
+  t('ไฟล์ที่ดาวน์โหลดมีเครื่องหมายให้ Excel อ่านภาษาไทยถูก', () => {
+    const src = WB.slice(WB.indexOf('function saveFile'), WB.indexOf('function saveFile') + 400);
+    assert.ok(src.includes('0xFEFF'), 'ไม่มี BOM ภาษาไทยจะเป็นต่างด้าวใน Excel');
   });
 
   console.log('\n[5] สิทธิ์ที่ฐานข้อมูล ไม่ใช่แค่ซ่อนปุ่ม');

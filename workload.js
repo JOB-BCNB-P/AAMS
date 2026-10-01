@@ -457,6 +457,33 @@
     else showToast('บันทึกไม่สำเร็จ: ' + ((r && r.error) || ''), 'error');
   }
 
+  /* ชื่อที่จะแสดงของภาระงานหนึ่งรายการ
+     ----------------------------------------------------------------
+     ข้อมูลสามแบบเก็บคนละช่อง จึงอ่านช่องเดียวไม่ได้
+       พันธกิจด้านวิชาการ   subject_name (+ subject_code, pieces)  วิทยาลัยกำหนด
+       พันธกิจด้านอื่น      kind + activity                        วิทยาลัยกำหนด
+       รายการที่เพิ่มเอง     name + note                            นักศึกษาบันทึก
+     ของเดิมอ่านแต่ช่อง name ทุกพันธกิจจึงขึ้นขีดกลางหมดเมื่อเป็นของที่วิทยาลัยกำหนด */
+  function itemLabel(m, r) {
+    if (!r) return '-';
+    if (norm(r.self) === '1' || r.self === 1 || r.self === true) {
+      var nm = esc(norm(r.name) || '-');
+      return norm(r.note) ? nm + '<span class="block text-[11px] text-gray-400">' + esc(norm(r.note)) + '</span>' : nm;
+    }
+    if (m && m.subject) {
+      var sn = norm(r.subject_name) || norm(r.name) || '-';
+      var sub = [];
+      if (norm(r.subject_code)) sub.push('รหัส ' + norm(r.subject_code));
+      if (norm(r.pieces)) sub.push('ชิ้นงาน ' + norm(r.pieces));
+      return esc(sn) + (sub.length ? '<span class="block text-[11px] text-gray-400">' + esc(sub.join(' · ')) + '</span>' : '');
+    }
+    var act = norm(r.activity) || norm(r.name) || '-';
+    var kind = norm(r.kind);
+    var span = (typeof spanText === 'function') ? spanText(r) : '';
+    return (kind ? '<span class="text-xs text-gray-500">' + esc(kind) + '</span> ' : '') + esc(act)
+      + (span ? '<span class="block text-[11px] text-gray-400">' + esc(span) + '</span>' : '');
+  }
+
   window.wlSelfAdd = function (mkey) {
     var m = missionOf(mkey);
     if (!m || !isStudentView()) return;
@@ -587,14 +614,15 @@
       var list = items.length
         ? '<div class="ems-tablewrap"><table class="w-full text-sm"><thead><tr class="bg-surface text-left">'
           + '<th class="px-3 py-2 font-semibold">ภาค</th>'
-          + '<th class="px-3 py-2 font-semibold">รายการ</th>'
+          // พันธกิจด้านวิชาการเก็บเป็นรายวิชา หัวตารางจึงต้องบอกให้ตรงกับสิ่งที่อยู่ข้างใน
+          + '<th class="px-3 py-2 font-semibold">' + (m.subject ? 'รายวิชา' : 'กิจกรรม') + '</th>'
           + '<th class="px-3 py-2 font-semibold text-center">ชั่วโมง</th>'
           + '<th class="px-3 py-2 font-semibold text-center">ที่มา</th>'
           + (mine ? '<th class="px-3 py-2"></th>' : '') + '</tr></thead><tbody>'
           + items.map(function (x) {
             return '<tr class="border-t">'
               + '<td class="px-3 py-2 whitespace-nowrap">' + esc(semName(x.sm)) + '</td>'
-              + '<td class="px-3 py-2">' + esc(norm(x.r.name) || norm(x.r.title) || '-') + '</td>'
+              + '<td class="px-3 py-2">' + itemLabel(m, x.r) + '</td>'
               + '<td class="px-3 py-2 text-center tabular-nums">' + fx(x.r.hours) + '</td>'
               + '<td class="px-3 py-2 text-center">'
               + (x.self ? '<span class="px-2 py-0.5 rounded-full text-xs bg-emerald-50 text-emerald-700">ฉันบันทึกเอง</span>'

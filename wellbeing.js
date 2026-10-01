@@ -222,6 +222,29 @@
       + '<button onclick="wbHealthSaveAll()" class="px-4 py-2 rounded-xl bg-primary text-white text-sm flex items-center gap-2">'
       + '<i data-lucide="save" class="w-4 h-4"></i>บันทึกทั้งชั้นปี</button>'
       + '</div>'
+
+      /* แถวปุ่มไฟล์ — แยกบรรทัดจากปุ่มบันทึก เพราะเป็นงานคนละจังหวะกัน
+         กรอกในหน้าจอคือทำตรงนี้เดี๋ยวนี้ ส่วนไฟล์คือเอาออกไปทำข้างนอกแล้วค่อยกลับมา */
+      + '<div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100">'
+      + '<span class="text-xs text-gray-500 mr-1">ทำงานผ่านไฟล์ :</span>'
+      + '<button onclick="wbHealthForm()" class="px-3 py-2 rounded-xl border border-emerald-500 text-emerald-600 text-sm flex items-center gap-2 hover:bg-emerald-50" '
+      + 'title="ได้ไฟล์ที่มีรายชื่อนักศึกษาชั้นปีนี้ครบแล้ว พร้อมค่าที่เคยบันทึกไว้">'
+      + '<i data-lucide="file-down" class="w-4 h-4"></i>ดาวน์โหลดแบบฟอร์ม</button>'
+      + '<button onclick="wbHealthPickFile()" class="px-3 py-2 rounded-xl border border-primary text-primary text-sm flex items-center gap-2 hover:bg-primaryLight" '
+      + 'title="อัปโหลดแบบฟอร์มที่กรอกแล้ว ระบบจะสรุปให้ดูก่อนบันทึก">'
+      + '<i data-lucide="upload" class="w-4 h-4"></i>อัปโหลดไฟล์ที่กรอกแล้ว</button>'
+      + '<input type="file" id="wbHealthFile" accept=".csv,text/csv" class="hidden" onchange="wbHealthUpload(event)">'
+      + '<span class="w-px h-6 bg-gray-200 mx-1"></span>'
+      + '<button onclick="wbHealthExport()" class="px-3 py-2 rounded-xl border border-gray-300 text-gray-600 text-sm flex items-center gap-2 hover:bg-gray-50" '
+      + 'title="เฉพาะภาคการศึกษาที่เลือกอยู่">'
+      + '<i data-lucide="download" class="w-4 h-4"></i>ดาวน์โหลดข้อมูลภาคนี้</button>'
+      + '<button onclick="wbHealthExport(\'all\')" class="px-3 py-2 rounded-xl border border-gray-300 text-gray-600 text-sm flex items-center gap-2 hover:bg-gray-50" '
+      + 'title="ทุกภาคการศึกษาที่มีในระบบ">'
+      + '<i data-lucide="database" class="w-4 h-4"></i>ดาวน์โหลดทั้งหมด</button>'
+      + '</div>'
+      + '<p class="text-[11px] text-gray-400 mt-2">ไฟล์เป็นชนิด CSV เปิดด้วย Excel หรือ Google ชีต ได้ทันที '
+      + '· แบบฟอร์มมีค่าที่เคยบันทึกไว้มาด้วย จึงใช้แก้ของเดิมได้ ไม่ต้องกรอกใหม่ทั้งแผ่น '
+      + '· อัปโหลดแล้วระบบจะสรุปให้ดูก่อนว่าจะเพิ่มกี่คน แก้กี่คน ยังไม่เขียนอะไรจนกว่าจะกดยืนยัน</p>'
       + '<p class="text-xs text-gray-500 mt-3">กรอกแล้ว <span class="font-semibold text-primary">' + filled + '</span> จาก '
       + studs.length + ' คน ในภาค ' + esc(st.semester) + '/' + esc(st.academicYear)
       + ' · แถวที่คนอื่นเป็นผู้กรอกจะแก้ไม่ได้ ต้องให้ผู้กรอกเดิมหรือผู้ดูแลระบบแก้</p>'
@@ -285,14 +308,20 @@
     return '';
   }
 
-  function existingHealth(sid) {
-    var st = hState(), recs = get('student_health');
+  /* หาแถวของนักศึกษาในภาค/ปีที่ระบุ
+     แยกพารามิเตอร์ออกมาเพราะการนำเข้าไฟล์ใช้ภาค/ปีจากในไฟล์ ไม่ใช่จากหน้าจอ */
+  function existingHealthFor(sid, sem, ay) {
+    var recs = get('student_health');
     for (var i = 0; i < recs.length; i++) {
       if (s(recs[i].student_id) === s(sid)
-        && s(recs[i].semester) === s(st.semester)
-        && s(recs[i].academic_year) === s(st.academicYear)) return recs[i];
+        && s(recs[i].semester) === s(sem)
+        && s(recs[i].academic_year) === s(ay)) return recs[i];
     }
     return null;
+  }
+  function existingHealth(sid) {
+    var st = hState();
+    return existingHealthFor(sid, st.semester, st.academicYear);
   }
 
   async function saveHealthRow(sid, quiet) {
@@ -360,6 +389,283 @@
     finally {
       busy = false;
       for (var j = 0; j < btns.length; j++) { btns[j].disabled = false; btns[j].classList.remove('opacity-60'); }
+    }
+  };
+
+
+  /* ================================================================
+     แบบฟอร์ม · นำเข้า · ส่งออก ของข้อมูล สบช.โมเดล
+     ----------------------------------------------------------------
+     ใช้ไฟล์ CSV เพราะ Excel เปิดได้ตรง ๆ และผู้ใช้ส่งต่อให้พยาบาล
+     ที่ออกไปตรวจนอกสถานที่กรอกกลับมาได้โดยไม่ต้องเข้าระบบ
+
+     เขียนตัวอ่าน-เขียน CSV เองแทนการใช้ตัวกลางของระบบ เพราะตัวกลางนั้น
+     สร้างแถวใหม่ทุกบรรทัดโดยไม่ดูว่ามีข้อมูลเดิมอยู่แล้วหรือไม่
+     ถ้านำมาใช้กับตารางนี้ อัปโหลดซ้ำครั้งเดียวข้อมูลจะซ้อนกันทันที
+     ================================================================ */
+
+  /* ใส่เครื่องหมายคำพูดเมื่อค่ามีจุลภาค คำพูด หรือขึ้นบรรทัดใหม่
+     ชื่อไทยบางคนมีวงเล็บหรือจุลภาค ถ้าไม่ครอบ คอลัมน์จะเลื่อนทั้งไฟล์ */
+  function csvCell(v) {
+    var x = s(v);
+    return /[",\n\r]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x;
+  }
+
+  /* ตัวอ่าน CSV ที่เข้าใจเครื่องหมายคำพูด
+     การใช้ split(',') เฉย ๆ จะพังทันทีที่ช่องหมายเหตุมีจุลภาค */
+  function parseCSV(text) {
+    var out = [], row = [], cur = '', q = false;
+    var t = s(text).replace(/^﻿/, '');
+    for (var i = 0; i < t.length; i++) {
+      var c = t[i];
+      if (q) {
+        if (c === '"') { if (t[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+        else cur += c;
+      } else if (c === '"') q = true;
+      else if (c === ',') { row.push(cur); cur = ''; }
+      else if (c === '\n') { row.push(cur); out.push(row); row = []; cur = ''; }
+      else if (c !== '\r') cur += c;
+    }
+    if (cur !== '' || row.length) { row.push(cur); out.push(row); }
+    return out.filter(function (r) { return r.some(function (x) { return s(x) !== ''; }); });
+  }
+
+  /* หัวตารางเป็นภาษาไทยให้คนกรอกอ่านรู้เรื่อง
+     ตอนอ่านกลับรับทั้งชื่อไทยและชื่อช่องในฐานข้อมูล เผื่อมีคนแก้หัวตาราง */
+  var CSV_COLS = [
+    ['student_id', 'รหัสนักศึกษา'],
+    ['name', 'ชื่อ-สกุล'],
+    ['year_level', 'ชั้นปี'],
+    ['semester', 'ภาคการศึกษา'],
+    ['academic_year', 'ปีการศึกษา'],
+    ['height_m', 'ส่วนสูง (เมตร)'],
+    ['weight_kg', 'น้ำหนัก (กก.)'],
+    ['blood_sugar', 'น้ำตาลในเลือด'],
+    ['pulse', 'ชีพจร'],
+    ['bp_systolic', 'ความดันบน'],
+    ['bp_diastolic', 'ความดันล่าง'],
+    ['note', 'หมายเหตุ']
+  ];
+
+  function colKeyOf(header) {
+    var h = s(header).toLowerCase().replace(/\s+/g, '');
+    for (var i = 0; i < CSV_COLS.length; i++) {
+      var k = CSV_COLS[i][0], label = CSV_COLS[i][1];
+      if (h === k.toLowerCase()) return k;
+      if (h === label.toLowerCase().replace(/\s+/g, '')) return k;
+    }
+    // ยอมให้เขียนย่อ เช่น "ส่วนสูง" "น้ำหนัก" โดยไม่มีหน่วย
+    if (h.indexOf('ส่วนสูง') === 0) return 'height_m';
+    if (h.indexOf('น้ำหนัก') === 0) return 'weight_kg';
+    if (h.indexOf('ความดันบน') === 0) return 'bp_systolic';
+    if (h.indexOf('ความดันล่าง') === 0) return 'bp_diastolic';
+    return '';
+  }
+
+  function saveFile(name, text) {
+    try {
+      var bom = String.fromCharCode(0xFEFF);   // ให้ Excel อ่านภาษาไทยไม่เป็นต่างด้าว
+      var blob = new Blob([bom + text], { type: 'text/csv;charset=utf-8;' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      return true;
+    } catch (e) { toast('ดาวน์โหลดไม่สำเร็จ · ' + e.message, 'error'); return false; }
+  }
+
+  /* ---------- ดาวน์โหลดแบบฟอร์ม ----------
+     เติมรายชื่อนักศึกษาของชั้นปีที่เลือกมาให้ และเติมค่าที่เคยบันทึกไว้ด้วย
+     จึงใช้ได้ทั้งกรอกครั้งแรกและแก้ของเดิม ไม่ต้องมีสองแบบฟอร์ม */
+  window.wbHealthForm = function () {
+    var st = hState();
+    var studs = studentsOfYear(st.year);
+    if (!studs.length) { toast('ชั้นปีนี้ยังไม่มีนักศึกษา', 'error'); return; }
+    var lines = [CSV_COLS.map(function (c) { return csvCell(c[1]); }).join(',')];
+    studs.forEach(function (stu) {
+      var r = existingHealthFor(stu.student_id, st.semester, st.academicYear) || {};
+      lines.push([
+        csvCell(s(stu.student_id)), csvCell(s(stu.name)), csvCell(s(stu.year_level)),
+        csvCell(st.semester), csvCell(st.academicYear),
+        csvCell(r.height_m), csvCell(r.weight_kg), csvCell(r.blood_sugar),
+        csvCell(r.pulse), csvCell(r.bp_systolic), csvCell(r.bp_diastolic), csvCell(r.note)
+      ].join(','));
+    });
+    var name = 'แบบฟอร์ม_สบช.โมเดล_ชั้นปี' + st.year + '_ภาค' + st.semester + '_' + st.academicYear + '.csv';
+    if (saveFile(name, lines.join('\r\n')))
+      toast('ดาวน์โหลดแบบฟอร์มของชั้นปีที่ ' + st.year + ' จำนวน ' + studs.length + ' คนแล้ว');
+  };
+
+  /* ---------- ดาวน์โหลดข้อมูล ----------
+     ส่งออกสิ่งที่บันทึกไว้จริง พร้อม BMI และการแปลผลที่ระบบคำนวณให้
+     เพื่อเอาไปทำรายงานต่อโดยไม่ต้องคำนวณซ้ำ */
+  window.wbHealthExport = function (scope) {
+    var st = hState();
+    var all = s(scope) === 'all';
+    var recs = get('student_health').filter(function (r) {
+      if (all) return true;
+      return s(r.semester) === s(st.semester) && s(r.academic_year) === s(st.academicYear);
+    });
+    if (!recs.length) { toast(all ? 'ยังไม่มีข้อมูลในระบบ' : 'ยังไม่มีข้อมูลในภาคการศึกษาที่เลือก', 'error'); return; }
+
+    var head = ['รหัสนักศึกษา', 'ชื่อ-สกุล', 'ชั้นปี', 'ภาคการศึกษา', 'ปีการศึกษา',
+      'ส่วนสูง (เมตร)', 'น้ำหนัก (กก.)', 'BMI', 'แปลผล BMI', 'น้ำตาลในเลือด', 'ชีพจร',
+      'ความดันบน', 'ความดันล่าง', 'หมายเหตุ', 'วันที่บันทึก', 'ผู้บันทึก'];
+    var lines = [head.map(csvCell).join(',')];
+
+    recs.slice().sort(function (a, b) {
+      return (s(b.academic_year) + s(b.semester)).localeCompare(s(a.academic_year) + s(a.semester))
+        || s(a.student_id).localeCompare(s(b.student_id));
+    }).forEach(function (r) {
+      var stu = studentById(r.student_id) || {};
+      var bmi = bmiOf(r.height_m, r.weight_kg);
+      lines.push([
+        csvCell(s(r.student_id)), csvCell(s(stu.name)), csvCell(s(stu.year_level)),
+        csvCell(s(r.semester)), csvCell(s(r.academic_year)),
+        csvCell(s(r.height_m)), csvCell(s(r.weight_kg)), csvCell(bmi), csvCell(bmiBand(bmi)[0]),
+        csvCell(s(r.blood_sugar)), csvCell(s(r.pulse)),
+        csvCell(s(r.bp_systolic)), csvCell(s(r.bp_diastolic)), csvCell(s(r.note)),
+        csvCell(s(r.record_date)), csvCell(s(r.recorded_by))
+      ].join(','));
+    });
+    var name = all
+      ? 'ข้อมูล_สบช.โมเดล_ทั้งหมด.csv'
+      : 'ข้อมูล_สบช.โมเดล_ภาค' + st.semester + '_' + st.academicYear + '.csv';
+    if (saveFile(name, lines.join('\r\n')))
+      toast('ดาวน์โหลดข้อมูล ' + recs.length + ' รายการแล้ว');
+  };
+
+  /* ---------- อัปโหลดไฟล์ ----------
+     อ่านไฟล์แล้ว "แสดงสรุปก่อน" ยังไม่เขียนอะไรทั้งนั้น
+     เพราะไฟล์ที่กรอกมาจากข้างนอกมักมีรหัสผิด ชั้นปีผิด หรือกรอกหน่วยผิด
+     ถ้าเขียนทันทีแล้วค่อยมาแก้ จะแก้ยากกว่าตรวจก่อนมาก */
+  window.wbHealthPickFile = function () {
+    var el = document.getElementById('wbHealthFile');
+    if (el) el.click();
+  };
+
+  window.wbHealthUpload = async function (ev) {
+    var file = ev && ev.target && ev.target.files && ev.target.files[0];
+    if (!file) return;
+    try {
+      var text = await file.text();
+      var rows = parseCSV(text);
+      if (rows.length < 2) { toast('ไฟล์นี้ไม่มีข้อมูล มีแต่หัวตาราง', 'error'); return; }
+
+      var headers = rows[0].map(colKeyOf);
+      if (headers.indexOf('student_id') < 0) {
+        toast('ไม่พบคอลัมน์ "รหัสนักศึกษา" ในไฟล์ · กรุณาใช้แบบฟอร์มที่ดาวน์โหลดจากระบบ', 'error');
+        return;
+      }
+
+      var st = hState();
+      var plan = { add: [], edit: [], skip: [], error: [] };
+      for (var i = 1; i < rows.length; i++) {
+        var d = {};
+        headers.forEach(function (k, idx) { if (k) d[k] = s(rows[i][idx]); });
+
+        var sid = s(d.student_id).replace(/^="?|"?$/g, '');
+        var stu = studentById(sid);
+        if (!sid) continue;
+        if (!stu) { plan.error.push({ sid: sid, why: 'ไม่พบรหัสนี้ในทะเบียนนักศึกษา' }); continue; }
+
+        var sem = s(d.semester) || st.semester;
+        var ay = s(d.academic_year) || st.academicYear;
+        if (!sem || !ay) { plan.error.push({ sid: sid, name: s(stu.name), why: 'ไม่ได้ระบุภาคหรือปีการศึกษา' }); continue; }
+
+        if (rowEmpty(d)) { plan.skip.push({ sid: sid, name: s(stu.name) }); continue; }
+        var err = rowError(d);
+        if (err) { plan.error.push({ sid: sid, name: s(stu.name), why: err }); continue; }
+
+        var cur = existingHealthFor(sid, sem, ay);
+        if (cur && !ownsRow(cur)) {
+          plan.error.push({ sid: sid, name: s(stu.name), why: 'มีข้อมูลที่ ' + (s(cur.recorded_by) || 'ผู้อื่น') + ' กรอกไว้ ต้องให้ผู้นั้นแก้เอง' });
+          continue;
+        }
+        var item = { sid: sid, name: s(stu.name), sem: sem, ay: ay, d: d, cur: cur };
+        if (cur) plan.edit.push(item); else plan.add.push(item);
+      }
+      st.importPlan = plan;
+      showImportPreview(plan);
+    } catch (e) {
+      toast('อ่านไฟล์ไม่สำเร็จ · ' + e.message, 'error');
+    } finally {
+      if (ev && ev.target) ev.target.value = '';
+    }
+  };
+
+  function showImportPreview(plan) {
+    var total = plan.add.length + plan.edit.length;
+    function box(color, n, label) {
+      return '<div class="flex-1 min-w-[7rem] bg-' + color + '-50 rounded-xl p-3 text-center">'
+        + '<p class="text-2xl font-bold text-' + color + '-600">' + n + '</p>'
+        + '<p class="text-xs text-gray-600">' + label + '</p></div>';
+    }
+    var errList = plan.error.length
+      ? '<div class="mt-3"><p class="text-sm font-semibold text-red-600 mb-1">รายการที่นำเข้าไม่ได้</p>'
+      + '<div class="border border-red-100 rounded-xl overflow-hidden max-h-56 overflow-y-auto"><table class="w-full text-sm">'
+      + plan.error.map(function (e) {
+        return '<tr class="border-b last:border-0"><td class="px-3 py-1.5 font-mono text-xs">' + esc(e.sid) + '</td>'
+          + '<td class="px-3 py-1.5">' + esc(e.name || '') + '</td>'
+          + '<td class="px-3 py-1.5 text-red-600 text-xs">' + esc(e.why) + '</td></tr>';
+      }).join('') + '</table></div></div>'
+      : '';
+
+    var html = '<div class="space-y-3">'
+      + '<p class="text-sm text-gray-600">ตรวจไฟล์เรียบร้อย ยังไม่ได้บันทึกอะไรลงระบบ กดยืนยันเมื่อตัวเลขถูกต้อง</p>'
+      + '<div class="flex flex-wrap gap-2">'
+      + box('green', plan.add.length, 'เพิ่มใหม่')
+      + box('blue', plan.edit.length, 'แก้ของเดิม')
+      + box('gray', plan.skip.length, 'ข้าม (ไม่ได้กรอก)')
+      + box('red', plan.error.length, 'มีปัญหา')
+      + '</div>'
+      + errList
+      + (total
+        ? '<button type="button" onclick="wbHealthImportConfirm()" class="w-full bg-primary text-white py-2.5 rounded-xl">ยืนยันนำเข้า ' + total + ' รายการ</button>'
+        : '<p class="text-sm text-gray-500 text-center py-2">ไม่มีรายการที่นำเข้าได้</p>')
+      + '</div>';
+    if (typeof showModal === 'function') showModal('ตรวจก่อนนำเข้าข้อมูล สบช.โมเดล', html);
+  }
+
+  window.wbHealthImportConfirm = async function () {
+    if (busy) return;
+    var st = hState(), plan = st.importPlan;
+    if (!plan) return;
+    busy = true;
+    var btn = document.querySelector('button[onclick="wbHealthImportConfirm()"]');
+    if (btn) { btn.disabled = true; btn.classList.add('opacity-60'); }
+    var okN = 0, failN = 0;
+    try {
+      var items = plan.add.concat(plan.edit);
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i], d = it.d;
+        var payload = {
+          type: 'student_health', student_id: it.sid,
+          record_date: (it.cur && s(it.cur.record_date)) || new Date().toISOString().slice(0, 10),
+          semester: it.sem, academic_year: it.ay,
+          height_m: s(d.height_m), weight_kg: s(d.weight_kg),
+          blood_sugar: s(d.blood_sugar), pulse: s(d.pulse),
+          bp_systolic: s(d.bp_systolic), bp_diastolic: s(d.bp_diastolic),
+          note: s(d.note), recorded_by: me(), updated_by: me()
+        };
+        var r = it.cur
+          ? await GSheetDB.update(Object.assign({}, it.cur, payload), { noRefresh: true })
+          : await GSheetDB.create(payload, { noRefresh: true });
+        if (r && r.isOk) okN++; else failN++;
+      }
+      await GSheetDB.refreshTab('student_health');
+      st.importPlan = null;
+      st.dirty = {};
+      if (typeof closeModal === 'function') closeModal();
+      toast('นำเข้าสำเร็จ ' + okN + ' รายการ' + (failN ? ' · ไม่สำเร็จ ' + failN : ''), failN ? 'error' : 'success');
+      if (typeof renderCurrentPage === 'function') renderCurrentPage();
+    } catch (e) {
+      toast('นำเข้าไม่สำเร็จ · ' + e.message, 'error');
+    } finally {
+      busy = false;
+      var b2 = document.querySelector('button[onclick="wbHealthImportConfirm()"]');
+      if (b2) { b2.disabled = false; b2.classList.remove('opacity-60'); }
     }
   };
 
