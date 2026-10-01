@@ -28,6 +28,24 @@
   var SEMS = [['1', 'ภาคการศึกษาที่ 1'], ['2', 'ภาคการศึกษาที่ 2'], ['3', 'ภาคฤดูร้อน']];
   var YEARS = ['1', '2', '3', '4'];
 
+  /* เดือนไทย ใช้กับข้อมูล สบช.โมเดล ซึ่งบันทึกเป็นรายเดือน
+     ระบบไม่เดาว่าเดือนไหนอยู่ภาคการศึกษาไหน ผู้กรอกเลือกภาคเองทุกครั้ง
+     เพราะปฏิทินของวิทยาลัยเปลี่ยนได้ และการเดาผิดจะจัดข้อมูลเข้าภาคผิดทั้งชุดเงียบ ๆ */
+  var MONTHS = [
+    ['1', 'มกราคม', 'ม.ค.'], ['2', 'กุมภาพันธ์', 'ก.พ.'], ['3', 'มีนาคม', 'มี.ค.'],
+    ['4', 'เมษายน', 'เม.ย.'], ['5', 'พฤษภาคม', 'พ.ค.'], ['6', 'มิถุนายน', 'มิ.ย.'],
+    ['7', 'กรกฎาคม', 'ก.ค.'], ['8', 'สิงหาคม', 'ส.ค.'], ['9', 'กันยายน', 'ก.ย.'],
+    ['10', 'ตุลาคม', 'ต.ค.'], ['11', 'พฤศจิกายน', 'พ.ย.'], ['12', 'ธันวาคม', 'ธ.ค.']
+  ];
+  function monthName(m, shortForm) {
+    for (var i = 0; i < MONTHS.length; i++) {
+      if (MONTHS[i][0] === s(m)) return shortForm ? MONTHS[i][2] : MONTHS[i][1];
+    }
+    return s(m);
+  }
+  function thisMonth() { return String(new Date().getMonth() + 1); }
+  function thisYearBE() { return String(new Date().getFullYear() + 543); }
+
   var CONDUCT_TYPES = [
     'มาสาย', 'ขาดเรียน', 'แต่งกายผิดระเบียบ', 'ใช้โทรศัพท์ในเวลาเรียน',
     'ไม่ส่งงานตามกำหนด', 'ประพฤติผิดระเบียบหอพัก', 'พฤติกรรมดีเด่น', 'อื่น ๆ'
@@ -101,7 +119,15 @@
   /* ---------------- สถานะหน้าจอ ---------------- */
   function hState() {
     if (!APP._wbHealth) {
-      APP._wbHealth = { year: '1', semester: '1', academicYear: curYear(), search: '', dirty: {} };
+      APP._wbHealth = {
+        year: '1',                 // ชั้นปีของนักศึกษา
+        month: thisMonth(),        // เดือนที่กรอก
+        yearBE: thisYearBE(),      // ปี พ.ศ. ที่กรอก
+        semester: '1',             // ภาคการศึกษาที่ผู้กรอกเลือกเอง
+        academicYear: curYear(),   // ปีการศึกษา
+        view: 'month',             // 'month' = กรอกรายเดือน · 'term' = ดูตามภาคการศึกษา
+        search: '', dirty: {}
+      };
     }
     return APP._wbHealth;
   }
@@ -129,27 +155,134 @@
   function healthPage() {
     if (!canHealth()) return noRight('ข้อมูล สบช.โมเดล');
     var st = hState();
+    return headerBox() + (st.view === 'term' ? termView() : monthView());
+  }
+
+  /* หัวเรื่องและแถบเลือก — ส่วนที่เหมือนกันทั้งสองมุมมอง */
+  function headerBox() {
+    var st = hState();
+    var byMonth = st.view !== 'term';
+
+    var yearTabs = YEARS.map(function (y) {
+      var on = s(st.year) === y;
+      var n = studentsOfYear(y).length;
+      return '<button onclick="wbHealthSet(\'year\',\'' + y + '\')" class="px-4 py-2 rounded-xl text-sm font-medium '
+        + (on ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200') + '">'
+        + 'ชั้นปีที่ ' + y + ' <span class="text-xs opacity-75">(' + n + ')</span></button>';
+    }).join('');
+
+    function tab(key, label, hint) {
+      var on = (key === 'month') === byMonth;
+      return '<button onclick="wbHealthSet(\'view\',\'' + key + '\')" '
+        + 'class="px-4 py-2 rounded-xl text-sm ' + (on ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200') + '" '
+        + 'title="' + hint + '">' + label + '</button>';
+    }
+
+    /* ช่องเลือกของมุมมองรายเดือน — เป็นช่องกรอกด้วย ค่าที่เลือกคือค่าที่จะถูกบันทึก
+       ภาคการศึกษาและปีการศึกษาอยู่ตรงนี้ด้วย เพราะผู้กรอกเป็นคนเลือกเอง ระบบไม่เดาจากเดือน */
+    var monthPickers =
+      '<div><label class="block text-xs text-gray-600 mb-1">เดือนที่ตรวจ <span class="text-red-500">*</span></label>'
+      + '<select onchange="wbHealthSet(\'month\',this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">'
+      + MONTHS.map(function (m) {
+        return '<option value="' + m[0] + '"' + (s(st.month) === m[0] ? ' selected' : '') + '>' + m[1] + '</option>';
+      }).join('') + '</select></div>'
+      + '<div><label class="block text-xs text-gray-600 mb-1">ปี พ.ศ. <span class="text-red-500">*</span></label>'
+      + '<input value="' + esc(st.yearBE) + '" onchange="wbHealthSet(\'yearBE\',this.value)" inputmode="numeric" '
+      + 'class="w-24 border border-gray-200 rounded-xl px-3 py-2 text-sm"></div>'
+      + '<span class="self-end pb-2 text-gray-300">|</span>'
+      + '<div><label class="block text-xs text-gray-600 mb-1">ภาคการศึกษา</label>'
+      + '<select onchange="wbHealthSet(\'semester\',this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">'
+      + SEMS.map(function (x) {
+        return '<option value="' + x[0] + '"' + (s(st.semester) === x[0] ? ' selected' : '') + '>' + x[1] + '</option>';
+      }).join('') + '</select></div>'
+      + '<div><label class="block text-xs text-gray-600 mb-1">ปีการศึกษา</label>'
+      + '<input value="' + esc(st.academicYear) + '" onchange="wbHealthSet(\'academicYear\',this.value)" inputmode="numeric" '
+      + 'class="w-24 border border-gray-200 rounded-xl px-3 py-2 text-sm"></div>';
+
+    /* ช่องเลือกของมุมมองรายภาค — ใช้กรองอย่างเดียว ไม่ได้ใช้บันทึก */
+    var termPickers =
+      '<div><label class="block text-xs text-gray-600 mb-1">ภาคการศึกษา</label>'
+      + '<select onchange="wbHealthSet(\'semester\',this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">'
+      + '<option value="">ทุกภาค</option>'
+      + SEMS.map(function (x) {
+        return '<option value="' + x[0] + '"' + (s(st.semester) === x[0] ? ' selected' : '') + '>' + x[1] + '</option>';
+      }).join('') + '</select></div>'
+      + '<div><label class="block text-xs text-gray-600 mb-1">ปีการศึกษา</label>'
+      + '<input value="' + esc(st.academicYear) + '" onchange="wbHealthSet(\'academicYear\',this.value)" inputmode="numeric" '
+      + 'placeholder="ทุกปี" class="w-24 border border-gray-200 rounded-xl px-3 py-2 text-sm"></div>';
+
+    return '<div class="mb-5">'
+      + '<h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">'
+      + '<i data-lucide="heart-pulse" class="w-6 h-6"></i>ข้อมูล สบช.โมเดล</h2>'
+      + '<p class="text-sm text-gray-500 mt-1">บันทึกผลการตรวจสุขภาพเป็นรายเดือน หนึ่งคนต่อหนึ่งเดือน · '
+      + 'กรอกซ้ำเดือนเดิมคือการแก้ของเดิม ไม่เกิดแถวซ้ำ · '
+      + 'ค่าดัชนีมวลกาย (BMI) ระบบคำนวณให้เอง ไม่ต้องกรอก</p>'
+      + '</div>'
+
+      + '<div class="bg-white rounded-2xl border border-blue-100 p-4 mb-4">'
+      + '<div class="flex flex-wrap gap-2 mb-3">' + yearTabs + '</div>'
+      + '<div class="flex flex-wrap items-center gap-2 mb-3 pb-3 border-b border-gray-100">'
+      + '<span class="text-xs text-gray-500 mr-1">ดูข้อมูลตาม :</span>'
+      + tab('month', 'รายเดือน', 'เลือกเดือนแล้วกรอกข้อมูลได้เลย')
+      + tab('term', 'รายภาคการศึกษา', 'ดูย้อนหลังว่าภาคนี้มีการตรวจเดือนไหนบ้าง')
+      + '</div>'
+      + '<div class="flex flex-wrap items-end gap-3">'
+      + (byMonth ? monthPickers : termPickers)
+      + '<div class="flex-1 min-w-[12rem]"><label class="block text-xs text-gray-600 mb-1">ค้นหารหัสหรือชื่อ</label>'
+      + '<input value="' + esc(st.search) + '" oninput="wbHealthSearch(this.value)" '
+      + 'placeholder="พิมพ์เพื่อกรองรายชื่อ" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"></div>'
+      + (byMonth
+        ? '<button onclick="wbHealthSaveAll()" class="px-4 py-2 rounded-xl bg-primary text-white text-sm flex items-center gap-2">'
+          + '<i data-lucide="save" class="w-4 h-4"></i>บันทึกทั้งชั้นปี</button>'
+        : '')
+      + '</div>'
+
+      /* แถวปุ่มไฟล์ — แยกบรรทัดจากปุ่มบันทึก เพราะเป็นงานคนละจังหวะกัน
+         กรอกในหน้าจอคือทำตรงนี้เดี๋ยวนี้ ส่วนไฟล์คือเอาออกไปทำข้างนอกแล้วค่อยกลับมา */
+      + '<div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100">'
+      + '<span class="text-xs text-gray-500 mr-1">ทำงานผ่านไฟล์ :</span>'
+      + (byMonth
+        ? '<button onclick="wbHealthForm()" class="px-3 py-2 rounded-xl border border-emerald-500 text-emerald-600 text-sm flex items-center gap-2 hover:bg-emerald-50" '
+          + 'title="ได้ไฟล์ที่มีรายชื่อนักศึกษาชั้นปีนี้ครบแล้ว พร้อมค่าที่เคยบันทึกไว้ของเดือนที่เลือก">'
+          + '<i data-lucide="file-down" class="w-4 h-4"></i>ดาวน์โหลดแบบฟอร์มเดือนนี้</button>'
+          + '<button onclick="wbHealthPickFile()" class="px-3 py-2 rounded-xl border border-primary text-primary text-sm flex items-center gap-2 hover:bg-primaryLight" '
+          + 'title="อัปโหลดแบบฟอร์มที่กรอกแล้ว ระบบจะสรุปให้ดูก่อนบันทึก">'
+          + '<i data-lucide="upload" class="w-4 h-4"></i>อัปโหลดไฟล์ที่กรอกแล้ว</button>'
+          + '<input type="file" id="wbHealthFile" accept=".csv,text/csv" class="hidden" onchange="wbHealthUpload(event)">'
+          + '<span class="w-px h-6 bg-gray-200 mx-1"></span>'
+        : '')
+      + '<button onclick="wbHealthExport()" class="px-3 py-2 rounded-xl border border-gray-300 text-gray-600 text-sm flex items-center gap-2 hover:bg-gray-50" '
+      + 'title="เฉพาะช่วงที่เลือกอยู่">'
+      + '<i data-lucide="download" class="w-4 h-4"></i>ดาวน์โหลดข้อมูลที่เห็นอยู่</button>'
+      + '<button onclick="wbHealthExport(\'all\')" class="px-3 py-2 rounded-xl border border-gray-300 text-gray-600 text-sm flex items-center gap-2 hover:bg-gray-50" '
+      + 'title="ทุกเดือนทุกปีที่มีในระบบ">'
+      + '<i data-lucide="database" class="w-4 h-4"></i>ดาวน์โหลดทั้งหมด</button>'
+      + '</div>'
+      + '<p class="text-[11px] text-gray-400 mt-2">ไฟล์เป็นชนิด CSV เปิดด้วย Excel หรือ Google ชีต ได้ทันที '
+      + '· แบบฟอร์มผูกกับเดือนและปีที่เลือกไว้ และมีค่าที่เคยบันทึกไว้มาด้วย จึงใช้แก้ของเดิมได้ '
+      + '· อัปโหลดแล้วระบบจะสรุปให้ดูก่อนว่าจะเพิ่มกี่คน แก้กี่คน ยังไม่เขียนอะไรจนกว่าจะกดยืนยัน</p>'
+      + '</div>';
+  }
+
+  /* นักศึกษาของชั้นปีที่เลือก หลังกรองด้วยคำค้น */
+  function shownStudents() {
+    var st = hState();
     var studs = studentsOfYear(st.year);
     var kw = s(st.search).toLowerCase();
-    if (kw) {
-      studs = studs.filter(function (x) {
-        return (s(x.student_id) + ' ' + s(x.name)).toLowerCase().indexOf(kw) >= 0;
-      });
-    }
+    if (!kw) return studs;
+    return studs.filter(function (x) {
+      return (s(x.student_id) + ' ' + s(x.name)).toLowerCase().indexOf(kw) >= 0;
+    });
+  }
 
-    var recs = get('student_health');
-    function recOf(sid) {
-      for (var i = 0; i < recs.length; i++) {
-        if (s(recs[i].student_id) === s(sid)
-          && s(recs[i].semester) === s(st.semester)
-          && s(recs[i].academic_year) === s(st.academicYear)) return recs[i];
-      }
-      return null;
-    }
-
+  /* ---------------- มุมมองรายเดือน : ตารางกรอก ---------------- */
+  function monthView() {
+    var st = hState();
+    var studs = shownStudents();
     var filled = 0;
+
     var rows = studs.map(function (stu, i) {
-      var r = recOf(stu.student_id) || {};
+      var r = existingHealthFor(stu.student_id, st.month, st.yearBE) || {};
       if (r.__backendId) filled++;
       var sid = esc(s(stu.student_id));
       var locked = r.__backendId && !ownsRow(r);
@@ -189,66 +322,10 @@
         + '</tr>';
     }).join('');
 
-    var yearTabs = YEARS.map(function (y) {
-      var on = s(st.year) === y;
-      var n = studentsOfYear(y).length;
-      return '<button onclick="wbHealthSet(\'year\',\'' + y + '\')" class="px-4 py-2 rounded-xl text-sm font-medium '
-        + (on ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200') + '">'
-        + 'ชั้นปีที่ ' + y + ' <span class="text-xs opacity-75">(' + n + ')</span></button>';
-    }).join('');
-
-    return '<div class="mb-5">'
-      + '<h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">'
-      + '<i data-lucide="heart-pulse" class="w-6 h-6"></i>ข้อมูล สบช.โมเดล</h2>'
-      + '<p class="text-sm text-gray-500 mt-1">บันทึกผลการตรวจสุขภาพรายภาคการศึกษา · '
-      + 'กรอกทั้งชั้นปีในตารางเดียว หรือกรอกทีละคนแล้วกดบันทึกเฉพาะแถวนั้น · '
-      + 'ค่าดัชนีมวลกาย (BMI) ระบบคำนวณให้เอง ไม่ต้องกรอก</p>'
-      + '</div>'
-
-      + '<div class="bg-white rounded-2xl border border-blue-100 p-4 mb-4">'
-      + '<div class="flex flex-wrap gap-2 mb-3">' + yearTabs + '</div>'
-      + '<div class="flex flex-wrap items-end gap-3">'
-      + '<div><label class="block text-xs text-gray-600 mb-1">ภาคการศึกษา</label>'
-      + '<select onchange="wbHealthSet(\'semester\',this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">'
-      + SEMS.map(function (x) {
-        return '<option value="' + x[0] + '"' + (s(st.semester) === x[0] ? ' selected' : '') + '>' + x[1] + '</option>';
-      }).join('') + '</select></div>'
-      + '<div><label class="block text-xs text-gray-600 mb-1">ปีการศึกษา (พ.ศ.)</label>'
-      + '<input value="' + esc(st.academicYear) + '" onchange="wbHealthSet(\'academicYear\',this.value)" '
-      + 'class="w-28 border border-gray-200 rounded-xl px-3 py-2 text-sm"></div>'
-      + '<div class="flex-1 min-w-[14rem]"><label class="block text-xs text-gray-600 mb-1">ค้นหารหัสหรือชื่อ</label>'
-      + '<input value="' + esc(st.search) + '" oninput="wbHealthSearch(this.value)" '
-      + 'placeholder="พิมพ์เพื่อกรองรายชื่อ" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"></div>'
-      + '<button onclick="wbHealthSaveAll()" class="px-4 py-2 rounded-xl bg-primary text-white text-sm flex items-center gap-2">'
-      + '<i data-lucide="save" class="w-4 h-4"></i>บันทึกทั้งชั้นปี</button>'
-      + '</div>'
-
-      /* แถวปุ่มไฟล์ — แยกบรรทัดจากปุ่มบันทึก เพราะเป็นงานคนละจังหวะกัน
-         กรอกในหน้าจอคือทำตรงนี้เดี๋ยวนี้ ส่วนไฟล์คือเอาออกไปทำข้างนอกแล้วค่อยกลับมา */
-      + '<div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100">'
-      + '<span class="text-xs text-gray-500 mr-1">ทำงานผ่านไฟล์ :</span>'
-      + '<button onclick="wbHealthForm()" class="px-3 py-2 rounded-xl border border-emerald-500 text-emerald-600 text-sm flex items-center gap-2 hover:bg-emerald-50" '
-      + 'title="ได้ไฟล์ที่มีรายชื่อนักศึกษาชั้นปีนี้ครบแล้ว พร้อมค่าที่เคยบันทึกไว้">'
-      + '<i data-lucide="file-down" class="w-4 h-4"></i>ดาวน์โหลดแบบฟอร์ม</button>'
-      + '<button onclick="wbHealthPickFile()" class="px-3 py-2 rounded-xl border border-primary text-primary text-sm flex items-center gap-2 hover:bg-primaryLight" '
-      + 'title="อัปโหลดแบบฟอร์มที่กรอกแล้ว ระบบจะสรุปให้ดูก่อนบันทึก">'
-      + '<i data-lucide="upload" class="w-4 h-4"></i>อัปโหลดไฟล์ที่กรอกแล้ว</button>'
-      + '<input type="file" id="wbHealthFile" accept=".csv,text/csv" class="hidden" onchange="wbHealthUpload(event)">'
-      + '<span class="w-px h-6 bg-gray-200 mx-1"></span>'
-      + '<button onclick="wbHealthExport()" class="px-3 py-2 rounded-xl border border-gray-300 text-gray-600 text-sm flex items-center gap-2 hover:bg-gray-50" '
-      + 'title="เฉพาะภาคการศึกษาที่เลือกอยู่">'
-      + '<i data-lucide="download" class="w-4 h-4"></i>ดาวน์โหลดข้อมูลภาคนี้</button>'
-      + '<button onclick="wbHealthExport(\'all\')" class="px-3 py-2 rounded-xl border border-gray-300 text-gray-600 text-sm flex items-center gap-2 hover:bg-gray-50" '
-      + 'title="ทุกภาคการศึกษาที่มีในระบบ">'
-      + '<i data-lucide="database" class="w-4 h-4"></i>ดาวน์โหลดทั้งหมด</button>'
-      + '</div>'
-      + '<p class="text-[11px] text-gray-400 mt-2">ไฟล์เป็นชนิด CSV เปิดด้วย Excel หรือ Google ชีต ได้ทันที '
-      + '· แบบฟอร์มมีค่าที่เคยบันทึกไว้มาด้วย จึงใช้แก้ของเดิมได้ ไม่ต้องกรอกใหม่ทั้งแผ่น '
-      + '· อัปโหลดแล้วระบบจะสรุปให้ดูก่อนว่าจะเพิ่มกี่คน แก้กี่คน ยังไม่เขียนอะไรจนกว่าจะกดยืนยัน</p>'
-      + '<p class="text-xs text-gray-500 mt-3">กรอกแล้ว <span class="font-semibold text-primary">' + filled + '</span> จาก '
-      + studs.length + ' คน ในภาค ' + esc(st.semester) + '/' + esc(st.academicYear)
-      + ' · แถวที่คนอื่นเป็นผู้กรอกจะแก้ไม่ได้ ต้องให้ผู้กรอกเดิมหรือผู้ดูแลระบบแก้</p>'
-      + '</div>'
+    return '<p class="text-xs text-gray-500 mb-2">กรอกแล้ว <span class="font-semibold text-primary">' + filled + '</span> จาก '
+      + studs.length + ' คน ในเดือน<b>' + esc(monthName(st.month)) + ' ' + esc(st.yearBE) + '</b> '
+      + '(บันทึกเข้าภาค ' + esc(st.semester) + '/' + esc(st.academicYear) + ') '
+      + '· แถวที่คนอื่นเป็นผู้กรอกจะแก้ไม่ได้ ต้องให้ผู้กรอกเดิมหรือผู้ดูแลระบบแก้</p>'
 
       + '<div class="bg-white rounded-2xl border border-blue-100 overflow-x-auto">'
       + '<table class="w-full">'
@@ -263,6 +340,76 @@
       + (rows || '<tr><td colspan="12" class="px-4 py-10 text-center text-gray-400">ไม่พบนักศึกษาตามเงื่อนไขที่เลือก</td></tr>')
       + '</tbody></table></div>';
   }
+
+  /* ---------------- มุมมองรายภาคการศึกษา : ดูย้อนหลัง ----------------
+     ภาคหนึ่งมีได้หลายเดือน หนึ่งคนจึงมีได้หลายแถว จะกรอกตรงนี้ไม่ได้
+     เพราะไม่รู้ว่าจะเขียนลงเดือนไหน กดแก้แล้วพาไปที่เดือนนั้นแทน */
+  function termView() {
+    var st = hState();
+    var ids = {};
+    shownStudents().forEach(function (x) { ids[s(x.student_id)] = x; });
+
+    var rows = get('student_health').filter(function (r) {
+      if (!ids[s(r.student_id)]) return false;
+      if (s(st.semester) && s(r.semester) !== s(st.semester)) return false;
+      if (s(st.academicYear) && s(r.academic_year) !== s(st.academicYear)) return false;
+      return true;
+    }).sort(function (a, b) {
+      return (s(b.record_year_be) + s(b.record_month).padStart(2, '0'))
+        .localeCompare(s(a.record_year_be) + s(a.record_month).padStart(2, '0'))
+        || s(a.student_id).localeCompare(s(b.student_id));
+    });
+
+    var months = {};
+    rows.forEach(function (r) { months[s(r.record_year_be) + '|' + s(r.record_month)] = 1; });
+
+    var body = rows.map(function (r, i) {
+      var stu = ids[s(r.student_id)] || {};
+      var b = bmiOf(r.height_m, r.weight_kg), band = bmiBand(b);
+      return '<tr class="border-t">'
+        + '<td class="px-3 py-2 text-gray-400 text-xs">' + (i + 1) + '</td>'
+        + '<td class="px-3 py-2 text-sm whitespace-nowrap">' + esc(monthName(r.record_month, true)) + ' ' + esc(s(r.record_year_be))
+        + '<span class="block text-[11px] text-gray-400">ภาค ' + esc(s(r.semester)) + '/' + esc(s(r.academic_year)) + '</span></td>'
+        + '<td class="px-3 py-2 text-sm">' + esc(s(stu.name))
+        + '<span class="block text-[11px] text-gray-400 font-mono">' + esc(s(r.student_id)) + '</span></td>'
+        + '<td class="px-3 py-2 text-center text-sm">' + esc(s(r.height_m)) + '/' + esc(s(r.weight_kg))
+        + (b ? '<span class="block text-[11px] ' + band[1] + '">BMI ' + b + ' · ' + band[0] + '</span>' : '') + '</td>'
+        + '<td class="px-3 py-2 text-center text-sm">' + esc(s(r.blood_sugar) || '-') + '</td>'
+        + '<td class="px-3 py-2 text-center text-sm">' + esc(s(r.pulse) || '-') + '</td>'
+        + '<td class="px-3 py-2 text-center text-sm">' + esc(s(r.bp_systolic) || '-') + '/' + esc(s(r.bp_diastolic) || '-') + '</td>'
+        + '<td class="px-3 py-2 text-xs text-gray-400">' + esc(s(r.recorded_by)) + '</td>'
+        + '<td class="px-3 py-2 text-center">'
+        + '<button onclick="wbHealthGoMonth(\'' + esc(s(r.record_month)) + '\',\'' + esc(s(r.record_year_be)) + '\')" '
+        + 'class="px-2 py-1 rounded-lg bg-primaryLight text-primary text-xs hover:bg-primary hover:text-white">ไปที่เดือนนี้</button>'
+        + '</td></tr>';
+    }).join('');
+
+    return '<p class="text-xs text-gray-500 mb-2">พบ <span class="font-semibold text-primary">' + rows.length + '</span> รายการ '
+      + 'จาก ' + Object.keys(months).length + ' เดือน '
+      + (s(st.semester) || s(st.academicYear)
+        ? 'ในภาค ' + esc(s(st.semester) || 'ทุกภาค') + '/' + esc(s(st.academicYear) || 'ทุกปี')
+        : 'ทุกภาคการศึกษา')
+      + ' · มุมมองนี้ดูอย่างเดียว เพราะหนึ่งคนมีได้หลายเดือนในภาคเดียวกัน '
+      + 'กดปุ่มท้ายแถวเพื่อไปแก้ที่เดือนนั้น</p>'
+
+      + '<div class="bg-white rounded-2xl border border-blue-100 overflow-x-auto">'
+      + '<table class="w-full">'
+      + '<thead><tr class="bg-surface text-left text-xs">'
+      + '<th class="px-3 py-3">#</th><th class="px-3 py-3">เดือนที่ตรวจ</th><th class="px-3 py-3">นักศึกษา</th>'
+      + '<th class="px-3 py-3 text-center">ส่วนสูง/น้ำหนัก</th><th class="px-3 py-3 text-center">น้ำตาล</th>'
+      + '<th class="px-3 py-3 text-center">ชีพจร</th><th class="px-3 py-3 text-center">ความดัน</th>'
+      + '<th class="px-3 py-3">ผู้บันทึก</th><th class="px-3 py-3 text-center">จัดการ</th>'
+      + '</tr></thead><tbody>'
+      + (body || '<tr><td colspan="9" class="px-4 py-10 text-center text-gray-400">ยังไม่มีข้อมูลตามเงื่อนไขที่เลือก</td></tr>')
+      + '</tbody></table></div>';
+  }
+
+  /* กดจากมุมมองรายภาค แล้วพาไปที่เดือนนั้นเพื่อแก้ */
+  window.wbHealthGoMonth = function (mo, ybe) {
+    var st = hState();
+    st.month = s(mo); st.yearBE = s(ybe); st.view = 'month'; st.dirty = {};
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  };
 
   window.wbHealthSet = function (k, v) {
     var st = hState();
@@ -299,6 +446,15 @@
     return !s(d.height_m) && !s(d.weight_kg) && !s(d.blood_sugar)
       && !s(d.pulse) && !s(d.bp_systolic) && !s(d.bp_diastolic) && !s(d.note);
   }
+  /* เดือนและปี พ.ศ. ต้องใช้ได้จริง ไม่งั้นข้อมูลจะไปกองอยู่ในเดือนที่ไม่มีอยู่
+     และหาไม่เจอทั้งในมุมมองรายเดือนและรายภาค */
+  function periodError(mo, ybe) {
+    var m = num(mo), y = num(ybe);
+    if (!s(mo) || m < 1 || m > 12 || String(m) !== s(mo).replace(/^0+/, '')) return 'เดือนไม่ถูกต้อง';
+    if (!/^[0-9]{4}$/.test(s(ybe)) || y < 2500 || y > 2700) return 'ปีต้องเป็น พ.ศ. สี่หลัก เช่น 2568';
+    return '';
+  }
+
   function rowError(d) {
     if (s(d.height_m) && (num(d.height_m) < 1 || num(d.height_m) > 2.5)) return 'ส่วนสูงต้องเป็นหน่วยเมตร เช่น 1.65';
     if (s(d.weight_kg) && (num(d.weight_kg) < 20 || num(d.weight_kg) > 250)) return 'น้ำหนักอยู่นอกช่วงที่เป็นไปได้';
@@ -308,20 +464,21 @@
     return '';
   }
 
-  /* หาแถวของนักศึกษาในภาค/ปีที่ระบุ
-     แยกพารามิเตอร์ออกมาเพราะการนำเข้าไฟล์ใช้ภาค/ปีจากในไฟล์ ไม่ใช่จากหน้าจอ */
-  function existingHealthFor(sid, sem, ay) {
+  /* หาแถวของนักศึกษาในเดือน/ปี พ.ศ. ที่ระบุ
+     หนึ่งคนมีได้หนึ่งแถวต่อหนึ่งเดือน กรอกซ้ำเดือนเดิมคือการแก้ของเดิม
+     แยกพารามิเตอร์ออกมาเพราะการนำเข้าไฟล์ใช้เดือน/ปีจากในไฟล์ ไม่ใช่จากหน้าจอ */
+  function existingHealthFor(sid, mo, ybe) {
     var recs = get('student_health');
     for (var i = 0; i < recs.length; i++) {
       if (s(recs[i].student_id) === s(sid)
-        && s(recs[i].semester) === s(sem)
-        && s(recs[i].academic_year) === s(ay)) return recs[i];
+        && s(recs[i].record_month) === s(mo)
+        && s(recs[i].record_year_be) === s(ybe)) return recs[i];
     }
     return null;
   }
   function existingHealth(sid) {
     var st = hState();
-    return existingHealthFor(sid, st.semester, st.academicYear);
+    return existingHealthFor(sid, st.month, st.yearBE);
   }
 
   async function saveHealthRow(sid, quiet) {
@@ -332,9 +489,12 @@
     if (rowEmpty(d)) return { skip: true, ok: true };
 
     var stu = studentById(sid) || {};
+    var perr = periodError(st.month, st.yearBE);
+    if (perr) { if (!quiet) toast(perr, 'error'); return { skip: false, ok: false }; }
     var payload = {
       type: 'student_health',
       student_id: s(sid),
+      record_month: s(st.month), record_year_be: s(st.yearBE),
       record_date: new Date().toISOString().slice(0, 10),
       semester: st.semester, academic_year: st.academicYear,
       height_m: d.height_m, weight_kg: d.weight_kg,
@@ -368,7 +528,10 @@
 
   window.wbHealthSaveAll = async function () {
     if (busy) return;
-    var ids = Object.keys(hState().dirty);
+    var stAll = hState();
+    var perrAll = periodError(stAll.month, stAll.yearBE);
+    if (perrAll) { toast(perrAll, 'error'); return; }
+    var ids = Object.keys(stAll.dirty);
     if (!ids.length) { toast('ยังไม่มีช่องไหนถูกแก้ไข', 'error'); return; }
     busy = true;
     var okN = 0, failN = 0, skipN = 0;
@@ -436,6 +599,8 @@
     ['student_id', 'รหัสนักศึกษา'],
     ['name', 'ชื่อ-สกุล'],
     ['year_level', 'ชั้นปี'],
+    ['record_month', 'เดือนที่ตรวจ'],
+    ['record_year_be', 'ปี พ.ศ.'],
     ['semester', 'ภาคการศึกษา'],
     ['academic_year', 'ปีการศึกษา'],
     ['height_m', 'ส่วนสูง (เมตร)'],
@@ -455,6 +620,8 @@
       if (h === label.toLowerCase().replace(/\s+/g, '')) return k;
     }
     // ยอมให้เขียนย่อ เช่น "ส่วนสูง" "น้ำหนัก" โดยไม่มีหน่วย
+    if (h.indexOf('เดือน') === 0) return 'record_month';
+    if (h.indexOf('ปีพ.ศ.') === 0 || h.indexOf('ปีพศ') === 0) return 'record_year_be';
     if (h.indexOf('ส่วนสูง') === 0) return 'height_m';
     if (h.indexOf('น้ำหนัก') === 0) return 'weight_kg';
     if (h.indexOf('ความดันบน') === 0) return 'bp_systolic';
@@ -482,19 +649,23 @@
     var st = hState();
     var studs = studentsOfYear(st.year);
     if (!studs.length) { toast('ชั้นปีนี้ยังไม่มีนักศึกษา', 'error'); return; }
+    var perr = periodError(st.month, st.yearBE);
+    if (perr) { toast(perr, 'error'); return; }
     var lines = [CSV_COLS.map(function (c) { return csvCell(c[1]); }).join(',')];
     studs.forEach(function (stu) {
-      var r = existingHealthFor(stu.student_id, st.semester, st.academicYear) || {};
+      var r = existingHealthFor(stu.student_id, st.month, st.yearBE) || {};
       lines.push([
         csvCell(s(stu.student_id)), csvCell(s(stu.name)), csvCell(s(stu.year_level)),
+        csvCell(st.month), csvCell(st.yearBE),
         csvCell(st.semester), csvCell(st.academicYear),
         csvCell(r.height_m), csvCell(r.weight_kg), csvCell(r.blood_sugar),
         csvCell(r.pulse), csvCell(r.bp_systolic), csvCell(r.bp_diastolic), csvCell(r.note)
       ].join(','));
     });
-    var name = 'แบบฟอร์ม_สบช.โมเดล_ชั้นปี' + st.year + '_ภาค' + st.semester + '_' + st.academicYear + '.csv';
+    var name = 'แบบฟอร์ม_สบช.โมเดล_ชั้นปี' + st.year + '_' + monthName(st.month, true) + st.yearBE + '.csv';
     if (saveFile(name, lines.join('\r\n')))
-      toast('ดาวน์โหลดแบบฟอร์มของชั้นปีที่ ' + st.year + ' จำนวน ' + studs.length + ' คนแล้ว');
+      toast('ดาวน์โหลดแบบฟอร์มเดือน' + monthName(st.month) + ' ' + st.yearBE
+        + ' ของชั้นปีที่ ' + st.year + ' จำนวน ' + studs.length + ' คนแล้ว');
   };
 
   /* ---------- ดาวน์โหลดข้อมูล ----------
@@ -503,25 +674,33 @@
   window.wbHealthExport = function (scope) {
     var st = hState();
     var all = s(scope) === 'all';
+    /* ส่งออกตามสิ่งที่เห็นอยู่บนหน้าจอ มุมมองรายเดือนได้เฉพาะเดือนนั้น
+       มุมมองรายภาคได้ทุกเดือนในภาคนั้น จะได้ตรงกับที่ผู้ใช้กำลังดู */
+    var byMonth = st.view !== 'term';
     var recs = get('student_health').filter(function (r) {
       if (all) return true;
-      return s(r.semester) === s(st.semester) && s(r.academic_year) === s(st.academicYear);
+      if (byMonth) return s(r.record_month) === s(st.month) && s(r.record_year_be) === s(st.yearBE);
+      if (s(st.semester) && s(r.semester) !== s(st.semester)) return false;
+      if (s(st.academicYear) && s(r.academic_year) !== s(st.academicYear)) return false;
+      return true;
     });
-    if (!recs.length) { toast(all ? 'ยังไม่มีข้อมูลในระบบ' : 'ยังไม่มีข้อมูลในภาคการศึกษาที่เลือก', 'error'); return; }
+    if (!recs.length) { toast(all ? 'ยังไม่มีข้อมูลในระบบ' : 'ยังไม่มีข้อมูลในช่วงที่เลือก', 'error'); return; }
 
-    var head = ['รหัสนักศึกษา', 'ชื่อ-สกุล', 'ชั้นปี', 'ภาคการศึกษา', 'ปีการศึกษา',
+    var head = ['รหัสนักศึกษา', 'ชื่อ-สกุล', 'ชั้นปี', 'เดือนที่ตรวจ', 'ปี พ.ศ.', 'ภาคการศึกษา', 'ปีการศึกษา',
       'ส่วนสูง (เมตร)', 'น้ำหนัก (กก.)', 'BMI', 'แปลผล BMI', 'น้ำตาลในเลือด', 'ชีพจร',
       'ความดันบน', 'ความดันล่าง', 'หมายเหตุ', 'วันที่บันทึก', 'ผู้บันทึก'];
     var lines = [head.map(csvCell).join(',')];
 
     recs.slice().sort(function (a, b) {
-      return (s(b.academic_year) + s(b.semester)).localeCompare(s(a.academic_year) + s(a.semester))
+      return (s(b.record_year_be) + s(b.record_month).padStart(2, '0'))
+        .localeCompare(s(a.record_year_be) + s(a.record_month).padStart(2, '0'))
         || s(a.student_id).localeCompare(s(b.student_id));
     }).forEach(function (r) {
       var stu = studentById(r.student_id) || {};
       var bmi = bmiOf(r.height_m, r.weight_kg);
       lines.push([
         csvCell(s(r.student_id)), csvCell(s(stu.name)), csvCell(s(stu.year_level)),
+        csvCell(monthName(r.record_month)), csvCell(s(r.record_year_be)),
         csvCell(s(r.semester)), csvCell(s(r.academic_year)),
         csvCell(s(r.height_m)), csvCell(s(r.weight_kg)), csvCell(bmi), csvCell(bmiBand(bmi)[0]),
         csvCell(s(r.blood_sugar)), csvCell(s(r.pulse)),
@@ -531,7 +710,9 @@
     });
     var name = all
       ? 'ข้อมูล_สบช.โมเดล_ทั้งหมด.csv'
-      : 'ข้อมูล_สบช.โมเดล_ภาค' + st.semester + '_' + st.academicYear + '.csv';
+      : byMonth
+        ? 'ข้อมูล_สบช.โมเดล_' + monthName(st.month, true) + st.yearBE + '.csv'
+        : 'ข้อมูล_สบช.โมเดล_ภาค' + (s(st.semester) || 'ทุกภาค') + '_' + (s(st.academicYear) || 'ทุกปี') + '.csv';
     if (saveFile(name, lines.join('\r\n')))
       toast('ดาวน์โหลดข้อมูล ' + recs.length + ' รายการแล้ว');
   };
@@ -570,6 +751,22 @@
         if (!sid) continue;
         if (!stu) { plan.error.push({ sid: sid, why: 'ไม่พบรหัสนี้ในทะเบียนนักศึกษา' }); continue; }
 
+        /* เดือนและปีมาจากในไฟล์เป็นหลัก ถ้าไม่มีจึงใช้ค่าที่เลือกบนหน้าจอ
+           เพราะไฟล์อาจถูกกรอกกลับมาหลังจากเปลี่ยนเดือนบนหน้าจอไปแล้ว */
+        var mo = s(d.record_month) || st.month;
+        var ybe = s(d.record_year_be) || st.yearBE;
+        // ยอมรับทั้งเลขเดือนและชื่อเดือนไทย เพราะคนกรอกมักพิมพ์ชื่อเดือน
+        if (mo && !/^[0-9]+$/.test(mo)) {
+          var hit = '';
+          for (var mi = 0; mi < MONTHS.length; mi++) {
+            if (MONTHS[mi][1] === mo || MONTHS[mi][2] === mo) { hit = MONTHS[mi][0]; break; }
+          }
+          mo = hit || mo;
+        }
+        mo = s(mo).replace(/^0+/, '');
+        var perr = periodError(mo, ybe);
+        if (perr) { plan.error.push({ sid: sid, name: s(stu.name), why: perr }); continue; }
+
         var sem = s(d.semester) || st.semester;
         var ay = s(d.academic_year) || st.academicYear;
         if (!sem || !ay) { plan.error.push({ sid: sid, name: s(stu.name), why: 'ไม่ได้ระบุภาคหรือปีการศึกษา' }); continue; }
@@ -578,12 +775,12 @@
         var err = rowError(d);
         if (err) { plan.error.push({ sid: sid, name: s(stu.name), why: err }); continue; }
 
-        var cur = existingHealthFor(sid, sem, ay);
+        var cur = existingHealthFor(sid, mo, ybe);
         if (cur && !ownsRow(cur)) {
           plan.error.push({ sid: sid, name: s(stu.name), why: 'มีข้อมูลที่ ' + (s(cur.recorded_by) || 'ผู้อื่น') + ' กรอกไว้ ต้องให้ผู้นั้นแก้เอง' });
           continue;
         }
-        var item = { sid: sid, name: s(stu.name), sem: sem, ay: ay, d: d, cur: cur };
+        var item = { sid: sid, name: s(stu.name), mo: mo, ybe: ybe, sem: sem, ay: ay, d: d, cur: cur };
         if (cur) plan.edit.push(item); else plan.add.push(item);
       }
       st.importPlan = plan;
@@ -642,6 +839,7 @@
         var it = items[i], d = it.d;
         var payload = {
           type: 'student_health', student_id: it.sid,
+          record_month: it.mo, record_year_be: it.ybe,
           record_date: (it.cur && s(it.cur.record_date)) || new Date().toISOString().slice(0, 10),
           semester: it.sem, academic_year: it.ay,
           height_m: s(d.height_m), weight_kg: s(d.weight_kg),
@@ -674,7 +872,9 @@
     if (!cur) return;
     if (!ownsRow(cur)) { toast('ลบได้เฉพาะข้อมูลที่ตนเป็นผู้กรอก', 'error'); return; }
     var stu = studentById(sid) || {};
-    if (!confirm('ลบข้อมูล สบช.โมเดล ของ ' + (s(stu.name) || sid) + ' ในภาคนี้?')) return;
+    var stD = hState();
+    if (!confirm('ลบข้อมูล สบช.โมเดล ของ ' + (s(stu.name) || sid)
+      + ' เดือน' + monthName(stD.month) + ' ' + stD.yearBE + '?')) return;
     try {
       var r = await GSheetDB.delete(cur, { noRefresh: true });
       if (!r || !r.isOk) throw new Error(s(r && r.error) || 'ลบไม่สำเร็จ');

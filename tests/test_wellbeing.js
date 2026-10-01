@@ -31,13 +31,21 @@ function baseData() {
     ],
     student_health: [
       {
-        __backendId: 'H1', student_id: '6611030101', semester: '1', academic_year: '2568',
+        __backendId: 'H1', student_id: '6611030101',
+        record_month: '7', record_year_be: '2568', semester: '1', academic_year: '2568',
         height_m: '1.65', weight_kg: '69', blood_sugar: '91', pulse: '72',
         bp_systolic: '118', bp_diastolic: '76', note: '', recorded_by: 'จนท.บริการวิชาการ'
       },
       {
-        __backendId: 'H2', student_id: '6611030102', semester: '1', academic_year: '2568',
+        __backendId: 'H2', student_id: '6611030102',
+        record_month: '7', record_year_be: '2568', semester: '1', academic_year: '2568',
         height_m: '1.70', weight_kg: '60', recorded_by: 'คนอื่น'
+      },
+      // อีกเดือนของคนเดิม ใช้ทดสอบว่าหนึ่งคนมีได้หลายเดือน และมุมมองรายภาคเห็นครบ
+      {
+        __backendId: 'H3', student_id: '6611030101',
+        record_month: '8', record_year_be: '2568', semester: '1', academic_year: '2568',
+        height_m: '1.65', weight_kg: '67', recorded_by: 'จนท.บริการวิชาการ'
       }
     ],
     student_conduct: [
@@ -105,6 +113,12 @@ function makeEnv(opts) {
   new vm.Script(WB).runInContext(sb);
   sb.__data = DATA;
   sb.__els = els;
+  // ตรึงเดือน/ปีให้แน่นอน ไม่งั้นผลการทดสอบเปลี่ยนไปตามวันที่รัน
+  sb.APP._wbHealth = {
+    year: '1', month: opts.month || '7', yearBE: opts.yearBE || '2568',
+    semester: '1', academicYear: '2568',
+    view: opts.view || 'month', search: '', dirty: {}
+  };
   return sb;
 }
 
@@ -327,14 +341,78 @@ function setRow(w, sid, fields) {
     assert.ok(f.includes('25.34'), 'ไม่ได้คำนวณ BMI');
     assert.ok(f.includes('ผู้บันทึก'), 'ไม่รู้ว่าใครกรอก');
   });
-  t('ส่งออกเฉพาะภาคที่เลือก กับส่งออกทั้งหมด ได้ผลต่างกัน', () => {
-    w.APP._wbHealth.semester = '2';
+  t('ส่งออกตามสิ่งที่เห็นอยู่ ไม่ใช่ทั้งระบบ', () => {
+    // มุมมองรายเดือน : ได้เฉพาะเดือนที่เลือก
+    w.APP._wbHealth.month = '8';
+    w.wbHealthExport();
+    assert.ok(w.__fileText.includes('สิงหาคม'), 'ไม่ได้ส่งออกเดือนที่เลือก');
+    assert.ok(!w.__fileText.includes('กรกฎาคม'), 'เดือนอื่นปนมาด้วย');
+
+    // เดือนที่ยังไม่มีข้อมูล ต้องบอก ไม่ใช่ได้ไฟล์เปล่า
+    w.APP._wbHealth.month = '12';
     writes.length = 0;
     w.wbHealthExport();
-    assert.ok(writes.some(x => x[0] === 'toast' && /ยังไม่มีข้อมูลในภาค/.test(x[1])), 'ไม่ได้กรองตามภาค');
+    assert.ok(writes.some(x => x[0] === 'toast' && /ยังไม่มีข้อมูลในช่วงที่เลือก/.test(x[1])), 'ไม่ได้เตือน');
+
+    // มุมมองรายภาค : ได้ทุกเดือนในภาคนั้น
+    w.APP._wbHealth.view = 'term';
+    w.wbHealthExport();
+    assert.ok(w.__fileText.includes('กรกฎาคม') && w.__fileText.includes('สิงหาคม'),
+      'มุมมองรายภาคต้องได้ทุกเดือนในภาคนั้น');
+
     w.wbHealthExport('all');
     assert.ok(w.__fileText.includes('6611030101'), 'ส่งออกทั้งหมดแล้วยังว่าง');
-    w.APP._wbHealth.semester = '1';
+    w.APP._wbHealth.view = 'month';
+    w.APP._wbHealth.month = '7';
+  });
+
+  console.log('\n[4.7] กรอกรายเดือน และกรองสองแบบ');
+  t('ช่องเลือกเดือนและปี พ.ศ. อยู่ในหน้ากรอก', () => {
+    const h = makeEnv({ me: 'จนท.บริการวิชาการ', email: 'service@bcn.ac.th' }).wellbeingPages.healthEntry();
+    assert.ok(h.includes("wbHealthSet('month'"), 'ไม่มีช่องเลือกเดือน');
+    assert.ok(h.includes("wbHealthSet('yearBE'"), 'ไม่มีช่องปี พ.ศ.');
+    assert.ok(h.includes('กรกฎาคม'), 'ไม่มีรายชื่อเดือนไทย');
+    // ภาคการศึกษายังให้เลือกเอง ระบบไม่เดาจากเดือน
+    assert.ok(h.includes("wbHealthSet('semester'"), 'ไม่มีช่องเลือกภาคการศึกษา');
+    assert.ok(h.includes("wbHealthSet('academicYear'"), 'ไม่มีช่องปีการศึกษา');
+  });
+  t('สลับดูได้สองแบบ รายเดือน และรายภาคการศึกษา', () => {
+    const h = makeEnv({ me: 'จนท.บริการวิชาการ', email: 'service@bcn.ac.th' }).wellbeingPages.healthEntry();
+    assert.ok(h.includes("wbHealthSet('view','month')"), 'ไม่มีมุมมองรายเดือน');
+    assert.ok(h.includes("wbHealthSet('view','term')"), 'ไม่มีมุมมองรายภาคการศึกษา');
+  });
+  t('มุมมองรายเดือนเห็นเฉพาะค่าของเดือนนั้น', () => {
+    const a = makeEnv({ me: 'จนท.บริการวิชาการ', email: 'service@bcn.ac.th', month: '7' }).wellbeingPages.healthEntry();
+    assert.ok(a.includes('value="69"'), 'ไม่เห็นน้ำหนักของเดือนกรกฎาคม');
+    assert.ok(!a.includes('value="67"'), 'ค่าของเดือนสิงหาคมปนมา');
+    const b = makeEnv({ me: 'จนท.บริการวิชาการ', email: 'service@bcn.ac.th', month: '8' }).wellbeingPages.healthEntry();
+    assert.ok(b.includes('value="67"'), 'ไม่เห็นน้ำหนักของเดือนสิงหาคม');
+  });
+  t('มุมมองรายภาคเห็นทุกเดือนของภาคนั้น และดูอย่างเดียว', () => {
+    const t2 = makeEnv({ me: 'จนท.บริการวิชาการ', email: 'service@bcn.ac.th', view: 'term' }).wellbeingPages.healthEntry();
+    assert.ok(t2.includes('ก.ค. 2568') && t2.includes('ส.ค. 2568'), 'ไม่เห็นครบทุกเดือน');
+    assert.ok(t2.includes('จาก 2 เดือน'), 'ไม่ได้นับจำนวนเดือน');
+    assert.ok(t2.includes('wbHealthGoMonth'), 'ไม่มีปุ่มพาไปแก้ที่เดือนนั้น');
+    assert.ok(!t2.includes('data-wb='), 'มุมมองรายภาคต้องไม่มีช่องกรอก');
+  });
+  t('หนึ่งคนมีได้หลายเดือน ไม่ใช่หนึ่งแถวต่อภาค', () => {
+    const t2 = makeEnv({ me: 'จนท.บริการวิชาการ', email: 'service@bcn.ac.th', view: 'term' }).wellbeingPages.healthEntry();
+    const n = (t2.match(/6611030101/g) || []).length;
+    assert.ok(n >= 2, 'ควรเห็นนักศึกษาคนเดียวกันสองเดือน แต่พบ ' + n + ' ครั้ง');
+  });
+  t('เดือนหรือปีที่เป็นไปไม่ได้ ต้องไม่ยอมบันทึก', () => {
+    const src = WB.slice(WB.indexOf('function periodError'), WB.indexOf('function rowError'));
+    assert.ok(src.includes('เดือนไม่ถูกต้อง'), 'ไม่ได้ตรวจเดือน');
+    assert.ok(src.includes('ปีต้องเป็น พ.ศ. สี่หลัก'), 'ไม่ได้ตรวจปี พ.ศ.');
+    // ฟังก์ชันนี้ใช้ตัวช่วย s() กับ num() ของโมดูล ต้องหยิบมาด้วยตอนทดสอบแยก
+    const helpers = 'function s(v){return String(v==null?"":v).trim()}'
+      + 'function num(v){var x=parseFloat(v);return isFinite(x)?x:0}';
+    const fn = new Function(helpers + '\n' + src + '\nreturn periodError;')();
+    assert.strictEqual(fn('7', '2568'), '', 'ค่าที่ถูกต้องไม่ควรมีข้อผิดพลาด');
+    assert.ok(fn('13', '2568'), 'เดือน 13 ต้องไม่ผ่าน');
+    assert.ok(fn('0', '2568'), 'เดือน 0 ต้องไม่ผ่าน');
+    assert.ok(fn('7', '2025'), 'ปี ค.ศ. ต้องไม่ผ่าน');
+    assert.ok(fn('7', '68'), 'ปีสองหลักต้องไม่ผ่าน');
   });
 
   console.log('\n[4.6] อ่านไฟล์ที่กรอกกลับมา');
