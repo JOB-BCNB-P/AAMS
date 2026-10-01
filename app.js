@@ -10441,13 +10441,14 @@ function passwordLogSection() {
 function settingsPage() {
   const roles = ['admin', 'academic', 'registrar', 'deptHead', 'executive', 'teacher', 'classTeacher', 'otherStaff', 'student'];
   const modules = ['dashboard', 'curriculum', 'ploAssess', 'students', 'teachers', 'advisors', 'specialTeachers', 'alumni', 'schedule', 'subjects', 'grades', 'engResults', 'teacherDirectory', 'services', 'tracking', 'resultTracking', 'gradeTracking', 'fileTracking', 'leave', 'workload', 'survey',
-    'evalCourse', 'evalDo', 'evalSetup', 'evalReport', 'evalMine'];
+    'evalCourse', 'evalDo', 'evalSetup', 'evalReport', 'evalMine', 'counsel'];
   const moduleLabels = { dashboard: 'หน้าหลัก', curriculum: 'ข้อมูลหลักสูตร', ploAssess: 'ประเมินผลหลักสูตร PLOs', students: 'ข้อมูลนักศึกษา', teachers: 'ข้อมูลอาจารย์', advisors: 'ข้อมูลอาจารย์ที่ปรึกษา', specialTeachers: 'ข้อมูลอาจารย์พิเศษ', alumni: 'ข้อมูลศิษย์เก่า', schedule: 'ปฏิทินกิจกรรมวิชาการ', subjects: 'รายวิชาที่เปิดสอน', grades: 'ผลการเรียน', engResults: 'ผลสอบ ENG', teacherDirectory: 'ทำเนียบอาจารย์', services: 'บริการอื่นๆ', tracking: 'ติดตามการส่งรายละเอียดรายวิชา', resultTracking: 'ติดตามการส่งผลการดำเนินงานรายวิชา', gradeTracking: 'ติดตามการส่งเกรดรายวิชา', fileTracking: 'ติดตามส่งแฟ้มรายวิชา', leave: 'ระบบการลาของนักศึกษา', workload: 'ภาระงานนักศึกษา (Student workload)', survey: 'แบบประเมินความพึงพอใจ',
     evalCourse: 'ประเมินผลรายวิชา (เห็นกลุ่มเมนู)',
     evalDo: '— ประเมินรายวิชา (นักศึกษาตอบ)',
     evalSetup: '— ตั้งค่าแบบประเมิน + คลังข้อคำถาม',
     evalReport: '— ภาพรวมผลประเมิน (ทุกรายวิชา)',
-    evalMine: '— ผลประเมินของฉัน (อาจารย์)' };
+    evalMine: '— ผลประเมินของฉัน (อาจารย์)',
+    counsel: 'ระบบให้คำปรึกษานักศึกษา' };
   const roleLabels = { admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'งานทะเบียน', deptHead: 'ประธานสาขา', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อ.ประจำชั้น', otherStaff: 'จนท.งานอื่นๆ', student: 'นักศึกษา' };
 
   const users = applyFilters(getDataByType('user'));
@@ -10506,7 +10507,77 @@ function settingsPage() {
       <thead><tr class="bg-surface"><th class="px-3 py-2 text-left font-semibold whitespace-nowrap">โมดูล</th>${roles.map(r => `<th class="px-3 py-2 text-center font-semibold whitespace-nowrap">${roleLabels[r]}</th>`).join('')}</tr></thead>
       <tbody>${modules.map(m => `<tr class="border-t hover:bg-gray-50"><td class="px-3 py-2 font-medium whitespace-nowrap">${moduleLabels[m]}</td>${roles.map(r => { const mk = (m === 'survey' && r === 'admin') ? 'surveyManage' : m; return `<td class="px-3 py-2 text-center"><label class="inline-flex"><input type="checkbox" ${APP.permissions[r]?.[mk] ? 'checked' : ''} onchange="togglePermission('${r}','${mk}',this.checked)" class="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"></label></td>`; }).join('')}</tr>`).join('')}</tbody>
     </table></div>
+  </div>
+
+  ${dataEntryRightsSection()}
   `;
+}
+
+/* สิทธิ์บันทึกข้อมูลนักศึกษา — ให้เป็นรายคน ไม่ใช่รายบทบาท
+   เพราะในบทบาท "เจ้าหน้าที่งานอื่นๆ" เดียวกัน คนหนึ่งดูแลงานสุขภาพ อีกคนดูแลความประพฤติ
+   ถ้าเปิดตามบทบาทจะได้สิทธิ์เท่ากันหมด ซึ่งกว้างเกินความจำเป็น */
+function dataEntryRightsSection() {
+  const OFFICE = ['admin', 'academic', 'registrar', 'otherStaff'];
+  // ครอบคลุมทุกบทบาท ไม่ใช่แค่กลุ่มสำนักงาน เพราะอาจารย์ที่ได้รับสิทธิ์ก็ขึ้นในตารางนี้ด้วย
+  const roleLabels = {
+    admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'งานทะเบียน',
+    deptHead: 'ประธานสาขา', executive: 'ผู้บริหาร', teacher: 'อาจารย์',
+    classTeacher: 'อ.ประจำชั้น', otherStaff: 'จนท.งานอื่นๆ'
+  };
+  const on = (u, k) => ['1', 'true', 'ใช่'].includes(String((u && u[k]) || '').trim());
+
+  const all = getDataByType('user').filter(u => String(u.role || '') !== 'student');
+  // แสดงกลุ่มสำนักงานเป็นหลัก และใครก็ตามที่ได้รับสิทธิ์ไว้แล้ว จะได้ไม่มีสิทธิ์ค้างที่มองไม่เห็น
+  const show = all.filter(u => OFFICE.includes(String(u.role || '')) || on(u, 'can_health') || on(u, 'can_conduct'))
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'th'));
+  const hidden = all.length - show.length;
+
+  const rows = show.map(u => {
+    const admin = String(u.role || '') === 'admin';
+    const cell = (k) => admin
+      ? `<td class="px-3 py-2 text-center"><span class="text-xs text-gray-400" title="ผู้ดูแลระบบได้สิทธิ์นี้โดยอัตโนมัติ">ได้อยู่แล้ว</span></td>`
+      : `<td class="px-3 py-2 text-center"><label class="inline-flex"><input type="checkbox" ${on(u, k) ? 'checked' : ''} onchange="toggleDataEntryRight('${u.__backendId}','${k}',this.checked)" class="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"></label></td>`;
+    return `<tr class="border-t hover:bg-gray-50">
+      <td class="px-3 py-2 font-medium whitespace-nowrap">${u.name || ''}</td>
+      <td class="px-3 py-2"><span class="px-2 py-1 rounded-full text-xs bg-surface">${roleLabels[u.role] || u.role || ''}</span></td>
+      ${cell('can_health')}${cell('can_conduct')}</tr>`;
+  }).join('');
+
+  return `<div class="bg-white rounded-2xl p-5 border border-blue-100 mt-6">
+    <h3 class="font-bold mb-1">สิทธิ์บันทึกข้อมูลนักศึกษา <span class="text-sm font-normal text-gray-500">(เมนู "บันทึกข้อมูลนักศึกษา")</span></h3>
+    <p class="text-xs text-gray-500 mb-3">ให้เป็นรายคน ไม่ใช่รายบทบาท เพราะเจ้าหน้าที่งานอื่นๆ แต่ละคนดูแลงานคนละด้าน
+      · ติ๊กแล้วผู้ใช้จะเห็นเมนูทันทีเมื่อเข้าสู่ระบบครั้งถัดไป
+      · ทุกคนแก้ไขและลบได้เฉพาะรายการที่ตนกรอกเอง ผู้ดูแลระบบแก้ได้ทุกรายการ</p>
+    <div class="overflow-x-auto"><table class="w-full text-sm" style="min-width:620px">
+      <thead><tr class="bg-surface">
+        <th class="px-3 py-2 text-left font-semibold whitespace-nowrap">ชื่อ-สกุล</th>
+        <th class="px-3 py-2 text-left font-semibold whitespace-nowrap">บทบาท</th>
+        <th class="px-3 py-2 text-center font-semibold whitespace-nowrap">ข้อมูล สบช.โมเดล</th>
+        <th class="px-3 py-2 text-center font-semibold whitespace-nowrap">ข้อมูลความประพฤติ</th>
+      </tr></thead>
+      <tbody>${rows || '<tr><td colspan="4" class="px-4 py-8 text-center text-gray-400">ยังไม่มีผู้ใช้ในกลุ่มนี้</td></tr>'}</tbody>
+    </table></div>
+    ${hidden > 0 ? `<p class="text-[11px] text-gray-400 mt-2"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ตารางนี้แสดงเฉพาะกลุ่มสำนักงาน ถ้าต้องการให้สิทธิ์อาจารย์หรือผู้ใช้รายอื่น (อีก ${hidden} คน) ให้ติ๊กในหน้าต่าง <b>แก้ไขผู้ใช้</b> ของคนนั้น แล้วชื่อจะขึ้นมาในตารางนี้เอง</p>` : ''}
+  </div>`;
+}
+
+/* ติ๊กสิทธิ์จากตารางด้านบน — เขียนลงตาราง app_user โดยตรง
+   ฐานข้อมูลยังตรวจซ้ำอีกชั้นด้วย ems.can_enter_health() / can_enter_conduct()
+   ต่อให้แก้หน้าจอให้ติ๊กเองก็เขียนข้อมูลไม่ผ่าน */
+async function toggleDataEntryRight(userId, field, checked) {
+  const u = APP.allData.find(d => d.__backendId === userId);
+  if (!u) { showToast('ไม่พบผู้ใช้รายนี้', 'error'); return; }
+  const before = u[field];
+  u[field] = checked ? '1' : '';
+  const r = await GSheetDB.update(u);
+  if (r && r.isOk) {
+    const what = field === 'can_health' ? 'ข้อมูล สบช.โมเดล' : 'ข้อมูลความประพฤติ';
+    showToast((checked ? 'เปิดสิทธิ์บันทึก' : 'ปิดสิทธิ์บันทึก') + what + ' ให้ ' + (u.name || '') + ' แล้ว');
+  } else {
+    u[field] = before;          // คืนค่าเดิม ไม่ให้หน้าจอกับฐานข้อมูลไม่ตรงกัน
+    showToast('บันทึกสิทธิ์ไม่สำเร็จ', 'error');
+    renderCurrentPage();
+  }
 }
 
 /* บันทึกจำนวนสัปดาห์ต่อภาคการศึกษา

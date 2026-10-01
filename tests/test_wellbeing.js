@@ -328,6 +328,32 @@ function setRow(w, sid, fields) {
   t('นักศึกษาไม่มีช่องสิทธิ์นี้ให้ติ๊ก', () => {
     assert.ok(APPJS.includes("${isStudent ? '' : dataEntryRightsFieldHTML(u)}"), 'ขึ้นให้บัญชีนักศึกษาด้วย');
   });
+  t('หน้าตั้งค่าสิทธิ์มีแถวสิทธิ์บันทึกข้อมูลนักศึกษา', () => {
+    assert.ok(APPJS.includes('function dataEntryRightsSection()'), 'ไม่มีการ์ดสิทธิ์ในหน้าตั้งค่า');
+    assert.ok(APPJS.includes('${dataEntryRightsSection()}'), 'สร้างไว้แต่ไม่ได้เรียกใช้');
+    assert.ok(APPJS.includes('async function toggleDataEntryRight'), 'ติ๊กแล้วไม่มีตัวบันทึก');
+  });
+  t('ติ๊กพลาดแล้วคืนค่าเดิม ไม่ให้หน้าจอกับฐานข้อมูลไม่ตรงกัน', () => {
+    const src = APPJS.slice(APPJS.indexOf('async function toggleDataEntryRight'), APPJS.indexOf('async function toggleDataEntryRight') + 1200);
+    assert.ok(src.includes('u[field] = before'), 'บันทึกไม่สำเร็จแล้วช่องยังติ๊กค้างอยู่');
+  });
+  t('ผู้ที่ได้รับสิทธิ์ไว้แล้วต้องไม่หายจากตาราง แม้ไม่ใช่กลุ่มสำนักงาน', () => {
+    const src = APPJS.slice(APPJS.indexOf('function dataEntryRightsSection()'), APPJS.indexOf('async function toggleDataEntryRight'));
+    assert.ok(/on\(u, 'can_health'\) \|\| on\(u, 'can_conduct'\)/.test(src), 'สิทธิ์ที่ให้อาจารย์ไว้จะกลายเป็นสิทธิ์ค้างที่มองไม่เห็น');
+  });
+
+  console.log('\n[7] สิทธิ์ระบบให้คำปรึกษาในหน้าตั้งค่า');
+  t('มีแถว "ระบบให้คำปรึกษานักศึกษา" ให้ติ๊กตามบทบาท', () => {
+    assert.ok(/const modules = \[[^\]]*'counsel'/.test(APPJS), 'ไม่มี counsel ในรายการโมดูล');
+    assert.ok(APPJS.includes("counsel: 'ระบบให้คำปรึกษานักศึกษา'"), 'ไม่มีป้ายชื่อภาษาไทย');
+  });
+  t('ติ๊กในตารางแล้วบันทึกลงตาราง permission ได้จริง', () => {
+    const src = APPJS.slice(APPJS.indexOf('async function togglePermission'), APPJS.indexOf('async function togglePermission') + 900);
+    assert.ok(src.includes("type: 'permission'"), 'ไม่ได้เขียนลงตารางสิทธิ์');
+    assert.ok(src.includes('buildSidebar()'), 'ติ๊กแล้วเมนูไม่อัปเดตทันที');
+  });
+
+  console.log('\n[8] การต่อเข้าระบบเดิม (เพิ่มเติม)');
   t('เมนูวางต่อจากระบบให้คำปรึกษา', () => {
     const m = WB.slice(WB.indexOf('function addMenu()'));
     assert.ok(m.includes("nav.querySelector('[data-counsel-menu]')"), 'ไม่ได้อ้างอิงเมนูให้คำปรึกษา');
