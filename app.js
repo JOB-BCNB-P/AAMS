@@ -715,6 +715,7 @@ function navigateTo(page) {
   APP.filters._directoryYear = '';
   APP.filters._pageYear = '';
   APP.filters._subjectBatch = '';
+  APP.filters._subjectCurriculum = '';
   APP.filters._surveyYear = '';
   APP.filters._surveyManageYear = '';
   APP.filters._surveyQRoleFilter = '';
@@ -2414,6 +2415,58 @@ function subjectTypeOptionsHTML(cur) {
 }
 
 // ช่องเลือกประเภทรายวิชาในฟอร์มเพิ่ม/แก้ไข
+/* ---------------- หลักสูตรของรายวิชา ----------------
+   ปีการศึกษา 2570 เป็นต้นไปจะมีสองหลักสูตรใช้งานพร้อมกัน รายวิชาคนละชุด
+   รายวิชาจึงต้องระบุว่าสังกัดหลักสูตรฉบับใด ไม่งั้นจะปนกันในปีเดียวกันโดยไม่มีอะไรบอก
+
+   รายชื่อหลักสูตรดึงจากเมนู "ข้อมูลหลักสูตร" ไม่ได้พิมพ์ไว้ตายตัวในโค้ด
+   เพิ่มหลักสูตรใหม่ที่เมนูนั้นที่เดียว แล้วจะขึ้นในช่องเลือกของรายวิชาเอง */
+function curriculumOptions() {
+  const rows = getDataByType('curriculum')
+    .map(c => ({ year: norm(c.curriculum_year), title: norm(c.title_th), status: norm(c.curriculum_status) }))
+    .filter(c => c.year);
+  const seen = {};
+  const out = [];
+  rows.forEach(c => { if (!seen[c.year]) { seen[c.year] = 1; out.push(c); } });
+  out.sort((a, b) => b.year.localeCompare(a.year));
+  return out;
+}
+
+function curriculumLabel(year) {
+  const y = norm(year);
+  if (!y) return '';
+  const hit = curriculumOptions().filter(c => c.year === y)[0];
+  return hit && hit.title ? hit.title : 'หลักสูตร ' + y;
+}
+
+/* ป้ายสั้น ๆ สำหรับแสดงในตาราง */
+function curriculumBadge(year) {
+  const y = norm(year);
+  if (!y) return '<span class="text-xs text-gray-300" title="ยังไม่ได้ระบุหลักสูตร">-</span>';
+  return '<span class="px-2 py-1 rounded-full text-xs bg-indigo-50 text-indigo-700" title="'
+    + htmlEsc(curriculumLabel(y)) + '">' + htmlEsc(y) + '</span>';
+}
+
+/* ช่องเลือกหลักสูตรในฟอร์มรายวิชา
+   ถ้ายังไม่มีหลักสูตรในระบบเลย ให้พิมพ์ปีเองได้ จะได้ไม่ติดตั้งแต่ยังไม่ได้ตั้งค่า */
+function curriculumField(s) {
+  const cur = norm(s && s.curriculum_year);
+  const opts = curriculumOptions();
+  if (!opts.length) {
+    return '<div><label class="block text-xs text-gray-600 mb-1">หลักสูตร <span class="text-gray-400">(ยังไม่มีหลักสูตรในระบบ พิมพ์ปี พ.ศ. ได้)</span></label>'
+      + '<input name="curriculum_year" value="' + htmlEsc(cur) + '" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น 2565"></div>';
+  }
+  return '<div><label class="block text-xs text-gray-600 mb-1">หลักสูตร <span class="text-red-500">*</span></label>'
+    + '<select name="curriculum_year" required class="w-full border rounded-xl px-3 py-2 text-sm">'
+    + '<option value="">— เลือกหลักสูตร —</option>'
+    + opts.map(c => '<option value="' + htmlEsc(c.year) + '"' + (cur === c.year ? ' selected' : '') + '>'
+      + htmlEsc(c.title || ('หลักสูตร ' + c.year))
+      + (c.status && c.status !== 'ใช้อยู่' ? ' · ' + htmlEsc(c.status) : '') + '</option>').join('')
+    + '</select>'
+    + '<p class="text-[11px] text-gray-400 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>'
+    + 'เพิ่มหลักสูตรใหม่ได้ที่เมนู <b>ข้อมูลหลักสูตร</b> แล้วจะขึ้นในช่องนี้เอง</p></div>';
+}
+
 function subjectTypeField(s) {
   return `<div><label class="block text-xs text-gray-600 mb-1">ประเภทรายวิชา</label>
     <select name="theory_practice" class="w-full border rounded-xl px-3 py-2 text-sm">
@@ -2534,7 +2587,7 @@ function subjectsPage() {
 
   let headerHtml = `<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
     <h2 class="text-xl font-bold text-gray-800"><i data-lucide="book-open" class="w-6 h-6 inline mr-2"></i>รายวิชาที่เปิดสอน</h2>
-    ${isAdmin ? `<div class="flex gap-2"><button onclick="showAddSubjectModal()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มรายวิชา</button>${csvUploadBtn('subject', 'subject_code,subject_name,subject_name_en,theory_practice,coordinator,department,year_level,batch,room,credits,hours_theory,hours_lab,hours_self,semester,academic_year')}</div>` : ''}
+    ${isAdmin ? `<div class="flex gap-2"><button onclick="showAddSubjectModal()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มรายวิชา</button>${csvUploadBtn('subject', 'curriculum_year,subject_code,subject_name,subject_name_en,theory_practice,coordinator,department,year_level,batch,room,credits,hours_theory,hours_lab,hours_self,semester,academic_year')}</div>` : ''}
   </div>`;
   headerHtml += yearPickerBar(pickerSubjects, 'ปีการศึกษา');
   if (isAdmin) headerHtml += creditInfoBox();
@@ -2593,6 +2646,21 @@ function subjectsPage() {
   // ตัวกรองรุ่น (สำหรับ admin/academic) — รวบรวมรุ่นจากรายวิชาในปีที่เลือก
   const batchFilter = APP.filters._subjectBatch || '';
   if (batchFilter) data = data.filter(s => norm(s.batch) === batchFilter);
+
+  /* กรองตามหลักสูตร — จำเป็นตั้งแต่ปีการศึกษา 2570 ที่จะมีสองหลักสูตรพร้อมกัน
+     ขึ้นเฉพาะเมื่อมีหลักสูตรมากกว่าหนึ่ง ถ้ามีฉบับเดียวแสดงไปก็รกเปล่า ๆ */
+  const curFilter = APP.filters._subjectCurriculum || '';
+  if (curFilter) data = data.filter(s => norm(s.curriculum_year) === curFilter);
+  const curOpts = curriculumOptions();
+  const usedCur = [...new Set(allSubjects.map(s => norm(s.curriculum_year)).filter(Boolean))];
+  const curSelector = (curOpts.length > 1 || usedCur.length > 1) ? `<div class="flex flex-wrap gap-3 mb-4 items-center">
+    <label class="text-sm text-gray-700">หลักสูตร:</label>
+    <select onchange="APP.filters._subjectCurriculum=this.value;APP.pagination.page=1;renderCurrentPage()" class="border border-gray-200 rounded-xl px-3 py-2 text-sm">
+      <option value="">ทุกหลักสูตร</option>
+      ${curOpts.map(c => `<option value="${htmlEsc(c.year)}" ${curFilter === c.year ? 'selected' : ''}>${htmlEsc(c.title || ('หลักสูตร ' + c.year))}</option>`).join('')}
+    </select>
+    ${curFilter ? `<span class="text-xs text-gray-500">แสดงเฉพาะรายวิชาของ${htmlEsc(curriculumLabel(curFilter))}</span>` : ''}
+  </div>` : '';
   const allBatches = [...new Set(allSubjects.filter(s => norm(s.academic_year) === norm(selectedYear)).map(s => norm(s.batch)).filter(Boolean))].sort();
   const batchSelector = (allBatches.length && !isStudent) ? `<div class="flex flex-wrap gap-3 mb-4 items-center">
     <label class="text-sm text-gray-700">รุ่น:</label>
@@ -2616,13 +2684,14 @@ function subjectsPage() {
 
   return headerHtml + `
   ${filterBar({ semester: true, year: false, yearLevel: !isStudent })}
+  ${curSelector}
   ${batchSelector}
   <div class="flex items-center justify-between mb-2 px-1">
     <span class="text-xs text-gray-500"><i data-lucide="list" class="w-3 h-3 inline mr-1"></i>พบรายวิชาทั้งหมด <strong>${total}</strong> รายวิชา</span>
   </div>
   <div class="bg-white rounded-2xl border border-blue-100 overflow-hidden">
     <div class="overflow-x-auto"><table class="w-full text-sm">
-      <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">รหัสวิชา</th><th class="px-4 py-3 font-semibold">ชื่อรายวิชา</th><th class="px-4 py-3 font-semibold">ประเภท</th><th class="px-4 py-3 font-semibold">ผู้ประสานงาน</th><th class="px-4 py-3 font-semibold">ชั้นปี</th><th class="px-4 py-3 font-semibold">รุ่น</th><th class="px-4 py-3 font-semibold">หน่วยกิต</th><th class="px-4 py-3 font-semibold">ภาค/ปี</th><th class="px-4 py-3 font-semibold text-center">ข้อมูลรายวิชา</th>${isAdmin ? '<th class="px-4 py-3"></th>' : ''}</tr></thead>
+      <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">หลักสูตร</th><th class="px-4 py-3 font-semibold">รหัสวิชา</th><th class="px-4 py-3 font-semibold">ชื่อรายวิชา</th><th class="px-4 py-3 font-semibold">ประเภท</th><th class="px-4 py-3 font-semibold">ผู้ประสานงาน</th><th class="px-4 py-3 font-semibold">ชั้นปี</th><th class="px-4 py-3 font-semibold">รุ่น</th><th class="px-4 py-3 font-semibold">หน่วยกิต</th><th class="px-4 py-3 font-semibold">ภาค/ปี</th><th class="px-4 py-3 font-semibold text-center">ข้อมูลรายวิชา</th>${isAdmin ? '<th class="px-4 py-3"></th>' : ''}</tr></thead>
       <tbody>${paged.length ? paged.map(s => {
     const pdfKey = `${norm(s.subject_name)}|${normSem(s.semester)}|${norm(s.academic_year)}`;
     const pdfLink = trackingPdfMap[pdfKey];
@@ -2630,13 +2699,14 @@ function subjectsPage() {
       ? `<a href="${pdfLink}" target="_blank" title="ดูข้อมูลรายวิชา" class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200 hover:text-blue-800 transition"><i data-lucide="eye" class="w-4 h-4"></i></a>`
       : `<span class="text-xs text-gray-300" title="ยังไม่มีไฟล์ PDF">-</span>`;
     return `<tr class="border-t hover:bg-gray-50">
+        <td class="px-4 py-3">${curriculumBadge(s.curriculum_year)}</td>
         <td class="px-4 py-3 font-mono text-primary">${s.subject_code || ''}</td><td class="px-4 py-3"><div class="font-medium">${s.subject_name || ''}</div>${s.subject_name_en ? `<div class="text-xs text-gray-400 italic">${htmlEsc(s.subject_name_en)}</div>` : ''}</td>
         <td class="px-4 py-3">${subjectTypeBadge(s)}</td><td class="px-4 py-3">${s.coordinator || ''}</td>
         <td class="px-4 py-3">${s.year_level || ''}</td><td class="px-4 py-3">${s.batch || '-'}</td><td class="px-4 py-3 font-mono">${creditCode(s)}</td>
         <td class="px-4 py-3">${semLabel(s.semester)}/${s.academic_year || ''}</td>
         <td class="px-4 py-3 text-center">${eyeCell}</td>
         ${isAdmin ? `<td class="px-4 py-3"><div class="flex gap-1"><button onclick="showImportGradesFromSubjectModal('${s.__backendId}')" class="text-green-500 hover:text-green-700" title="นำเข้ารายชื่อสร้างผลการเรียน"><i data-lucide="user-plus" class="w-4 h-4"></i></button><button onclick="showEditSubjectModal('${s.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${s.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>` : ''}</tr>`;
-  }).join('') : `<tr><td colspan="${isAdmin ? 10 : 9}" class="px-4 py-8 text-center text-gray-400">ไม่มีข้อมูล</td></tr>`}</tbody>
+  }).join('') : `<tr><td colspan="${isAdmin ? 11 : 10}" class="px-4 py-8 text-center text-gray-400">ไม่มีข้อมูล</td></tr>`}</tbody>
     </table></div>
   </div>
   ${paginationHTML(total, APP.pagination.perPage, APP.pagination.page, 'changePage')}`;
@@ -2652,6 +2722,7 @@ function showAddSubjectModal() {
         </select>
         <p class="text-[11px] text-blue-700 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>เลือกรายวิชาของปีก่อนหน้าเพื่อดึงข้อมูลมาให้ครบ แล้วแก้เฉพาะที่ต่าง — <b>ปีการศึกษาจะไม่ถูกคัดลอกมา</b> เพื่อกันบันทึกซ้ำปีเดิม</p>
       </div>
+      ${curriculumField({})}
       <div><label class="block text-xs text-gray-600 mb-1">รหัสวิชา</label><input name="subject_code" oninput="if(window.curFillFromCurriculum)curFillFromCurriculum(this)" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น GE 104"></div>
       <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *</label><input name="subject_name" required class="w-full border rounded-xl px-3 py-2 text-sm"></div>
       <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา (ภาษาอังกฤษ) <span class="text-gray-400">(เติมอัตโนมัติจากหลักสูตรเมื่อรหัสวิชาตรงกัน)</span></label><input name="subject_name_en" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น English for Academic Purposes"></div>
@@ -2697,6 +2768,9 @@ function subjectCopyFrom(sel) {
     const f = form.querySelector('[name="' + k + '"]');
     if (f) f.value = norm(subj[k]);
   });
+  // หลักสูตรต้องคัดลอกมาด้วย ไม่งั้นรายวิชาใหม่จะไม่มีหลักสูตรทั้งที่คัดลอกมาจากของเดิม
+  const cy = form.querySelector('[name="curriculum_year"]');
+  if (cy && norm(subj.curriculum_year)) cy.value = norm(subj.curriculum_year);
   const yl = form.querySelector('[name="year_level"]');
   if (yl && norm(subj.year_level)) yl.value = norm(subj.year_level);
   const sm = form.querySelector('[name="semester"]');
@@ -12029,6 +12103,7 @@ function showEditSubjectModal(id) {
   const s = APP.allData.find(d => d.__backendId === id); if (!s) return;
   showModal('แก้ไขรายวิชา', `
     <form id="editSubjectForm" class="space-y-3">
+      ${curriculumField(s)}
       <div><label class="block text-xs text-gray-600 mb-1">รหัสวิชา</label><input name="subject_code" value="${s.subject_code || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
       <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา</label><input name="subject_name" value="${s.subject_name || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
       <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา (ภาษาอังกฤษ)</label><input name="subject_name_en" value="${htmlEsc(s.subject_name_en || '')}" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="ตามหลักสูตร"></div>

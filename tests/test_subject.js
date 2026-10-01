@@ -40,7 +40,16 @@ t('มีช่องเลือกในฟอร์มเพิ่มแล�
 t('แสดงเป็นคอลัมน์ในตารางรายวิชา และนับคอลัมน์ถูก', () => {
   assert.ok(APP.includes('<th class="px-4 py-3 font-semibold">ประเภท</th>'), 'ไม่มีหัวคอลัมน์');
   assert.ok(APP.includes('${subjectTypeBadge(s)}'), 'ไม่ได้แสดงค่าในแถว');
-  assert.ok(APP.includes('isAdmin ? 10 : 9'), 'จำนวนคอลัมน์ตอนไม่มีข้อมูลไม่ตรง');
+  // นับหัวคอลัมน์จริงแล้วเทียบกับ colspan แทนการตรึงตัวเลขไว้
+  // ของเดิมตรึงไว้ พอเพิ่มคอลัมน์หลักสูตรจึงต้องตามแก้สองที่ และลืมง่าย
+  const head = APP.match(/<thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">หลักสูตร<\/th>[\s\S]*?<\/tr><\/thead>/);
+  assert.ok(head, 'ไม่พบหัวตารางของหน้ารายวิชา');
+  // ตัด <thead> ออกก่อน ไม่งั้นจะถูกนับเป็นคอลัมน์ไปด้วยเพราะขึ้นต้นด้วย <th
+  const nTh = (head[0].replace(/<\/?thead>/g, '').match(/<th[\s>]/g) || []).length;  // รวมคอลัมน์ปุ่มของผู้ดูแลด้วย
+  const m = APP.match(/colspan="\$\{isAdmin \? (\d+) : (\d+)\}"/);
+  assert.ok(m, 'ไม่พบ colspan ของแถว "ไม่มีข้อมูล"');
+  assert.strictEqual(Number(m[1]), nTh, 'colspan ของผู้ดูแลไม่ตรงกับจำนวนหัวคอลัมน์ ' + nTh);
+  assert.strictEqual(Number(m[2]), nTh - 1, 'colspan ของผู้ใช้ทั่วไปควรน้อยกว่าหนึ่งคอลัมน์');
 });
 t('มีคอลัมน์ในไฟล์ CSV ตัวอย่าง', () =>
   assert.ok(/csvUploadBtn\('subject', '[^']*theory_practice/.test(APP), 'CSV ตัวอย่างไม่มีคอลัมน์นี้'));
