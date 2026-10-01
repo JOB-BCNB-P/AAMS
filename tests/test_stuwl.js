@@ -71,18 +71,22 @@ t('รายการที่วิทยาลัยกำหนดต้อ�
   const seg = WL.slice(i, i + 700);
   assert.ok(seg.includes('planOf(year, myLevel(), sem)'), 'ไม่ได้ดึงแผนของชั้นปีมา');
   assert.ok(seg.includes('appliesTo(r, sid)'), 'ไม่ได้กรองเฉพาะรายการที่มีผลกับคนนี้');
-  assert.ok(WL.includes('var list = selfSeedRows(mySid(), state().year, sem, missionOf(mkey));'),
-    'ตอนเพิ่มไม่ได้ตั้งต้นจากรายการเดิม');
+  // ฟอร์มเพิ่มและฟอร์มแก้ไขใช้ร่วมกันแล้ว จึงตรวจที่ตัวฟอร์ม ไม่ผูกกับรูปประโยคเดิม
+  assert.ok(/var list = selfSeedRows\(mySid\(\), state\(\)\.year, sem, m\);/.test(WL),
+    'ตอนบันทึกไม่ได้ตั้งต้นจากรายการเดิม');
 });
 t('รายการที่บันทึกเองมีป้ายกำกับ แยกจากของวิทยาลัยได้', () => {
   assert.ok(WL.includes('self: 1,'), 'ไม่ได้ติดธงว่าบันทึกเอง');
   assert.ok(WL.includes('ฉันบันทึกเอง') && WL.includes('วิทยาลัยกำหนด'), 'หน้าจอไม่ได้แยกที่มา');
 });
 t('ลบได้เฉพาะรายการที่ตัวเองบันทึก', () => {
-  const i = WL.indexOf('window.wlSelfRemove');
-  const seg = WL.slice(i, i + 900);
-  assert.ok(seg.includes('if (!list[i] || !list[i].self) continue;'), 'อาจลบรายการของวิทยาลัยได้');
-  assert.ok(WL.includes("x.self ? '<button onclick=\"wlSelfRemove"), 'ปุ่มลบขึ้นกับรายการที่ลบไม่ได้');
+  // ทั้งลบและแก้ไขชี้ตำแหน่งผ่าน selfIndexOf ซึ่งข้ามรายการที่ไม่ได้ติดป้าย self
+  const i = WL.indexOf('function selfIndexOf');
+  const seg = WL.slice(i, i + 400);
+  assert.ok(seg.includes('if (!list[i] || !list[i].self) continue;'), 'อาจชี้ไปโดนรายการของวิทยาลัย');
+  assert.ok(WL.slice(WL.indexOf('window.wlSelfRemove'), WL.indexOf('window.wlSelfRemove') + 700)
+    .includes('selfIndexOf(list, rank)'), 'ตัวลบไม่ได้ใช้ตัวหาตำแหน่งที่กรองแล้ว');
+  assert.ok(WL.includes('x.self\n                  ?'), 'ปุ่มจัดการต้องขึ้นเฉพาะรายการที่บันทึกเอง');
 });
 t('เขียนลงแถวของตัวเองเท่านั้น', () => {
   const i = WL.indexOf('async function selfSave');
@@ -174,6 +178,60 @@ t('รายการที่นักศึกษาเพิ่มเอง�
 });
 t('ไม่มีช่องชื่อที่เป็นขีดกลางเปล่า ๆ เหลืออยู่', () => {
   assert.ok(!/<td class="px-3 py-2">-<\/td>/.test(page), 'ยังมีรายการที่แสดงเป็นขีดกลาง');
+});
+
+
+console.log('\n[7] แก้ไขรายการของตัวเอง');
+t('มีปุ่มแก้ไขเฉพาะรายการที่บันทึกเอง', () => {
+  const edits = (page.match(/wlSelfEdit\(/g) || []).length;
+  const dels = (page.match(/wlSelfRemove\(/g) || []).length;
+  assert.strictEqual(edits, 1, 'ควรมีปุ่มแก้ไขเท่าจำนวนรายการที่บันทึกเอง แต่พบ ' + edits);
+  assert.strictEqual(edits, dels, 'ปุ่มแก้ไขกับปุ่มลบต้องขึ้นคู่กันเสมอ');
+});
+t('รายการที่วิทยาลัยกำหนดต้องไม่มีปุ่มแก้ไข', () => {
+  // ในข้อมูลทดสอบมีรายการของวิทยาลัย 2 แถว (วิชาการ 1 · วิจัย 1) และของตัวเอง 1 แถว
+  assert.ok(!/wlSelfEdit\('teaching'/.test(page), 'ด้านวิชาการไม่ควรแก้ได้เลย');
+});
+t('แก้ไขใช้ฟอร์มเดียวกับการเพิ่ม ไม่เขียนสองชุด', () => {
+  assert.ok(WL.includes('function selfForm(mkey, opts)'), 'ไม่มีฟอร์มที่ใช้ร่วมกัน');
+  assert.ok(WL.includes('window.wlSelfAdd = function (mkey) { selfForm(mkey, {}); };'), 'เพิ่มไม่ได้ใช้ฟอร์มร่วม');
+  assert.ok(WL.includes('selfForm(mkey, { editing: true'), 'แก้ไขไม่ได้ใช้ฟอร์มร่วม');
+});
+t('แก้ไขแล้วคงป้าย "บันทึกเอง" ไว้ ไม่กลายเป็นของวิทยาลัย', () => {
+  const i = WL.indexOf('if (editing) {', WL.indexOf('function selfForm'));
+  const seg = WL.slice(i, i + 420);
+  assert.ok(seg.includes('Object.assign({}, list[target]'), 'เขียนทับทั้งก้อน ข้อมูลเดิมจะหาย');
+  assert.ok(seg.includes('self: 1'), 'ป้ายบันทึกเองหลุด');
+});
+t('ย้ายภาคการศึกษาตอนแก้ไขไม่ได้ เพราะ rank ผูกกับภาค', () => {
+  const i = WL.indexOf('function selfForm');
+  const seg = WL.slice(i, i + 2200);
+  assert.ok(seg.includes("editing ? ' disabled' : ''"), 'ยังเปลี่ยนภาคได้ จะชี้รายการผิดตัว');
+});
+t('ลบกับแก้ไขใช้ตัวหาตำแหน่งตัวเดียวกัน', () => {
+  assert.ok(WL.includes('function selfIndexOf(list, rank)'), 'ไม่มีตัวหาตำแหน่งร่วม');
+  const del = WL.slice(WL.indexOf('window.wlSelfRemove'), WL.indexOf('window.wlSelfRemove') + 700);
+  assert.ok(del.includes('selfIndexOf(list, rank)'), 'ตัวลบยังนับเอง เสี่ยงนับคนละแบบกับตัวแก้');
+});
+t('จำกัดชั่วโมงต่อรายการไม่ให้เกินจริง', () => {
+  const i = WL.indexOf('function selfForm');
+  const seg = WL.slice(i, i + 3000);
+  assert.ok(seg.includes('hours > 744'), 'ไม่ได้จำกัดเพดานชั่วโมง');
+});
+
+console.log('\n[8] ตัวตรวจฝั่งฐานข้อมูล (ไฟล์นโยบาย)');
+const POL = fs.readFileSync(P + 'supabase/security/02_policies.sql', 'utf8');
+t('มีตัวตรวจภาระงานของนักศึกษาในไฟล์', () => {
+  assert.ok(POL.includes('ems.workload_student_guard'), 'ไฟล์ยังไม่มีตัวตรวจ');
+  assert.ok(POL.includes('create trigger workload_student_guard'), 'ไม่ได้ผูกตัวตรวจกับตาราง');
+});
+t('ตัวตรวจล้างด้านวิชาการและยึดชั้นปีจากทะเบียน', () => {
+  const i = POL.indexOf('function ems.workload_student_guard');
+  const seg = POL.slice(i, POL.indexOf('drop trigger if exists workload_student_guard', i));
+  assert.ok(seg.includes('new.teaching_json := null'), 'ไม่ได้ล้างด้านวิชาการ');
+  assert.ok(seg.includes('new.year_level := lvl'), 'ไม่ได้ยึดชั้นปีจากทะเบียน');
+  assert.ok(seg.includes('บันทึกภาระงานของนักศึกษารายอื่นไม่ได้'), 'ไม่ได้กันการเขียนข้ามคน');
+  assert.ok(seg.includes('แก้ไขหรือลบรายการที่วิทยาลัยกำหนด'), 'ไม่ได้เทียบกับแผนของวิทยาลัย');
 });
 
 console.log('\n────────────────────────────');

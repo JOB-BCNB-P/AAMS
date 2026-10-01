@@ -653,3 +653,157 @@ create policy sc_update on public.student_conduct for update to authenticated
   with check (ems.owns_record(recorded_uid) and ems.can_enter_conduct());
 create policy sc_delete on public.student_conduct for delete to authenticated
   using (ems.owns_record(recorded_uid) and ems.can_enter_conduct());
+
+-- ===========================================================================
+-- ตัวตรวจภาระงานที่นักศึกษาบันทึกเอง (นอกเหนือจาก RLS)
+-- ===========================================================================
+-- ทำไมต้องมีนอกเหนือจากนโยบาย RLS
+--   ภาระงานทั้งพันธกิจเก็บเป็นข้อความ JSON ก้อนเดียวในช่องเดียว และตอน
+--   นักศึกษาเพิ่มรายการแรก ระบบต้องคัดลอกรายการของวิทยาลัยมาไว้ในก้อนนั้นด้วย
+--   มิฉะนั้นรายการเดิมจะหาย  นโยบาย RLS มองเห็นแค่ว่าแถวนี้เป็นของรหัสใด
+--   มองไม่ทะลุเข้าไปว่าข้างในข้อความถูกแก้อะไรบ้าง การจำกัดที่หน้าจอจึงถูกข้ามได้
+--   ด้วยการยิงคำสั่งเข้า API ตรง ๆ  ตัวตรวจนี้ปิดช่องนั้น
+
+-- รายชื่อนักศึกษาที่กิจกรรมหนึ่งแถวมีผลด้วย — รับทั้งอาร์เรย์และข้อความ
+create or replace function ems.wl_participants(e jsonb) returns jsonb
+language plpgsql immutable set search_path = pg_temp as $$
+declare v jsonb;
+begin
+  v := e -> 'students';
+  if v is null then return '[]'::jsonb; end if;
+  if jsonb_typeof(v) = 'array' then return v; end if;
+  if jsonb_typeof(v) = 'string' then
+    begin
+      v := (e ->> 'students')::jsonb;
+      if jsonb_typeof(v) = 'array' then return v; end if;
+    exception when others then return '[]'::jsonb;
+    end;
+  end if;
+  return '[]'::jsonb;
+end $$;
+
+-- แถวนี้นับให้นักศึกษารายนี้หรือไม่ — ว่าง = นับให้ทุกคนในชั้น
+create or replace function ems.wl_applies(e jsonb, sid text) returns boolean
+language sql immutable set search_path = ems, pg_temp as $$
+  select jsonb_array_length(ems.wl_participants(e)) = 0
+      or ems.wl_participants(e) ? sid;
+$$;
+
+create or replace function ems.wl_is_self(e jsonb) returns boolean
+language sql immutable set search_path = pg_temp as $$
+  select coalesce(e ->> 'self', '') in ('1', 'true', 't');
+$$;
+
+-- ลายนิ้วมือของชุดรายการ ใช้เทียบว่าเป็นชุดเดียวกันโดยไม่สนลำดับ
+create or replace function ems.wl_fingerprint(arr jsonb) returns text
+language sql immutable set search_path = pg_temp as $$
+  select coalesce(string_agg(x, E'\n' order by x), '')
+  from (select (value)::text as x from jsonb_array_elements(coalesce(arr, '[]'::jsonb))) t;
+$$;
+
+create or replace function ems.workload_student_guard() returns trigger
+language plpgsql security definer set search_path = ems, public, pg_temp as $$
+declare
+  my_sid     text;
+  lvl        text;
+  plan_rec   public.workload_plan%rowtype;
+  plan_found boolean := false;
+  fld        text;
+  flds       text[] := array['research_json', 'service_json', 'student_json', 'personal_json'];
+  nm         text;
+  nms        text[] := array['พันธกิจด้านวิจัย', 'พันธกิจด้านบริการวิชาการ', 'พันธกิจด้านกิจการนักศึกษา', 'การใช้ชีวิตส่วนตัว'];
+  i          int;
+  got        jsonb;
+  official   jsonb;
+  mine       jsonb;
+  e          jsonb;
+  hrs        numeric;
+begin
+  -- เจ้าหน้าที่ที่ดูแลภาระงาน บันทึกได้ตามปกติ
+  if ems.has_any_role(array['admin', 'academic', 'otherStaff']) then
+    return new;
+  end if;
+
+  -- 1) เขียนได้เฉพาะระเบียนของตัวเอง
+  my_sid := ems.my_student_id();
+  if coalesce(my_sid, '') = '' or new.student_id is distinct from my_sid then
+    raise exception 'บันทึกภาระงานของนักศึกษารายอื่นไม่ได้';
+  end if;
+
+  -- 2) ชั้นปียึดจากทะเบียน มิฉะนั้นจะอ้างชั้นปีอื่นเพื่อเทียบกับแผนที่หลวมกว่าได้
+  select s.year_level into lvl from public.student s where s.student_id = my_sid limit 1;
+  if coalesce(lvl, '') <> '' then new.year_level := lvl; end if;
+
+  -- 3) ด้านวิชาการเป็นของวิทยาลัยอย่างเดียว ค่าว่าง = ระบบไปใช้ของแผนแทน
+  new.teaching_json := null;
+
+  select * into plan_rec from public.workload_plan p
+   where p.academic_year = new.academic_year
+     and p.year_level    = new.year_level
+     and p.semester      = new.semester
+   limit 1;
+  plan_found := found;
+
+  for i in 1 .. array_length(flds, 1) loop
+    fld := flds[i];
+    nm  := nms[i];
+
+    begin
+      got := coalesce(nullif(to_jsonb(new) ->> fld, ''), '[]')::jsonb;
+    exception when others then
+      raise exception 'ข้อมูล % ไม่ใช่รูปแบบที่ระบบรองรับ', nm;
+    end;
+    if jsonb_typeof(got) <> 'array' then
+      raise exception 'ข้อมูล % ต้องเป็นรายการ', nm;
+    end if;
+    if jsonb_array_length(got) > 200 then
+      raise exception '% มีรายการมากเกินไป', nm;
+    end if;
+
+    if not plan_found then
+      official := '[]'::jsonb;
+    else
+      select coalesce(jsonb_agg(v), '[]'::jsonb) into official
+      from jsonb_array_elements(
+             coalesce(nullif(to_jsonb(plan_rec) ->> fld, ''), '[]')::jsonb) v
+      where ems.wl_applies(v, my_sid);
+    end if;
+
+    select coalesce(jsonb_agg(v), '[]'::jsonb) into mine
+    from jsonb_array_elements(got) v
+    where not ems.wl_is_self(v);
+
+    -- 4) รายการที่ไม่ได้ติดป้าย "บันทึกเอง" ต้องตรงกับแผนของวิทยาลัยทุกตัว
+    if ems.wl_fingerprint(mine) <> ems.wl_fingerprint(official) then
+      raise exception 'แก้ไขหรือลบรายการที่วิทยาลัยกำหนดใน % ไม่ได้', nm;
+    end if;
+
+    -- 5) รายการที่บันทึกเองต้องมีชื่อ และชั่วโมงอยู่ในช่วงที่เป็นไปได้
+    for e in select v from jsonb_array_elements(got) v where ems.wl_is_self(v) loop
+      if coalesce(btrim(e ->> 'name'), '') = '' then
+        raise exception 'รายการที่บันทึกเองใน % ต้องมีชื่อรายการ', nm;
+      end if;
+      begin
+        hrs := (e ->> 'hours')::numeric;
+      exception when others then
+        hrs := null;
+      end;
+      if hrs is null or hrs <= 0 or hrs > 744 then
+        raise exception 'จำนวนชั่วโมงของ "%" ใน % ไม่ถูกต้อง', coalesce(e ->> 'name', ''), nm;
+      end if;
+    end loop;
+  end loop;
+
+  return new;
+end $$;
+
+drop trigger if exists workload_student_guard on public.workload_student;
+create trigger workload_student_guard
+  before insert or update on public.workload_student
+  for each row execute function ems.workload_student_guard();
+
+revoke execute on function ems.workload_student_guard() from public, anon;
+revoke execute on function ems.wl_participants(jsonb)   from public, anon;
+revoke execute on function ems.wl_applies(jsonb, text)  from public, anon;
+revoke execute on function ems.wl_is_self(jsonb)        from public, anon;
+revoke execute on function ems.wl_fingerprint(jsonb)    from public, anon;

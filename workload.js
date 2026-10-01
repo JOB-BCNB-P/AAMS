@@ -484,45 +484,94 @@
       + (span ? '<span class="block text-[11px] text-gray-400">' + esc(span) + '</span>' : '');
   }
 
-  window.wlSelfAdd = function (mkey) {
+  /* หน้าต่างเพิ่ม/แก้ไขรายการที่นักศึกษาบันทึกเอง
+     ใช้ฟอร์มเดียวกันทั้งสองกรณี ต่างกันแค่ค่าตั้งต้นและปลายทางตอนบันทึก
+     แก้ได้เฉพาะรายการที่ตนบันทึกเอง รายการที่วิทยาลัยกำหนดไม่มีปุ่มให้แก้
+     และต่อให้ยิงคำสั่งเข้าฐานข้อมูลตรง ๆ ตัวตรวจฝั่งฐานข้อมูลก็ปฏิเสธอยู่ดี */
+  function selfForm(mkey, opts) {
+    opts = opts || {};
     var m = missionOf(mkey);
     if (!m || !isStudentView()) return;
     var st = state();
-    showModal('เพิ่ม' + m.label, ''
+    var cur = opts.item || {};
+    var editing = !!opts.editing;
+    var semNow = editing ? String(opts.sem) : st.sem;
+
+    showModal((editing ? 'แก้ไข' : 'เพิ่ม') + m.label, ''
       + '<form id="wlSelfForm" class="space-y-3">'
       + '<div><label class="block text-xs text-gray-600 mb-1">ภาคการศึกษา</label>'
-      + '<select name="sem" class="w-full border rounded-xl px-3 py-2 text-sm">'
-      + SEMS.map(function (s) { return '<option value="' + s + '"' + (s === st.sem ? ' selected' : '') + '>' + esc(semName(s)) + '</option>'; }).join('')
-      + '</select></div>'
+      + '<select name="sem"' + (editing ? ' disabled' : '') + ' class="w-full border rounded-xl px-3 py-2 text-sm' + (editing ? ' bg-gray-50 text-gray-500' : '') + '">'
+      + SEMS.map(function (s) { return '<option value="' + s + '"' + (s === semNow ? ' selected' : '') + '>' + esc(semName(s)) + '</option>'; }).join('')
+      + '</select>'
+      + (editing ? '<p class="text-[11px] text-gray-400 mt-1">ย้ายภาคการศึกษาไม่ได้ ถ้าต้องการย้ายให้ลบแล้วเพิ่มใหม่</p>' : '')
+      + '</div>'
       + '<div><label class="block text-xs text-gray-600 mb-1">ชื่อรายการ *</label>'
-      + '<input name="name" required class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น เข้าร่วมโครงการจิตอาสา"></div>'
+      + '<input name="name" required value="' + esc(norm(cur.name)) + '" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น เข้าร่วมโครงการจิตอาสา"></div>'
       + '<div><label class="block text-xs text-gray-600 mb-1">จำนวนชั่วโมง *</label>'
-      + '<input name="hours" type="number" min="0" step="0.5" required class="w-full border rounded-xl px-3 py-2 text-sm"></div>'
+      + '<input name="hours" type="number" min="0" step="0.5" required value="' + esc(cur.hours == null ? '' : cur.hours) + '" class="w-full border rounded-xl px-3 py-2 text-sm"></div>'
       + '<div><label class="block text-xs text-gray-600 mb-1">รายละเอียดเพิ่มเติม</label>'
-      + '<input name="note" class="w-full border rounded-xl px-3 py-2 text-sm"></div>'
-      + '<p class="text-[11px] text-gray-400">รายการที่บันทึกเองจะมีป้ายกำกับไว้ และลบเองได้ '
+      + '<input name="note" value="' + esc(norm(cur.note)) + '" class="w-full border rounded-xl px-3 py-2 text-sm"></div>'
+      + '<p class="text-[11px] text-gray-400">รายการที่บันทึกเองจะมีป้ายกำกับไว้ แก้ไขและลบเองได้ '
       + 'ส่วนรายการที่วิทยาลัยกำหนดจะแก้ไม่ได้</p>'
       + '<button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึก</button>'
       + '</form>');
+
     document.getElementById('wlSelfForm').onsubmit = function (ev) {
       ev.preventDefault();
       var f = ev.target;
-      var sem = f.sem.value;
-      var item = {
-        name: String(f.name.value || '').trim(),
-        hours: n(f.hours.value),
-        note: String(f.note.value || '').trim(),
-        self: 1,                       // ป้ายว่าเป็นรายการที่นักศึกษาบันทึกเอง
-        by: (APP.currentUser && APP.currentUser.name) || mySid(),
-        at: stampNow()
-      };
-      if (!item.name) { showToast('กรุณากรอกชื่อรายการ', 'error'); return; }
-      if (!(item.hours > 0)) { showToast('จำนวนชั่วโมงต้องมากกว่า 0', 'error'); return; }
-      var list = selfSeedRows(mySid(), state().year, sem, missionOf(mkey));
-      list.push(item);
+      var nameVal = String(f.name.value || '').trim();
+      var hours = n(f.hours.value);
+      if (!nameVal) { showToast('กรุณากรอกชื่อรายการ', 'error'); return; }
+      if (!(hours > 0)) { showToast('จำนวนชั่วโมงต้องมากกว่า 0', 'error'); return; }
+      if (hours > 744) { showToast('จำนวนชั่วโมงต่อหนึ่งรายการมากเกินไป', 'error'); return; }
+
+      var sem = editing ? String(opts.sem) : f.sem.value;
+      var list = selfSeedRows(mySid(), state().year, sem, m);
+
+      if (editing) {
+        var target = selfIndexOf(list, opts.rank);
+        if (target < 0) { showToast('ไม่พบรายการที่จะแก้ไข อาจมีการแก้จากที่อื่น', 'error'); return; }
+        // คงป้าย self และผู้บันทึกเดิมไว้ เปลี่ยนเฉพาะสิ่งที่กรอกในฟอร์ม
+        list[target] = Object.assign({}, list[target], {
+          name: nameVal, hours: hours, note: String(f.note.value || '').trim(),
+          self: 1, at: stampNow()
+        });
+      } else {
+        list.push({
+          name: nameVal, hours: hours, note: String(f.note.value || '').trim(),
+          self: 1,                       // ป้ายว่าเป็นรายการที่นักศึกษาบันทึกเอง
+          by: (APP.currentUser && APP.currentUser.name) || mySid(),
+          at: stampNow()
+        });
+      }
       closeModal();
       selfSave(mkey, sem, list);
     };
+  }
+
+  /* ตำแหน่งจริงในอาร์เรย์ของ "รายการที่บันทึกเอง ลำดับที่ rank"
+     นับเฉพาะรายการที่บันทึกเอง เพราะหน้าจอก็นับแบบเดียวกัน ตัวเลขจึงตรงกันเสมอ */
+  function selfIndexOf(list, rank) {
+    var seen = 0;
+    for (var i = 0; i < list.length; i++) {
+      if (!list[i] || !list[i].self) continue;
+      if (seen === rank) return i;
+      seen++;
+    }
+    return -1;
+  }
+
+  window.wlSelfAdd = function (mkey) { selfForm(mkey, {}); };
+
+  window.wlSelfEdit = function (mkey, sem, rank) {
+    if (!isStudentView()) return;
+    var m = missionOf(mkey);
+    if (!m) return;
+    var ovr = overrideOf(mySid(), state().year, sem);
+    var list = ovr ? rows(ovr, m).slice() : [];
+    var idx = selfIndexOf(list, rank);
+    if (idx < 0) { showToast('ไม่พบรายการที่จะแก้ไข', 'error'); return; }
+    selfForm(mkey, { editing: true, sem: sem, rank: rank, item: list[idx] });
   };
 
   window.wlSelfRemove = function (mkey, sem, rank) {
@@ -532,13 +581,7 @@
     var sid = mySid(), st = state();
     var ovr = overrideOf(sid, st.year, sem);
     var list = ovr ? rows(ovr, m).slice() : [];
-    // หา "รายการที่บันทึกเอง ลำดับที่ rank" ภายในภาคนี้
-    var target = -1, seen = 0;
-    for (var i = 0; i < list.length; i++) {
-      if (!list[i] || !list[i].self) continue;
-      if (seen === rank) { target = i; break; }
-      seen++;
-    }
+    var target = selfIndexOf(list, rank);
     if (target < 0) { showToast('ไม่พบรายการที่จะลบ อาจมีการแก้ไขจากที่อื่น', 'error'); return; }
     if (!confirm('ลบรายการ "' + (list[target].name || '') + '" ใช่หรือไม่')) return;
     list.splice(target, 1);
@@ -628,7 +671,10 @@
               + (x.self ? '<span class="px-2 py-0.5 rounded-full text-xs bg-emerald-50 text-emerald-700">ฉันบันทึกเอง</span>'
                         : '<span class="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">วิทยาลัยกำหนด</span>') + '</td>'
               + (mine ? '<td class="px-3 py-2 text-center">'
-                + (x.self ? '<button onclick="wlSelfRemove(\'' + m.key + '\',\'' + x.sm + '\',' + x.rank + ')" class="text-red-400 hover:text-red-600" title="ลบรายการนี้"><i data-lucide="trash-2" class="w-4 h-4"></i></button>' : '')
+                + (x.self
+                  ? '<button onclick="wlSelfEdit(\'' + m.key + '\',\'' + x.sm + '\',' + x.rank + ')" class="text-blue-400 hover:text-blue-600 px-1" title="แก้ไขรายการนี้"><i data-lucide="pencil" class="w-4 h-4"></i></button>'
+                  + '<button onclick="wlSelfRemove(\'' + m.key + '\',\'' + x.sm + '\',' + x.rank + ')" class="text-red-400 hover:text-red-600 px-1" title="ลบรายการนี้"><i data-lucide="trash-2" class="w-4 h-4"></i></button>'
+                  : '')
                 + '</td>' : '')
               + '</tr>';
           }).join('')
