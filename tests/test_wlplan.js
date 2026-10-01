@@ -106,5 +106,66 @@ t('เจ้าหน้าที่งานอื่นๆ ยังกรอ�
   assert.ok(h.includes('เพิ่มรายการแรก'), 'กรอกพันธกิจที่ได้รับมอบหมายไม่ได้');
 });
 
+
+console.log('\n[4] ใครแก้ภาระงานได้บ้าง');
+const EDITORS = [['admin', 'ผู้ดูแลระบบ'], ['academic', 'งานวิชาการ'], ['registrar', 'งานทะเบียน'], ['otherStaff', 'เจ้าหน้าที่งานอื่นๆ']];
+EDITORS.forEach(function (r) {
+  t(r[1] + ' แก้ไขได้', () => {
+    const h = openPlan(env(r[0], [r[0]]), 'research');
+    assert.ok(!h.includes('บัญชีของคุณดูได้อย่างเดียว'), r[1] + ' ถูกกันเป็นดูอย่างเดียว');
+    assert.ok(h.includes('เพิ่มรายการแรก'), r[1] + ' ไม่มีช่องให้กรอก');
+  });
+});
+t('ผู้ดูแลระบบ งานวิชาการ และงานทะเบียน แก้ได้ทุกพันธกิจ รวมด้านวิชาการ', () => {
+  ['admin', 'academic', 'registrar'].forEach(function (r) {
+    const h = openPlan(env(r, [r]), 'teaching');
+    assert.ok(!h.includes('ไม่ได้รับมอบหมาย'), r + ' ควรแก้พันธกิจด้านวิชาการได้');
+  });
+});
+t('เจ้าหน้าที่งานอื่นๆ ยังแก้ด้านวิชาการไม่ได้ตามเดิม', () => {
+  const h = openPlan(env('otherStaff', ['otherStaff']), 'teaching');
+  assert.ok(h.includes('ไม่ได้รับมอบหมาย'), 'ไม่ควรเปิดด้านวิชาการให้เจ้าหน้าที่งานอื่นๆ');
+});
+// หน้าดูอย่างเดียวจะขึ้นข้อความนี้ต่อเมื่อมีแผนของชั้นปีนั้นอยู่แล้ว
+// ถ้ายังไม่มีแผน จะขึ้นว่า "ยังไม่มีข้อมูล" แทน จึงต้องใส่แผนตัวอย่างให้ก่อน
+const PLAN1 = [{
+  __backendId: 'PL1', academic_year: '2568', year_level: '1', semester: '1',
+  teaching_json: '[]', research_json: '[]', service_json: '[]', student_json: '[]', personal_json: '[]'
+}];
+t('บทบาทอื่นดูได้อย่างเดียว', () => {
+  ['teacher', 'classTeacher', 'executive', 'deptHead'].forEach(function (r) {
+    const h = openPlan(env(r, [r], PLAN1), 'research');
+    assert.ok(h.includes('บัญชีของคุณดูได้อย่างเดียว'), r + ' ไม่ควรแก้ไขได้');
+    assert.ok(!h.includes('เพิ่มรายการแรก'), r + ' ไม่ควรมีปุ่มเพิ่มรายการ');
+  });
+});
+t('รายชื่อบทบาทเขียนไว้ที่เดียว', () => {
+  assert.ok(WL.includes("var FULL_WL_ROLES = ['admin', 'academic', 'registrar'];"), 'ไม่ได้รวมรายชื่อไว้ที่เดียว');
+  const seg = WL.slice(WL.indexOf('var FULL_WL_ROLES'), WL.indexOf('function canEditMission'));
+  assert.ok(!/'academic'[\s\S]{0,80}'academic'/.test(seg.replace("var FULL_WL_ROLES = ['admin', 'academic', 'registrar'];", '')),
+    'ยังมีการพิมพ์รายชื่อบทบาทซ้ำ');
+});
+t('ข้อความบอกผู้มีสิทธิ์ตรงกับของจริง', () => {
+  const h = openPlan(env('teacher', ['teacher'], PLAN1), 'research');
+  ['ผู้ดูแลระบบ', 'งานวิชาการ', 'งานทะเบียน', 'เจ้าหน้าที่งานอื่นๆ'].forEach(function (x) {
+    assert.ok(h.includes(x), 'ข้อความไม่ได้บอกว่า ' + x + ' แก้ได้');
+  });
+});
+
+console.log('\n[5] นักศึกษาแก้ได้เฉพาะของตัวเอง');
+t('นักศึกษาไม่เข้าหน้าของเจ้าหน้าที่', () => {
+  assert.ok(WL.includes('if (isStudentView()) return studentWorkloadPage();'), 'ไม่ได้แยกเส้นทาง');
+  assert.ok(WL.includes('if (isStudentView()) return !!mySid();'), 'บัญชีที่ไม่มีรหัสนักศึกษายังแก้ได้');
+});
+t('นักศึกษาแก้ได้แค่ 4 พันธกิจ ไม่รวมด้านวิชาการ', () => {
+  assert.ok(WL.includes("var STUDENT_MISSIONS = ['research', 'service', 'student', 'personal'];"), 'รายการพันธกิจไม่ตรง');
+  assert.ok(WL.includes('if (isStudentView()) return mySid() ? STUDENT_MISSIONS.slice() : [];'), 'ไม่ได้จำกัดพันธกิจ');
+});
+t('เขียนลงระเบียนของตัวเองเท่านั้น', () => {
+  const i = WL.indexOf('async function selfSave');
+  const seg = WL.slice(i, i + 900);
+  assert.ok(seg.includes('student_id: sid') && seg.includes('sid = mySid()'), 'อาจเขียนลงระเบียนคนอื่น');
+});
+
 console.log('\n' + (fail ? '✗ ' : '✓ ') + 'ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
 process.exit(fail ? 1 : 0);

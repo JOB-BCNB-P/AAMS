@@ -391,15 +391,23 @@
   function meRec() { return (APP.currentUser && APP.currentUser.data) || {}; }
   function mySid() { return norm(meRec().student_id); }
   function myLevel() { return norm(meRec().year_level) || '1'; }
+  /* ใครแก้ภาระงานได้บ้าง — รวมไว้ที่เดียว ไม่พิมพ์รายชื่อบทบาทซ้ำหลายจุด
+     ผู้ดูแลระบบ · งานวิชาการ · งานทะเบียน  แก้ได้ทุกพันธกิจ
+     เจ้าหน้าที่งานอื่นๆ                    แก้ได้เฉพาะพันธกิจที่ได้รับมอบหมาย
+     นักศึกษา                              แก้ได้เฉพาะระเบียนของตัวเอง
+     ฐานข้อมูลบังคับซ้ำอีกชั้นด้วย ems.wl_can_edit() และตัวตรวจ workload_student_guard
+     ถ้าแก้รายชื่อตรงนี้ ต้องแก้ที่ฟังก์ชันในฐานข้อมูลให้ตรงกันด้วย */
+  var FULL_WL_ROLES = ['admin', 'academic', 'registrar'];
+  function hasRole(list) {
+    return myRoles().some(function (r) { return list.indexOf(r) !== -1; });
+  }
   function canEdit() {
     if (isStudentView()) return !!mySid();
-    return myRoles().some(function (r) { return r === 'admin' || r === 'academic' || r === 'otherStaff'; });
+    return hasRole(FULL_WL_ROLES.concat(['otherStaff']));
   }
-  // ผู้ดูแลระบบ/งานวิชาการ แก้ได้ทุกพันธกิจ
-  // เจ้าหน้าที่งานอื่นๆ แก้ได้เฉพาะพันธกิจที่ได้รับมอบหมาย และไม่รวมการเรียนการสอน
   function myMissions() {
     if (isStudentView()) return mySid() ? STUDENT_MISSIONS.slice() : [];
-    if (myRoles().some(function (r) { return r === 'admin' || r === 'academic'; })) {
+    if (hasRole(FULL_WL_ROLES)) {
       return MISSIONS.map(function (m) { return m.key; });
     }
     if (myRoles().indexOf('otherStaff') === -1) return [];
@@ -2177,7 +2185,7 @@
     var c = calc(plan, null);
     return '<div class="bg-blue-50 border border-blue-100 rounded-2xl p-4 mb-4">'
       + '<p class="text-sm text-gray-600">ชั่วโมงภาระงานทั้งหมด</p><p class="text-3xl font-bold text-primary tabular-nums">' + fx(c.total) + '</p>'
-      + '<p class="text-xs text-gray-500 mt-1">บัญชีของคุณดูได้อย่างเดียว — แก้ไขได้โดยผู้ดูแลระบบ · งานวิชาการ · เจ้าหน้าที่งานอื่นๆ</p></div>'
+      + '<p class="text-xs text-gray-500 mt-1">บัญชีของคุณดูได้อย่างเดียว — แก้ไขได้โดยผู้ดูแลระบบ · งานวิชาการ · งานทะเบียน · เจ้าหน้าที่งานอื่นๆ</p></div>'
       + MISSIONS.map(function (m) { return missionEditor(m, d, true, plan); }).join('');
   }
 
