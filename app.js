@@ -2308,7 +2308,8 @@ function showStudentDetail(id) {
     ${infoRow('ประเภทการเข้าศึกษา', s.entry_type || 'รับปกติ')}${isTransferIn(s) ? infoRow('สถาบันเดิม', s.transfer_from) + (norm(s.transfer_date) ? infoRow('วันที่โอนเข้า', s.transfer_date) : '') : ''}
     ${norm(s.status_date) ? infoRow('วันที่ลาออก/พักการศึกษา', s.status_date) : ''}${norm(s.status_reason) ? infoRow('สาเหตุลาออก/พักการศึกษา', s.status_reason) : ''}
   </div>`);
-  fillStudentNid(s.__backendId);
+  // ส่งเลขแถวจริง ไม่ใช่ __backendId ซึ่งเป็นข้อความ "student_123"
+  fillStudentNid(backendRowId(s));
 }
 
 /* เลขบัตรประชาชนของนักศึกษาไม่ได้อยู่ในตาราง student แต่แยกไว้ที่ student_private
@@ -2318,11 +2319,28 @@ function showStudentDetail(id) {
 /* ดึงเลขบัตรประชาชนมาแสดง
    เลขไม่ได้อยู่ในข้อมูลที่โหลดมาตอนเข้าระบบ ต้องขอเป็นรายคนทุกครั้ง
    เพื่อให้ฐานข้อมูลตรวจสิทธิ์ได้ทีละครั้ง และบันทึกไว้ว่าใครเปิดดูของใคร */
+/* เลขแถวจริงในฐานข้อมูลของระเบียนหนึ่ง
+   __backendId เป็นข้อความรูปแบบ "<ชื่อตาราง>_<เลขแถว>" เช่น student_123
+   ส่วน __rowIndex คือเลขแถวล้วน ๆ  ฟังก์ชันฝั่งฐานข้อมูลรับเฉพาะตัวเลข
+   ถ้าส่งข้อความทั้งก้อนไป จะถูกปฏิเสธเพราะแปลงชนิดไม่ได้ */
+function backendRowId(rec) {
+  if (!rec) return null;
+  if (rec.__rowIndex != null && String(rec.__rowIndex) !== '') return Number(rec.__rowIndex);
+  const tail = String(rec.__backendId || '').split('_').pop();
+  const n = Number(tail);
+  return isFinite(n) && tail !== '' ? n : null;
+}
+
 async function fillStudentNid(rowId) {
   const box = document.getElementById('stuNidBox');
   if (!box) return;
   if (!canSeeNationalId()) {
     box.textContent = 'เฉพาะผู้ดูแลระบบและงานทะเบียน';
+    box.className = 'text-gray-400';
+    return;
+  }
+  if (rowId == null) {
+    box.textContent = 'ไม่พบเลขอ้างอิงของนักศึกษารายนี้';
     box.className = 'text-gray-400';
     return;
   }
@@ -2336,8 +2354,11 @@ async function fillStudentNid(rowId) {
     box.textContent = v || 'ไม่มีข้อมูล';
     box.className = v ? 'font-mono text-gray-800' : 'text-gray-400';
   } catch (e) {
+    // แสดงสาเหตุไว้ด้วย ไม่งั้นเวลาพังจะไล่หาไม่เจอว่าติดสิทธิ์ ติดเครือข่าย หรือส่งค่าผิดชนิด
     box.textContent = 'อ่านข้อมูลไม่สำเร็จ';
+    box.title = String((e && e.message) || e || '');
     box.className = 'text-gray-400';
+    console.warn('อ่านเลขบัตรไม่สำเร็จ:', e);
   }
 }
 

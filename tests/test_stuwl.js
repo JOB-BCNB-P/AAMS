@@ -68,6 +68,25 @@ t('ข้อมูลยังถูกเก็บไว้ ไม่ได้�
   assert.ok(APP.includes("name=\"national_id\""), 'ช่องกรอกหายไป ข้อมูลจะบันทึกไม่ได้');
   assert.ok(APP.includes('national_id,name_en'), 'หัวตาราง CSV ไม่มีคอลัมน์นี้แล้ว');
 });
+t('ส่งเลขแถวจริงให้ฐานข้อมูล ไม่ใช่ข้อความ student_123', () => {
+  // บั๊กที่เคยเกิด : ส่ง __backendId ซึ่งเป็นข้อความ ฟังก์ชันรับ bigint จึงปฏิเสธทุกครั้ง
+  assert.ok(APP.includes('fillStudentNid(backendRowId(s))'), 'ยังส่ง __backendId ตรง ๆ อยู่');
+  assert.ok(/__backendId: tableName \+ '_' \+ r\.id/.test(DB),
+    'รูปแบบ __backendId เปลี่ยนไปแล้ว ต้องทบทวนตัวแปลงเลขแถว');
+  const i = APP.indexOf('function backendRowId');
+  assert.ok(i > 0, 'ไม่มีตัวแปลงเลขแถว');
+  const fn = new Function(APP.slice(i, APP.indexOf('\n}', i) + 2) + '\nreturn backendRowId;')();
+  assert.strictEqual(fn({ __backendId: 'student_123', __rowIndex: 123 }), 123, 'กรณีปกติ');
+  assert.strictEqual(fn({ __backendId: 'student_123' }), 123, 'ไม่มี __rowIndex ต้องถอดจากท้ายข้อความ');
+  assert.strictEqual(fn({ __backendId: 'app_user_45' }), 45, 'ชื่อตารางที่มีขีดล่างในตัวเอง');
+  assert.strictEqual(fn({}), null, 'ไม่มีข้อมูลต้องได้ null ไม่ใช่ NaN');
+  assert.strictEqual(fn(null), null, 'ส่ง null เข้าไปต้องไม่ระเบิด');
+});
+t('ไม่มีเลขอ้างอิงแล้วต้องไม่ยิงคำสั่งเปล่า', () => {
+  const i = APP.indexOf('async function fillStudentNid');
+  const seg = APP.slice(i, i + 700);
+  assert.ok(seg.includes('rowId == null'), 'ยังยิงคำสั่งทั้งที่ไม่มีเลขอ้างอิง');
+});
 
 console.log('\n[3] นักศึกษาเห็นและบันทึกภาระงานของตนเอง');
 t('เปิดสิทธิ์เข้าหน้าภาระงานให้นักศึกษา', () =>
