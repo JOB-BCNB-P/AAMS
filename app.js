@@ -2315,21 +2315,29 @@ function showStudentDetail(id) {
    ซึ่งหน้าเว็บไม่ได้โหลดมาทั้งก้อน (ไม่มีเหตุผลให้ 800 เลขบัตรลงมาอยู่ในเบราว์เซอร์)
    จึงถามทีละคนตอนเปิดดู และฐานข้อมูลเป็นคนปิดบังสามตัวท้ายให้ก่อนส่งกลับมา
    เลขเต็มจึงไม่เคยออกจากเซิร์ฟเวอร์เลย */
+/* ดึงเลขบัตรประชาชนมาแสดง
+   เลขไม่ได้อยู่ในข้อมูลที่โหลดมาตอนเข้าระบบ ต้องขอเป็นรายคนทุกครั้ง
+   เพื่อให้ฐานข้อมูลตรวจสิทธิ์ได้ทีละครั้ง และบันทึกไว้ว่าใครเปิดดูของใคร */
 async function fillStudentNid(rowId) {
   const box = document.getElementById('stuNidBox');
   if (!box) return;
-  if (APP.currentRole !== 'admin') {
-    box.textContent = 'เฉพาะผู้ดูแลระบบ';
+  if (!canSeeNationalId()) {
+    box.textContent = 'เฉพาะผู้ดูแลระบบและงานทะเบียน';
+    box.className = 'text-gray-400';
     return;
   }
+  box.textContent = 'กำลังอ่าน...';
+  box.className = 'text-gray-400';
   try {
     const { data, error } = await GSheetDB.client().rpc('ems_student_nid', { p_student_ref: rowId });
     if (error) throw error;
     const v = String(data == null ? '' : data).trim();
+    // ค่าว่างจากฐานข้อมูลหมายถึง "ไม่มีสิทธิ์" หรือ "ยังไม่มีข้อมูล" ซึ่งผลลัพธ์ต่อผู้ใช้เหมือนกัน
     box.textContent = v || 'ไม่มีข้อมูล';
     box.className = v ? 'font-mono text-gray-800' : 'text-gray-400';
   } catch (e) {
     box.textContent = 'อ่านข้อมูลไม่สำเร็จ';
+    box.className = 'text-gray-400';
   }
 }
 
@@ -6854,11 +6862,17 @@ function combineName(form) {
    จึงเปิดให้เห็นเฉพาะผู้ดูแลระบบ และปิดบังสามตัวท้ายไว้เสมอ
    บทบาทอื่นไม่เห็นเลข ไม่ว่ากรณีใด รวมถึงตอนผู้ดูแลกดดูในมุมมองบทบาทอื่น
    (APP.currentRole เปลี่ยนตามมุมมองที่กำลังดูอยู่ จึงกันได้ในตัว) */
+/* บทบาทที่เปิดดูเลขบัตรประชาชนได้ — ผู้ดูแลระบบและงานทะเบียนเท่านั้น
+   ตรงกับ ems.can_see_nid() ในฐานข้อมูล ซึ่งเป็นด่านจริง
+   ตรงนี้แค่ไม่แสดงปุ่มให้คนที่ขออย่างไรก็ไม่ได้ */
+const NID_ROLES = ['admin', 'registrar'];
+function canSeeNationalId() { return NID_ROLES.indexOf(APP.currentRole) >= 0; }
+
 function maskNationalId(nid) {
   const s = String(nid == null ? '' : nid).trim();
   if (!s) return '-';
-  if (APP.currentRole !== 'admin') return '<span class="text-gray-400">เฉพาะผู้ดูแลระบบ</span>';
-  return s.length <= 3 ? 'xxx' : s.substring(0, s.length - 3) + 'xxx';
+  if (!canSeeNationalId()) return '<span class="text-gray-400">เฉพาะผู้ดูแลระบบและงานทะเบียน</span>';
+  return s;
 }
 
 // แสดงระยะเวลาเป็น "X ปี Y เดือน" (รองรับกรณีไม่ถึงปี)

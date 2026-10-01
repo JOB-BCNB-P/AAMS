@@ -70,9 +70,17 @@ t('drive_link เปิด RLS แต่ต้องไม่มีนโยบ�
     'มีนโยบายให้ drive_link — ตารางนี้เก็บ refresh token ห้ามให้ใครอ่านผ่าน API');
   assert.ok(![...live].some(x => x.startsWith('drive_link|')), 'ฐานข้อมูลมีนโยบายให้ drive_link แล้ว');
 });
-t('เลขบัตรประชาชนอ่านได้เฉพาะ admin/academic/registrar', () =>
-  assert.ok(/create policy p_all on public\.student_private[\s\S]{0,120}ems\.is_full\(\)/.test(SQL),
-    'นโยบายของ student_private ไม่ได้จำกัดด้วย is_full()'));
+t('เลขบัตรประชาชนอ่านได้เฉพาะผู้ดูแลระบบและงานทะเบียน', () => {
+  const rd = SQL.match(/create policy\s+sp_read\s+on\s+public\.student_private[^;]*/);
+  assert.ok(rd && /ems\.can_see_nid\(\)/.test(rd[0]), 'การอ่านไม่ได้จำกัดด้วย can_see_nid()');
+  const def = SQL.match(/function ems\.can_see_nid[\s\S]{0,300}/);
+  assert.ok(def && /array\['admin','registrar'\]/.test(def[0]), 'รายชื่อบทบาทไม่ตรง');
+  // เขียนได้กว้างกว่าอ่านโดยตั้งใจ งานวิชาการเพิ่มนักศึกษาใหม่ได้แต่เปิดดูย้อนหลังไม่ได้
+  const ins = SQL.match(/create policy\s+sp_insert\s+on\s+public\.student_private[^;]*/);
+  assert.ok(ins && /ems\.is_full\(\)/.test(ins[0]), 'นโยบายบันทึกหายไป');
+  assert.ok(!/create policy\s+p_all\s+on\s+public\.student_private/.test(SQL),
+    'ยังมีนโยบายเก่าที่ครอบทั้งอ่านและเขียนค้างอยู่');
+});
 t('คำตอบรายข้อของแบบประเมิน อาจารย์ผู้สอนอ่านตรง ๆ ไม่ได้', () => {
   const i = SQL.indexOf('create policy ev_ans_read on public.eval_answer');
   const seg = SQL.slice(i, i + 400);

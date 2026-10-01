@@ -82,6 +82,7 @@ line_group|p_write|all|authenticated
 login_log|p_insert|insert|authenticated
 login_log|p_read|select|public
 mail_log|p_read|select|public
+nid_access_log|nal_read|select|authenticated
 password_log|p_insert|insert|authenticated
 password_log|p_read|select|public
 permission|p_read|select|authenticated
@@ -118,7 +119,10 @@ student_health|sh_delete|delete|authenticated
 student_health|sh_insert|insert|authenticated
 student_health|sh_read|select|authenticated
 student_health|sh_update|update|authenticated
-student_private|p_all|all|authenticated
+student_private|sp_delete|delete|authenticated
+student_private|sp_insert|insert|authenticated
+student_private|sp_read|select|authenticated
+student_private|sp_update|update|authenticated
 student|p_delete|delete|authenticated
 student|p_insert|insert|authenticated
 student|p_read|select|authenticated

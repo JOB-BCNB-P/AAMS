@@ -23,20 +23,46 @@ t('นักศึกษาใช้ Google อีเมลของวิทย
   assert.ok(seg.includes("btn.classList.add('hidden')"), 'ยังมีปุ่มกรอกเองค้างอยู่');
 });
 
-console.log('\n[2] เลขบัตรประชาชน เก็บไว้แต่ปิดบัง');
-const maskSrc = APP.slice(APP.indexOf('function maskNationalId'), APP.indexOf('function maskNationalId') + 700);
-t('เห็นเฉพาะผู้ดูแลระบบ', () =>
-  assert.ok(maskSrc.includes("APP.currentRole !== 'admin'"), 'บทบาทอื่นยังเห็นเลข'));
-t('ปิดบังสามตัวท้ายด้วย xxx', () => {
-  assert.ok(maskSrc.includes("s.length - 3) + 'xxx'"), 'ไม่ได้ปิดสามตัวท้าย');
-  assert.ok(!maskSrc.includes("'xxxx'"), 'ยังปิดสี่ตัวแบบเดิม');
-  // ทดลองเรียกจริง
-  const APPobj = { currentRole: 'admin' };
-  const fn = new Function('APP', maskSrc.slice(0, maskSrc.indexOf('\n}') + 2) + '\nreturn maskNationalId;')(APPobj);
-  assert.strictEqual(fn('1234567890123'), '1234567890xxx');
-  assert.strictEqual(fn(''), '-');
-  const fn2 = new Function('APP', maskSrc.slice(0, maskSrc.indexOf('\n}') + 2) + '\nreturn maskNationalId;')({ currentRole: 'teacher' });
-  assert.ok(fn2('1234567890123').includes('เฉพาะผู้ดูแลระบบ'), 'บทบาทอื่นไม่ควรเห็นตัวเลขเลย');
+console.log('\n[2] เลขบัตรประชาชน — เห็นได้เฉพาะผู้ดูแลระบบและงานทะเบียน');
+const POLSQL = fs.readFileSync(P + 'supabase/security/02_policies.sql', 'utf8');
+const maskSrc = APP.slice(APP.indexOf('const NID_ROLES'), APP.indexOf('const NID_ROLES') + 800);
+t('หน้าจอเปิดให้เฉพาะสองบทบาท', () => {
+  assert.ok(APP.includes("const NID_ROLES = ['admin', 'registrar'];"), 'รายชื่อบทบาทไม่ตรง');
+  assert.ok(maskSrc.includes('canSeeNationalId()'), 'ไม่ได้ใช้ตัวตรวจสิทธิ์ร่วม');
+  // ทดลองเรียกจริงทั้งสองมุม
+  const mk = (role) => new Function('APP',
+    maskSrc.slice(0, maskSrc.indexOf('\n}', maskSrc.indexOf('function maskNationalId')) + 2)
+    + '\nreturn maskNationalId;')({ currentRole: role });
+  assert.strictEqual(mk('admin')('1234567890123'), '1234567890123', 'ผู้ดูแลควรเห็นเต็มเลข');
+  assert.strictEqual(mk('registrar')('1234567890123'), '1234567890123', 'งานทะเบียนควรเห็นเต็มเลข');
+  assert.ok(mk('teacher')('1234567890123').includes('เฉพาะผู้ดูแลระบบและงานทะเบียน'), 'อาจารย์ไม่ควรเห็นเลข');
+  assert.ok(mk('academic')('1234567890123').includes('เฉพาะ'), 'งานวิชาการไม่ควรเห็นเลข');
+  assert.ok(mk('student')('1234567890123').includes('เฉพาะ'), 'นักศึกษาไม่ควรเห็นเลข');
+  assert.strictEqual(mk('admin')(''), '-', 'ค่าว่างควรขึ้นขีดกลาง');
+});
+t('ด่านจริงอยู่ที่ฐานข้อมูล ไม่ใช่หน้าจอ', () => {
+  assert.ok(POLSQL.includes('function ems.can_see_nid'), 'ไม่มีตัวตรวจสิทธิ์ในฐานข้อมูล');
+  const i = POLSQL.indexOf('function ems.can_see_nid');
+  assert.ok(/array\['admin','registrar'\]/.test(POLSQL.slice(i, i + 400)), 'บทบาทในฐานข้อมูลไม่ตรงกับหน้าจอ');
+  // ยอมให้เว้นวรรคกี่ช่องก็ได้ จะได้ไม่พังเพราะจัดรูปแบบไฟล์ใหม่
+  const m = POLSQL.match(/create policy\s+sp_read\s+on\s+public\.student_private[^;]*/);
+  assert.ok(m, 'ไม่พบนโยบายอ่านตารางเลขบัตร');
+  assert.ok(/ems\.can_see_nid\(\)/.test(m[0]), 'อ่านตารางตรง ๆ ยังไม่ถูกจำกัด');
+  assert.ok(/to\s+authenticated/.test(m[0]), 'ควรจำกัดเฉพาะผู้ที่ล็อกอินแล้ว');
+  assert.ok(POLSQL.includes('revoke all on public.student_private from anon'),
+    'ผู้ไม่ได้ล็อกอินยังมีสิทธิ์ระดับตารางค้างอยู่');
+});
+t('ขอเลขเป็นรายคนทุกครั้ง ไม่โหลดมาทั้งก้อน', () => {
+  assert.ok(APP.includes("rpc('ems_student_nid'"), 'ไม่ได้ขอผ่านฟังก์ชัน');
+  assert.ok(!/SHEET_TABS[\s\S]{0,600}student_private/.test(DB), 'ยังโหลดตารางเลขบัตรเข้าเบราว์เซอร์');
+});
+t('มีประวัติว่าใครเปิดดูเลขของใคร', () => {
+  assert.ok(POLSQL.includes('nid_access_log'), 'ไม่มีตารางบันทึกการเปิดดู');
+  assert.ok(POLSQL.includes('ems.log_nid_view'), 'ไม่ได้บันทึกตอนเปิดดู');
+  const i = POLSQL.indexOf('create policy nal_read');
+  assert.ok(/array\['admin'\]/.test(POLSQL.slice(i, i + 200)), 'ประวัติควรอ่านได้เฉพาะผู้ดูแลระบบ');
+  assert.ok(!/create policy \w+ on public\.nid_access_log for (insert|update|delete)/.test(POLSQL),
+    'ต้องไม่มีนโยบายเขียน มิฉะนั้นผู้ใช้ลบประวัติตัวเองได้');
 });
 t('ข้อมูลยังถูกเก็บไว้ ไม่ได้ลบทิ้ง', () => {
   assert.ok(APP.includes("name=\"national_id\""), 'ช่องกรอกหายไป ข้อมูลจะบันทึกไม่ได้');
