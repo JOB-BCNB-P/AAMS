@@ -3716,13 +3716,19 @@ function gpaxByStudentCardHTML() {
     </button>`;
   }).join('');
 
-  return `<details id="gradeGpaxCard"${detailsOpen('gradeGpaxCard')} ontoggle="rememberDetails(this)" class="bg-white rounded-2xl border border-blue-100 mb-4">
-    <summary class="cursor-pointer select-none p-5 flex items-center justify-between gap-3">
-      <span class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="bar-chart-3" class="w-5 h-5 text-primary"></i>ภาพรวมผลการเรียน (GPAx)
+  // อาจารย์ / อาจารย์ประจำชั้น : แสดงการ์ดเปิดไว้เลย ไม่ต้องกดยุบ-ขยาย
+  const fixedOpen = ['teacher', 'classTeacher'].includes(APP.currentRole);
+  const headTxt = `<span class="font-bold text-gray-800 flex items-center gap-2 flex-wrap"><i data-lucide="bar-chart-3" class="w-5 h-5 text-primary"></i>ภาพรวมผลการเรียน (GPAx)
         <span class="text-sm font-normal text-gray-500">— ${sc.label} · ${withGpax.length} คนมีผลการเรียนแล้ว${avg !== null ? ' · เฉลี่ย ' + avg.toFixed(2) : ''}</span>
-        <span class="text-xs font-normal text-gray-400">— คลิกเพื่อดู</span></span>
+        ${fixedOpen ? '' : '<span class="text-xs font-normal text-gray-400">— คลิกเพื่อดู</span>'}</span>`;
+  return `${fixedOpen
+    ? `<div id="gradeGpaxCard" class="bg-white rounded-2xl border border-blue-100 mb-4">
+    <div class="p-5 flex items-center justify-between gap-3">${headTxt}</div>`
+    : `<details id="gradeGpaxCard"${detailsOpen('gradeGpaxCard')} ontoggle="rememberDetails(this)" class="bg-white rounded-2xl border border-blue-100 mb-4">
+    <summary class="cursor-pointer select-none p-5 flex items-center justify-between gap-3">
+      ${headTxt}
       <i data-lucide="chevron-down" class="chev w-5 h-5 text-gray-400 flex-shrink-0"></i>
-    </summary>
+    </summary>`}
     <div class="px-5 pb-5">
       ${gpaxYearFilterHTML()}
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
@@ -3740,7 +3746,7 @@ function gpaxByStudentCardHTML() {
       <p class="text-xs text-gray-500 mb-2">GPAx คิดจากผลการเรียนทั้งหมดที่มีในระบบ — กดปุ่ม <i data-lucide="eye" class="w-3.5 h-3.5 inline"></i> เพื่อดูเกรดรายวิชาและเลือกดูเฉพาะปี/ภาคที่ต้องการ</p>
       ${gpaxTableHTML(ranked)}
     </div>
-  </details>`;
+  ${fixedOpen ? '</div>' : '</details>'}`;
 }
 
 /* การ์ดภาพรวมผลการเรียนของหน้าผลการเรียน
@@ -5069,12 +5075,18 @@ function engResultsPage() {
       }
     }
 
+    // อาจารย์ / อาจารย์ประจำชั้น : การ์ดเปิดไว้เลย และมีตารางรายชื่อแบบเดียวกับหน้าผลการเรียน
+    const engFixed = ['teacher', 'classTeacher'].includes(APP.currentRole);
+    const engHead = `<span class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="bar-chart-3" class="w-5 h-5 text-primary"></i>สรุปผลสอบภาษาอังกฤษ${scopeLabel ? ` <span class="text-sm font-normal text-gray-500">— ${scopeLabel}</span>` : (engFixed ? ` <span class="text-sm font-normal text-gray-500">— ${APP.currentRole === 'classTeacher' ? 'ชั้นปีที่ดูแล' : 'นักศึกษาในที่ปรึกษา'} · ${summaryStudents.length} คน</span>` : '')}</span>`;
     summaryTableHtml = `
-    <details id="engSummaryCard"${detailsOpen('engSummaryCard')} ontoggle="rememberDetails(this)" class="bg-white rounded-2xl border border-blue-100 mb-4">
+    ${engFixed
+      ? `<div id="engSummaryCard" class="bg-white rounded-2xl border border-blue-100 mb-4">
+      <div class="p-5">${engHead}</div>`
+      : `<details id="engSummaryCard"${detailsOpen('engSummaryCard')} ontoggle="rememberDetails(this)" class="bg-white rounded-2xl border border-blue-100 mb-4">
       <summary class="cursor-pointer select-none p-5 flex items-center justify-between">
-        <span class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="bar-chart-3" class="w-5 h-5 text-primary"></i>สรุปผลสอบภาษาอังกฤษ${scopeLabel ? ` <span class="text-sm font-normal text-gray-500">— ${scopeLabel}</span>` : ''}</span>
+        ${engHead}
         <i data-lucide="chevron-down" class="chev w-5 h-5 text-gray-400"></i>
-      </summary>
+      </summary>`}
       <div class="px-5 pb-5">
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div class="relative group cursor-pointer" onclick="showEngStudentList('pass')" title="คลิกเพื่อดูรายชื่อผู้สอบผ่าน">
@@ -5089,8 +5101,9 @@ function engResultsPage() {
         </div>
       </div>
       ${perYearCardsHtml}
+      ${engFixed ? engStudentTableHTML(_sc) : ''}
       </div>
-    </details>`;
+    ${engFixed ? '</div>' : '</details>'}`;
   }
 
   return `<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -5235,6 +5248,135 @@ const ENG_LEVELS = ['Beginner', 'Elementary', 'Intermediate', 'Upper Intermediat
 const ENG_EXT_TYPES = ['TOEIC', 'CU-TEP', 'IELTS', 'TOEIC-ITP', 'TOEFL', 'TU-GET', 'LICMU'];
 // คืน map { รหัสนักศึกษา: ระดับ PBRI } โดยยึด "การสอบ สบช. ครั้งล่าสุด" ของแต่ละคน
 // (ใช้กติกาเดียวกับการ์ดวิเคราะห์ผลสอบ เพื่อให้ตัวเลขตรงกัน)
+/* ================= ตารางรายชื่อผลสอบภาษาอังกฤษ (อาจารย์ / อาจารย์ประจำชั้น) =================
+   รูปแบบเดียวกับตารางในการ์ดภาพรวมผลการเรียน : ลำดับ · รหัส · ชื่อ-สกุล · ชั้นปี · ผลสอบครั้งล่าสุด · ปุ่มดูผลสอบ
+   "ครั้งล่าสุด" เรียงตามวันที่สอบก่อน ถ้าวันที่อ่านไม่ออกหรือเท่ากัน ใช้ครั้งที่สอบตัดสิน */
+function engSortKey(e) {
+  const d = parseDate(e && e.eng_date);
+  const t = (d && !isNaN(d)) ? d.getTime() : 0;
+  return [t, parseInt(norm(e && e.eng_attempt), 10) || 0];
+}
+function engIsLater(a, b) {
+  const ka = engSortKey(a), kb = engSortKey(b);
+  return ka[0] !== kb[0] ? ka[0] > kb[0] : ka[1] > kb[1];
+}
+function engLatestOf(list) {
+  let best = null;
+  (list || []).forEach(e => { if (!best || engIsLater(e, best)) best = e; });
+  return best;
+}
+function engStatusBadge(st) {
+  const v = norm(st);
+  const cls = v === 'ผ่าน' ? 'bg-green-100 text-green-700' : v === 'ไม่เข้าสอบ' ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700';
+  return v ? `<span class="px-2 py-0.5 rounded-full text-xs ${cls}">${htmlEsc(v)}</span>` : '';
+}
+function engStudentTableHTML(sc) {
+  const by = {};
+  (sc.allEng || []).forEach(e => { const k = norm(e.student_id); (by[k] = by[k] || []).push(e); });
+  const list = (sc.students || []).slice().sort((a, b) => norm(a.student_id).localeCompare(norm(b.student_id)));
+  const rows = list.map((s, i) => {
+    const sid = norm(s.student_id);
+    const mine = by[sid] || [];
+    const last = engLatestOf(mine);
+    const passed = sc.passedIds && sc.passedIds.has(sid);
+    let lastTxt = '<span class="text-xs text-gray-300">ยังไม่มีผลสอบ</span>';
+    if (last) {
+      const isSbch = norm(last.eng_type) === 'สบช.';
+      const absent = norm(last.eng_status) === 'ไม่เข้าสอบ';
+      const lv = absent ? '' : (norm(last.eng_level) || (isSbch ? getEngLevel(Number(last.eng_score) || 0) : ''));
+      lastTxt = `<div class="flex flex-wrap items-center gap-1.5">
+          <span class="font-medium">${htmlEsc(norm(last.eng_type) || '-')}</span>
+          ${absent ? '' : `<span class="tabular-nums">${htmlEsc(norm(last.eng_score) || '-')} คะแนน</span>`}
+          ${lv ? `<span class="text-xs text-blue-700">(${htmlEsc(lv)})</span>` : ''}
+          ${engStatusBadge(last.eng_status)}
+        </div>
+        <div class="text-[11px] text-gray-400">${norm(last.eng_attempt) ? 'ครั้งที่ ' + htmlEsc(norm(last.eng_attempt)) + ' · ' : ''}${htmlEsc(formatDate(last.eng_date) || '-')}${(passed && norm(last.eng_status) !== 'ผ่าน') ? ' · <span class="text-green-600">เคยสอบผ่านแล้ว</span>' : ''}</div>`;
+    }
+    return `<tr class="border-t border-gray-50 hover:bg-gray-50">
+      <td class="px-3 py-2 text-center text-gray-400">${i + 1}</td>
+      <td class="px-3 py-2 font-mono text-primary">${htmlEsc(sid)}</td>
+      <td class="px-3 py-2">${studentDisplayName(s)}</td>
+      <td class="px-3 py-2 text-center">${htmlEsc(norm(s.year_level) || '-')}</td>
+      <td class="px-3 py-2">${lastTxt}</td>
+      <td class="px-3 py-2 text-center">${mine.length
+        ? `<button onclick="showStudentEngSheet('${htmlEsc(sid)}')" class="text-gray-400 hover:text-primary" title="ดูผลสอบภาษาอังกฤษ"><i data-lucide="eye" class="w-4 h-4"></i></button>`
+        : '<span class="text-xs text-gray-300">ยังไม่มีผล</span>'}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="mt-4 pt-4 border-t border-gray-100">
+    <p class="text-sm font-semibold text-gray-600 mb-2"><i data-lucide="list-ordered" class="w-4 h-4 inline mr-1"></i>รายชื่อนักศึกษาและผลสอบ
+      <span class="font-normal text-gray-400">(${list.length} คน${APP.filters._engYear ? ' · ปีการศึกษา ' + htmlEsc(APP.filters._engYear) : ''})</span></p>
+    <p class="text-xs text-gray-500 mb-2">กดปุ่ม <i data-lucide="eye" class="w-3.5 h-3.5 inline"></i> เพื่อดูผลสอบทุกครั้งของนักศึกษาแต่ละคน</p>
+    <div class="border border-gray-100 rounded-xl overflow-hidden">
+      <div class="overflow-auto" style="max-height:420px"><table class="w-full text-sm">
+        <thead class="sticky top-0 z-10"><tr class="bg-surface text-left">
+          <th class="px-3 py-2 font-semibold text-center">ลำดับ</th>
+          <th class="px-3 py-2 font-semibold">รหัสนักศึกษา</th>
+          <th class="px-3 py-2 font-semibold">ชื่อ-สกุล</th>
+          <th class="px-3 py-2 font-semibold text-center">ชั้นปี</th>
+          <th class="px-3 py-2 font-semibold">ผลสอบครั้งล่าสุด</th>
+          <th class="px-3 py-2 font-semibold text-center">ผลสอบภาษาอังกฤษ</th>
+        </tr></thead>
+        <tbody>${rows || '<tr><td colspan="6" class="px-3 py-6 text-center text-gray-400">ไม่มีนักศึกษาในกลุ่มนี้</td></tr>'}</tbody>
+      </table></div>
+    </div>
+  </div>`;
+}
+// หน้าต่างผลสอบภาษาอังกฤษทุกครั้งของนักศึกษาหนึ่งคน (เรียงจากล่าสุด)
+function showStudentEngSheet(sid) {
+  sid = norm(sid);
+  const stu = getDataByType('student').filter(x => norm(x.student_id) === sid)[0] || {};
+  const list = getDataByType('eng_result').filter(e => norm(e.student_id) === sid)
+    .slice().sort((a, b) => engIsLater(a, b) ? -1 : engIsLater(b, a) ? 1 : 0);
+  const passed = list.some(e => norm(e.eng_status) === 'ผ่าน');
+  const rows = list.map(e => {
+    const isSbch = norm(e.eng_type) === 'สบช.';
+    const absent = norm(e.eng_status) === 'ไม่เข้าสอบ';
+    const lv = absent ? '' : (norm(e.eng_level) || (isSbch ? getEngLevel(Number(e.eng_score) || 0) : ''));
+    return `<tr class="border-t border-gray-50">
+      <td class="px-3 py-2 font-medium">${htmlEsc(norm(e.eng_type) || '-')}</td>
+      <td class="px-3 py-2 text-center">${isSbch ? htmlEsc(norm(e.eng_listening) || '-') : '-'}</td>
+      <td class="px-3 py-2 text-center">${isSbch ? htmlEsc(norm(e.eng_grammar) || '-') : '-'}</td>
+      <td class="px-3 py-2 text-center">${isSbch ? htmlEsc(norm(e.eng_reading) || '-') : '-'}</td>
+      <td class="px-3 py-2 text-center font-semibold">${htmlEsc(norm(e.eng_score) || '-')}</td>
+      <td class="px-3 py-2 text-xs text-blue-700">${htmlEsc(lv || '-')}</td>
+      <td class="px-3 py-2 text-center">${htmlEsc(norm(e.eng_attempt) || '-')}</td>
+      <td class="px-3 py-2 whitespace-nowrap">${htmlEsc(formatDate(e.eng_date) || '-')}</td>
+      <td class="px-3 py-2 text-center">${htmlEsc(norm(e.academic_year) || '-')}</td>
+      <td class="px-3 py-2">${engStatusBadge(e.eng_status)}</td>
+    </tr>`;
+  }).join('');
+  const body = `<div class="space-y-4">
+    <div class="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <p class="font-semibold text-gray-800">${studentDisplayName(stu) || '-'}</p>
+        <p class="text-xs text-gray-500 font-mono">${htmlEsc(sid)}${norm(stu.year_level) ? ' · ชั้นปี ' + htmlEsc(norm(stu.year_level)) : ''}${norm(stu.room) ? ' · ห้อง ' + htmlEsc(norm(stu.room)) : ''}</p>
+      </div>
+      <div class="text-right">
+        <p class="text-xs text-gray-500">ผลรวม</p>
+        <p class="text-lg font-bold ${passed ? 'text-green-600' : 'text-red-600'}">${passed ? 'สอบผ่านแล้ว' : 'ยังไม่ผ่าน'}</p>
+        <p class="text-[11px] text-gray-500">เข้าสอบทั้งหมด ${list.length} ครั้ง</p>
+      </div>
+    </div>
+    ${list.length ? `<div class="border border-gray-100 rounded-xl overflow-hidden"><div class="overflow-auto" style="max-height:52vh"><table class="w-full text-sm">
+      <thead class="sticky top-0 z-10"><tr class="bg-surface text-left">
+        <th class="px-3 py-2 font-semibold">รูปแบบ</th>
+        <th class="px-3 py-2 font-semibold text-center">Listening</th>
+        <th class="px-3 py-2 font-semibold text-center">Grammar</th>
+        <th class="px-3 py-2 font-semibold text-center">Reading</th>
+        <th class="px-3 py-2 font-semibold text-center">คะแนนรวม</th>
+        <th class="px-3 py-2 font-semibold">ระดับ</th>
+        <th class="px-3 py-2 font-semibold text-center">ครั้งที่</th>
+        <th class="px-3 py-2 font-semibold">วันที่สอบ</th>
+        <th class="px-3 py-2 font-semibold text-center">ปีการศึกษา</th>
+        <th class="px-3 py-2 font-semibold">สถานะ</th>
+      </tr></thead><tbody>${rows}</tbody></table></div></div>`
+      : '<p class="text-center text-gray-400 py-8">ยังไม่มีผลสอบภาษาอังกฤษ</p>'}
+  </div>`;
+  showModal('ผลสอบภาษาอังกฤษ <span class="text-sm font-normal text-gray-500">— ' + htmlEsc(studentDisplayName(stu) || sid) + '</span>', body, null, 'max-w-4xl');
+  if (window.lucide) lucide.createIcons();
+}
+
 function engLatestPbriLevelMap(engList) {
   const attNum = e => parseInt(norm(e.eng_attempt), 10) || 0;
   const isLater = (a, b) => { const aa = attNum(a), ab = attNum(b); if (aa !== ab) return aa > ab; return norm(a.eng_date) > norm(b.eng_date); };
@@ -12721,7 +12863,21 @@ function surveyIsOpenForRole(year, role) {
   const cfg = surveyConfigForYear(year);
   if (!cfg || String(cfg.status).trim() !== 'open') return false;
   const rs = surveyParseRoles(cfg.open_roles);
-  return rs.length === 0 || rs.indexOf(role) !== -1;
+  if (!(rs.length === 0 || rs.indexOf(role) !== -1)) return false;
+  // นักศึกษา: เปิดเฉพาะชั้นปีที่ติ๊กไว้ (ว่าง = ทุกชั้นปี)
+  if (role === 'student') {
+    const ys = surveyOpenYearsFor(year);
+    if (ys.length) {
+      const d = (APP.currentUser && APP.currentUser.data) || {};
+      return ys.indexOf(norm(d.year_level)) !== -1;
+    }
+  }
+  return true;
+}
+// ชั้นปีของนักศึกษาที่เปิดรับของปีนั้น (ว่าง = ทุกชั้นปี) — เก็บในช่อง open_years
+function surveyOpenYearsFor(year) {
+  const cfg = surveyConfigForYear(year);
+  return cfg ? String(cfg.open_years || '').split(/[,\s]+/).map(x => norm(x)).filter(x => ['1', '2', '3', '4'].indexOf(x) !== -1) : [];
 }
 function surveyAllYears() {
   const set = new Set();
@@ -12960,8 +13116,11 @@ function surveyConfigTabHTML(year) {
 
   const openRoles = surveyOpenRolesFor(year);           // [] = ทุกบทบาท (เมื่อเปิด)
   const isRoleOpen = r => isOpen && (openRoles.length === 0 || openRoles.indexOf(r) !== -1);
+  const openYrs = surveyOpenYearsFor(year);              // [] = ทุกชั้นปี
+  const stuOpen = isRoleOpen('student');
+  const yrText = (stuOpen && openYrs.length) ? ' (นักศึกษาเฉพาะชั้นปีที่ ' + openYrs.join(', ') + ')' : '';
   const statusText = !isOpen ? '○ ปิดรับการประเมิน'
-    : (openRoles.length === 0 ? '● เปิดรับ (ทุกบทบาท)' : '● เปิดรับ: ' + openRoles.map(r => SURVEY_ROLE_LABEL[r] || r).join(', '));
+    : (openRoles.length === 0 ? '● เปิดรับ (ทุกบทบาท)' : '● เปิดรับ: ' + openRoles.map(r => SURVEY_ROLE_LABEL[r] || r).join(', ')) + yrText;
 
   return `<div class="bg-white rounded-2xl p-5 border border-blue-100 max-w-2xl">
     <div class="flex items-center justify-between mb-4">
@@ -12986,12 +13145,19 @@ function surveyConfigTabHTML(year) {
         ${SURVEY_EVAL_ROLES.map(r => `<label class="flex items-center gap-2 text-sm text-gray-700 bg-white rounded-lg px-2 py-1.5 border border-green-100"><input type="checkbox" class="survey-open-role accent-green-600" value="${r}" ${isRoleOpen(r) ? 'checked' : ''}> ${SURVEY_ROLE_LABEL[r] || r}</label>`).join('')}
       </div>
       <p class="text-[11px] text-gray-500 mt-2">ติ๊กบทบาทที่ต้องการให้ทำแบบประเมิน แล้วกด "บันทึกการตั้งค่า" — บทบาทที่ไม่ติ๊กจะยังทำไม่ได้ (ไม่ติ๊กเลย = ปิดรับทั้งหมด)</p>
+      <div class="mt-3 pt-3 border-t border-green-100">
+        <label class="text-sm font-semibold text-green-800">นักศึกษา: เปิดรับเฉพาะชั้นปี</label>
+        <div class="flex flex-wrap gap-2 mt-1.5">
+          ${['1', '2', '3', '4'].map(y => `<label class="flex items-center gap-2 text-sm text-gray-700 bg-white rounded-lg px-2.5 py-1.5 border border-green-100"><input type="checkbox" class="survey-open-year accent-green-600" value="${y}" ${(!openYrs.length || openYrs.indexOf(y) !== -1) ? 'checked' : ''}> ชั้นปีที่ ${y}</label>`).join('')}
+        </div>
+        <p class="text-[11px] text-gray-500 mt-1.5">มีผลเมื่อติ๊กบทบาท "นักศึกษา" ไว้ด้านบน — ชั้นปีที่ไม่ติ๊กจะไม่เห็นแบบประเมิน (ติ๊กครบทุกชั้นปี = เปิดให้ทุกชั้นปี)</p>
+      </div>
     </div>
 
     <div class="flex flex-wrap gap-2">
       <button onclick="surveyPreview('${year}')" class="px-4 py-2 bg-white border border-primary text-primary rounded-xl text-sm hover:bg-primaryLight flex items-center gap-1"><i data-lucide="eye" class="w-4 h-4"></i>แสดงตัวอย่างแบบประเมิน</button>
       <button id="surveyCfgSaveBtn" onclick="surveySaveOpenRoles('${year}')" class="px-4 py-2 bg-green-600 text-white rounded-xl text-sm hover:bg-green-700 flex items-center gap-1"><i data-lucide="save" class="w-4 h-4"></i>บันทึกการตั้งค่า (ชื่อ/คำชี้แจง/การเปิดรับ)</button>
-      ${isOpen && surveyCanInvite() ? `<button onclick="showSurveyInviteModal('${year}', [...document.querySelectorAll('.survey-open-role:checked')].map(el=>el.value))" class="px-4 py-2 bg-white border border-green-600 text-green-700 rounded-xl text-sm hover:bg-green-50 flex items-center gap-1"><i data-lucide="mail" class="w-4 h-4"></i>ส่งอีเมลเชิญทำแบบประเมิน</button>` : ''}
+      ${isOpen && surveyCanInvite() ? `<button onclick="showSurveyInviteModal('${year}', [...document.querySelectorAll('.survey-open-role:checked')].map(el=>el.value), [...document.querySelectorAll('.survey-open-year:checked')].map(el=>el.value))" class="px-4 py-2 bg-white border border-green-600 text-green-700 rounded-xl text-sm hover:bg-green-50 flex items-center gap-1"><i data-lucide="mail" class="w-4 h-4"></i>ส่งอีเมลเชิญทำแบบประเมิน</button>` : ''}
       ${qCount === 0 ? `<button onclick="surveyCreateDefaultQuestions('${year}')" class="px-4 py-2 bg-primary text-white rounded-xl text-sm hover:bg-primaryDark">สร้างชุดคำถามเริ่มต้น (ใช้ร่วมทุกบทบาท)</button>` : ''}
     </div>
   </div>`;
@@ -13054,6 +13220,10 @@ function surveyPreviewInner(year, role) {
 
 async function surveySaveOpenRoles(year) {
   const roles = [...document.querySelectorAll('.survey-open-role:checked')].map(el => el.value);
+  const yrs = [...document.querySelectorAll('.survey-open-year:checked')].map(el => el.value);
+  if (roles.indexOf('student') !== -1 && !yrs.length) { showToast('เปิดรับนักศึกษาแล้ว กรุณาติ๊กชั้นปีอย่างน้อย 1 ชั้นปี', 'error'); return; }
+  // ติ๊กครบ 4 ชั้นปี → เก็บว่าง (= ทุกชั้นปี)
+  const openYearsStr = yrs.length === 4 ? '' : yrs.join(',');
   const title = (document.getElementById('surveyCfgTitle') || {}).value || '';
   const desc = (document.getElementById('surveyCfgDesc') || {}).value || '';
   const existing = surveyConfigForYear(year);
@@ -13063,18 +13233,19 @@ async function surveySaveOpenRoles(year) {
   const openRolesStr = (roles.length === SURVEY_EVAL_ROLES.length) ? '' : roles.join(',');
   const now = new Date().toISOString();
   await withLoading(document.getElementById('surveyCfgSaveBtn'), async () => {
-    const payload = { status, open_roles: openRolesStr, title, description: desc, updated_at: now };
+    const payload = { status, open_roles: openRolesStr, open_years: openYearsStr, title, description: desc, updated_at: now };
     let res;
     if (existing) res = await GSheetDB.update({ ...existing, ...payload });
     else res = await GSheetDB.create({ type: 'survey_config', academic_year: year, created_at: now, ...payload });
     if (res && res.isOk) {
-      if (status === 'open' && !wasOpen) await surveyCreateOpenAnnouncement(year, title, openRolesStr);
-      const openLabel = !roles.length ? 'ปิดรับทั้งหมด' : (openRolesStr === '' ? 'เปิดรับทุกบทบาท' : 'เปิดรับ: ' + roles.map(r => SURVEY_ROLE_LABEL[r] || r).join(', '));
+      if (status === 'open' && !wasOpen) await surveyCreateOpenAnnouncement(year, title, openRolesStr, openYearsStr);
+      const openLabel = (!roles.length ? 'ปิดรับทั้งหมด' : (openRolesStr === '' ? 'เปิดรับทุกบทบาท' : 'เปิดรับ: ' + roles.map(r => SURVEY_ROLE_LABEL[r] || r).join(', ')))
+        + ((roles.indexOf('student') !== -1 && openYearsStr) ? ' (นักศึกษาชั้นปีที่ ' + openYearsStr + ')' : '');
       showToast('บันทึกแล้ว — ' + openLabel, 'success');
       if (typeof updateNotifBadge === 'function') updateNotifBadge();
       renderCurrentPage();
       // เปิดรับการประเมิน → ถามก่อนว่าจะส่งอีเมลแจ้งผู้เกี่ยวข้องด้วยหรือไม่
-      if (status === 'open' && roles.length && surveyCanInvite()) showSurveyInviteModal(year, roles);
+      if (status === 'open' && roles.length && surveyCanInvite()) showSurveyInviteModal(year, roles, yrs);
     } else showToast((res && res.error) || 'บันทึกไม่สำเร็จ', 'error');
   });
 }
@@ -13104,11 +13275,20 @@ async function surveyInviteCall(mode, year, roles, years) {
 function surveyInviteSelection() {
   return {
     roles: [...document.querySelectorAll('.svinv-role:checked')].map(el => el.value),
-    years: [...document.querySelectorAll('.svinv-year:checked')].map(el => el.value)
+    years: (function () {
+      const all = [...document.querySelectorAll('.svinv-year')].map(el => el.value);
+      const on = [...document.querySelectorAll('.svinv-year:checked')].map(el => el.value);
+      // ไม่ติ๊กเลยแต่รายการถูกจำกัดตามชั้นปีที่เปิดรับ → ส่งเฉพาะชั้นปีที่เปิดรับ ไม่ใช่ทุกชั้นปี
+      return on.length ? on : (all.length < 4 ? all : []);
+    })()
   };
 }
-async function showSurveyInviteModal(year, roles) {
+async function showSurveyInviteModal(year, roles, openYrs) {
   const hasStudent = roles.indexOf('student') !== -1;
+  // ชั้นปีที่ให้เลือกส่งอีเมล = เฉพาะชั้นปีที่เปิดรับ (ไม่ส่งเชิญชั้นปีที่ทำแบบประเมินไม่ได้)
+  const yrChoices = (openYrs && openYrs.length) ? openYrs : surveyOpenYearsFor(year);
+  const yrList = yrChoices.length ? yrChoices : ['1', '2', '3', '4'];
+  const yrPre = yrChoices.length && yrChoices.length < 4;
   showModal('ส่งอีเมลเชิญทำแบบประเมิน', `
     <div class="space-y-3">
       <p class="text-sm text-gray-600">บันทึกการตั้งค่าเรียบร้อยแล้ว — ต้องการส่งอีเมลเชิญผู้เกี่ยวข้องด้วยหรือไม่</p>
@@ -13121,7 +13301,7 @@ async function showSurveyInviteModal(year, roles) {
       ${hasStudent ? `<div>
         <label class="block text-xs text-gray-600 mb-1">ชั้นปีของนักศึกษา <span class="text-gray-400">(ไม่เลือกเลย = ทุกชั้นปี)</span></label>
         <div class="flex flex-wrap gap-2">
-          ${['1', '2', '3', '4'].map(y => `<label class="flex items-center gap-1.5 text-sm text-gray-700 bg-surface rounded-lg px-2.5 py-1.5"><input type="checkbox" class="svinv-year accent-primary" value="${y}" onchange="surveyInviteRefresh('${year}')"> ชั้นปีที่ ${y}</label>`).join('')}
+          ${yrList.map(y => `<label class="flex items-center gap-1.5 text-sm text-gray-700 bg-surface rounded-lg px-2.5 py-1.5"><input type="checkbox" class="svinv-year accent-primary" value="${y}" ${yrPre ? 'checked' : ''} onchange="surveyInviteRefresh('${year}')"> ชั้นปีที่ ${y}</label>`).join('')}
         </div>
       </div>` : ''}
       <div id="svinvSummary" class="text-sm text-gray-500 bg-surface rounded-xl p-3">กำลังตรวจจำนวนผู้รับ...</div>
@@ -13194,7 +13374,7 @@ async function surveySaveConfig(year, status) {
 
 // สร้างประกาศแจ้งเตือน "เปิดให้ทำแบบประเมิน" เข้าระบบ (กระดิ่ง + การ์ดหน้าหลัก)
 // ตั้ง line_sent ไว้ล่วงหน้า เพื่อกันไม่ให้ตัวแจ้งเตือน LINE (line-announcement-notify.gs) หยิบไปส่ง
-async function surveyCreateOpenAnnouncement(year, title, roles) {
+async function surveyCreateOpenAnnouncement(year, title, roles, years) {
   try {
     const pad = n => String(n).padStart(2, '0');
     const d = new Date();
@@ -13206,6 +13386,7 @@ async function surveyCreateOpenAnnouncement(year, title, roles) {
       announcement_content: 'ขอเชิญผู้ใช้งานร่วมทำ "' + t + '" ประจำปีการศึกษา ' + year + ' ได้ที่เมนู "แบบประเมินความพึงพอใจ" (ทำได้ครั้งเดียวต่อปีการศึกษา)',
       announcement_date: dateStr,
       roles: roles || '',
+      yr: years || '',
       line_sent: 'ไม่ส่ง LINE (แจ้งเฉพาะในระบบ)',
       line_notify: ''
     });
