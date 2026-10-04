@@ -80,5 +80,20 @@ t('บันทึกประกาศไม่สั่ง LINE แบบเ�
 });
 t('ช่องทางที่ส่งไปแล้วถูกล็อกไว้ ไม่ส่งซ้ำ', () => { assert.ok(chf.includes("mailSent ? 'disabled'") && chf.includes("lineSent ? 'disabled'")); });
 
+console.log('\n[5] เพิ่มกลุ่ม LINE อัตโนมัติ');
+const HOOK = fs.readFileSync(P + 'supabase/functions/line-webhook/index.ts', 'utf8');
+eval(grab('function lineGroupStatus', 'async function renderLineGroupBox'));
+t('ตรวจลายเซ็น LINE ทุกคำขอ', () => { assert.ok(HOOK.includes('validSignature(SECRET, raw, sig)')); });
+t('กลุ่มใหม่เข้ามาเป็น "รออนุมัติ" ไม่รับประกาศทันที', () => {
+  assert.ok(/is_active: '0',\s*\n\s*note: `รออนุมัติ/.test(HOOK));
+  assert.strictEqual(lineGroupStatus({ is_active: '0', note: 'รออนุมัติ — x' }).k, 'pending');
+});
+t('บอทออกจากกลุ่ม → ปิดกลุ่ม', () => {
+  assert.ok(HOOK.includes("ev.type === 'leave'"));
+  assert.strictEqual(lineGroupStatus({ is_active: '0', note: 'เคยอนุมัติ — บอทออกจากกลุ่ม/ถูกเชิญออกเมื่อ x' }).k, 'left');
+});
+t('กลุ่มเดิมที่ใช้อยู่ยังรับประกาศ', () => { assert.strictEqual(lineGroupStatus({ is_active: '1', note: null }).k, 'on'); });
+t('หน้าตั้งค่ามีส่วนอนุมัติกลุ่ม', () => { assert.ok(SRC.includes('id="lineGroupBox"') && SRC.includes("lineGroupSet(${g.id},'1')")); });
+
 console.log('\n' + (fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
 process.exit(fail ? 1 : 0);

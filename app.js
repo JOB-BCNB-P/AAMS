@@ -10876,6 +10876,7 @@ function settingsPage() {
   if (_stab === 'pwlog') return _tabBar + passwordLogSection();
   return _tabBar + `
   <div id="driveLinkBox" class="mb-6"></div>
+  <div id="lineGroupBox" class="mb-6"></div>
   
   <div class="bg-white rounded-2xl p-5 border border-blue-100 mb-6">
     <div class="flex items-center justify-between mb-4">
@@ -11692,8 +11693,72 @@ function toggleLeaveSubjectHours(checkbox) {
 // updateEvalTeacherOptions / setEvalScore removed (eval feature removed)
 
 // ======================== INIT PAGE SCRIPTS ========================
+// ======================== กลุ่ม LINE ที่รับประกาศ (หน้าตั้งค่าระบบ) ========================
+// กลุ่มถูกเพิ่มอัตโนมัติเมื่อเชิญบอทของวิทยาลัยเข้ากลุ่ม (Edge Function line-webhook)
+// กลุ่มใหม่เริ่มที่ "รออนุมัติ" — ผู้ดูแลกดอนุมัติที่นี่ครั้งเดียว กลุ่มจึงจะได้รับประกาศ
+// สถานะเก็บที่ is_active ('1' = รับประกาศ, '0' = ไม่รับ) และเหตุผลอยู่ที่ note
+function lineGroupStatus(g) {
+  const on = !['0', 'false', 'ปิด'].includes(String(g.is_active == null ? '1' : g.is_active).trim());
+  const note = norm(g.note);
+  if (on) return { k: 'on', label: 'รับประกาศ', cls: 'bg-green-100 text-green-700' };
+  if (/^รออนุมัติ/.test(note)) return { k: 'pending', label: 'รออนุมัติ', cls: 'bg-amber-100 text-amber-700' };
+  if (/บอทออกจากกลุ่ม|ถูกเชิญออก/.test(note)) return { k: 'left', label: 'บอทไม่อยู่ในกลุ่มแล้ว', cls: 'bg-gray-100 text-gray-500' };
+  return { k: 'off', label: 'ปิดใช้งาน', cls: 'bg-gray-100 text-gray-500' };
+}
+async function renderLineGroupBox() {
+  const box = document.getElementById('lineGroupBox');
+  if (!box) return;
+  const { data, error } = await GSheetDB.client().from('line_group').select('id, name, is_active, note, updated_at').order('id');
+  const b2 = document.getElementById('lineGroupBox');
+  if (!b2) return;
+  if (error) { b2.innerHTML = ''; return; }   // บทบาทที่อ่านตารางนี้ไม่ได้ ไม่ต้องแสดง
+  const rows = (data || []).map(g => ({ g, st: lineGroupStatus(g) }));
+  const order = { pending: 0, on: 1, off: 2, left: 3 };
+  rows.sort((a, b) => order[a.st.k] - order[b.st.k] || a.g.id - b.g.id);
+  const pend = rows.filter(r => r.st.k === 'pending').length;
+  const hook = (window.EMS_CONFIG && window.EMS_CONFIG.SUPABASE_URL ? window.EMS_CONFIG.SUPABASE_URL : '') + '/functions/v1/line-webhook';
+  b2.innerHTML = `<div class="bg-white rounded-2xl p-5 border border-blue-100">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+      <h3 class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="message-circle" class="w-5 h-5 text-green-600"></i>กลุ่ม LINE ที่รับประกาศ
+        ${pend ? `<span class="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">รออนุมัติ ${pend} กลุ่ม</span>` : ''}</h3>
+      <button type="button" onclick="renderLineGroupBox()" class="text-xs text-primary hover:underline">รีเฟรช</button>
+    </div>
+    <p class="text-xs text-gray-500 mb-3">เชิญบอท LINE ของวิทยาลัยเข้ากลุ่มใหม่ ระบบจะเพิ่มกลุ่มให้ที่นี่เองในสถานะ "รออนุมัติ" — กดอนุมัติครั้งเดียว กลุ่มนั้นจึงจะได้รับประกาศ
+      (กันไม่ให้ประกาศหลุดไปกลุ่มภายนอกที่มีคนเชิญบอทเข้าไป)</p>
+    ${rows.length ? `<div class="overflow-x-auto"><table class="w-full text-sm">
+      <thead><tr class="bg-surface text-left"><th class="px-3 py-2 font-semibold">ชื่อกลุ่ม</th><th class="px-3 py-2 font-semibold">สถานะ</th><th class="px-3 py-2 font-semibold">หมายเหตุ</th><th class="px-3 py-2"></th></tr></thead>
+      <tbody>${rows.map(({ g, st }) => `<tr class="border-t">
+        <td class="px-3 py-2 font-medium">${htmlEsc(norm(g.name) || ('กลุ่ม ' + g.id))}</td>
+        <td class="px-3 py-2"><span class="px-2 py-0.5 rounded-full text-xs ${st.cls}">${st.label}</span></td>
+        <td class="px-3 py-2 text-xs text-gray-500">${htmlEsc(norm(g.note) || '-')}</td>
+        <td class="px-3 py-2 text-right whitespace-nowrap">${st.k === 'pending'
+          ? `<button onclick="lineGroupSet(${g.id},'1')" class="px-3 py-1 rounded-lg text-xs bg-green-600 text-white hover:bg-green-700">อนุมัติ</button> <button onclick="lineGroupSet(${g.id},'0')" class="px-3 py-1 rounded-lg text-xs border border-gray-200 text-gray-600 hover:bg-gray-50">ไม่อนุมัติ</button>`
+          : st.k === 'on'
+            ? `<button onclick="lineGroupSet(${g.id},'0')" class="px-3 py-1 rounded-lg text-xs border border-gray-200 text-gray-600 hover:bg-gray-50">หยุดส่ง</button>`
+            : st.k === 'off' ? `<button onclick="lineGroupSet(${g.id},'1')" class="px-3 py-1 rounded-lg text-xs border border-green-600 text-green-700 hover:bg-green-50">เปิดรับประกาศ</button>` : ''}</td>
+      </tr>`).join('')}</tbody></table></div>`
+      : '<p class="text-sm text-gray-400">ยังไม่มีกลุ่ม LINE ในระบบ</p>'}
+    <details class="mt-3 text-xs text-gray-500"><summary class="cursor-pointer">การตั้งค่าครั้งแรก (Webhook URL)</summary>
+      <p class="mt-2">ใน LINE Developers › Messaging API ใส่ Webhook URL นี้ แล้วเปิด Use webhook และเปิด Allow bot to join group chats</p>
+      <input readonly value="${htmlEsc(hook)}" onclick="this.select()" class="mt-1 w-full border rounded-lg px-2 py-1 font-mono text-xs bg-gray-50">
+    </details>
+  </div>`;
+  if (window.lucide) lucide.createIcons();
+}
+async function lineGroupSet(id, on) {
+  const now = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+  const who = (APP.currentUser && APP.currentUser.name) || '';
+  const note = on === '1' ? `อนุมัติแล้ว — โดย ${who} เมื่อ ${now}` : `ปิดใช้งาน — โดย ${who} เมื่อ ${now}`;
+  const { error } = await GSheetDB.client().from('line_group').update({ is_active: on, note, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) { showToast('บันทึกไม่สำเร็จ: ' + error.message, 'error'); return; }
+  window._annSendOpts = null;   // ให้ฟอร์มประกาศโหลดรายชื่อกลุ่มใหม่
+  showToast(on === '1' ? 'อนุมัติกลุ่มแล้ว กลุ่มนี้จะได้รับประกาศ' : 'ปิดการส่งประกาศเข้ากลุ่มนี้แล้ว');
+  renderLineGroupBox();
+}
+
 function initPageScripts(page) {
   if (page === 'dashboard') { renderCalendar('dashCalendar') }
+  if (page === 'settings' && document.getElementById('lineGroupBox')) { renderLineGroupBox(); }
   if (page === 'schedule') { renderCalendar('scheduleCalendar') }
 
   // Student leave form (multi-subject)
