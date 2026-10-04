@@ -3066,6 +3066,7 @@ function renderSchedProctorChips(idx) {
   box.innerHTML = arr.length
     ? arr.map((s, i) => `<span class="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-100 rounded-lg px-2 py-1 text-xs">${String(s).replace(/</g, '&lt;')}<button type="button" onclick="removeSchedProctor(${idx},${i})" class="text-amber-400 hover:text-red-600 font-bold leading-none">×</button></span>`).join('')
     : '<span class="text-xs text-gray-400">ยังไม่ได้เลือกผู้คุมสอบ</span>';
+  if (document.getElementById('schedMailPreview')) schedNotifyChanged();
 }
 function addSchedProctor(idx) {
   const el = document.getElementById('schedProctorSelect' + idx); if (!el || !el.value.trim()) return;
@@ -3114,6 +3115,8 @@ function onScheduleTypeChange(el) {
   const sc1 = document.querySelector('[name="student_count"]');
   const sp = document.getElementById('schedExamSplit');
   if (ex) ex.classList.toggle('hidden', !isExam);
+  const pw = document.getElementById('schedNotifyProctorWrap');
+  if (pw) { pw.classList.toggle('hidden', !isExam); pw.classList.toggle('flex', isExam); }
   if (sw) sw.classList.toggle('hidden', isExam);
   if (mw) mw.classList.toggle('hidden', !isExam);
   if (si) si.disabled = isExam;
@@ -3232,21 +3235,130 @@ function scheduleFormBody(s, isNew) {
       </div>
     </div>
     <div class="p-3 bg-green-50 rounded-xl border border-green-100 space-y-2">
-      <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="schedNotify" ${notifyDefault ? 'checked' : ''} onchange="toggleSchedNotify()" class="w-4 h-4"><span class="text-sm font-medium text-green-800">🔔 สร้างประกาศแจ้งเตือนจากรายการนี้</span></label>
-      <div id="schedNotifyOptions" class="${notifyDefault ? '' : 'hidden'} space-y-2">
-        ${annRolesFieldHTML(notifyRolesDefault)}
-        <div id="schedNotifyYears" class="${annParseRoles(notifyRolesDefault).indexOf('student') !== -1 ? '' : 'hidden'}">
-          ${annYearFieldHTML(norm(s.year_level))}
+      <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="schedNotify" ${notifyDefault ? 'checked' : ''} onchange="toggleSchedNotify()" class="w-4 h-4"><span class="text-sm font-medium text-green-800">🔔 ประกาศแจ้งเตือนจากรายการนี้</span></label>
+      <div id="schedNotifyOptions" class="${notifyDefault ? '' : 'hidden'} space-y-3">
+        <div class="bg-white rounded-xl border border-green-100 p-3 space-y-2">
+          <p class="text-sm font-semibold text-gray-700">1. ประกาศให้ใครทราบ</p>
+          ${annRolesFieldHTML(notifyRolesDefault)}
+          <div id="schedNotifyYears" class="${annParseRoles(notifyRolesDefault).indexOf('student') !== -1 ? '' : 'hidden'}">
+            ${annYearFieldHTML(norm(s.year_level))}
+          </div>
+          <label id="schedNotifyProctorWrap" class="${isExam ? 'flex' : 'hidden'} items-center gap-2 text-sm text-gray-700 cursor-pointer"><input type="checkbox" id="schedNotifyProctors" checked onchange="schedNotifyChanged()" class="w-4 h-4 accent-primary"> แจ้งอาจารย์ผู้คุมสอบตามรายชื่อในรายการนี้ด้วย</label>
+          <p id="schedAudienceHint" class="text-[11px] text-gray-500"></p>
         </div>
-        <label class="flex items-center gap-2 bg-white rounded-xl px-3 py-2 cursor-pointer border border-green-100"><input type="checkbox" id="schedNotifyLine" checked class="w-4 h-4"><span class="text-sm text-green-700">📢 ส่งประกาศนี้เข้า LINE</span></label>
+        <div class="bg-white rounded-xl border border-green-100 p-3 space-y-2">
+          <p class="text-sm font-semibold text-gray-700">2. ช่องทางการประกาศ</p>
+          <label class="flex items-center gap-2 text-sm text-gray-500"><input type="checkbox" checked disabled class="w-4 h-4"> ในระบบ AAMs (กระดิ่งแจ้งเตือนและหน้าหลัก) — ประกาศทุกครั้ง</label>
+          <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"><input type="checkbox" id="schedNotifyMail" onchange="schedNotifyChanged()" class="w-4 h-4 accent-primary"> ✉️ อีเมลถึงผู้รับตามกลุ่มข้อ 1</label>
+          <div id="schedMailPreview" class="hidden ml-7 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2"></div>
+          <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"><input type="checkbox" id="schedNotifyLine" checked onchange="schedNotifyChanged()" class="w-4 h-4 accent-primary"> 📢 LINE</label>
+          <div id="schedLineBox" class="ml-7 space-y-1.5">
+            <div id="schedLineGroups" class="flex flex-wrap gap-2 text-xs text-gray-400">กำลังโหลดรายชื่อกลุ่ม LINE...</div>
+            <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer"><input type="checkbox" id="schedLineBroadcast" class="w-3.5 h-3.5 accent-primary"> ส่งถึงเพื่อนทุกคนของบัญชี LINE ของวิทยาลัยด้วย (broadcast)</label>
+          </div>
+        </div>
       </div>
     </div>`;
+}
+
+/* ---------- ผู้รับและช่องทางการประกาศจากปฏิทิน ----------
+   ผู้รับ  : บทบาท + ชั้นปีนักศึกษา + อาจารย์ผู้คุมสอบ (เฉพาะการสอบ)
+   ช่องทาง : ในระบบเสมอ · อีเมล · LINE (เลือกกลุ่มได้)
+   รายชื่อผู้รับอีเมลคำนวณที่ Edge Function "announce-send" จากตัวประกาศเสมอ */
+function schedIsExamNow() {
+  const t = document.querySelector('[name="schedule_type"]');
+  return !!(t && String(t.value || '').includes('สอบ'));
+}
+function schedProctorNames() {
+  return ['schedProctorValue1', 'schedProctorValue2'].map(id => {
+    const el = document.getElementById(id); return el && !el.disabled ? norm(el.value) : '';
+  }).filter(Boolean).join(', ');
+}
+function schedCollectAudience() {
+  const all = Array.prototype.map.call(document.querySelectorAll('.ann-role-cb'), el => el.value);
+  const on = Array.prototype.map.call(document.querySelectorAll('.ann-role-cb:checked'), el => el.value);
+  const pc = document.getElementById('schedNotifyProctors');
+  const names = (schedIsExamNow() && pc && pc.checked) ? schedProctorNames() : '';
+  // ติ๊กครบทุกบทบาท = ทุกบทบาท แต่ถ้ามีรายชื่อผู้คุมสอบด้วย ต้องเก็บบทบาทไว้ตรง ๆ
+  // เพราะ "ไม่ระบุบทบาท + มีรายชื่อ" หมายถึงแจ้งเฉพาะคนในรายชื่อ
+  let roles = on.join(',');
+  if (!on.length || (on.length === all.length && !names)) roles = '';
+  return { roles, names, years: annCollectYears() };
+}
+function schedChannelOpts() {
+  const get = id => { const el = document.getElementById(id); return !!(el && el.checked); };
+  return {
+    mail: get('schedNotifyMail'),
+    line: get('schedNotifyLine'),
+    broadcast: get('schedLineBroadcast'),
+    lineGroups: Array.prototype.map.call(document.querySelectorAll('.sched-line-grp:checked'), el => Number(el.value))
+  };
+}
+async function annSendCall(body) {
+  try {
+    const { data, error } = await GSheetDB.client().functions.invoke('announce-send', { body });
+    if (error) {
+      let d = (error && error.message) || 'เรียกใช้งานไม่สำเร็จ';
+      try { const j = await error.context.json(); if (j && j.error) d = j.error; } catch (e) { }
+      return { isOk: false, error: d };
+    }
+    return data || { isOk: false, error: 'ไม่มีข้อมูลตอบกลับ' };
+  } catch (e) { return { isOk: false, error: String((e && e.message) || e) }; }
+}
+async function loadSchedNotifyChannels() {
+  const box = document.getElementById('schedLineGroups');
+  if (!box) return;
+  if (!window._annSendOpts) window._annSendOpts = await annSendCall({ mode: 'options' });
+  const o = window._annSendOpts || {};
+  const box2 = document.getElementById('schedLineGroups');
+  if (!box2) return;
+  if (!o.isOk) { box2.innerHTML = '<span class="text-red-500">' + htmlEsc(o.error || 'โหลดรายชื่อกลุ่ม LINE ไม่สำเร็จ') + '</span>'; return; }
+  const gs = o.lineGroups || [];
+  box2.innerHTML = !o.hasLine ? '<span class="text-amber-600">ยังไม่ได้ตั้งค่าโทเคน LINE ในระบบ</span>'
+    : gs.length ? gs.map(g => `<label class="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 text-gray-700 cursor-pointer"><input type="checkbox" class="sched-line-grp accent-primary" value="${g.id}" checked> ${htmlEsc(g.name)}</label>`).join('')
+      : '<span class="text-amber-600">ยังไม่มีกลุ่ม LINE ที่เปิดใช้งาน</span>';
+  if (!o.hasSmtp) {
+    const m = document.getElementById('schedNotifyMail');
+    if (m) { m.checked = false; m.disabled = true; m.parentElement.title = 'ยังไม่ได้ตั้งค่า SMTP ในระบบ'; m.parentElement.classList.add('opacity-50'); }
+  }
+  schedNotifyChanged();
+}
+// อัปเดตคำอธิบายผู้รับ และนับผู้รับอีเมลล่วงหน้า (หน่วงเวลาไว้ไม่ให้เรียกถี่)
+function schedNotifyChanged() {
+  const a = schedCollectAudience();
+  const hint = document.getElementById('schedAudienceHint');
+  if (hint) {
+    const anyRole = document.querySelectorAll('.ann-role-cb:checked').length > 0;
+    hint.textContent = (!anyRole && a.names) ? 'ไม่ได้เลือกบทบาท — จะแจ้งเฉพาะอาจารย์ผู้คุมสอบในรายการนี้'
+      : (!anyRole ? 'ไม่ได้เลือกบทบาท — จะแจ้งทุกบทบาท' : '');
+  }
+  const ln = document.getElementById('schedNotifyLine');
+  const lb = document.getElementById('schedLineBox');
+  if (lb) lb.classList.toggle('hidden', !(ln && ln.checked));
+  const m = document.getElementById('schedNotifyMail');
+  const pv = document.getElementById('schedMailPreview');
+  if (!pv) return;
+  pv.classList.toggle('hidden', !(m && m.checked));
+  if (!(m && m.checked)) return;
+  pv.textContent = 'กำลังนับผู้รับอีเมล...';
+  clearTimeout(window._schedMailTimer);
+  window._schedMailTimer = setTimeout(async () => {
+    const r = await annSendCall({ mode: 'preview', roles: a.roles, years: a.years, names: a.names });
+    const el = document.getElementById('schedMailPreview');
+    if (!el) return;
+    if (!r.isOk) { el.innerHTML = '<span class="text-red-500">' + htmlEsc(r.error || 'นับผู้รับไม่สำเร็จ') + '</span>'; return; }
+    const g = r['แยกกลุ่ม'] || {};
+    el.innerHTML = 'จะส่งอีเมลถึง <b class="text-gray-800">' + (r['ผู้รับทั้งหมด'] || 0) + '</b> คน'
+      + (Object.keys(g).length ? ' — ' + Object.keys(g).map(k => htmlEsc(k) + ' ' + g[k]).join(' · ') : '')
+      + ' <span class="text-gray-400">(ส่งแบบ BCC ผู้รับไม่เห็นอีเมลกัน)</span>';
+  }, 450);
 }
 function toggleSchedNotify() {
   const c = document.getElementById('schedNotify');
   const o = document.getElementById('schedNotifyOptions');
   if (o) o.classList.toggle('hidden', !(c && c.checked));
   syncSchedNotifyYears();
+  schedNotifyChanged();
 }
 // ช่องเลือกชั้นปีจะแสดงเมื่อประกาศถึง "นักศึกษา" เท่านั้น
 function syncSchedNotifyYears() {
@@ -3267,11 +3379,16 @@ document.addEventListener('change', function (ev) {
   if (t && t.classList && (t.classList.contains('ann-role-cb') || t.classList.contains('ann-yr-cb'))
       && document.getElementById('schedNotifyYears')) {
     syncSchedNotifyYears();
+    schedNotifyChanged();
   }
 });
 
-// สร้างประกาศแจ้งเตือนจากรายการปฏิทิน — เลือกบทบาทผู้รับ (roles) และเลือกส่ง LINE ได้
-async function createScheduleAnnouncement(s, roles, sendLine) {
+// สร้างประกาศแจ้งเตือนจากรายการปฏิทิน
+//   aud : { roles, names, years } จาก schedCollectAudience()
+//   ch  : { mail, line, lineGroups, broadcast } จาก schedChannelOpts()  (null = ในระบบอย่างเดียว)
+//   allDates : วันที่ทั้งหมดของรายการที่จัดหลายวัน (แสดงในประกาศ)
+async function createScheduleAnnouncement(s, aud, ch, allDates) {
+  aud = aud || { roles: '', names: '', years: '' };
   const subjects = norm(s.subject_name).replace(/,\s*/g, ', ');
   const yr = norm(s.year_level);
   const type = norm(s.schedule_type);
@@ -3284,7 +3401,9 @@ async function createScheduleAnnouncement(s, roles, sendLine) {
   if (type) lines.push('ประเภท: ' + type);
   if (isExam && norm(s.exam_round)) lines.push('ครั้งที่: ' + norm(s.exam_round));
   lines.push('ชั้นปี: ' + (yr ? ('ชั้นปีที่ ' + annParseYears(yr).join(', ')) : 'ทุกชั้นปี'));
-  if (dateTh) lines.push('วันที่: ' + dateTh);
+  if (allDates && allDates.length > 1) {
+    lines.push('วันที่: ' + allDates.map(d => (typeof toBuddhistDate === 'function' && toBuddhistDate(d)) || d).join(', '));
+  } else if (dateTh) lines.push('วันที่: ' + dateTh);
   if (timeRange.trim()) lines.push('เวลา: ' + timeRange);
   const isSplit = isExam && norm(s.exam_split) !== '';
   if (isSplit) {
@@ -3304,13 +3423,30 @@ async function createScheduleAnnouncement(s, roles, sendLine) {
     announcement_content: lines.join('\n'),
     announcement_date: norm(s.schedule_date) || new Date().toISOString().slice(0, 10),
     event_type: isExam ? 'สอบ' : (type || 'ทั่วไป'),
-    roles: roles || '',
+    roles: aud.roles || '',
     yr: yr || '',
-    target_names: (isExam && [norm(s.proctor), norm(s.proctor2)].filter(Boolean).join(', ')) || '',
-    line_notify: sendLine ? '✓' : '',
+    target_names: (isExam && aud.names) || '',
+    // ไม่ติ๊ก line_notify ตรงนี้ เพื่อไม่ให้ระบบส่ง LINE เข้าทุกกลุ่มอัตโนมัติ
+    // การส่งอีเมล/LINE ทำต่อด้านล่างตามกลุ่มที่ผู้ประกาศเลือกเท่านั้น
+    line_notify: '',
     created_at: new Date().toISOString()
   };
-  try { return await GSheetDB.create(obj); } catch (_) { return { isOk: false }; }
+  let res;
+  try { res = await GSheetDB.create(obj, { noRefresh: true }); } catch (_) { return { isOk: false }; }
+  if (!res || !res.isOk) return res || { isOk: false };
+  const out = { isOk: true, id: res.rowIndex, msgs: [] };
+  if (ch && (ch.mail || ch.line) && res.rowIndex) {
+    const r = await annSendCall({
+      mode: 'send', announcement_id: res.rowIndex,
+      email: !!ch.mail, line: !!ch.line, line_groups: ch.lineGroups || [], broadcast: !!ch.broadcast,
+      url: window.location.href.split('#')[0]
+    });
+    const em = r && r['อีเมล'], ln = r && r['LINE'];
+    if (ch.mail) out.msgs.push(em && em.isOk ? 'อีเมล ' + (em['ส่งถึง'] || 0) + ' คน' : 'อีเมลไม่สำเร็จ: ' + ((em && em.error) || (r && r.error) || ''));
+    if (ch.line) out.msgs.push(ln && ln.isOk ? 'LINE ' + (ln['ส่งสำเร็จ'] || 0) + ' ช่องทาง' : 'LINE ไม่สำเร็จ: ' + ((ln && ln.error) || (r && r.error) || ''));
+    out.isOk = !!(r && r.isOk);
+  }
+  return out;
 }
 
 function showAddScheduleModal() {
@@ -3325,14 +3461,15 @@ function showAddScheduleModal() {
   renderSchedExtraDateChips();
   updateSchedSplitState();
   window._schedWasExam = false;
+  loadSchedNotifyChannels();
   document.getElementById('addScheduleForm').onsubmit = async (e) => {
     e.preventDefault();
     // อ่านค่าการแจ้งเตือนก่อน (เพราะ modal จะถูกปิดหลังบันทึก)
     const notifyEl = document.getElementById('schedNotify');
     const doNotify = !!(notifyEl && notifyEl.checked);
-    const roles = doNotify ? annCollectRoles() : '';
-    const lineEl = document.getElementById('schedNotifyLine');
-    const sendLine = !!(lineEl && lineEl.checked);
+    const aud = doNotify ? schedCollectAudience() : null;
+    const ch = doNotify ? schedChannelOpts() : null;
+    if (doNotify && ch.line && !ch.lineGroups.length && !ch.broadcast) { showToast('เลือกกลุ่ม LINE อย่างน้อย 1 กลุ่ม หรือยกเลิกการส่ง LINE', 'error'); return; }
     await withLoading(e.target, async () => {
       const fd = new FormData(e.target);
       if (!(fd.get('schedule_type') || '').trim()) { showToast('กรุณาระบุประเภท', 'error'); return; }
@@ -3346,8 +3483,16 @@ function showAddScheduleModal() {
       const objs = dates.map(d => Object.assign({}, base, { schedule_date: d }));
       const r = await GSheetDB.createMany(objs);
       if (r.isOk || r.ok) {
-        if (doNotify) { for (const o of objs) { await createScheduleAnnouncement(o, roles, sendLine); } }
-        showToast('เพิ่มรายการสำเร็จ ' + (r.ok || objs.length) + ' วัน' + (doNotify ? ' + สร้างประกาศแจ้งเตือน' : ''));
+        let extMsg = [];
+        if (doNotify) {
+          // หลายวัน: ประกาศในระบบทุกวัน แต่ส่งอีเมล/LINE ครั้งเดียว (ประกาศแรก ระบุวันที่ครบทุกวัน)
+          for (let i = 0; i < objs.length; i++) {
+            const res = await createScheduleAnnouncement(objs[i], aud, i === 0 ? ch : null, i === 0 ? dates : null);
+            if (i === 0 && res && res.msgs) extMsg = res.msgs;
+          }
+          if (GSheetDB.refreshTab) { try { await GSheetDB.refreshTab('announcement'); } catch (_) { } }
+        }
+        showToast('เพิ่มรายการสำเร็จ ' + (r.ok || objs.length) + ' วัน' + (doNotify ? ' + ประกาศในระบบ' : '') + (extMsg.length ? ' · ' + extMsg.join(' · ') : ''));
         closeModal();
       } else showToast('เกิดข้อผิดพลาด', 'error');
     });
@@ -8270,13 +8415,16 @@ function annMyYear() {
 }
 function annVisibleTo(a, role) {
   // ประกาศที่เจาะจงรายบุคคล (เช่น แจ้งผู้คุมสอบ) — เห็นเฉพาะคนที่มีชื่อ + ผู้ดูแล/งานวิชาการ
+  // รายชื่อเจาะจง (เช่น ผู้คุมสอบ) เห็นเสมอ และ "เพิ่ม" จากบทบาทที่เลือก ไม่ได้แทนที่
+  // ถ้าไม่ได้เลือกบทบาทเลยแต่มีรายชื่อ = ประกาศเฉพาะคนในรายชื่อ
   const targets = annParseNames(a && a.target_names);
+  const rs = annParseRoles(a && a.roles);
   if (targets.length) {
     if (role === 'admin' || role === 'academic') return true;
     const myKey = annNameKey((APP.currentUser && APP.currentUser.name) || '');
-    return !!myKey && targets.some(n => annNameKey(n) === myKey);
+    if (myKey && targets.some(n => annNameKey(n) === myKey)) return true;
+    if (!rs.length) return false;
   }
-  const rs = annParseRoles(a && a.roles);
   if (rs.length && rs.indexOf(role) === -1) return false;
   // นักศึกษา: ถ้าประกาศระบุชั้นปีไว้ ต้องตรงกับชั้นปีของตนเท่านั้น
   if (role === 'student') {
@@ -12279,6 +12427,7 @@ function showEditScheduleModal(id) {
   renderSchedProctorChips(2);
   updateSchedSplitState();
   window._schedWasExam = norm(s.schedule_type).includes('สอบ');
+  loadSchedNotifyChannels();
   document.getElementById('editScheduleForm').onsubmit = async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -12286,13 +12435,17 @@ function showEditScheduleModal(id) {
     // อ่านค่าการแจ้งเตือนก่อนปิด modal
     const notifyEl = document.getElementById('schedNotify');
     const doNotify = !!(notifyEl && notifyEl.checked);
-    const roles = doNotify ? annCollectRoles() : '';
-    const lineEl = document.getElementById('schedNotifyLine');
-    const sendLine = !!(lineEl && lineEl.checked);
+    const aud = doNotify ? schedCollectAudience() : null;
+    const ch = doNotify ? schedChannelOpts() : null;
+    if (doNotify && ch.line && !ch.lineGroups.length && !ch.broadcast) { showToast('เลือกกลุ่ม LINE อย่างน้อย 1 กลุ่ม หรือยกเลิกการส่ง LINE', 'error'); return; }
     await editRecord(id, 'editScheduleForm');
     if (doNotify) {
       const rec = APP.allData.find(d => d.__backendId === id);
-      if (rec) { await createScheduleAnnouncement(rec, roles, sendLine); showToast('บันทึกและสร้างประกาศแจ้งเตือนแล้ว'); }
+      if (rec) {
+        const res = await createScheduleAnnouncement(rec, aud, ch, null);
+        if (GSheetDB.refreshTab) { try { await GSheetDB.refreshTab('announcement'); } catch (_) { } }
+        showToast('บันทึกและประกาศในระบบแล้ว' + (res && res.msgs && res.msgs.length ? ' · ' + res.msgs.join(' · ') : ''));
+      }
     }
   };
 }
