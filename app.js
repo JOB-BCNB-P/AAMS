@@ -5372,8 +5372,8 @@ function getEngLevel(score) {
 }
 // ======================== แจ้งผลสอบภาษาอังกฤษถึงอาจารย์ที่ปรึกษา ========================
 // เรียก Edge Function 'eng-report-mail' — ตรวจสิทธิ์และส่งอีเมลจากฝั่งเซิร์ฟเวอร์เท่านั้น
-async function engMailCall(mode) {
-  const { data, error } = await GSheetDB.client().functions.invoke('eng-report-mail', { body: { mode: mode } });
+async function engMailCall(mode, extra) {
+  const { data, error } = await GSheetDB.client().functions.invoke('eng-report-mail', { body: Object.assign({ mode: mode }, extra || {}) });
   if (error) {
     let detail = (error && error.message) || 'เรียกใช้งานไม่สำเร็จ';
     try { const j = await error.context.json(); if (j && j.error) detail = j.error; } catch (e) { }
@@ -5382,51 +5382,120 @@ async function engMailCall(mode) {
   return data || { isOk: false, error: 'ไม่มีข้อมูลตอบกลับ' };
 }
 
+/* หน้าต่างแจ้งผลสอบ — เลือกอาจารย์ที่จะส่งได้ กรองจากชื่อ-สกุล หรือสาขา
+   รายชื่ออาจารย์มาจากฝั่งเซิร์ฟเวอร์ (จับคู่ชื่อโดยตัดคำนำหน้าแล้ว) เก็บไว้ใน window._engMail */
 async function showEngMailModal() {
   showModal('แจ้งผลสอบภาษาอังกฤษถึงอาจารย์ที่ปรึกษา', `
     <div id="engMailBody" class="space-y-3">
       <p class="text-sm text-gray-500">กำลังตรวจข้อมูล...</p>
-    </div>`);
+    </div>`, null, 'max-w-2xl');
   const r = await engMailCall('preview');
   const box = document.getElementById('engMailBody');
   if (!box) return;
-  if (!r.isOk) { box.innerHTML = `<p class="text-sm text-red-600">${r.error || 'ตรวจข้อมูลไม่สำเร็จ'}</p>`; return; }
+  if (!r.isOk) { box.innerHTML = `<p class="text-sm text-red-600">${htmlEsc(r.error || 'ตรวจข้อมูลไม่สำเร็จ')}</p>`; return; }
 
+  const list = r['อาจารย์'] || [];
+  window._engMail = { list: list, picked: new Set(list.filter(x => x.ok).map(x => x.key)), q: '', dept: '' };
+  const depts = [...new Set(list.map(x => norm(x.department)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th'));
   const skipped = r['ข้ามไป'] || [];
   box.innerHTML = `
     <div class="grid grid-cols-3 gap-2 text-center">
       <div class="bg-surface rounded-xl p-3"><p class="text-2xl font-bold text-gray-800">${r['นักศึกษาที่กำลังศึกษา']}</p><p class="text-xs text-gray-500">กำลังศึกษา</p></div>
       <div class="bg-red-50 rounded-xl p-3"><p class="text-2xl font-bold text-red-600">${r['ยังไม่ผ่าน']}</p><p class="text-xs text-gray-500">ยังไม่ผ่าน</p></div>
-      <div class="bg-emerald-50 rounded-xl p-3"><p class="text-2xl font-bold text-emerald-600">${r['อาจารย์ที่จะได้รับอีเมล']}</p><p class="text-xs text-gray-500">อาจารย์ที่จะได้รับ</p></div>
+      <div class="bg-emerald-50 rounded-xl p-3"><p class="text-2xl font-bold text-emerald-600">${r['อาจารย์ที่จะได้รับอีเมล']}</p><p class="text-xs text-gray-500">อาจารย์ที่ส่งได้</p></div>
     </div>
     <p class="text-xs text-gray-500">อีเมลแต่ละฉบับมีเฉพาะนักศึกษาในความดูแลของอาจารย์ท่านนั้น พร้อมรหัสนักศึกษา ชื่อ-สกุล รูปแบบการสอบ คะแนน ครั้งที่สอบ วันที่สอบ ปีการศึกษา และสถานะ</p>
     ${skipped.length ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3">
-      <p class="text-xs font-semibold text-amber-800 mb-1">ข้ามไป ${skipped.length} ท่าน</p>
-      ${skipped.map(x => `<p class="text-xs text-amber-700">• ${x.advisor} — ${x.reason} (นักศึกษา ${x.students} คน)</p>`).join('')}
+      <p class="text-xs font-semibold text-amber-800 mb-1">ส่งไม่ได้ ${skipped.length} ท่าน</p>
+      ${skipped.map(x => `<p class="text-xs text-amber-700">• ${htmlEsc(x.advisor)} — ${htmlEsc(x.reason)} (นักศึกษา ${x.students} คน)</p>`).join('')}
     </div>` : ''}
-    ${r['ไม่มีอาจารย์ที่ปรึกษา'] ? `<p class="text-xs text-amber-600">* นักศึกษา ${r['ไม่มีอาจารย์ที่ปรึกษา']} คนยังไม่ได้ระบุอาจารย์ที่ปรึกษา จึงไม่มีใครได้รับรายชื่อของนักศึกษากลุ่มนี้</p>` : ''}
+    ${r['ไม่มีอาจารย์ที่ปรึกษา'] ? `<p class="text-xs text-amber-600">* นักศึกษา ${r['ไม่มีอาจารย์ที่ปรึกษา']} คนยังไม่ได้ระบุอาจารย์ที่ปรึกษา จึงไม่อยู่ในอีเมลฉบับใด</p>` : ''}
+
+    <div class="border border-blue-100 rounded-xl p-3">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <p class="text-sm font-semibold text-gray-800">เลือกอาจารย์ที่จะแจ้ง</p>
+        <p class="text-xs text-gray-500">เลือกแล้ว <b id="engMailPicked" class="text-primary text-sm">0</b> ท่าน</p>
+      </div>
+      <div class="flex flex-col sm:flex-row gap-2 mb-2">
+        <input id="engMailQ" type="search" oninput="engMailFilter('q', this.value)" placeholder="ค้นหาชื่อ-สกุลอาจารย์"
+          class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm" data-nodraft="1">
+        <select id="engMailDept" onchange="engMailFilter('dept', this.value)" class="sm:w-60 border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" data-nodraft="1">
+          <option value="">ทุกสาขา</option>
+          ${depts.map(d => `<option value="${htmlEsc(d)}">${htmlEsc(d)}</option>`).join('')}
+          ${list.some(x => !norm(x.department)) ? '<option value="__none">ไม่ระบุสาขา</option>' : ''}
+        </select>
+      </div>
+      <div class="flex flex-wrap gap-2 mb-2 text-xs">
+        <button data-no-loading type="button" onclick="engMailPickShown(true)" class="px-2.5 py-1 rounded-lg bg-primaryLight text-primary hover:bg-primary hover:text-white transition">เลือกทั้งหมดที่แสดง</button>
+        <button data-no-loading type="button" onclick="engMailPickShown(false)" class="px-2.5 py-1 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition">ยกเลิกที่แสดง</button>
+      </div>
+      <div id="engMailList" class="max-h-64 overflow-y-auto divide-y divide-gray-100 border border-gray-100 rounded-lg"></div>
+    </div>
+
     <div class="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-800">
-      ส่งเฉพาะอีเมลโดเมนของวิทยาลัย · ไม่มีเลขบัตรประชาชนในอีเมล · บันทึกการส่งทุกครั้งเพื่อตรวจสอบย้อนหลัง
+      ส่งเฉพาะอีเมลโดเมนของวิทยาลัย · ไม่มีเลขบัตรประชาชนในอีเมล · อีเมลตอบกลับไม่ได้ · บันทึกการส่งทุกครั้งเพื่อตรวจสอบย้อนหลัง
     </div>
     <div class="flex flex-col sm:flex-row gap-2">
       <button onclick="engMailRun('test')" class="flex-1 border border-primary text-primary py-2.5 rounded-xl text-sm hover:bg-primaryLight">ส่งทดสอบถึงตัวเองก่อน</button>
-      <button onclick="engMailRun('send')" class="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl text-sm hover:bg-emerald-700">ส่งจริงถึงอาจารย์ ${r['อาจารย์ที่จะได้รับอีเมล']} ท่าน</button>
+      <button id="engMailSendBtn" onclick="engMailRun('send')" class="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl text-sm hover:bg-emerald-700">ส่งจริงถึงอาจารย์ที่เลือก</button>
     </div>
     <div id="engMailResult"></div>`;
+  engMailRenderList();
   if (window.lucide) lucide.createIcons();
 }
 
+function engMailShown() {
+  const st = window._engMail; if (!st) return [];
+  const q = norm(st.q).toLowerCase().replace(/\s+/g, '');
+  return st.list.filter(x => {
+    if (st.dept === '__none' ? norm(x.department) : (st.dept && norm(x.department) !== st.dept)) return false;
+    if (q && !(norm(x.name).toLowerCase().replace(/\s+/g, '').includes(q) || norm(x.email).toLowerCase().includes(q))) return false;
+    return true;
+  });
+}
+function engMailRenderList() {
+  const st = window._engMail, box = document.getElementById('engMailList');
+  if (!st || !box) return;
+  const shown = engMailShown();
+  box.innerHTML = shown.length ? shown.map(x => `
+    <label class="flex items-start gap-3 px-3 py-2 ${x.ok ? 'cursor-pointer hover:bg-surface' : 'opacity-60'}">
+      <input type="checkbox" class="mt-1 rounded" ${x.ok ? '' : 'disabled'} ${st.picked.has(x.key) ? 'checked' : ''}
+        onchange="engMailToggle(${JSON.stringify(x.key).replace(/"/g, '&quot;')}, this.checked)" data-nodraft="1">
+      <span class="flex-1 min-w-0">
+        <span class="block text-sm text-gray-800">${htmlEsc(x.name)} <span class="text-xs text-red-600">· ยังไม่ผ่าน ${x.students} คน</span></span>
+        <span class="block text-xs text-gray-500 truncate">${htmlEsc(x.department || 'ไม่ระบุสาขา')} · ${x.ok ? htmlEsc(x.email) : '<span class="text-amber-700">' + htmlEsc(x.reason) + '</span>'}</span>
+      </span>
+    </label>`).join('') : '<p class="px-3 py-6 text-center text-sm text-gray-400">ไม่พบอาจารย์ตามเงื่อนไขที่กรอง</p>';
+  const n = document.getElementById('engMailPicked'); if (n) n.textContent = st.picked.size;
+  const b = document.getElementById('engMailSendBtn');
+  if (b) { b.textContent = 'ส่งจริงถึงอาจารย์ที่เลือก ' + st.picked.size + ' ท่าน'; b.disabled = !st.picked.size; b.classList.toggle('opacity-50', !st.picked.size); }
+}
+function engMailFilter(k, v) { if (!window._engMail) return; window._engMail[k] = v; engMailRenderList(); }
+function engMailToggle(key, on) {
+  const st = window._engMail; if (!st) return;
+  if (on) st.picked.add(key); else st.picked.delete(key);
+  engMailRenderList();
+}
+function engMailPickShown(on) {
+  const st = window._engMail; if (!st) return;
+  engMailShown().filter(x => x.ok).forEach(x => { if (on) st.picked.add(x.key); else st.picked.delete(x.key); });
+  engMailRenderList();
+}
+
 async function engMailRun(mode) {
-  if (mode === 'send' && !confirm('ยืนยันส่งอีเมลถึงอาจารย์ที่ปรึกษาทุกท่าน?\nอีเมลจะมีรายชื่อและคะแนนของนักศึกษาที่ยังไม่ผ่าน')) return;
+  const st = window._engMail;
+  const keys = st ? [...st.picked] : [];
+  if (!keys.length) { showToast('กรุณาเลือกอาจารย์อย่างน้อย 1 ท่าน', 'error'); return; }
+  if (mode === 'send' && !confirm('ยืนยันส่งอีเมลถึงอาจารย์ที่ปรึกษา ' + keys.length + ' ท่านที่เลือก?\nอีเมลจะมีรายชื่อและคะแนนของนักศึกษาในความดูแลของแต่ละท่าน')) return;
   const out = document.getElementById('engMailResult');
   if (out) out.innerHTML = '<p class="text-sm text-gray-500 mt-2">กำลังส่ง...</p>';
-  const r = await engMailCall(mode);
+  const r = await engMailCall(mode, { advisors: keys });
   if (!out) return;
-  if (!r.isOk) { out.innerHTML = `<p class="text-sm text-red-600 mt-2">${r.error || 'ส่งไม่สำเร็จ'}</p>`; return; }
+  if (!r.isOk) { out.innerHTML = `<p class="text-sm text-red-600 mt-2">${htmlEsc(r.error || 'ส่งไม่สำเร็จ')}</p>`; return; }
   const rows = r['รายละเอียด'] || [];
   out.innerHTML = `<div class="mt-2 p-3 bg-green-50 border border-green-200 rounded-xl">
-    <p class="text-sm font-semibold text-green-700">ส่งสำเร็จ ${r['ส่งสำเร็จ']} จาก ${r['ทั้งหมด']} ฉบับ <span class="font-normal text-gray-500">(${r['ช่องทาง'] || ''})</span></p>
-    <div class="max-h-40 overflow-auto mt-2">${rows.map(x => `<p class="text-xs ${x['สำเร็จ'] ? 'text-gray-600' : 'text-red-600'}">${x['สำเร็จ'] ? '✓' : '✗'} ${x['อาจารย์']} · ${x['อีเมล']} · ${x['นักศึกษา']} คน ${x['สาเหตุ'] ? '— ' + x['สาเหตุ'] : ''}</p>`).join('')}</div>
+    <p class="text-sm font-semibold text-green-700">${mode === 'test' ? 'ส่งทดสอบถึงอีเมลของคุณแล้ว (ใช้ข้อมูลของอาจารย์ท่านแรกที่เลือก)' : 'ส่งสำเร็จ ' + r['ส่งสำเร็จ'] + ' จาก ' + r['ทั้งหมด'] + ' ฉบับ'} <span class="font-normal text-gray-500">(${htmlEsc(r['ช่องทาง'] || '')})</span></p>
+    <div class="max-h-40 overflow-auto mt-2">${rows.map(x => `<p class="text-xs ${x['สำเร็จ'] ? 'text-gray-600' : 'text-red-600'}">${x['สำเร็จ'] ? '✓' : '✗'} ${htmlEsc(x['อาจารย์'])} · ${htmlEsc(x['อีเมล'])} · นักศึกษา ${x['นักศึกษา']} คน${x['สาเหตุ'] ? ' · ' + htmlEsc(x['สาเหตุ']) : ''}</p>`).join('')}</div>
   </div>`;
 }
 
