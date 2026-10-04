@@ -1263,10 +1263,11 @@ html {
 @keyframes emsVtOut {
   to { opacity: 0; }
 }
-/* กางดูรายละเอียด (details) ให้เนื้อหาค่อย ๆ เลื่อนลงมา แทนการโผล่ทั้งก้อน */
-details[open] > *:not(summary) {
-  animation: emsSlideDown 200ms cubic-bezier(.4, 0, .2, 1);
-}
+/* กาง/หุบการ์ด (details) — smooth.js คุมความสูงและการจางของเนื้อหา
+   ไม่ใส่แอนิเมชันไว้ที่ details[open] เพราะจะเล่นซ้ำทุกครั้งที่หน้าวาดใหม่ (ติ๊ก/กรอง) ทำให้กระพริบ
+   ระหว่างกำลังหุบ ลูกศรหมุนกลับทันที ไม่ต้องรอให้หุบเสร็จ */
+details.ems-closing > summary .chev { transform: none; }
+.dropdown-item.ems-dd-closing > .dropdown-menu { animation: none; }
 /* ตัวเลือกที่ติ๊ก/ช่องกรอก เปลี่ยนสีขอบแบบนุ่ม */
 input,
 select,

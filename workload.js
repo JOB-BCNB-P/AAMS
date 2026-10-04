@@ -419,6 +419,21 @@
       .filter(function (x) { return x && x !== 'teaching'; });
   }
   function canEditMission(key) { return myMissions().indexOf(key) !== -1; }
+  // ช่องจัดการ (แก้ไข/ลบ) ในหน้าสรุปผลรวม — เฉพาะบทบาทผู้ดูแลระบบ
+  function isAdminNow() { return norm(APP.currentRole) === 'admin'; }
+  function canDelete() { return isAdminNow(); }
+  // ปุ่มจัดการในตาราง (ดินสอ / ถังขยะ) — ใช้หน้าตาเดียวกับตารางอื่นของระบบ
+  function manageCell(editJs, delJs, delTitle, delOff) {
+    var b = '<td class="px-3 py-2 text-center whitespace-nowrap">';
+    if (isAdminNow()) b += '<button type="button" onclick="' + editJs + '" class="text-blue-400 hover:text-blue-600 p-1" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button>';
+    if (canDelete()) {
+      b += delOff
+        ? '<span class="inline-block p-1 text-gray-200 cursor-not-allowed" title="' + esc(delOff) + '"><i data-lucide="trash-2" class="w-4 h-4"></i></span>'
+        : '<button type="button" onclick="' + delJs + '" class="text-red-400 hover:text-red-600 p-1" title="' + esc(delTitle) + '"><i data-lucide="trash-2" class="w-4 h-4"></i></button>';
+    }
+    return b + '</td>';
+  }
+  function manageOn() { return isAdminNow(); }
 
   /* ---------------- หน้าหลัก ---------------- */
   window.workloadPage = function workloadPage() {
@@ -1027,7 +1042,10 @@
             + '<span class="block text-[11px] text-gray-400">วิชาการ ' + fx(tgRow.base) + '</span>'
             : '<span class="text-gray-300">-</span>') + '</td>'
         + '<td class="px-4 py-3 text-center text-gray-600 tabular-nums">' + x.studs + '</td>'
-        + '<td class="px-4 py-3 text-center">' + (x.ovr ? '<span class="px-2 py-0.5 rounded-full text-xs bg-amber-50 text-amber-700">' + x.ovr + ' ราย</span>' : '<span class="text-gray-300">-</span>') + '</td></tr>';
+        + '<td class="px-4 py-3 text-center">' + (x.ovr ? '<span class="px-2 py-0.5 rounded-full text-xs bg-amber-50 text-amber-700">' + x.ovr + ' ราย</span>' : '<span class="text-gray-300">-</span>') + '</td>'
+        + (manageOn() ? manageCell("wlEditPlan('" + x.lv + "','" + x.sm + "')", "wlDeletePlan('" + x.lv + "','" + x.sm + "')",
+            'ลบภาระงานชั้นปีที่ ' + x.lv + ' ภาค ' + semName(x.sm)) : '')
+        + '</tr>';
     }).join('');
 
     var sumFolded = !!(st.fold || {}).sumTable;
@@ -1048,7 +1066,8 @@
       + '<th class="px-4 py-3 font-semibold text-center">รวมทั้งหมด</th>'
       + '<th class="px-3 py-3 font-semibold text-center">กรอบชั่วโมง</th>'
       + '<th class="px-4 py-3 font-semibold text-center">นักศึกษา</th>'
-      + '<th class="px-4 py-3 font-semibold text-center">ปรับเฉพาะราย</th></tr></thead>'
+      + '<th class="px-4 py-3 font-semibold text-center">ปรับเฉพาะราย</th>'
+      + (manageOn() ? '<th class="px-3 py-3 font-semibold text-center">จัดการ</th>' : '') + '</tr></thead>'
       + '<tbody>' + table + '</tbody>'
       /* แถว "รวมทั้งปีการศึกษา" ถูกตัดออกตามที่ผู้ใช้ขอ
          ยอดรวมทั้งปียังดูได้ที่หัวการ์ด ("รวม X ชม.ถ่วงน้ำหนัก") เหมือนเดิม
@@ -1120,8 +1139,13 @@
     return '<div class="mt-4">'
       + '<div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">'
       + '<h4 class="font-semibold text-sm">รายละเอียดภาระงานของ ' + esc(rec.name) + '</h4>'
-      + '<span class="text-xs text-gray-400">รหัส ' + esc(rec.sid) + ' · ชั้นปีที่ ' + esc(rec.level)
-      + ' · รวมทุกภาคการศึกษา ' + fx(rec.rawTotal) + ' ชม.</span></div>'
+      + '<span class="flex items-center gap-2"><span class="text-xs text-gray-400">รหัส ' + esc(rec.sid) + ' · ชั้นปีที่ ' + esc(rec.level)
+      + ' · รวมทุกภาคการศึกษา ' + fx(rec.rawTotal) + ' ชม.</span>'
+      + (isAdminNow() ? '<button type="button" onclick="wlEditPerson(\'' + esc(rec.sid) + '\',\'' + esc(rec.level) + '\')" class="px-2.5 py-1 rounded-lg border border-blue-200 text-blue-600 text-xs hover:bg-blue-50"><i data-lucide="pencil" class="w-3.5 h-3.5 inline mr-1"></i>แก้ไข</button>' : '')
+      + (canDelete() ? (rec.ovr
+          ? '<button type="button" onclick="wlDeletePerson(\'' + esc(rec.sid) + '\')" class="px-2.5 py-1 rounded-lg border border-red-200 text-red-600 text-xs hover:bg-red-50"><i data-lucide="trash-2" class="w-3.5 h-3.5 inline mr-1"></i>ลบค่าเฉพาะราย</button>'
+          : '<span class="px-2.5 py-1 rounded-lg border border-gray-100 text-gray-300 text-xs cursor-not-allowed" title="ใช้ค่ามาตรฐานของชั้นปี ไม่มีข้อมูลเฉพาะรายให้ลบ"><i data-lucide="trash-2" class="w-3.5 h-3.5 inline mr-1"></i>ลบ</span>') : '')
+      + '</span></div>'
       + blocks + '</div>';
   }
 
@@ -1159,7 +1183,10 @@
         + '<td class="px-3 py-2 text-center tabular-nums font-semibold text-primary">' + fx(x.rawTotal) + '</td>'
         + '<td class="px-3 py-2 text-center">' + (x.ovr
             ? '<span class="px-2 py-0.5 rounded-full text-[11px] bg-amber-50 text-amber-700">ปรับเฉพาะราย</span>'
-            : '<span class="text-[11px] text-gray-400">ตามมาตรฐาน</span>') + '</td></tr>';
+            : '<span class="text-[11px] text-gray-400">ตามมาตรฐาน</span>') + '</td>'
+        + (manageOn() ? manageCell("wlEditPerson('" + esc(x.sid) + "','" + esc(level) + "')", "wlDeletePerson('" + esc(x.sid) + "')",
+            'ลบค่าเฉพาะรายของ ' + x.name, x.ovr ? '' : 'ใช้ค่ามาตรฐานของชั้นปี ไม่มีข้อมูลเฉพาะรายให้ลบ') : '')
+        + '</tr>';
     }).join('');
     return '<div class="mt-4">'
       + '<div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">'
@@ -1173,7 +1200,8 @@
             + '<span class="block text-[10px] font-normal text-gray-400">เกณฑ์ ' + caps[m.key] + '%</span></th>';
         }).join('')
       + '<th class="px-3 py-2 font-semibold text-center">รวม (ชม.)</th>'
-      + '<th class="px-3 py-2 font-semibold text-center">สถานะ</th></tr></thead>'
+      + '<th class="px-3 py-2 font-semibold text-center">สถานะ</th>'
+      + (manageOn() ? '<th class="px-3 py-2 font-semibold text-center">จัดการ</th>' : '') + '</tr></thead>'
       + '<tbody>' + body + '</tbody>'
       + '<tfoot><tr class="border-t-2 bg-surface text-xs">'
       + '<td class="px-3 py-2 font-semibold" colspan="2">จำนวนคนที่สัดส่วนสูงกว่าเกณฑ์</td>'
@@ -1182,7 +1210,7 @@
             + (overCount[m.key] ? 'text-amber-700 font-semibold' : 'text-gray-400') + '">'
             + overCount[m.key] + ' คน</td>';
         }).join('')
-      + '<td colspan="2"></td></tr></tfoot></table></div>'
+      + '<td colspan="' + (manageOn() ? 3 : 2) + '"></td></tr></tfoot></table></div>'
       + '<p class="text-xs text-gray-400 mt-2">ตัวเลขในช่องพันธกิจคือสัดส่วนร้อยละของเวลาทั้งหมดที่นักศึกษาคนนั้นใช้ไป '
       + 'เทียบกับเกณฑ์ที่ระบุใต้ชื่อพันธกิจ · ▲ และตัวเลขสีส้มคือสูงกว่าเกณฑ์ · ชี้ค้างที่ตัวเลขเพื่อดูจำนวนชั่วโมง'
       + (list.length > 300 ? ' · แสดง 300 คนแรกจาก ' + list.length + ' คน' : '') + '</p>'
@@ -2318,6 +2346,75 @@
     st.draft = null;
     // แท็บกลายเป็นเมนูย่อยแล้ว จึงต้องย้ายหน้าไปที่เมนู "กรอกภาระงาน" เพื่อให้แถบเมนูซ้ายตรงกัน
     if (typeof navigateTo === 'function' && APP.currentPage !== 'workloadPlan') { navigateTo('workloadPlan'); return; }
+    renderCurrentPage();
+  };
+
+  /* ---------------- จัดการจากหน้าสรุปผลรวม ----------------
+     ดินสอ  : พาไปหน้า "กรอกภาระงาน" ที่ชั้นปี/ภาค (หรือนักศึกษาคนนั้น) พร้อมแก้ทันที
+     ถังขยะ : รายชั้นปี = ลบภาระงานของชั้นปีนั้นในภาคนั้น พร้อมค่าเฉพาะรายในภาคเดียวกัน
+              รายบุคคล = ลบค่าเฉพาะรายของนักศึกษาคนนั้นทั้งปีการศึกษา (กลับไปใช้ค่ามาตรฐานของชั้นปี) */
+  window.wlEditPlan = function (lv, sm) {
+    var st = state();
+    st.tab = 'plan'; st.level = norm(lv); st.sem = norm(sm);
+    st.mode = 'cohort'; st.mission = ''; st.draft = null;
+    if (!st.fold) st.fold = {};
+    MISSIONS.forEach(function (m) { st.fold[m.key] = false; });
+    if (typeof navigateTo === 'function' && APP.currentPage !== 'workloadPlan') { navigateTo('workloadPlan'); return; }
+    renderCurrentPage();
+  };
+  window.wlEditPerson = function (sid, lv) {
+    var st = state();
+    st.level = norm(lv) || st.level;
+    // เปิดภาคแรกที่มีข้อมูล ถ้านักศึกษามีค่าเฉพาะรายในภาคไหน ให้เปิดภาคนั้นก่อน
+    var sems = SEMS.filter(function (sm) { return planOf(st.year, st.level, sm); });
+    var withOvr = SEMS.filter(function (sm) { return overrideOf(sid, st.year, sm); });
+    st.sem = withOvr[0] || sems[0] || st.sem;
+    if (!st.fold) st.fold = {};
+    MISSIONS.forEach(function (m) { st.fold[m.key] = false; });
+    window.wlEditStudent(sid);
+  };
+  window.wlDeletePlan = async function (lv, sm) {
+    if (!canDelete()) { showToast('ลบข้อมูลภาระงานได้เฉพาะผู้ดูแลระบบ', 'error'); return; }
+    var st = state();
+    var plan = planOf(st.year, lv, sm);
+    if (!plan) return;
+    var ovrs = get('workload_student').filter(function (o) {
+      return norm(o.academic_year) === norm(st.year) && norm(o.year_level) === norm(lv) && norm(o.semester) === norm(sm);
+    });
+    var msg = 'ลบภาระงานของชั้นปีที่ ' + lv + ' ภาค ' + semName(sm) + ' ปีการศึกษา ' + st.year + ' ?\n\n'
+      + 'ข้อมูลทุกพันธกิจของชั้นปีนี้ในภาคนี้จะถูกลบ'
+      + (ovrs.length ? '\nรวมค่าเฉพาะรายของนักศึกษา ' + ovrs.length + ' คนในภาคเดียวกัน' : '')
+      + '\n\nลบแล้วกู้คืนไม่ได้';
+    if (!confirm(msg)) return;
+    var bad = 0;
+    for (var i = 0; i < ovrs.length; i++) {
+      var r0 = await GSheetDB.delete(ovrs[i], { noRefresh: true });
+      if (!(r0 && r0.isOk)) bad++;
+    }
+    var r = await GSheetDB.delete(plan, { noRefresh: true });
+    try { await GSheetDB.refreshTab('workload_plan'); await GSheetDB.refreshTab('workload_student'); } catch (e) { }
+    if (r && r.isOk && !bad) showToast('ลบภาระงานชั้นปีที่ ' + lv + ' ภาค ' + semName(sm) + ' แล้ว');
+    else showToast('ลบไม่สำเร็จบางรายการ กรุณาลองใหม่', 'error');
+    renderCurrentPage();
+  };
+  window.wlDeletePerson = async function (sid) {
+    if (!canDelete()) { showToast('ลบข้อมูลภาระงานได้เฉพาะผู้ดูแลระบบ', 'error'); return; }
+    var st = state();
+    var ovrs = get('workload_student').filter(function (o) {
+      return norm(o.student_id) === norm(sid) && norm(o.academic_year) === norm(st.year);
+    });
+    if (!ovrs.length) { showToast('นักศึกษาคนนี้ใช้ค่ามาตรฐานของชั้นปีอยู่แล้ว ไม่มีข้อมูลเฉพาะรายให้ลบ'); return; }
+    var stu = get('student').filter(function (x) { return norm(x.student_id) === norm(sid); })[0] || {};
+    if (!confirm('ลบค่าเฉพาะรายของ ' + (stu.name || sid) + ' (' + sid + ') ปีการศึกษา ' + st.year + ' ?\n\n'
+      + 'มีข้อมูล ' + ovrs.length + ' ภาคการศึกษา · หลังลบนักศึกษาคนนี้จะกลับไปใช้ค่ามาตรฐานของชั้นปี\n\nลบแล้วกู้คืนไม่ได้')) return;
+    var bad = 0;
+    for (var i = 0; i < ovrs.length; i++) {
+      var r0 = await GSheetDB.delete(ovrs[i], { noRefresh: true });
+      if (!(r0 && r0.isOk)) bad++;
+    }
+    try { await GSheetDB.refreshTab('workload_student'); } catch (e) { }
+    if (!bad) showToast('ลบค่าเฉพาะรายแล้ว กลับไปใช้ค่ามาตรฐานของชั้นปี');
+    else showToast('ลบไม่สำเร็จ ' + bad + ' รายการ', 'error');
     renderCurrentPage();
   };
 

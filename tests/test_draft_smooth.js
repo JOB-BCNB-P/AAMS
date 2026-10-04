@@ -66,7 +66,11 @@ t('สลับเมนูใช้ View Transitions เมื่อรอง�
   assert.ok(CSS.includes('::view-transition-old(ems-main)') && CSS.includes('view-transition-name: ems-main'));
 });
 t('มีแอนิเมชันของแท็บ และการกางรายละเอียด', () => {
-  assert.ok(CSS.includes('.ems-tab-in') && CSS.includes('details[open] > *:not(summary)'));
+  assert.ok(CSS.includes('.ems-tab-in') && CSS.includes('details.ems-closing > summary .chev'));
+  const SM = fs.readFileSync(P + 'smooth.js', 'utf8');
+  assert.ok(SM.includes('function animateDetails') && SM.includes('window.toggleDropdown = function') && SM.includes('window.emsSmoothToggle'));
+  assert.ok(SM.includes("prefers-reduced-motion: reduce"), 'ต้องเคารพการลดการเคลื่อนไหว');
+  assert.ok(HTML.indexOf('src="smooth.js') > HTML.indexOf('src="app.js'), 'smooth.js ต้องโหลดหลัง app.js');
 });
 
 console.log('\n' + (fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
