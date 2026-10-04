@@ -572,9 +572,31 @@
      ================================================================ */
   function newCode() { return 'CS' + Date.now().toString(36).toUpperCase(); }
 
+  /* ร่างที่กรอกค้างไว้ — อยู่ในหน่วยความจำตลอดที่สลับไปหน้าอื่น
+     และฝากไว้ใน sessionStorage ของแท็บนี้ด้วย เผื่อเบราว์เซอร์มือถือโหลดหน้าใหม่ตอนสลับแอป
+     (ปิดแท็บแล้วหายเอง · ผูกกับชื่อผู้ใช้ · เก็บไม่เกิน 12 ชั่วโมง) */
+  var DRAFT_KEY = 'aams_counsel_draft', DRAFT_TTL = 12 * 3600 * 1000;
+  function persistDraft() {
+    try {
+      var st = state();
+      if (st.draft && st.dirty) sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ u: me(), t: Date.now(), d: st.draft }));
+    } catch (e) { /* ที่เก็บของแท็บใช้ไม่ได้ ก็ยังมีร่างในหน่วยความจำ */ }
+  }
+  function dropDraft() { try { sessionStorage.removeItem(DRAFT_KEY); } catch (e) { } }
+  function storedDraft(code) {
+    try {
+      var o = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null');
+      if (o && o.d && o.u === me() && s(o.d.__code) === s(code) && Date.now() - o.t < DRAFT_TTL) return o;
+    } catch (e) { }
+    return null;
+  }
+  function markDirty() { markDirty(); persistDraft(); }
+
   function draftOf(code) {
     var st = state();
     if (st.draft && st.draft.__code === s(code)) return st.draft;
+    var kept = storedDraft(code);
+    if (kept) { st.draft = kept.d; st.dirty = true; st.restoredAt = kept.t; return st.draft; }
     var row = code ? sessionByCode(code) : null;
     st.draft = row ? {
       __code: s(code), __new: false,
@@ -605,7 +627,7 @@
 
   window.counselField = function (k, v) {
     var d = state().draft; if (!d) return;
-    d[k] = s(v); state().dirty = true;
+    d[k] = s(v); markDirty();
     if (k === 'start_time' || k === 'end_time') updateDuration();
   };
   window.counselFieldR = function (k, v) { window.counselField(k, v); renderCurrentPage(); };
@@ -615,7 +637,7 @@
     var i = d.issues.indexOf(s(code));
     if (on && i < 0) d.issues.push(s(code));
     if (!on && i >= 0) d.issues.splice(i, 1);
-    state().dirty = true;
+    markDirty();
     renderCurrentPage();
   };
 
@@ -639,7 +661,7 @@
       if (on && i < 0) d.picked.push({ student_id: sid, source: 'year', private_note: '' });
       if (!on && i >= 0) d.picked.splice(i, 1);
     });
-    state().dirty = true;
+    markDirty();
     renderCurrentPage();
   };
   window.counselToggleOne = function (sid, on) {
@@ -647,14 +669,14 @@
     var i = pickedIds(d).indexOf(s(sid));
     if (on && i < 0) d.picked.push({ student_id: s(sid), source: 'year', private_note: '' });
     if (!on && i >= 0) d.picked.splice(i, 1);
-    state().dirty = true;
+    markDirty();
     counselCount();
   };
   window.counselDropOne = function (sid) {
     var d = state().draft; if (!d) return;
     var i = pickedIds(d).indexOf(s(sid));
     if (i >= 0) d.picked.splice(i, 1);
-    state().dirty = true;
+    markDirty();
     renderCurrentPage();
   };
   // เพิ่มเฉพาะราย — กันชื่อซ้ำทั้งกับที่เลือกจากชั้นปีและในรายการเฉพาะรายเอง
@@ -667,7 +689,7 @@
     if (!stu) { showToast('ไม่พบนักศึกษารหัสนี้ในรายชื่อที่คุณเป็นที่ปรึกษา', 'error'); return; }
     if (isPicked(d, sid)) { showToast('นักศึกษารายนี้ถูกเลือกไว้แล้ว', 'error'); return; }
     d.picked.push({ student_id: sid, source: 'specific', private_note: '' });
-    state().dirty = true;
+    markDirty();
     if (inp) inp.value = '';
     renderCurrentPage();
   };
@@ -679,10 +701,10 @@
       boxes.forEach(function (c) {
         var sid = s(c.value), i = pickedIds(d).indexOf(sid);
         if (c.checked && i < 0) d.picked.push({ student_id: sid, source: 'year', private_note: '' });
-        if (!c.checked && i >= 0 && d.picked[i].source !== 'specific') d.picked.splice(i, 1);
+        if (!c.checked && i >= 0) d.picked.splice(i, 1);
       });
     }
-    state().dirty = true;
+    markDirty();
     YEARS.forEach(function (y) {
       var el = document.getElementById('csCount' + y);
       if (!el) return;
@@ -798,7 +820,7 @@
       + '<textarea rows="4" onchange="counselField(\'result_note\',this.value)" '
       + 'class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm">' + esc(d.result_note) + '</textarea>'
       + '<p class="text-xs text-gray-400 mt-1">เป็นผลร่วมของการให้คำปรึกษาครั้งนี้ '
-      + 'บันทึกเฉพาะรายบุคคลใส่แยกได้ในตารางรายชื่อด้านล่าง</p></div>'
+      + 'และนักศึกษาทุกคนที่เลือกไว้</p></div>'
       + '</div></div>';
 
     // ---------- การจัดการปัญหา ----------
@@ -822,35 +844,36 @@
         + 'class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"></div></div>' : '')
       + '</div>';
 
-    // ---------- เลือกนักศึกษา ----------
-    // ตารางล่างเป็น "สรุปรายชื่อที่เลือกแล้ว" ของทุกคน ไม่ว่าจะติ๊กจากชั้นปีหรือเพิ่มทีละคน
-    // ถ้าแยกเป็นอีกรายการหนึ่ง นักศึกษาคนเดียวจะปรากฏสองที่ ผู้ใช้จะนึกว่าเลือกซ้ำ
-    var specific = d.picked.slice();
+    // ---------- ขั้นที่ 1 เลือกนักศึกษา (ทำก่อน) ----------
+    // เลือกได้หลายคน ทั้งติ๊กจากรายชื่อแยกชั้นปี และค้นหาเพิ่มทีละคน — ทุกคนที่เลือกจะติ๊กอยู่ในตารางชั้นปีของตน
+    // จึงไม่ต้องมีตาราง "รายชื่อที่เลือกแล้ว" ซ้ำอีกชุด (ยกเลิกได้ด้วยการเอาติ๊กออก)
     var addable = myStudents().filter(function (x) { return !isPicked(d, x.student_id); });
-    var specBox = '<div class="bg-white rounded-2xl border border-blue-100 p-4 mb-4">'
-      + '<p class="font-semibold text-gray-800 text-sm mb-1">รายชื่อนักศึกษาที่เลือกแล้ว</p>'
-      + '<p class="text-xs text-gray-500 mb-3">ค้นหาเพิ่มทีละคนด้วยรหัสหรือชื่อได้ที่ช่องด้านล่าง · คนที่เลือกไว้แล้วจะไม่ขึ้นในช่องค้นหา · กดลบเพื่อเอาออกจากการให้คำปรึกษาครั้งนี้ ไม่ได้ลบนักศึกษาออกจากระบบ</p>'
-      + '<div class="flex flex-wrap gap-2 mb-3">'
+    var stepHead = function (no, title, sub) {
+      return '<div class="flex items-center gap-3 mb-3 mt-2">'
+        + '<span class="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold shrink-0">' + no + '</span>'
+        + '<div><p class="font-bold text-gray-800">' + title + '</p>'
+        + (sub ? '<p class="text-xs text-gray-500">' + sub + '</p>' : '') + '</div></div>';
+    };
+    var pickBox = stepHead(1, 'เลือกนักศึกษาที่รับคำปรึกษา <span class="text-red-500">*</span>',
+      'เลือกได้หลายคน · ติ๊กจากรายชื่อแยกชั้นปี หรือค้นหาเพิ่มทีละคน · เอาติ๊กออกเพื่อนำออกจากการให้คำปรึกษาครั้งนี้')
+      + '<div class="bg-white rounded-2xl border border-blue-100 p-4 mb-3">'
+      + '<div class="flex flex-wrap items-center justify-between gap-2 mb-2">'
+      + '<p class="text-sm text-gray-700">เลือกแล้ว <span id="csTotalPicked" class="text-primary font-bold text-base">' + d.picked.length + '</span> คน</p></div>'
+      + '<div class="flex flex-wrap gap-2">'
       + '<select id="csAddStudent" class="flex-1 min-w-[16rem] border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">'
-      + '<option value="">— ค้นหาและเลือกนักศึกษา —</option>'
+      + '<option value="">— ค้นหาด้วยรหัสหรือชื่อ แล้วกดเพิ่ม —</option>'
       + addable.map(function (x) {
         return '<option value="' + esc(s(x.student_id)) + '">' + esc(s(x.student_id) + ' · ' + s(x.name) + ' (ชั้นปี ' + (s(x.year_level) || '-') + ')') + '</option>';
       }).join('') + '</select>'
       + '<button type="button" onclick="counselAddOne()" class="px-4 py-2 rounded-xl bg-primary text-white text-sm hover:bg-primaryDark">เพิ่มรายชื่อ</button>'
-      + '</div>'
-      + (specific.length
-        ? '<div class="overflow-x-auto"><table class="w-full text-sm">' + stuTableHead({ remove: true }) + '<tbody>'
-        + specific.map(function (p, i) {
-          var stu = studentById(p.student_id) || { student_id: p.student_id, name: '(ไม่พบในทะเบียน)' };
-          return stuRow(stu, { index: i + 1, remove: true, source: p.source });
-        }).join('') + '</tbody></table></div>'
-        : '<p class="text-sm text-gray-400">ยังไม่ได้เลือกนักศึกษา · ติ๊กจากรายชื่อแยกชั้นปีด้านบน หรือค้นหาเพิ่มทีละคนที่ช่องด้านบน</p>')
-      + '</div>';
-
-    var pickBox = '<div class="mb-2 flex flex-wrap items-center justify-between gap-2">'
-      + '<p class="font-semibold text-gray-800 text-sm">เลือกนักศึกษาที่รับคำปรึกษา <span class="text-red-500">*</span></p>'
-      + '<p class="text-xs text-gray-500">เลือกแล้ว <span id="csTotalPicked" class="text-primary font-semibold">' + d.picked.length + '</span> คน</p></div>'
+      + '</div></div>'
       + YEARS.map(function (y) { return yearBlock(d, y); }).join('');
+
+    var restored = st.restoredAt
+      ? '<div class="mb-4 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-800 flex items-start gap-2">'
+      + '<i data-lucide="history" class="w-4 h-4 mt-0.5 shrink-0"></i>'
+      + '<span>นำข้อมูลที่กรอกค้างไว้กลับมาให้แล้ว ทำต่อได้เลย · ยังไม่ได้บันทึกลงระบบจนกว่าจะกด <b>บันทึก</b></span></div>'
+      : '';
 
     return '<div class="flex flex-wrap items-center justify-between gap-3 mb-4">'
       + '<div><h2 class="text-xl font-bold text-gray-800">'
@@ -858,7 +881,10 @@
       + (d.__new ? 'เพิ่มการให้คำปรึกษา' : 'แก้ไขการให้คำปรึกษา') + '</h2>'
       + '<p class="text-sm text-gray-500 mt-1">รหัสรายการ ' + esc(d.session_code)
       + ' · ผู้บันทึก ' + esc(me() || '-') + '</p></div>' + saveBar + '</div>'
-      + general + issueBox + midBox + referBox + pickBox + specBox
+      + restored
+      + pickBox
+      + '<div class="mt-6">' + stepHead(2, 'บันทึกข้อมูลการให้คำปรึกษา', 'ใช้ร่วมกันกับนักศึกษาทุกคนที่เลือกในขั้นที่ 1') + '</div>'
+      + general + issueBox + midBox + referBox
       + '<div class="flex justify-end">' + saveBar + '</div>';
   }
 
@@ -973,7 +999,7 @@
       await GSheetDB.refreshTab('counsel_session');
       await GSheetDB.refreshTab('counsel_student');
 
-      st.draft = null; st.dirty = false; st.editCode = '';
+      st.draft = null; st.dirty = false; st.editCode = ''; st.restoredAt = 0; dropDraft();
       showToast(existing ? 'บันทึกการแก้ไขเรียบร้อย' : 'บันทึกการให้คำปรึกษาเรียบร้อย');
       navigateTo('counselList');
     } catch (e) {
@@ -989,13 +1015,15 @@
   window.counselEdit = function (code) {
     var st = state();
     st.editCode = s(code);
-    st.draft = null;
+    // ร่างของรายการเดียวกันที่กรอกค้างไว้ ใช้ต่อได้เลย ไม่ต้องเริ่มใหม่
+    if (st.draft && st.dirty && st.draft.__code === s(code)) st.restoredAt = st.restoredAt || Date.now();
+    else { st.draft = null; st.dirty = false; st.restoredAt = 0; }
     navigateTo('counselEdit');
   };
   window.counselBack = function () {
     var st = state();
     if (st.dirty && !confirm('ยังมีข้อมูลที่ยังไม่ได้บันทึก ออกจากหน้านี้ใช่หรือไม่')) return;
-    st.draft = null; st.dirty = false; st.editCode = '';
+    st.draft = null; st.dirty = false; st.editCode = ''; st.restoredAt = 0; dropDraft();
     navigateTo('counselList');
   };
 

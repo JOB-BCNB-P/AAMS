@@ -31,7 +31,8 @@ const EMSDB = (() => {
     'tracking', 'result_tracking', 'grade_tracking', 'file_tracking',
     'announcement', 'user', 'doc_request', 'permission',
     'teacher_directory', 'directory_summary', 'login_log',
-    'special_teacher', 'alumni', 'password_log',
+    'special_teacher', 'alumni',
+    // password_log ไม่โหลดแล้ว — ถอดหน้าบันทึกการเปลี่ยนรหัสผ่านออก (เข้าระบบด้วยอีเมลวิทยาลัย) ข้อมูลเดิมยังอยู่ในฐานข้อมูล
     'survey_config', 'survey_question', 'survey_response',
     'support_ticket',
     'workload_plan', 'workload_student', 'workload_rate',

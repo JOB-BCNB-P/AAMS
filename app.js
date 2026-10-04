@@ -726,17 +726,43 @@ function navigateTo(page) {
     n.classList.toggle('text-primary', n.dataset.page === page);
     n.classList.toggle('font-semibold', n.dataset.page === page);
   });
-  renderCurrentPage();
+  emsSwapPage(() => renderCurrentPage());
   if (APP.sidebarOpen) toggleSidebar();
 }
 
+/* วาดหน้าปัจจุบัน
+   • เข้าหน้าใหม่ (สลับเมนู/บทบาท) → ค่อย ๆ จางเข้าพร้อมเลื่อนขึ้นเล็กน้อย (.ems-page-in)
+   • วาดซ้ำในหน้าเดิม (ติ๊ก กรอง เรียง บันทึกเสร็จ) → ไม่เล่นแอนิเมชันเข้าใหม่ทั้งหน้า
+     เดิมทุกครั้งที่วาดซ้ำหน้าจะกระพริบและเด้งขึ้น 8px ดูกระตุก ตอนนี้แค่เปลี่ยนเนื้อหาเงียบ ๆ
+   ถ้าเบราว์เซอร์รองรับ View Transitions ตอนสลับเมนูจะจางหน้าเดิมออกพร้อมกันด้วย (ดู navigateTo) */
 function renderCurrentPage() {
   const mc = document.getElementById('mainContent');
   const p = APP.currentPage;
   const r = APP.currentRole;
-  mc.innerHTML = '<div class="fade-in">' + getPageContent(p, r) + '</div>';
+  const entering = APP._renderedPage !== p || APP._renderedRole !== r;
+  const tabbing = !entering && APP._tabClickAt && (Date.now() - APP._tabClickAt) < 700;
+  APP._renderedPage = p; APP._renderedRole = r; APP._tabClickAt = 0;
+  const cls = APP._inViewTransition ? 'ems-page' : entering ? 'ems-page-in' : tabbing ? 'ems-tab-in' : 'ems-page';
+  mc.innerHTML = '<div class="' + cls + '">' + getPageContent(p, r) + '</div>';
   lucide.createIcons();
   initPageScripts(p);
+}
+// กดแท็บภายในหน้า (ปุ่มที่เรียก ...Tab(...)) → หน้าที่วาดถัดไปค่อย ๆ จางเข้าเบา ๆ
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('click', function (e) {
+    const b = e.target && e.target.closest && e.target.closest('button,a,[role="tab"]');
+    if (b && /Tab\s*\(/.test(b.getAttribute('onclick') || '')) APP._tabClickAt = Date.now();
+  }, true);
+}
+// สลับหน้าแบบนุ่มด้วย View Transitions API (Chrome/Edge/Safari รุ่นใหม่) — ไม่รองรับก็ใช้ .ems-page-in แทน
+function emsSwapPage(fn) {
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (typeof document.startViewTransition !== 'function' || reduce || !APP._renderedPage) { fn(); return; }
+  try {
+    APP._inViewTransition = true;
+    const vt = document.startViewTransition(() => { try { fn(); } finally { APP._inViewTransition = false; } });
+    if (vt && vt.finished) vt.finished.catch(() => { }).then(() => { APP._inViewTransition = false; });
+  } catch (e) { APP._inViewTransition = false; fn(); }
 }
 
 // ======================== HELPERS ========================
@@ -10828,31 +10854,6 @@ async function pwOtpConfirm(mode) {
   }
 }
 
-// แท็บในหน้าตั้งค่า (ผู้ดูแลระบบ): จัดการผู้ใช้ / บันทึกการเปลี่ยนรหัสผ่าน
-function changeSettingsTab(t) { APP._settingsTab = t; renderCurrentPage(); }
-
-function passwordLogSection() {
-  const roleLabels = { admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อาจารย์ประจำชั้น', deptHead: 'ประธานสาขา', registrar: 'เจ้าหน้าที่งานทะเบียน', student: 'นักศึกษา' };
-  const actionLabels = { forgot: 'ลืมรหัสผ่าน (รีเซ็ตผ่านอีเมล)', reset: 'ลืมรหัสผ่าน (รีเซ็ตผ่านอีเมล)', change: 'เปลี่ยนรหัสผ่านในระบบ' };
-  let logs = getDataByType('password_log').slice();
-  logs.sort((a, b) => String(b.created_at || b.timestamp || '').localeCompare(String(a.created_at || a.timestamp || '')));
-  const rows = logs.map(l => `<tr class="border-t hover:bg-gray-50">
-    <td class="px-4 py-3 text-sm whitespace-nowrap">${l.timestamp || ''}</td>
-    <td class="px-4 py-3 text-sm">${l.user_name || ''}</td>
-    <td class="px-4 py-3 text-sm">${l.email || ''}</td>
-    <td class="px-4 py-3 text-sm">${roleLabels[l.role] || l.role || ''}</td>
-    <td class="px-4 py-3 text-sm"><span class="px-2 py-1 rounded-full text-xs ${l.action === 'change' ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-700'}">${actionLabels[l.action] || l.action || ''}</span></td>
-  </tr>`).join('');
-  return `<div class="bg-white rounded-2xl p-5 border border-blue-100">
-    <h3 class="font-bold mb-1 flex items-center gap-2"><i data-lucide="key-round" class="w-5 h-5 text-primary"></i>บันทึกการเปลี่ยนรหัสผ่าน</h3>
-    <p class="text-xs text-gray-500 mb-4">บันทึกทุกครั้งที่มีการตั้ง/เปลี่ยนรหัสผ่านผ่านอีเมล (ล่าสุดอยู่บนสุด) — รวม ${logs.length} รายการ</p>
-    <div class="overflow-x-auto"><table class="w-full text-sm">
-      <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">วันที่-เวลา</th><th class="px-4 py-3 font-semibold">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold">อีเมล</th><th class="px-4 py-3 font-semibold">บทบาท</th><th class="px-4 py-3 font-semibold">ประเภท</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">ยังไม่มีบันทึกการเปลี่ยนรหัสผ่าน</td></tr>'}</tbody>
-    </table></div>
-  </div>`;
-}
-
 function settingsPage() {
   const roles = ['admin', 'academic', 'registrar', 'deptHead', 'executive', 'teacher', 'classTeacher', 'otherStaff', 'student'];
   const modules = ['dashboard', 'curriculum', 'ploAssess', 'students', 'teachers', 'advisors', 'specialTeachers', 'alumni', 'schedule', 'subjects', 'grades', 'engResults', 'teacherDirectory', 'services', 'tracking', 'resultTracking', 'gradeTracking', 'fileTracking', 'leave', 'workload', 'survey',
@@ -10875,13 +10876,8 @@ function settingsPage() {
     <td class="px-4 py-3"><div class="flex gap-1">${(typeof emsCanViewAs === 'function' && emsCanViewAs()) ? `<button onclick="emsViewAsUser('${u.__backendId}')" class="text-amber-500 hover:text-amber-700" title="ดูแทนผู้ใช้ (อ่านอย่างเดียว)"><i data-lucide="eye" class="w-4 h-4"></i></button>` : ''}<button onclick="showEditUserModal('${u.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${u.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>
   </tr>`).join('');
 
-  const _stab = APP._settingsTab || 'users';
-  const _tabBar = `<h2 class="text-xl font-bold text-gray-800 mb-6"><i data-lucide="settings" class="w-6 h-6 inline mr-2"></i>ตั้งค่าระบบ</h2>
-  <div class="flex gap-1 mb-5 border-b">
-    <button onclick="changeSettingsTab('users')" class="px-4 py-2 text-sm font-medium ${_stab === 'users' ? 'border-b-2 border-primary text-primary' : 'text-gray-500 hover:text-gray-700'}"><i data-lucide="users" class="w-4 h-4 inline mr-1"></i>จัดการผู้ใช้งาน</button>
-    <button onclick="changeSettingsTab('pwlog')" class="px-4 py-2 text-sm font-medium ${_stab === 'pwlog' ? 'border-b-2 border-primary text-primary' : 'text-gray-500 hover:text-gray-700'}"><i data-lucide="key-round" class="w-4 h-4 inline mr-1"></i>บันทึกการเปลี่ยนรหัสผ่าน</button>
-  </div>`;
-  if (_stab === 'pwlog') return _tabBar + passwordLogSection();
+  // หน้า "บันทึกการเปลี่ยนรหัสผ่าน" ถอดออกแล้ว — ทุกคนเข้าระบบด้วยอีเมลวิทยาลัย (Google) ไม่มีรหัสผ่านของระบบให้เปลี่ยน
+  const _tabBar = `<h2 class="text-xl font-bold text-gray-800 mb-6"><i data-lucide="settings" class="w-6 h-6 inline mr-2"></i>ตั้งค่าระบบ</h2>`;
   return _tabBar + `
   <div id="driveLinkBox" class="mb-6"></div>
   <div id="lineGroupBox" class="mb-6"></div>

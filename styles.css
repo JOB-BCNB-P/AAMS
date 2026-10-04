@@ -1232,6 +1232,56 @@ html {
   -webkit-overflow-scrolling: touch;
 }
 
+/* ---------- 11.5) สลับหน้า / แท็บ / เปิดดูข้อมูล ----------
+   เข้าหน้าใหม่ : จางเข้าและเลื่อนขึ้นเล็กน้อย
+   สลับแท็บในหน้า : จางเข้าเบา ๆ ไม่เลื่อน (เนื้อหาอยู่ที่เดิม ตาไม่ต้องตาม)
+   วาดซ้ำในหน้าเดิม (ติ๊ก กรอง เรียง หลังบันทึก) : ไม่เล่นอะไร หน้าจอจึงไม่กระพริบ
+   เบราว์เซอร์ที่รองรับ View Transitions : หน้าเดิมจางออกขณะหน้าใหม่จางเข้าพร้อมกัน เฉพาะพื้นที่เนื้อหา */
+.ems-page-in {
+  animation: emsPageIn 240ms cubic-bezier(.4, 0, .2, 1) both;
+}
+@keyframes emsPageIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.ems-tab-in {
+  animation: emsTabIn 180ms cubic-bezier(.4, 0, .2, 1) both;
+}
+@keyframes emsTabIn {
+  from { opacity: .35; }
+  to   { opacity: 1; }
+}
+#mainContent {
+  view-transition-name: ems-main;
+}
+::view-transition-old(ems-main) {
+  animation: emsVtOut 140ms cubic-bezier(.4, 0, 1, 1) both;
+}
+::view-transition-new(ems-main) {
+  animation: emsPageIn 240ms cubic-bezier(0, 0, .2, 1) 60ms both;
+}
+@keyframes emsVtOut {
+  to { opacity: 0; }
+}
+/* กางดูรายละเอียด (details) ให้เนื้อหาค่อย ๆ เลื่อนลงมา แทนการโผล่ทั้งก้อน */
+details[open] > *:not(summary) {
+  animation: emsSlideDown 200ms cubic-bezier(.4, 0, .2, 1);
+}
+/* ตัวเลือกที่ติ๊ก/ช่องกรอก เปลี่ยนสีขอบแบบนุ่ม */
+input,
+select,
+textarea {
+  transition: border-color 150ms cubic-bezier(.4, 0, .2, 1), box-shadow 150ms cubic-bezier(.4, 0, .2, 1), background-color 150ms cubic-bezier(.4, 0, .2, 1);
+}
+/* แถบแจ้งว่ากู้ข้อมูลที่กรอกค้างไว้ */
+.ems-draft-note {
+  animation: emsSlideDown 220ms cubic-bezier(.4, 0, .2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(ems-main),
+  ::view-transition-new(ems-main) { animation: none !important; }
+}
+
 /* ---------- 12) เคารพการตั้งค่าของผู้ใช้ ----------
    ผู้ใช้บางคนตั้งระบบปฏิบัติการไว้ว่าลดการเคลื่อนไหว
    เพราะเวียนศีรษะหรือไวต่อภาพเคลื่อนไหว ต้องปิดให้หมด
