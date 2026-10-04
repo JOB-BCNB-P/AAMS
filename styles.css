@@ -1282,6 +1282,84 @@ textarea {
   ::view-transition-new(ems-main) { animation: none !important; }
 }
 
+/* ---------- ขั้นตอนในฟอร์มบันทึกข้อมูล (steps.js) ----------
+   เลขวงกลมนำหน้าแต่ละหมวด เส้นเชื่อมลงมาถึงหมวดถัดไป
+   น้ำเงิน = ยังไม่เสร็จ · วงแหวน = ทำขั้นนี้ต่อ · เขียวมีเครื่องหมายถูก = กรอกช่องบังคับครบแล้ว */
+form.ems-stepped { display: block; }
+form.ems-stepped > * + * { margin-top: 0; }
+.ems-step {
+  position: relative;
+  padding: 0 0 1rem 2.6rem;
+}
+.ems-step::before {
+  content: "";
+  position: absolute;
+  left: .95rem;
+  top: 2.1rem;
+  bottom: .25rem;
+  width: 2px;
+  border-radius: 2px;
+  background: #dbe6f3;
+  transition: background-color 200ms cubic-bezier(.4, 0, .2, 1);
+}
+.ems-step:last-of-type::before,
+.ems-step.ems-step-final::before { display: none; }
+.ems-step.is-done::before { background: #a7e3c9; }
+.ems-step-off { display: none; }
+.ems-step-head {
+  display: flex;
+  align-items: flex-start;
+  gap: .6rem;
+  min-height: 1.95rem;
+  margin-bottom: .55rem;
+}
+.ems-step-no {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1.95rem;
+  height: 1.95rem;
+  border-radius: 9999px;
+  background: #1e6fba;
+  color: #fff;
+  font-weight: 700;
+  font-size: .85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 0 rgba(30, 111, 186, 0);
+  transition: background-color 200ms cubic-bezier(.4, 0, .2, 1), box-shadow 200ms cubic-bezier(.4, 0, .2, 1), color 200ms;
+}
+.ems-step.is-active .ems-step-no { box-shadow: 0 0 0 4px rgba(30, 111, 186, .18); }
+.ems-step.is-done .ems-step-no { background: #059669; color: transparent; }
+.ems-step.is-done .ems-step-no::after {
+  content: "";
+  position: absolute;
+  width: .45rem;
+  height: .8rem;
+  border: solid #fff;
+  border-width: 0 2.5px 2.5px 0;
+  transform: translateY(-1px) rotate(45deg);
+}
+.ems-step-final .ems-step-no { background: #0f4c81; }
+.ems-step-title {
+  font-weight: 700;
+  font-size: .9rem;
+  line-height: 1.95rem;
+  color: #1f2937;
+  margin: 0;
+}
+.ems-step-sub {
+  font-size: .75rem;
+  color: #6b7280;
+  margin: -.35rem 0 0;
+  line-height: 1.35;
+}
+.ems-step-body > * + * { margin-top: .75rem; }
+@media (max-width: 480px) {
+  .ems-step { padding-left: 2.3rem; }
+}
+
 /* ---------- 12) เคารพการตั้งค่าของผู้ใช้ ----------
    ผู้ใช้บางคนตั้งระบบปฏิบัติการไว้ว่าลดการเคลื่อนไหว
    เพราะเวียนศีรษะหรือไวต่อภาพเคลื่อนไหว ต้องปิดให้หมด

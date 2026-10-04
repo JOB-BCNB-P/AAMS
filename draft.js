@@ -104,9 +104,11 @@
 
   /* ---------- กุญแจของร่าง ---------- */
   function hash(str) { var h = 5381; for (var i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
+  // APP ประกาศด้วย const ใน app.js จึงไม่ได้เป็นคุณสมบัติของ window ต้องอ้างชื่อตรง ๆ
+  function app() { try { return (typeof APP !== 'undefined' && APP) || null; } catch (e) { return null; } }
   function who() {
-    var u = (window.APP && APP.currentUser) || {};
-    return String(u.email || u.name || '') + '@' + String((window.APP && APP.currentRole) || '');
+    var a = app() || {}, u = a.currentUser || {};
+    return String(u.email || u.name || '') + '@' + String(a.currentRole || '');
   }
   function dataAttrs(form) {
     var o = {};
@@ -139,14 +141,14 @@
     if (!form || !form.id || form.dataset.emsDraftKey || form.hasAttribute('data-nodraft')) return;
     var init = readForm(form);
     form._emsInit = init;
-    var page = String((window.APP && APP.currentPage) || '');
+    var page = String((app() || {}).currentPage || '');
     var key = who() + '|' + page + '|' + form.id + '|' + hash(JSON.stringify(init) + JSON.stringify(dataAttrs(form)));
     form.dataset.emsDraftKey = key;
 
     var d = getDraft(key);
     if (!d || !d.v || !Object.keys(d.v).length) return;
     // กันวนซ้ำ : เติมค่าแล้วฟอร์มสั่งวาดตัวเองใหม่ อย่าเติมซ้ำในทันที
-    if (lastRestore[key] && Date.now() - lastRestore[key] < 1500) return;
+    if (lastRestore[key] && Date.now() - lastRestore[key] < 500) return;
     lastRestore[key] = Date.now();
     var missing = [];
     Object.keys(d.v).forEach(function (k) { if (!setValue(form, k, d.v[k])) missing.push(k); });
