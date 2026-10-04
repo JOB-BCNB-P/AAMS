@@ -3315,7 +3315,12 @@ async function loadSchedNotifyChannels() {
   if (!o.isOk) { box2.innerHTML = '<span class="text-red-500">' + htmlEsc(o.error || 'โหลดรายชื่อกลุ่ม LINE ไม่สำเร็จ') + '</span>'; return; }
   const gs = o.lineGroups || [];
   box2.innerHTML = !o.hasLine ? '<span class="text-amber-600">ยังไม่ได้ตั้งค่าโทเคน LINE ในระบบ</span>'
-    : gs.length ? gs.map(g => `<label class="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 text-gray-700 cursor-pointer"><input type="checkbox" class="sched-line-grp accent-primary" value="${g.id}" checked> ${htmlEsc(g.name)}</label>`).join('')
+    : gs.length ? gs.map(g => {
+        // ชื่อกลุ่มดึงจาก LINE จริง · กลุ่มที่บอทติดต่อไม่ได้ (ถูกเชิญออก/กลุ่มถูกลบ) ไม่ติ๊กให้
+        const bad = g.reachable === false;
+        const cnt = (g.members != null) ? ' <span class="text-gray-400">(' + g.members + ' คน)</span>' : '';
+        return `<label class="flex items-center gap-1.5 ${bad ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-gray-50 border-gray-200 text-gray-700'} border rounded-lg px-2 py-1 cursor-pointer" title="${bad ? 'บอท LINE ติดต่อกลุ่มนี้ไม่ได้ อาจถูกเชิญออกจากกลุ่มแล้ว' : ''}"><input type="checkbox" class="sched-line-grp accent-primary" value="${g.id}" ${bad ? '' : 'checked'}> ${htmlEsc(g.name)}${cnt}${bad ? ' ⚠ ติดต่อไม่ได้' : ''}</label>`;
+      }).join('')
       : '<span class="text-amber-600">ยังไม่มีกลุ่ม LINE ที่เปิดใช้งาน</span>';
   if (!o.hasSmtp) {
     const m = document.getElementById('schedNotifyMail');

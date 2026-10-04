@@ -1,5 +1,5 @@
 // ============================================================
-// announce-send v1 — ส่งประกาศจากระบบ AAMS ออกทาง "อีเมล" และ/หรือ "LINE" ตามที่ผู้ประกาศเลือก
+// announce-send v2 — ส่งประกาศจากระบบ AAMS ออกทาง "อีเมล" และ/หรือ "LINE" ตามที่ผู้ประกาศเลือก
 //
 // โหมด
 //   options : คืนรายชื่อกลุ่ม LINE ที่เปิดใช้งาน และบอกว่าตั้งค่า LINE / SMTP ไว้แล้วหรือยัง
@@ -176,10 +176,30 @@ Deno.serve(async (req) => {
   const { data: groupsRaw } = await admin.from('line_group').select('id, name, group_id, is_active')
   const groups = (groupsRaw ?? []).filter((g: any) => !off(g.is_active))
   if (mode === 'options') {
-    return json({
-      isOk: true, hasLine: !!LINE_TOKEN, hasSmtp,
-      lineGroups: groups.map((g: any) => ({ id: g.id, name: norm(g.name) || ('กลุ่ม ' + g.id) })),
-    })
+    // ดึงชื่อจริงและจำนวนสมาชิกของแต่ละกลุ่มจาก LINE
+    // ชื่อที่ยังเป็นค่าตั้งต้น ("กลุ่ม 1" ฯลฯ) หรือว่าง จะถูกแทนด้วยชื่อกลุ่มจริงใน LINE ให้อัตโนมัติ
+    const info = await Promise.all(groups.map(async (g: any) => {
+      if (!LINE_TOKEN) return { name: '', count: null as number | null }
+      const gid = encodeURIComponent(String(g.group_id))
+      const h = { Authorization: 'Bearer ' + LINE_TOKEN }
+      const [s, c] = await Promise.all([
+        fetch(`https://api.line.me/v2/bot/group/${gid}/summary`, { headers: h }).then((r) => r.ok ? r.json() : null).catch(() => null),
+        fetch(`https://api.line.me/v2/bot/group/${gid}/members/count`, { headers: h }).then((r) => r.ok ? r.json() : null).catch(() => null),
+      ])
+      return { name: norm(s?.groupName), count: typeof c?.count === 'number' ? c.count : null }
+    }))
+    const list = []
+    for (let i = 0; i < groups.length; i++) {
+      const g: any = groups[i]
+      let name = norm(g.name)
+      const live = info[i].name
+      if (live && live !== name && (!name || /^กลุ่ม\s*\d+$/.test(name))) {
+        await admin.from('line_group').update({ name: live, updated_at: new Date().toISOString() }).eq('id', g.id)
+        name = live
+      }
+      list.push({ id: g.id, name: name || ('กลุ่ม ' + g.id), lineName: live, members: info[i].count, reachable: !!live })
+    }
+    return json({ isOk: true, hasLine: !!LINE_TOKEN, hasSmtp, lineGroups: list })
   }
 
   // ---------- preview ----------
