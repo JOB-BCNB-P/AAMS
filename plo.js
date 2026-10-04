@@ -125,10 +125,18 @@
 
   window.ploSet = function (k, v) {
     var st = state();
+    // เปลี่ยนรายวิชา/ภาค/ปี/ชั้นปี ขณะมีคะแนนที่ยังไม่บันทึก — ถามก่อน ไม่ให้หายเงียบ ๆ
+    if (['eYear', 'eSem', 'eLevel', 'eSubject'].indexOf(k) >= 0 && s(st[k]) !== s(v)
+        && st._dirty && Object.keys(st._dirty).length
+        && !confirm('ยังมีคะแนนที่แก้ไขแต่ยังไม่ได้บันทึก ' + Object.keys(st._dirty).length + ' ช่อง\nเปลี่ยนไปหน้าอื่นจะไม่บันทึกคะแนนเหล่านี้ ต้องการเปลี่ยนใช่หรือไม่')) {
+      if (typeof renderCurrentPage === 'function') renderCurrentPage();
+      return;
+    }
     st[k] = v;
     if (['curriculum', 'batch', 'year', 'sem'].indexOf(k) >= 0) st.summary = null;
     if (['eYear', 'eSem', 'eLevel'].indexOf(k) >= 0) { st.eSubject = ''; st.scores = null; }
-    if (k === 'eSubject') st.scores = null;
+    if (k === 'eSubject') { st.scores = null; st.gridClo = ''; }
+    if (['eYear', 'eSem', 'eLevel', 'eSubject'].indexOf(k) >= 0) st._dirty = {};
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
   };
 
@@ -516,34 +524,54 @@
      ตอนอัปโหลดระบบดูจากหัวตารางว่าเป็นไฟล์ CLO หรือไฟล์คะแนน ไม่ต้องเลือกเอง */
   function csvPanel() {
     var st = state();
+    var subs = subjectsOf(st.eYear, st.eSem, st.eLevel);
+    var subj = st.eSubject ? subs.filter(function (x) { return s(x.subject_code) === s(st.eSubject); })[0] : null;
     var nClo = st.eSubject ? closOf(st.eYear, st.eSem, st.eSubject).length : 0;
-    var btn = function (onclick, icon, label, cls) {
-      return '<button onclick="' + onclick + '" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm ' + cls + '">'
+    var btn = function (onclick, icon, label, cls, off) {
+      return '<button ' + (off ? 'disabled ' : '') + 'onclick="' + onclick + '" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm '
+        + cls + (off ? ' opacity-40 cursor-not-allowed' : '') + '">'
         + '<i data-lucide="' + icon + '" class="w-4 h-4"></i>' + esc(label) + '</button>';
     };
-    return '<div class="border border-emerald-100 bg-emerald-50/40 rounded-2xl p-4 mb-6">'
-      + '<div class="flex flex-wrap items-center justify-between gap-2 mb-2">'
-      + '<p class="text-sm font-semibold text-gray-700"><i data-lucide="file-spreadsheet" class="w-4 h-4 inline mr-1 text-emerald-600"></i>'
-      + 'นำเข้าข้อมูลผ่านไฟล์ CSV</p>'
-      + '<span class="text-[11px] text-gray-500">ปีการศึกษา ' + esc(st.eYear) + ' · ภาค '
-      + esc(st.eSem === '3' ? 'ฤดูร้อน' : st.eSem) + ' · ชั้นปีที่ ' + esc(st.eLevel) + '</span></div>'
-      + '<div class="flex flex-wrap gap-2 mb-2">'
-      + btn('ploCsvTemplateAll()', 'download', 'แม่แบบรวมไฟล์เดียว (CLO + คะแนน)', 'border-emerald-600 text-white bg-emerald-600 hover:bg-emerald-700')
-      + btn('ploCsvPick()', 'upload', 'อัปโหลดไฟล์ CSV', 'border-primary text-primary bg-white hover:bg-primaryLight')
+    var no = function (num, done) {
+      return '<span class="w-7 h-7 rounded-full ' + (done ? 'bg-emerald-600' : 'bg-primary') + ' text-white text-sm font-bold flex items-center justify-center flex-shrink-0">' + num + '</span>';
+    };
+    var scope = 'ปีการศึกษา ' + esc(st.eYear) + ' · ภาค ' + esc(st.eSem === '3' ? 'ฤดูร้อน' : st.eSem) + ' · ชั้นปีที่ ' + esc(st.eLevel);
+
+    // ขั้นที่ 1 : CLO ที่ผูกกับ PLO
+    var step1 = '<div class="bg-white border border-blue-100 rounded-xl p-4">'
+      + '<div class="flex items-start gap-3 mb-2">' + no(1, nClo > 0)
+      + '<div><p class="text-sm font-semibold text-gray-800">นำเข้า CLO ที่ผูกกับ PLO</p>'
+      + '<p class="text-[11px] text-gray-500">' + (subj ? 'รายวิชา ' + esc(subj.subject_name) : 'ทุกรายวิชาของชั้นปีนี้ (' + subs.length + ' วิชา)')
+      + ' · คอลัมน์: รหัสวิชา · รหัส CLO · คำอธิบาย · PLO ที่ผูก · คะแนนเต็ม · เกณฑ์ผ่าน</p></div></div>'
+      + '<div class="flex flex-wrap gap-2 ml-10">'
+      + btn("ploCsvTemplate('clo')", 'download', 'ดาวน์โหลดแม่แบบ CLO', 'border-emerald-600 text-emerald-700 bg-white hover:bg-emerald-50')
+      + btn("ploCsvPick('clo')", 'upload', 'อัปโหลดไฟล์ CLO', 'border-primary text-white bg-primary hover:bg-primaryDark')
       + '</div>'
-      + '<details class="mb-2"><summary class="text-[11px] text-gray-500 cursor-pointer">แม่แบบแยกไฟล์ (แบบเดิม)</summary>'
-      + '<div class="flex flex-wrap gap-2 mt-2">'
-      + btn('ploCsvTemplate(\'clo\')', 'download', 'แม่แบบ CLO อย่างเดียว', 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50')
-      + btn('ploCsvTemplate(\'score\')', 'download', 'แม่แบบคะแนนอย่างเดียว', 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50')
-      + '</div></details>'
+      + '<p class="text-[11px] text-gray-400 mt-2 ml-10">แม่แบบมี CLO เดิมติดมาด้วย แก้ไขแล้วอัปโหลดกลับได้ · รหัส CLO ที่มีอยู่แล้วจะถูกแก้ ที่ยังไม่มีจะเพิ่มใหม่</p>'
+      + '</div>';
+
+    // ขั้นที่ 2 : คะแนนรายคน — ต้องเลือกรายวิชาและมี CLO แล้ว
+    var why = !st.eSubject ? 'เลือกรายวิชาด้านบนก่อน' : (!nClo ? 'รายวิชานี้ยังไม่มี CLO — ทำขั้นที่ 1 ก่อน' : '');
+    var step2 = '<div class="bg-white border ' + (why ? 'border-gray-100' : 'border-blue-100') + ' rounded-xl p-4">'
+      + '<div class="flex items-start gap-3 mb-2">' + no(2, false)
+      + '<div><p class="text-sm font-semibold ' + (why ? 'text-gray-400' : 'text-gray-800') + '">นำเข้าคะแนนรายคน <span class="font-normal text-xs">(หลังเพิ่ม CLO แล้ว)</span></p>'
+      + '<p class="text-[11px] text-gray-500">' + (why ? '<span class="text-amber-700">' + why + '</span>'
+          : 'รายวิชา ' + esc(subj ? subj.subject_name : st.eSubject) + ' · ' + nClo + ' CLO · คอลัมน์: รหัสนักศึกษา · ชื่อ · คะแนนแต่ละ CLO (1 คอลัมน์ต่อ 1 CLO)')
+      + '</p></div></div>'
+      + '<div class="flex flex-wrap gap-2 ml-10">'
+      + btn("ploCsvTemplate('score')", 'download', 'ดาวน์โหลดแม่แบบคะแนน', 'border-emerald-600 text-emerald-700 bg-white hover:bg-emerald-50', !!why)
+      + btn("ploCsvPick('score')", 'upload', 'อัปโหลดไฟล์คะแนน', 'border-primary text-white bg-primary hover:bg-primaryDark', !!why)
+      + '</div>'
+      + (why ? '' : '<p class="text-[11px] text-gray-400 mt-2 ml-10">ช่องที่เว้นว่างจะไม่ถูกแตะ (ไม่ใช่ให้ 0) · กด "เปิดตารางกรอกคะแนน" ก่อนดาวน์โหลด คะแนนเดิมจะติดมาในแม่แบบ</p>')
+      + '</div>';
+
+    return '<div class="border border-emerald-100 bg-emerald-50/40 rounded-2xl p-4 mb-6">'
+      + '<div class="flex flex-wrap items-center justify-between gap-2 mb-3">'
+      + '<p class="text-sm font-semibold text-gray-700"><i data-lucide="file-spreadsheet" class="w-4 h-4 inline mr-1 text-emerald-600"></i>นำเข้าข้อมูลผ่านไฟล์ CSV</p>'
+      + '<span class="text-[11px] text-gray-500">' + scope + '</span></div>'
+      + '<div class="grid lg:grid-cols-2 gap-3">' + step1 + step2 + '</div>'
       + '<input type="file" id="ploCsvInput" accept=".csv,text/csv" class="hidden" onchange="ploCsvFile(event)">'
-      + '<p class="text-[11px] text-gray-500">'
-      + '<b>แม่แบบรวม</b> มีทั้ง CLO และคะแนนรายคนอยู่ในไฟล์เดียว แยกด้วยคอลัมน์แรก "ประเภท"<br>'
-      + 'แถว <b>CLO</b> = รหัส CLO · คำอธิบาย · PLO ที่ผูก · คะแนนเต็ม · เกณฑ์ผ่าน &nbsp;|&nbsp; '
-      + 'แถว <b>คะแนน</b> = รหัสนักศึกษา · รหัส CLO · คะแนนที่ได้<br>'
-      + 'นำเข้าทีเดียว ระบบจะบันทึก CLO ให้ก่อนแล้วค่อยผูกคะแนนตามรหัส CLO'
-      + (st.eSubject ? (nClo ? ' — ตอนนี้มี ' + nClo + ' CLO' : ' — รายวิชานี้ยังไม่ได้กำหนด CLO') : ' — เลือกรายวิชาก่อน')
-      + '<br>ระบบจะสรุปให้ดูก่อนว่าจะเพิ่มหรือแก้อะไรบ้าง แล้วค่อยกดยืนยัน</p>'
+      + '<p class="text-[11px] text-gray-500 mt-2">ทุกครั้งที่อัปโหลด ระบบจะสรุปให้ดูก่อนว่าจะเพิ่มหรือแก้อะไรบ้าง แล้วจึงกดยืนยัน</p>'
       + '</div>';
   }
 
@@ -783,7 +811,13 @@
       bad, cloPlan.length + scorePlan.length);
   }
 
-  window.ploCsvPick = function () {
+  window.ploCsvPick = function (kind) {
+    var st = state();
+    st.csvKind = kind || '';
+    if (kind === 'score') {
+      if (!st.eSubject) { showToast('เลือกรายวิชาก่อน จึงจะนำเข้าคะแนนได้', 'error'); return; }
+      if (!closOf(st.eYear, st.eSem, st.eSubject).length) { showToast('รายวิชานี้ยังไม่มี CLO — นำเข้า CLO (ขั้นที่ 1) ก่อน', 'error'); return; }
+    }
     var el = document.getElementById('ploCsvInput');
     if (!el) { showToast('ไม่พบช่องเลือกไฟล์', 'error'); return; }
     el.value = '';
@@ -798,6 +832,14 @@
     var rows = parseCsv(text);
     if (rows.length < 2) { showToast('ไฟล์ CSV ไม่มีข้อมูล', 'error'); return; }
     var head = rows[0].map(function (x) { return s(x).toLowerCase(); });
+    // อัปโหลดจากปุ่มของขั้นไหน ต้องเป็นไฟล์ชนิดนั้น — กันอัปโหลดไฟล์คะแนนในช่อง CLO หรือกลับกัน
+    var want = state().csvKind || '';
+    var isAll = head.indexOf('ประเภท') >= 0 || head.indexOf('type') >= 0;
+    var got = isAll ? 'all' : head.indexOf('clo_code') >= 0 ? 'clo' : head.indexOf('student_id') >= 0 ? 'score' : '';
+    if (want && got && got !== 'all' && got !== want) {
+      showToast(want === 'clo' ? 'ไฟล์นี้เป็นไฟล์คะแนน — อัปโหลดที่ขั้นที่ 2 "นำเข้าคะแนนรายคน"' : 'ไฟล์นี้เป็นไฟล์ CLO — อัปโหลดที่ขั้นที่ 1 "นำเข้า CLO ที่ผูกกับ PLO"', 'error');
+      return;
+    }
     // ไฟล์รวมมาก่อน เพราะมีทั้ง clo_code และ student_id อยู่ในไฟล์เดียว
     if (head.indexOf('ประเภท') >= 0 || head.indexOf('type') >= 0) { ploCsvPlanAll(rows, head, f.name); return; }
     if (head.indexOf('clo_code') >= 0) { ploCsvPlanClo(rows, head, f.name); return; }
@@ -1245,6 +1287,33 @@
   };
 
   /* ---------- ตารางกรอกคะแนนรายคน ---------- */
+  /* ตารางกรอกคะแนนรายคน
+     CLO มาก ตารางจะกว้างจนต้องเลื่อนซ้ายขวา จึงมี 2 มุมมอง
+       • ทีละ CLO (ค่าเริ่มต้นเมื่อมีมากกว่า 6 CLO) : เลือก CLO จากแถบด้านบน กรอกลงคอลัมน์เดียว เห็นผลผ่าน/ไม่ผ่านทันที
+       • ทุก CLO : ตารางเต็ม หัวตารางและคอลัมน์ชื่อตรึงไว้ เลื่อนแล้วยังรู้ว่าเป็นช่องของใคร CLO ไหน
+     ทั้งสองมุมมองใช้คะแนนชุดเดียวกัน สลับไปมาได้โดยคะแนนที่ยังไม่บันทึกไม่หาย
+     กด Enter / ลูกศรขึ้นลง เพื่อเลื่อนไปช่องของนักศึกษาคนถัดไป */
+  function scoreFilled(r, studs) {
+    var st = state(), c = 0;
+    studs.forEach(function (u) { var v = st.scores[r.__backendId + '|' + u.student_id]; if (v != null && s(v) !== '') c++; });
+    return c;
+  }
+  function scoreInput(r, u, wide) {
+    var st = state();
+    var v = st.scores[r.__backendId + '|' + u.student_id];
+    var has = v != null && s(v) !== '';
+    var cls = !has ? '' : (n(v) >= n(r.pass_score) ? 'bg-emerald-50' : 'bg-red-50');
+    return '<input type="number" step="0.01" min="0"' + (s(r.max_score) ? ' max="' + esc(r.max_score) + '"' : '')
+      + ' value="' + esc(has ? v : '') + '" data-clo="' + esc(r.__backendId) + '" data-stu="' + esc(u.student_id) + '"'
+      + ' oninput="ploScoreInput(this)" onkeydown="ploScoreKey(event,this)" data-nodraft="1"'
+      + ' class="' + (wide ? 'w-28' : 'w-16') + ' border rounded-lg px-2 py-1 text-sm text-center tabular-nums ' + cls + '">';
+  }
+  function resultBadge(r, v) {
+    if (v == null || s(v) === '') return '<span class="text-[11px] text-gray-300">ยังไม่กรอก</span>';
+    return n(v) >= n(r.pass_score)
+      ? '<span class="px-2 py-0.5 rounded-full text-[11px] bg-emerald-50 text-emerald-700">ผ่าน</span>'
+      : '<span class="px-2 py-0.5 rounded-full text-[11px] bg-red-50 text-red-600">ไม่ผ่าน</span>';
+  }
   function scoreGrid(rows) {
     var st = state();
     var batch = cohortPrefix(st.eYear, st.eLevel);
@@ -1258,37 +1327,113 @@
         + studs.length + ' คน × ' + rows.length + ' CLO)</button>');
     }
 
-    var head = '<tr class="bg-surface text-left">'
-      + '<th class="px-3 py-2 font-semibold sticky left-0 bg-surface z-10">นักศึกษา</th>'
-      + rows.map(function (r) {
-          return '<th class="px-2 py-2 font-semibold text-center whitespace-nowrap" title="' + esc(r.statement_th) + '">'
-            + esc(r.clo_code) + '<div class="text-[10px] font-normal text-gray-400">เต็ม ' + esc(r.max_score)
-            + ' · ผ่าน ' + esc(r.pass_score) + '</div></th>';
-        }).join('') + '</tr>';
+    var mode = st.gridMode || (rows.length > 6 ? 'one' : 'all');
+    var cur = rows.filter(function (r) { return String(r.__backendId) === String(st.gridClo); })[0] || rows[0];
+    var curIdx = rows.indexOf(cur);
+    var dirtyN = st._dirty ? Object.keys(st._dirty).length : 0;
 
-    var body = studs.map(function (u) {
-      return '<tr class="border-t border-gray-50">'
-        + '<td class="px-3 py-1.5 sticky left-0 bg-white z-10 whitespace-nowrap">'
-        + '<span class="font-mono text-xs text-gray-400">' + esc(u.student_id) + '</span> ' + esc(u.name) + '</td>'
+    var tbtn = function (m, icon, label) {
+      var on = mode === m;
+      return '<button type="button" data-no-loading onclick="ploSet(\'gridMode\',\'' + m + '\')" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm '
+        + (on ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50') + '">'
+        + '<i data-lucide="' + icon + '" class="w-4 h-4"></i>' + label + '</button>';
+    };
+    var toolbar = '<div class="flex flex-wrap items-center justify-between gap-2 mb-3">'
+      + '<div class="inline-flex rounded-xl border border-gray-200 overflow-hidden">'
+      + tbtn('one', 'list', 'ทีละ CLO') + tbtn('all', 'table', 'ทุก CLO (' + rows.length + ')') + '</div>'
+      + '<input type="search" data-nodraft="1" oninput="ploGridFilter(this.value)" value="' + esc(st.gridQ || '') + '" placeholder="ค้นหารหัสหรือชื่อนักศึกษา" '
+      + 'class="flex-1 min-w-[12rem] max-w-xs border border-gray-200 rounded-xl px-3 py-1.5 text-sm"></div>';
+    var qk = s(st.gridQ).toLowerCase();
+    var hide = function (u) { return qk && (u.student_id + ' ' + u.name).toLowerCase().indexOf(qk) < 0 ? ' style="display:none"' : ''; };
+
+    var table;
+    if (mode === 'one') {
+      var chips = '<div class="flex gap-2 overflow-x-auto pb-2 mb-3" style="scrollbar-width:thin">'
         + rows.map(function (r) {
-            var key = r.__backendId + '|' + u.student_id;
-            var v = st.scores[key];
-            var pass = v != null && v !== '' && n(v) >= n(r.pass_score);
-            var cls = (v == null || v === '') ? '' : (pass ? 'bg-emerald-50' : 'bg-red-50');
-            return '<td class="px-1 py-1 text-center"><input type="number" step="0.01" value="' + esc(v == null ? '' : v) + '" '
-              + 'data-clo="' + esc(r.__backendId) + '" data-stu="' + esc(u.student_id) + '" '
-              + 'oninput="ploScoreInput(this)" class="w-20 border rounded-lg px-2 py-1 text-sm text-center ' + cls + '"></td>';
-          }).join('') + '</tr>';
-    }).join('');
+            var on = r === cur, f = scoreFilled(r, studs);
+            return '<button type="button" data-no-loading onclick="ploSet(\'gridClo\',\'' + esc(r.__backendId) + '\')" title="' + esc(r.statement_th) + '" '
+              + 'class="flex-shrink-0 text-left rounded-xl border px-3 py-1.5 transition '
+              + (on ? 'border-primary bg-blue-50' : 'border-gray-100 bg-white hover:bg-surface') + '">'
+              + '<span class="block text-sm font-semibold ' + (on ? 'text-primary' : 'text-gray-700') + '">' + esc(r.clo_code) + '</span>'
+              + '<span class="block text-[10px] ' + (f === studs.length ? 'text-emerald-600' : 'text-gray-400') + '">'
+              + '<span id="ploChip_' + esc(r.__backendId) + '">' + f + '</span>/' + studs.length + ' คน</span></button>';
+          }).join('') + '</div>';
+      var prev = curIdx > 0 ? rows[curIdx - 1] : null, next = curIdx < rows.length - 1 ? rows[curIdx + 1] : null;
+      var nav = function (r, label) {
+        return '<button type="button" data-no-loading ' + (r ? 'onclick="ploSet(\'gridClo\',\'' + esc(r.__backendId) + '\')"' : 'disabled')
+          + ' class="px-3 py-1.5 rounded-lg border bg-white text-sm ' + (r ? 'hover:bg-gray-50' : 'opacity-40') + '">' + label + '</button>';
+      };
+      var info = '<div class="flex flex-wrap items-start justify-between gap-3 bg-surface/60 border border-blue-50 rounded-xl px-4 py-3 mb-3">'
+        + '<div class="min-w-0"><p class="text-sm font-semibold text-gray-800">' + esc(cur.clo_code)
+        + ' <span class="ml-1 px-2 py-0.5 rounded-lg bg-blue-50 text-primary text-xs font-normal">' + esc(cur.plo_code || '—') + '</span></p>'
+        + '<p class="text-xs text-gray-600 mt-0.5">' + esc(cur.statement_th || '') + '</p>'
+        + '<p class="text-[11px] text-gray-400 mt-0.5">คะแนนเต็ม ' + esc(cur.max_score) + ' · เกณฑ์ผ่าน ' + esc(cur.pass_score) + '</p></div>'
+        + '<div class="flex gap-2 flex-shrink-0">' + nav(prev, '‹ CLO ก่อนหน้า') + nav(next, 'CLO ถัดไป ›') + '</div></div>';
+      table = chips + info
+        + '<div class="overflow-auto border border-gray-100 rounded-xl max-h-[65vh]"><table class="w-full text-sm">'
+        + '<thead class="sticky top-0 z-20"><tr class="bg-surface text-left">'
+        + '<th class="px-3 py-2 font-semibold text-center w-12 bg-surface">#</th><th class="px-3 py-2 font-semibold bg-surface">รหัสนักศึกษา</th>'
+        + '<th class="px-3 py-2 font-semibold bg-surface">ชื่อ-สกุล</th><th class="px-3 py-2 font-semibold text-center bg-surface">คะแนน</th>'
+        + '<th class="px-3 py-2 font-semibold text-center bg-surface">ผล</th></tr></thead><tbody>'
+        + studs.map(function (u, i) {
+            var v = st.scores[cur.__backendId + '|' + u.student_id];
+            return '<tr class="border-t border-gray-50" data-q="' + esc((u.student_id + ' ' + u.name).toLowerCase()) + '"' + hide(u) + '>'
+              + '<td class="px-3 py-1.5 text-center text-xs text-gray-400">' + (i + 1) + '</td>'
+              + '<td class="px-3 py-1.5 font-mono text-xs text-gray-500">' + esc(u.student_id) + '</td>'
+              + '<td class="px-3 py-1.5">' + esc(u.name) + '</td>'
+              + '<td class="px-3 py-1 text-center">' + scoreInput(cur, u, true) + '</td>'
+              + '<td class="px-3 py-1.5 text-center" data-res="' + esc(cur.__backendId + '|' + u.student_id) + '">' + resultBadge(cur, v) + '</td></tr>';
+          }).join('') + '</tbody></table></div>';
+    } else {
+      table = '<div class="overflow-auto border border-gray-100 rounded-xl max-h-[70vh]"><table class="text-sm" style="min-width:100%">'
+        + '<thead class="sticky top-0 z-20"><tr class="bg-surface text-left">'
+        + '<th class="px-3 py-2 font-semibold sticky left-0 bg-surface z-30 min-w-[14rem]">นักศึกษา</th>'
+        + rows.map(function (r) {
+            return '<th class="px-1 py-2 font-semibold text-center whitespace-nowrap bg-surface" title="' + esc(r.clo_code + ' · ' + (r.plo_code || '') + ' — ' + (r.statement_th || '')) + '">'
+              + esc(r.clo_code) + '<div class="text-[10px] font-normal text-gray-400">' + esc(r.plo_code || '') + ' · ผ่าน ' + esc(r.pass_score) + '/' + esc(r.max_score) + '</div></th>';
+          }).join('')
+        + '<th class="px-2 py-2 font-semibold text-center whitespace-nowrap bg-surface">ผ่าน</th></tr></thead><tbody>'
+        + studs.map(function (u) {
+            var ok = 0;
+            rows.forEach(function (r) { var v = st.scores[r.__backendId + '|' + u.student_id]; if (v != null && s(v) !== '' && n(v) >= n(r.pass_score)) ok++; });
+            return '<tr class="border-t border-gray-50" data-q="' + esc((u.student_id + ' ' + u.name).toLowerCase()) + '"' + hide(u) + '>'
+              + '<td class="px-3 py-1.5 sticky left-0 bg-white z-10 whitespace-nowrap">'
+              + '<span class="font-mono text-xs text-gray-400">' + esc(u.student_id) + '</span> ' + esc(u.name) + '</td>'
+              + rows.map(function (r) { return '<td class="px-1 py-1 text-center">' + scoreInput(r, u, false) + '</td>'; }).join('')
+              + '<td class="px-2 py-1.5 text-center text-xs tabular-nums whitespace-nowrap text-gray-600">' + ok + '/' + rows.length + '</td></tr>';
+          }).join('') + '</tbody></table></div>'
+        + '<p class="text-[11px] text-gray-400 mt-1">ชี้ที่หัวคอลัมน์เพื่อดูคำอธิบาย CLO · หัวตารางและชื่อนักศึกษาตรึงไว้ขณะเลื่อน</p>';
+    }
 
-    return section('กรอกคะแนนรายคน <span class="text-xs font-normal text-gray-400">(ช่องเขียวคือผ่านเกณฑ์ · แดงคือไม่ผ่าน)</span>',
-      '<div class="overflow-x-auto border border-gray-100 rounded-xl max-h-[70vh]">'
-      + '<table class="w-full text-sm"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>'
+    return section('กรอกคะแนนรายคน <span class="text-xs font-normal text-gray-400">(ช่องเขียวคือผ่านเกณฑ์ · แดงคือไม่ผ่าน · Enter ไปคนถัดไป)</span>',
+      toolbar + table
       + '<div class="flex items-center gap-3 mt-3">'
       + '<button onclick="ploSaveScores()" class="px-4 py-2 bg-primary text-white rounded-xl text-sm flex items-center gap-2">'
       + '<i data-lucide="save" class="w-4 h-4"></i>บันทึกคะแนน</button>'
-      + '<span id="ploScoreMsg" class="text-xs text-gray-400">แก้ไขแล้วกดบันทึกครั้งเดียว</span></div>');
+      + '<span id="ploScoreMsg" class="text-xs ' + (dirtyN ? 'text-amber-600' : 'text-gray-400') + '">'
+      + (dirtyN ? 'มีการแก้ไขที่ยังไม่บันทึก ' + dirtyN + ' ช่อง' : 'แก้ไขได้ทุก CLO แล้วกดบันทึกครั้งเดียว')
+      + '</span></div>');
   }
+
+  window.ploGridFilter = function (q) {
+    var st = state(); st.gridQ = q;
+    var k = s(q).toLowerCase();
+    Array.prototype.forEach.call(document.querySelectorAll('tr[data-q]'), function (tr) {
+      tr.style.display = !k || tr.getAttribute('data-q').indexOf(k) >= 0 ? '' : 'none';
+    });
+  };
+  // Enter / ลูกศรลง = ช่องของนักศึกษาคนถัดไปใน CLO เดียวกัน · ลูกศรขึ้น = คนก่อนหน้า
+  window.ploScoreKey = function (e, el) {
+    var down = e.key === 'Enter' || e.key === 'ArrowDown', up = e.key === 'ArrowUp';
+    if (!down && !up) return;
+    e.preventDefault();
+    var clo = el.getAttribute('data-clo');
+    var list = Array.prototype.filter.call(document.querySelectorAll('input[data-clo="' + clo + '"]'), function (x) {
+      var tr = x.closest('tr'); return !tr || tr.style.display !== 'none';
+    });
+    var i = list.indexOf(el), nx = list[i + (down ? 1 : -1)];
+    if (nx) { nx.focus(); if (nx.select) nx.select(); }
+  };
 
   window.ploLoadScores = async function () {
     var st = state();
@@ -1319,8 +1464,12 @@
     if (clo && s(el.value) !== '') {
       el.classList.add(n(el.value) >= n(clo.pass_score) ? 'bg-emerald-50' : 'bg-red-50');
     }
+    var res = document.querySelector('[data-res="' + key + '"]');
+    if (res && clo) res.innerHTML = resultBadge(clo, el.value);
+    var chip = document.getElementById('ploChip_' + el.getAttribute('data-clo'));
+    if (chip && clo) chip.textContent = scoreFilled(clo, entryStudents());
     var m = document.getElementById('ploScoreMsg');
-    if (m) { m.textContent = 'มีการแก้ไขที่ยังไม่บันทึก'; m.className = 'text-xs text-amber-600'; }
+    if (m) { m.textContent = 'มีการแก้ไขที่ยังไม่บันทึก ' + Object.keys(st._dirty).length + ' ช่อง'; m.className = 'text-xs text-amber-600'; }
   };
 
   window.ploSaveScores = async function () {
