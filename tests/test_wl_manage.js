@@ -20,5 +20,15 @@ t('ลบต้องถามยืนยันก่อน และฝั่�
   });
 });
 t('ลบรายบุคคลได้เฉพาะคนที่มีค่าเฉพาะราย', () => assert.ok(WL.includes('ใช้ค่ามาตรฐานของชั้นปี ไม่มีข้อมูลเฉพาะรายให้ลบ')));
+t('ดินสอแก้ในหน้าต่างซ้อน ไม่ย้ายไปหน้ากรอกภาระงาน', () => {
+  const i = WL.indexOf('window.wlEditPlan = function'); const seg = WL.slice(i, i + 120);
+  assert.ok(seg.includes("wlmOpen('plan'"), 'แก้รายชั้นปีต้องเปิดหน้าต่าง');
+  const j = WL.indexOf('window.wlEditPerson = function'); const seg2 = WL.slice(j, j + 900);
+  assert.ok(seg2.includes("wlmOpen('person'") && !seg2.includes('navigateTo'), 'แก้รายบุคคลต้องเปิดหน้าต่าง');
+});
+t('บันทึกจากหน้าต่าง: ตรวจสิทธิ์ ตรวจข้อมูล และเขียนเฉพาะพันธกิจที่แก้', () => {
+  const i = WL.indexOf('window.wlmSave = async function'); const seg = WL.slice(i, i + 3500);
+  assert.ok(seg.includes('if (!isAdminNow())') && seg.includes('M.dirty[m.key]') && seg.includes("type: 'workload_student'"));
+});
 console.log('\n' + (fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
 process.exit(fail ? 1 : 0);

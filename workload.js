@@ -2353,25 +2353,188 @@
      ดินสอ  : พาไปหน้า "กรอกภาระงาน" ที่ชั้นปี/ภาค (หรือนักศึกษาคนนั้น) พร้อมแก้ทันที
      ถังขยะ : รายชั้นปี = ลบภาระงานของชั้นปีนั้นในภาคนั้น พร้อมค่าเฉพาะรายในภาคเดียวกัน
               รายบุคคล = ลบค่าเฉพาะรายของนักศึกษาคนนั้นทั้งปีการศึกษา (กลับไปใช้ค่ามาตรฐานของชั้นปี) */
-  window.wlEditPlan = function (lv, sm) {
+  /* แก้ไขในหน้าต่างซ้อนบนหน้าสรุปผลรวม — ไม่ต้องย้ายไปหน้ากรอกภาระงาน
+     แก้ได้ : รายวิชา/ชิ้นงาน/ชั่วโมง (ด้านวิชาการ) · ประเภท/กิจกรรม/ชั่วโมง (พันธกิจอื่น) · เพิ่ม/ลบรายการ
+     ช่วงวันที่-เวลา และรายชื่อผู้เข้าร่วมของแต่ละรายการคงไว้ตามเดิม (แก้ละเอียดได้ที่หน้ากรอกภาระงาน) */
+  function wlmState() { return window._wlModal || null; }
+  function wlmClone(list) { return (list || []).map(function (r) { return Object.assign({}, r); }); }
+  function wlmLoad() {
+    var M = wlmState(); if (!M) return;
     var st = state();
-    st.tab = 'plan'; st.level = norm(lv); st.sem = norm(sm);
-    st.mode = 'cohort'; st.mission = ''; st.draft = null;
+    M.plan = planOf(st.year, M.lv, M.sm);
+    M.data = {}; M.dirty = {};
+    if (M.kind === 'plan') {
+      MISSIONS.forEach(function (m) { M.data[m.key] = wlmClone(rows(M.plan, m)); });
+    } else {
+      M.ovr = overrideOf(M.sid, st.year, M.sm);
+      MISSIONS.forEach(function (m) {
+        var useOvr = M.ovr && norm(M.ovr[m.field]) !== '';
+        M.data[m.key] = wlmClone(rows(useOvr ? M.ovr : M.plan, m).filter(function (r) { return appliesTo(r, M.sid); }));
+        M.own = M.own || {}; M.own[m.key] = !!useOvr;
+      });
+    }
+  }
+  function wlmCell(mk, i, field, val, cls, type) {
+    return '<input data-nodraft="1" ' + (type ? 'type="' + type + '" step="0.5" min="0" ' : '') + 'value="' + esc(val) + '" '
+      + 'oninput="wlmSet(\'' + mk + '\',' + i + ',\'' + field + '\',this.value)" '
+      + 'class="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm ' + (cls || '') + '">';
+  }
+  function wlmMission(m) {
+    var M = wlmState(), list = M.data[m.key] || [];
+    var sum = list.reduce(function (a, r) { return a + n(r.hours); }, 0);
+    var body = list.map(function (r, i) {
+      var span = spanText(r), parts = partOf(r).length;
+      return '<tr class="border-t align-top">'
+        + '<td class="px-2 py-1.5 text-center text-xs text-gray-400 pt-3">' + (i + 1) + '</td>'
+        + (m.subject
+            ? '<td class="px-2 py-1.5">' + wlmCell(m.key, i, 'subject_name', norm(r.subject_name)) + '</td>'
+              + '<td class="px-2 py-1.5 w-24">' + wlmCell(m.key, i, 'pieces', norm(r.pieces), 'text-center') + '</td>'
+            : '<td class="px-2 py-1.5 w-40"><select data-nodraft="1" onchange="wlmSet(\'' + m.key + '\',' + i + ',\'kind\',this.value)" class="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white">'
+              + ACT_KINDS.map(function (k) { return '<option' + ((norm(r.kind) || ACT_KINDS[0]) === k ? ' selected' : '') + '>' + esc(k) + '</option>'; }).join('') + '</select></td>'
+              + '<td class="px-2 py-1.5">' + wlmCell(m.key, i, 'activity', norm(r.activity))
+              + ((span || parts) ? '<span class="block text-[11px] text-gray-400 mt-0.5">' + esc(span) + (span && parts ? ' · ' : '') + (parts ? 'ผู้เข้าร่วม ' + parts + ' คน' : '') + '</span>' : '')
+              + '</td>')
+        + '<td class="px-2 py-1.5 w-24">' + wlmCell(m.key, i, 'hours', norm(r.hours), 'text-center tabular-nums', 'number') + '</td>'
+        + '<td class="px-2 py-1.5 text-center pt-2.5"><button type="button" data-no-loading onclick="wlmDel(\'' + m.key + '\',' + i + ')" class="text-red-400 hover:text-red-600 p-1" title="ลบรายการนี้"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td>'
+        + '</tr>';
+    }).join('');
+    return '<details class="border border-gray-100 rounded-xl mb-2"' + (list.length ? ' open' : '') + '>'
+      + '<summary class="px-3 py-2 flex items-center justify-between gap-2 cursor-pointer">'
+      + '<span class="flex items-center gap-2 text-sm font-semibold"><span style="width:9px;height:9px;border-radius:50%;background:' + m.color + ';display:inline-block"></span>' + esc(m.label) + '</span>'
+      + '<span class="text-xs text-gray-500">' + list.length + ' รายการ · <b id="wlmSum_' + m.key + '" style="color:' + m.color + '">' + fx(sum) + '</b> ชม.</span></summary>'
+      + '<div class="px-3 pb-3">'
+      + (list.length ? '<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="bg-surface text-left text-xs">'
+          + '<th class="px-2 py-1.5 font-medium text-center w-8">#</th>'
+          + (m.subject ? '<th class="px-2 py-1.5 font-medium">รายวิชา</th><th class="px-2 py-1.5 font-medium text-center">ชิ้นงาน</th>'
+                       : '<th class="px-2 py-1.5 font-medium">ประเภท</th><th class="px-2 py-1.5 font-medium">กิจกรรม</th>')
+          + '<th class="px-2 py-1.5 font-medium text-center">ชั่วโมง</th><th class="px-2 py-1.5 font-medium text-center w-10">ลบ</th></tr></thead>'
+          + '<tbody>' + body + '</tbody></table></div>'
+        : '<p class="text-xs text-gray-400 py-1">ยังไม่มีรายการ</p>')
+      + '<button type="button" data-no-loading onclick="wlmAdd(\'' + m.key + '\')" class="mt-2 px-3 py-1.5 rounded-lg bg-primaryLight text-primary text-xs hover:bg-primary hover:text-white transition">'
+      + '<i data-lucide="plus" class="w-3.5 h-3.5 inline mr-1"></i>เพิ่มรายการ</button>'
+      + '</div></details>';
+  }
+  function wlmRender() {
+    var M = wlmState(), box = document.getElementById('wlmBody');
+    if (!M || !box) return;
+    var st = state();
+    var sems = SEMS.filter(function (sm) { return planOf(st.year, M.lv, sm); });
+    var head = M.kind === 'person'
+      ? '<div class="flex flex-wrap items-center gap-3 mb-3">'
+        + '<label class="text-sm text-gray-600">ภาคการศึกษา</label>'
+        + '<select data-nodraft="1" onchange="wlmSem(this.value)" class="border border-gray-200 rounded-xl px-3 py-1.5 text-sm bg-white">'
+        + sems.map(function (sm) { return '<option value="' + sm + '"' + (sm === M.sm ? ' selected' : '') + '>ภาค ' + semName(sm) + (overrideOf(M.sid, st.year, sm) ? ' (มีค่าเฉพาะราย)' : '') + '</option>'; }).join('')
+        + '</select>'
+        + '<span class="text-xs text-gray-500">แสดงเฉพาะรายการที่นักศึกษาคนนี้เข้าร่วม · บันทึกแล้วจะเป็นค่าเฉพาะรายของคนนี้ ไม่กระทบเพื่อนในชั้นปี</span></div>'
+      : '<p class="text-xs text-gray-500 mb-3">ค่ามาตรฐานของชั้นปีที่ ' + esc(M.lv) + ' ภาค ' + semName(M.sm) + ' ปีการศึกษา ' + esc(st.year) + ' — ใช้กับนักศึกษาทุกคนในชั้นปีที่ไม่มีค่าเฉพาะราย</p>';
+    box.innerHTML = head + MISSIONS.map(wlmMission).join('')
+      + '<p class="text-[11px] text-gray-400 mt-2">ช่วงวันที่-เวลา และรายชื่อผู้เข้าร่วมของแต่ละรายการคงไว้ตามเดิม · '
+      + 'ต้องการแก้ส่วนนี้ <button type="button" onclick="wlmFull()" class="text-primary underline">เปิดหน้ากรอกภาระงาน</button></p>';
+    if (window.lucide) lucide.createIcons();
+  }
+  function wlmOpen(kind, lv, sm, sid, name) {
+    if (!isAdminNow()) { showToast('แก้ไขจากหน้านี้ได้เฉพาะผู้ดูแลระบบ', 'error'); return; }
+    var st = state();
+    window._wlModal = { kind: kind, lv: norm(lv), sm: norm(sm), sid: norm(sid || ''), name: name || '' };
+    wlmLoad();
+    var title = kind === 'plan'
+      ? 'แก้ไขภาระงาน ชั้นปีที่ ' + esc(lv) + ' ภาค ' + semName(sm)
+      : 'แก้ไขภาระงานของ ' + esc(name || sid) + ' (' + esc(sid) + ')';
+    showModal(title, '<div id="wlmBody"></div>'
+      + '<div class="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-4 pt-3 border-t">'
+      + '<button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl border border-gray-200 text-sm hover:bg-gray-50">ยกเลิก</button>'
+      + '<button type="button" id="wlmSaveBtn" onclick="wlmSave()" class="px-5 py-2 rounded-xl bg-primary text-white text-sm hover:bg-primaryDark">'
+      + '<i data-lucide="save" class="w-4 h-4 inline mr-1"></i>บันทึก</button></div>', null, 'max-w-4xl');
+    wlmRender();
+  }
+  window.wlmSet = function (mk, i, field, v) {
+    var M = wlmState(); if (!M || !M.data[mk] || !M.data[mk][i]) return;
+    M.data[mk][i][field] = v; M.dirty[mk] = true;
+    if (field === 'hours') {
+      var el = document.getElementById('wlmSum_' + mk);
+      if (el) el.textContent = fx(M.data[mk].reduce(function (a, r) { return a + n(r.hours); }, 0));
+    }
+  };
+  window.wlmAdd = function (mk) {
+    var M = wlmState(); if (!M) return;
+    var m = missionOf(mk);
+    var r = m && m.subject ? { subject_name: '', pieces: '', hours: '' } : { kind: ACT_KINDS[0], activity: '', hours: '' };
+    // ค่าเฉพาะรายของนักศึกษาคนเดียว — ให้รายการใหม่นับเฉพาะคนนี้
+    if (M.kind === 'person') r.students = [M.sid];
+    M.data[mk].push(r); M.dirty[mk] = true;
+    wlmRender();
+  };
+  window.wlmDel = function (mk, i) {
+    var M = wlmState(); if (!M) return;
+    M.data[mk].splice(i, 1); M.dirty[mk] = true;
+    wlmRender();
+  };
+  window.wlmSem = function (sm) {
+    var M = wlmState(); if (!M) return;
+    if (Object.keys(M.dirty).length && !confirm('ยังไม่ได้บันทึกการแก้ไขของภาคนี้ เปลี่ยนภาคการศึกษาใช่หรือไม่')) { wlmRender(); return; }
+    M.sm = norm(sm); wlmLoad(); wlmRender();
+  };
+  window.wlmFull = function () {
+    var M = wlmState(); if (!M) return;
+    closeModal();
+    var st = state();
+    st.tab = 'plan'; st.level = M.lv; st.sem = M.sm; st.mission = ''; st.draft = null; st.gq = '';
+    if (M.kind === 'person') { st.mode = 'group'; st.gsel = {}; st.gsel[M.sid] = 1; } else st.mode = 'cohort';
     if (!st.fold) st.fold = {};
     MISSIONS.forEach(function (m) { st.fold[m.key] = false; });
-    if (typeof navigateTo === 'function' && APP.currentPage !== 'workloadPlan') { navigateTo('workloadPlan'); return; }
-    renderCurrentPage();
+    navigateTo('workloadPlan');
   };
+  window.wlmSave = async function () {
+    var M = wlmState(); if (!M) return;
+    if (!isAdminNow()) { showToast('บันทึกจากหน้านี้ได้เฉพาะผู้ดูแลระบบ', 'error'); return; }
+    var changed = MISSIONS.filter(function (m) { return M.dirty[m.key]; });
+    if (!changed.length) { closeModal(); return; }
+    // ตรวจ : ทุกรายการต้องมีชื่อ และชั่วโมงเป็นตัวเลขไม่ติดลบ
+    for (var k = 0; k < changed.length; k++) {
+      var m = changed[k], list = M.data[m.key];
+      for (var i = 0; i < list.length; i++) {
+        var r = list[i], label = m.subject ? norm(r.subject_name) : norm(r.activity);
+        if (!label) { showToast(m.short + ' รายการที่ ' + (i + 1) + ': กรุณากรอก' + (m.subject ? 'ชื่อรายวิชา' : 'ชื่อกิจกรรม'), 'error'); return; }
+        if (norm(r.hours) === '' || isNaN(Number(r.hours)) || Number(r.hours) < 0) { showToast(m.short + ' รายการที่ ' + (i + 1) + ': ชั่วโมงต้องเป็นตัวเลข 0 ขึ้นไป', 'error'); return; }
+      }
+    }
+    var st = state(), who = (APP.currentUser && APP.currentUser.name) || '';
+    var btn = document.getElementById('wlmSaveBtn'); if (btn) btn.disabled = true;
+    var r0;
+    try {
+      if (M.kind === 'plan') {
+        var mt = meta(M.plan);
+        changed.forEach(function (m) { mt[m.key] = { by: who, at: stampNow() }; });
+        var payload = { type: 'workload_plan', academic_year: st.year, year_level: M.lv, semester: M.sm, updated_by: who, meta_json: JSON.stringify(mt) };
+        changed.forEach(function (m) { payload[m.field] = JSON.stringify(M.data[m.key]); });
+        r0 = M.plan ? await GSheetDB.update(Object.assign({}, M.plan, payload)) : await GSheetDB.create(payload);
+      } else {
+        var cur = overrideOf(M.sid, st.year, M.sm);
+        var mt2 = meta(cur);
+        changed.forEach(function (m) { mt2[m.key] = { by: who, at: stampNow() }; });
+        var p2 = { type: 'workload_student', student_id: M.sid, academic_year: st.year, year_level: M.lv, semester: M.sm, updated_by: who, meta_json: JSON.stringify(mt2) };
+        changed.forEach(function (m) { p2[m.field] = JSON.stringify(M.data[m.key]); });
+        r0 = cur ? await GSheetDB.update(Object.assign({}, cur, p2)) : await GSheetDB.create(p2);
+      }
+    } catch (e) { r0 = { isOk: false, error: String(e && e.message || e) }; }
+    if (btn) btn.disabled = false;
+    if (r0 && r0.isOk) {
+      showToast(M.kind === 'plan' ? 'บันทึกภาระงานของชั้นปีแล้ว' : 'บันทึกค่าเฉพาะรายของนักศึกษาแล้ว');
+      window._wlModal = null;
+      closeModal();
+      renderCurrentPage();
+    } else showToast('บันทึกไม่สำเร็จ: ' + ((r0 && r0.error) || ''), 'error');
+  };
+
+  window.wlEditPlan = function (lv, sm) { wlmOpen('plan', lv, sm); };
   window.wlEditPerson = function (sid, lv) {
     var st = state();
-    st.level = norm(lv) || st.level;
-    // เปิดภาคแรกที่มีข้อมูล ถ้านักศึกษามีค่าเฉพาะรายในภาคไหน ให้เปิดภาคนั้นก่อน
-    var sems = SEMS.filter(function (sm) { return planOf(st.year, st.level, sm); });
     var withOvr = SEMS.filter(function (sm) { return overrideOf(sid, st.year, sm); });
-    st.sem = withOvr[0] || sems[0] || st.sem;
-    if (!st.fold) st.fold = {};
-    MISSIONS.forEach(function (m) { st.fold[m.key] = false; });
-    window.wlEditStudent(sid);
+    var sems = SEMS.filter(function (sm) { return planOf(st.year, lv, sm); });
+    var sm = withOvr[0] || sems[0];
+    if (!sm) { showToast('ชั้นปีนี้ยังไม่มีภาระงานในปีการศึกษา ' + st.year, 'error'); return; }
+    var stu = get('student').filter(function (x) { return norm(x.student_id) === norm(sid); })[0] || {};
+    wlmOpen('person', lv, sm, sid, norm(stu.name));
   };
   window.wlDeletePlan = async function (lv, sm) {
     if (!canDelete()) { showToast('ลบข้อมูลภาระงานได้เฉพาะผู้ดูแลระบบ', 'error'); return; }
