@@ -12,7 +12,7 @@ t('สิทธิ์จัดการเฉพาะบทบาทผู้�
 });
 t('ตารางรายชั้นปีมีดินสอและถังขยะ', () => assert.ok(WL.includes("manageCell(\"wlEditPlan('") && WL.includes("wlDeletePlan('")));
 t('ตารางรายบุคคลมีดินสอและถังขยะ', () => assert.ok(WL.includes("manageCell(\"wlEditPerson('") && WL.includes("wlDeletePerson('")));
-t('หัวคอลัมน์ "จัดการ" ทั้งสองตาราง', () => assert.strictEqual((WL.match(/>จัดการ<\/th>/g) || []).length, 2));
+t('หัวคอลัมน์ "จัดการ" ทั้งสองตารางในสรุปผลรวม และตารางเกณฑ์', () => assert.strictEqual((WL.match(/>จัดการ<\/th>/g) || []).length, 3));
 t('ลบต้องถามยืนยันก่อน และฝั่งฟังก์ชันตรวจสิทธิ์ซ้ำ', () => {
   ['wlDeletePlan', 'wlDeletePerson'].forEach(fn => {
     const i = WL.indexOf('window.' + fn + ' = async function'); const seg = WL.slice(i, i + 1500);
@@ -29,6 +29,16 @@ t('ดินสอแก้ในหน้าต่างซ้อน ไม่�
 t('บันทึกจากหน้าต่าง: ตรวจสิทธิ์ ตรวจข้อมูล และเขียนเฉพาะพันธกิจที่แก้', () => {
   const i = WL.indexOf('window.wlmSave = async function'); const seg = WL.slice(i, i + 3500);
   assert.ok(seg.includes('if (!isAdminNow())') && seg.includes('M.dirty[m.key]') && seg.includes("type: 'workload_student'"));
+});
+t('การ์ดพันธกิจเลือกดูรายภาคการศึกษาได้ ทั้งรายชั้นปีและรายบุคคล', () => {
+  assert.ok(WL.includes("wlSet(\\'mSem\\',this.value)") || WL.includes("wlSet(\'mSem\',this.value)"), 'ไม่มีช่องเลือกภาค');
+  assert.ok(WL.includes('function semsShown()'));
+  assert.ok(WL.includes("memo('tot|' + year + '|' + norm(state().mSem)"), 'แคชรายบุคคลต้องแยกตามภาค');
+});
+t('เกณฑ์หน่วยชั่วโมงแยกตามปีการศึกษา แก้/ลบได้ (ผู้ดูแลระบบ งานวิชาการ)', () => {
+  assert.ok(WL.includes('function rateSetYear(year)') && WL.includes("hasRole(['admin', 'academic'])"));
+  ['wlRateAdd', 'wlRateEdit', 'wlRateSave', 'wlRateDelete', 'wlRateCopyYear', 'wlRateDeleteYear'].forEach(f => assert.ok(WL.includes('window.' + f + ' = '), f));
+  assert.ok(WL.includes('o.academic_year = norm(state().year);'), 'เกณฑ์ที่บันทึกต้องผูกปีการศึกษา');
 });
 console.log('\n' + (fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
 process.exit(fail ? 1 : 0);

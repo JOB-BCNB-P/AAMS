@@ -157,7 +157,7 @@
       APP._wl = {
       tab: 'summary', year: '', level: '1', sem: '1', search: '', draft: null, calc: [],
       tol: 0,                       // ยอมให้เกินชั่วโมงเป้าหมายได้กี่เปอร์เซ็นต์ ก่อนถือว่าเกิน
-      mView: 'level', mLevel: '', mSid: '', mq: '',  // มุมมองการ์ดพันธกิจ : รายชั้นปี / รายบุคคล
+      mView: 'level', mLevel: '', mSid: '', mq: '', mSem: '',  // มุมมองการ์ดพันธกิจ : รายชั้นปี / รายบุคคล
       mode: 'cohort', gsel: {},     // กล่องกรอกที่เปิดอยู่ : ทั้งชั้นปี / รายบุคคล ('' = ยุบทั้งคู่)
       mission: '', gq: '',          // พันธกิจที่เลือกกรอก ('' = ทุกพันธกิจ) · คำค้นในรายชื่อนักศึกษา
       fold: fold0                   // การ์ดที่ถูกยุบไว้ (จำเฉพาะระหว่างใช้งาน)
@@ -168,7 +168,8 @@
   }
   function wlYears() {
     var ys = get('workload_plan').map(function (p) { return norm(p.academic_year); })
-      .concat(get('subject').map(function (s) { return norm(s.academic_year); }));
+      .concat(get('subject').map(function (s) { return norm(s.academic_year); }))
+      .concat(get('workload_rate').map(function (r) { return norm(r.academic_year); }).filter(Boolean));
     return uniq(ys).sort(function (a, b) { return b.localeCompare(a, 'th', { numeric: true }); });
   }
 
@@ -270,13 +271,22 @@
   function targetOf(plan) { return targetFrom(plan, acadBase(plan)); }
 
   // เป้าหมายรวมทั้งปีการศึกษาของชั้นปีหนึ่ง (รวมทุกภาคที่มีข้อมูล)
+  /* ภาคการศึกษาที่การ์ด "ชั่วโมงภาระงานแยกตามพันธกิจ" กำลังดู ('' = ทุกภาค) */
+  function semsShown() {
+    var sm = norm(state().mSem);
+    return sm ? [sm] : SEMS;
+  }
+  function semScopeText() {
+    var sm = norm(state().mSem);
+    return sm ? 'ภาคการศึกษาที่ ' + semName(sm) : 'รวมทุกภาคการศึกษา';
+  }
   function yearTarget(year, level) {
     // รวมฐานชั่วโมงของทุกภาคก่อน แล้วค่อยคิดเป้าหมายครั้งเดียว
     // ถ้าคิดทีละภาคแล้วเอาค่าที่ปัดทศนิยมแล้วมาบวกกัน ผลรวมจะเพี้ยนจากสูตรเล็กน้อย
     var out = { frame: 0, ok: false, base: 0 };
     MISSIONS.forEach(function (m) { out[m.key] = 0; });
     var ref = null, base = 0;
-    SEMS.forEach(function (sm) {
+    semsShown().forEach(function (sm) {
       var p = planOf(year, level, sm);
       if (!p) return;
       if (!ref) ref = p;
@@ -762,6 +772,7 @@
     st[k] = v;
     // ล้างร่างเฉพาะเมื่อเปลี่ยนขอบเขตข้อมูลที่กรอก — เปลี่ยนตัวกรองของหน้าสรุปไม่ต้องล้าง
     if (['year', 'level', 'sem', 'mode'].indexOf(k) !== -1) st.draft = null;
+    if (k === 'year') st.mSem = '';   // ปีใหม่อาจไม่มีภาคที่เลือกค้างไว้
 
     /* เลือกพันธกิจแล้วต้องเห็นช่องกรอกทันที
        การ์ดทุกใบเริ่มต้นถูกยุบไว้เพื่อให้เห็นภาพรวมก่อน แต่พอเลือกพันธกิจเจาะจง
@@ -801,17 +812,19 @@
      ชั่วโมงจริงใช้ดูสัดส่วนเวลาที่นักศึกษาใช้ไปกับแต่ละพันธกิจ
      ชั่วโมงถ่วงน้ำหนักใช้แสดงปริมาณภาระงานตามสัดส่วนของวิทยาลัย */
   function studentTotals(year) {
-    return memo('tot|' + year, function () { return studentTotalsRaw(year); });
+    return memo('tot|' + year + '|' + norm(state().mSem), function () { return studentTotalsRaw(year); });
   }
   // ภาระงานทั้งปีของนักศึกษาหนึ่งคน
   function oneTotal(year, lv, stu, plans) {
     var tot = 0, rawTot = 0, per = {}, raw = {}, extra = false;
     MISSIONS.forEach(function (m) { per[m.key] = 0; raw[m.key] = 0; });
+    var only = semsShown();
     SEMS.forEach(function (sm, i) {
       var plan = plans[i];
       if (!plan) return;
       var ovr = overrideOf(stu.student_id, year, sm);
-      if (ovr) extra = true;
+      if (ovr) extra = true;          // ป้าย "ปรับเฉพาะราย" ดูทั้งปี ไม่ขึ้นกับภาคที่เลือกดู
+      if (only.indexOf(sm) < 0) return;
       var c = calc(plan, ovr, stu.student_id);
       tot += c.total;
       MISSIONS.forEach(function (m) {
@@ -889,6 +902,17 @@
           }).join('')
         + '</select>';
     }
+    // ภาคการศึกษา — เลือกดูเฉพาะภาคได้ ('' = รวมทุกภาค) แสดงเฉพาะภาคที่มีข้อมูลในปีนี้
+    var semHave = uniq(get('workload_plan')
+      .filter(function (p) { return norm(p.academic_year) === norm(st.year); })
+      .map(function (p) { return norm(p.semester); })).sort();
+    bar += '<select onchange="wlSet(\'mSem\',this.value)" class="border border-gray-200 rounded-xl px-3 py-1.5 text-sm" title="ภาคการศึกษา">'
+      + '<option value="" ' + (norm(st.mSem) === '' ? 'selected' : '') + '>ทุกภาคการศึกษา</option>'
+      + SEMS.map(function (sm) {
+          var has = semHave.indexOf(sm) >= 0;
+          return '<option value="' + sm + '" ' + (norm(st.mSem) === sm ? 'selected' : '') + (has ? '' : ' disabled') + '>ภาคการศึกษาที่ ' + semName(sm) + (has ? '' : ' (ยังไม่มีข้อมูล)') + '</option>';
+        }).join('')
+      + '</select>';
     bar += '</div>';
 
     if (st.mView === 'person' && !norm(st.mSid)) {
@@ -948,7 +972,7 @@
       if (rec) {
         MISSIONS.forEach(function (m) { sums[m.key] = rec.per[m.key]; raws[m.key] = rec.raw[m.key]; });
         capLv = rec.level;
-        scopeNote = 'ชั่วโมงของ ' + esc(rec.name) + ' (' + esc(rec.sid) + ') รวมทุกภาคการศึกษา'
+        scopeNote = 'ชั่วโมงของ ' + esc(rec.name) + ' (' + esc(rec.sid) + ') ' + semScopeText()
           + ' — นับเฉพาะกิจกรรมที่นักศึกษาคนนี้เข้าร่วม และใช้ค่าเฉพาะรายถ้ามีการปรับไว้';
       } else { haveScope = false; }
     } else {
@@ -956,15 +980,14 @@
       capLv = lv2 || cells[0].lv;
       ['1', '2', '3', '4'].forEach(function (l) {
         if (lv2 && l !== lv2) return;
-        SEMS.forEach(function (sm) {
+        semsShown().forEach(function (sm) {
           var plan = planOf(st.year, l, sm);
           if (!plan) return;
           var c = calc(plan, null);
           MISSIONS.forEach(function (m) { sums[m.key] += c.weighted[m.key]; raws[m.key] += c.raw[m.key]; });
         });
       });
-      scopeNote = lv2 ? 'ค่ามาตรฐานของชั้นปีที่ ' + esc(lv2) + ' รวมทุกภาคการศึกษา'
-                      : 'ค่ามาตรฐานรวมทุกชั้นปีและทุกภาคการศึกษา';
+      scopeNote = (lv2 ? 'ค่ามาตรฐานของชั้นปีที่ ' + esc(lv2) : 'ค่ามาตรฐานรวมทุกชั้นปี') + ' · ' + semScopeText();
     }
     var rawTotal = MISSIONS.reduce(function (a, m) { return a + raws[m.key]; }, 0);
     var tolNow = n(st.tol);
@@ -1085,7 +1108,7 @@
   function personDetail(year, rec) {
     var blocks = MISSIONS.map(function (m) {
       var items = [];
-      SEMS.forEach(function (sm) {
+      semsShown().forEach(function (sm) {
         var plan = planOf(year, rec.level, sm);
         if (!plan) return;
         var ovr = overrideOf(rec.sid, year, sm);
@@ -1140,7 +1163,7 @@
       + '<div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">'
       + '<h4 class="font-semibold text-sm">รายละเอียดภาระงานของ ' + esc(rec.name) + '</h4>'
       + '<span class="flex items-center gap-2"><span class="text-xs text-gray-400">รหัส ' + esc(rec.sid) + ' · ชั้นปีที่ ' + esc(rec.level)
-      + ' · รวมทุกภาคการศึกษา ' + fx(rec.rawTotal) + ' ชม.</span>'
+      + ' · ' + semScopeText() + ' ' + fx(rec.rawTotal) + ' ชม.</span>'
       + (isAdminNow() ? '<button type="button" onclick="wlEditPerson(\'' + esc(rec.sid) + '\',\'' + esc(rec.level) + '\')" class="px-2.5 py-1 rounded-lg border border-blue-200 text-blue-600 text-xs hover:bg-blue-50"><i data-lucide="pencil" class="w-3.5 h-3.5 inline mr-1"></i>แก้ไข</button>' : '')
       + (canDelete() ? (rec.ovr
           ? '<button type="button" onclick="wlDeletePerson(\'' + esc(rec.sid) + '\')" class="px-2.5 py-1 rounded-lg border border-red-200 text-red-600 text-xs hover:bg-red-50"><i data-lucide="trash-2" class="w-3.5 h-3.5 inline mr-1"></i>ลบค่าเฉพาะราย</button>'
@@ -1191,7 +1214,7 @@
     return '<div class="mt-4">'
       + '<div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">'
       + '<h4 class="font-semibold text-sm">ข้อมูลรายบุคคล ชั้นปีที่ ' + esc(level) + ' (' + list.length + ' คน)</h4>'
-      + '<span class="text-xs text-gray-400">สัดส่วนเวลาที่ใช้ในแต่ละพันธกิจ · รวมทุกภาคการศึกษา</span></div>'
+      + '<span class="text-xs text-gray-400">สัดส่วนเวลาที่ใช้ในแต่ละพันธกิจ · ' + semScopeText() + '</span></div>'
       + '<div class="overflow-x-auto border border-blue-50 rounded-xl" style="max-height:60vh;overflow-y:auto">'
       + '<table class="w-full text-sm"><thead class="sticky top-0"><tr class="bg-surface text-left">'
       + '<th class="px-3 py-2 font-semibold">รหัส</th><th class="px-3 py-2 font-semibold">ชื่อ-สกุล</th>'
@@ -2591,15 +2614,122 @@
     else showToast('ทำรายการไม่สำเร็จ', 'error');
   };
 
-  /* ---------------- แท็บ 4 : เกณฑ์หน่วยชั่วโมง + ตัวช่วยคำนวณ ---------------- */
+  /* ---------------- แท็บ 4 : เกณฑ์หน่วยชั่วโมง + ตัวช่วยคำนวณ ----------------
+     เกณฑ์แยกตามปีการศึกษา (เก็บ academic_year ไว้ในแต่ละแถว)
+       • ปีที่มีเกณฑ์ของตัวเอง ใช้ชุดนั้น
+       • ปีที่ยังไม่มี ใช้ชุดของปีล่าสุดก่อนหน้า ถ้าไม่มีอีกใช้ชุดตั้งต้น (แถวที่ไม่ระบุปี)
+     แก้/ลบได้เฉพาะชุดของปีนั้นเอง — ชุดที่ยืมมาต้องกด "สร้างเกณฑ์ของปีนี้" ก่อน
+     จะได้ไม่เผลอแก้เกณฑ์ของปีอื่นที่ใช้คำนวณไปแล้ว */
+  function canEditRates() { return !isStudentView() && hasRole(['admin', 'academic']); }
+  function rateYears() {
+    return uniq(get('workload_rate').map(function (r) { return norm(r.academic_year); }).filter(Boolean))
+      .sort(function (a, b) { return a.localeCompare(b, 'th', { numeric: true }); });
+  }
+  function rateSetYear(year) {
+    var ys = rateYears(), y = norm(year);
+    if (ys.indexOf(y) >= 0) return y;
+    var older = ys.filter(function (x) { return x.localeCompare(y, 'th', { numeric: true }) < 0; });
+    if (older.length) return older[older.length - 1];
+    var hasBase = get('workload_rate').some(function (r) { return !norm(r.academic_year); });
+    return hasBase ? '' : (ys[0] || '');
+  }
   function rateList() {
-    return get('workload_rate').slice().sort(function (a, b) {
+    var y = rateSetYear(state().year);
+    return get('workload_rate').filter(function (r) { return norm(r.academic_year) === y; }).sort(function (a, b) {
       return norm(a.sort_order).localeCompare(norm(b.sort_order), 'th', { numeric: true });
     });
   }
   function rateUsable() {
     return rateList().filter(function (r) { return n(r.hours) > 0; });
   }
+
+  function rateFormHTML(r) {
+    r = r || {};
+    var groups = uniq(rateList().map(function (x) { return norm(x.work_group); }));
+    var cats = uniq(rateList().map(function (x) { return norm(x.category); }));
+    var f = function (label, name, val, extra) {
+      return '<div><label class="block text-xs text-gray-600 mb-1">' + label + '</label>'
+        + '<input name="' + name + '" value="' + esc(val || '') + '" ' + (extra || '') + ' class="w-full border rounded-xl px-3 py-2 text-sm"></div>';
+    };
+    return '<form id="wlRateForm" class="space-y-3" onsubmit="event.preventDefault();wlRateSave()">'
+      + '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">'
+      + f('หมวด *', 'category', r.category, 'list="wlRateCats" required')
+      + f('กลุ่มงาน *', 'work_group', r.work_group, 'list="wlRateGroups" required')
+      + '</div>'
+      + '<datalist id="wlRateCats">' + cats.map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>'
+      + '<datalist id="wlRateGroups">' + groups.map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>'
+      + f('รายการ *', 'item', r.item, 'required')
+      + '<div class="grid grid-cols-3 gap-3">'
+      + f('หน่วย *', 'unit', r.unit, 'required placeholder="เช่น ชิ้น, ครั้ง"')
+      + f('ชั่วโมงต่อหน่วย *', 'hours', r.hours, 'type="number" step="0.01" min="0" required')
+      + f('ลำดับ', 'sort_order', r.sort_order, 'type="number" step="1"')
+      + '</div>'
+      + f('หมายเหตุ', 'note', r.note)
+      + '<button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึก</button>'
+      + '</form>';
+  }
+  window.wlRateAdd = function () {
+    if (!canEditRates()) return;
+    var next = rateList().reduce(function (m, r) { return Math.max(m, n(r.sort_order)); }, 0) + 1;
+    window._wlRateEdit = null;
+    showModal('เพิ่มเกณฑ์หน่วยชั่วโมง · ปีการศึกษา ' + esc(state().year), rateFormHTML({ sort_order: next }));
+  };
+  window.wlRateEdit = function (id) {
+    if (!canEditRates()) return;
+    var r = get('workload_rate').filter(function (x) { return String(x.__rowIndex) === String(id); })[0];
+    if (!r) return;
+    window._wlRateEdit = r;
+    showModal('แก้ไขเกณฑ์หน่วยชั่วโมง · ปีการศึกษา ' + esc(state().year), rateFormHTML(r));
+  };
+  window.wlRateSave = async function () {
+    if (!canEditRates()) { showToast('แก้ไขเกณฑ์ได้เฉพาะผู้ดูแลระบบและงานวิชาการ', 'error'); return; }
+    var form = document.getElementById('wlRateForm'); if (!form) return;
+    var fd = new FormData(form), o = {};
+    ['category', 'work_group', 'item', 'unit', 'hours', 'sort_order', 'note'].forEach(function (k) { o[k] = norm(fd.get(k)); });
+    if (!o.category || !o.work_group || !o.item || !o.unit) { showToast('กรอกช่องที่มี * ให้ครบ', 'error'); return; }
+    if (o.hours === '' || isNaN(Number(o.hours)) || Number(o.hours) < 0) { showToast('ชั่วโมงต่อหน่วยต้องเป็นตัวเลข 0 ขึ้นไป', 'error'); return; }
+    var cur = window._wlRateEdit;
+    o.type = 'workload_rate';
+    o.academic_year = norm(state().year);
+    var r = cur ? await GSheetDB.update(Object.assign({}, cur, o)) : await GSheetDB.create(o);
+    if (r && r.isOk) { showToast(cur ? 'แก้ไขเกณฑ์แล้ว' : 'เพิ่มเกณฑ์แล้ว'); window._wlRateEdit = null; closeModal(); renderCurrentPage(); }
+    else showToast('บันทึกไม่สำเร็จ: ' + ((r && r.error) || ''), 'error');
+  };
+  window.wlRateDelete = async function (id) {
+    if (!canEditRates()) return;
+    var r = get('workload_rate').filter(function (x) { return String(x.__rowIndex) === String(id); })[0];
+    if (!r) return;
+    if (!confirm('ลบเกณฑ์ "' + norm(r.item) + '" ของปีการศึกษา ' + norm(r.academic_year) + ' ?\n\nลบแล้วกู้คืนไม่ได้')) return;
+    var res = await GSheetDB.delete(r);
+    if (res && res.isOk) { showToast('ลบเกณฑ์แล้ว'); renderCurrentPage(); }
+    else showToast('ลบไม่สำเร็จ: ' + ((res && res.error) || ''), 'error');
+  };
+  // สร้างชุดเกณฑ์ของปีนี้ โดยคัดลอกจากชุดที่ใช้อยู่ แล้วค่อยแก้เฉพาะที่เปลี่ยน
+  window.wlRateCopyYear = async function () {
+    if (!canEditRates()) return;
+    var st = state(), src = rateList();
+    var from = rateSetYear(st.year);
+    if (!confirm('สร้างเกณฑ์หน่วยชั่วโมงของปีการศึกษา ' + st.year + '\nโดยคัดลอก ' + src.length + ' รายการจาก'
+      + (from ? 'ปีการศึกษา ' + from : 'เกณฑ์ตั้งต้น') + ' แล้วแก้ไขต่อได้?')) return;
+    var rows = src.map(function (r) {
+      return { type: 'workload_rate', category: norm(r.category), work_group: norm(r.work_group), item: norm(r.item),
+               unit: norm(r.unit), hours: norm(r.hours), sort_order: norm(r.sort_order), note: norm(r.note), academic_year: norm(st.year) };
+    });
+    var res = rows.length ? await GSheetDB.createMany(rows) : { isOk: true };
+    if (res && res.isOk !== false) { showToast('สร้างเกณฑ์ของปีการศึกษา ' + st.year + ' แล้ว (' + rows.length + ' รายการ)'); renderCurrentPage(); }
+    else showToast('สร้างไม่สำเร็จ: ' + ((res && res.error) || ''), 'error');
+  };
+  window.wlRateDeleteYear = async function () {
+    if (!canEditRates()) return;
+    var st = state();
+    var mine = get('workload_rate').filter(function (r) { return norm(r.academic_year) === norm(st.year); });
+    if (!mine.length) return;
+    if (!confirm('ลบเกณฑ์ของปีการศึกษา ' + st.year + ' ทั้งชุด (' + mine.length + ' รายการ)?\nหลังลบ ปีนี้จะกลับไปใช้เกณฑ์ของปีก่อนหน้า\n\nลบแล้วกู้คืนไม่ได้')) return;
+    var bad = 0;
+    for (var i = 0; i < mine.length; i++) { var r = await GSheetDB.delete(mine[i]); if (!(r && r.isOk)) bad++; }
+    if (!bad) showToast('ลบเกณฑ์ของปีการศึกษา ' + st.year + ' แล้ว'); else showToast('ลบไม่สำเร็จ ' + bad + ' รายการ', 'error');
+    renderCurrentPage();
+  };
 
   function rateTab() {
     var st = state();
@@ -2614,13 +2744,19 @@
       if (!groups[k]) { groups[k] = []; order.push(k); }
       groups[k].push(r);
     });
+    var setYear = rateSetYear(st.year), own = setYear === norm(st.year) && !!setYear;
+    var manage = canEditRates() && own;
     var tbl = order.map(function (k) {
-      return '<tr class="bg-surface"><td colspan="3" class="px-4 py-2 font-semibold text-sm text-gray-700">' + esc(k) + '</td></tr>'
+      return '<tr class="bg-surface"><td colspan="' + (manage ? 4 : 3) + '" class="px-4 py-2 font-semibold text-sm text-gray-700">' + esc(k) + '</td></tr>'
         + groups[k].map(function (r) {
           return '<tr class="border-t"><td class="px-4 py-2.5">' + esc(r.item)
             + (norm(r.note) ? '<span class="block text-[11px] text-amber-600 mt-0.5">' + esc(r.note) + '</span>' : '')
             + '</td><td class="px-4 py-2.5 text-center text-gray-500">' + esc(r.unit) + '</td>'
-            + '<td class="px-4 py-2.5 text-center font-semibold tabular-nums">' + esc(r.hours) + '</td></tr>';
+            + '<td class="px-4 py-2.5 text-center font-semibold tabular-nums">' + esc(r.hours) + '</td>'
+            + (manage ? '<td class="px-2 py-2.5 text-center whitespace-nowrap">'
+                + '<button onclick="wlRateEdit(\'' + esc(r.__rowIndex) + '\')" class="text-blue-400 hover:text-blue-600 p-1" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button>'
+                + '<button onclick="wlRateDelete(\'' + esc(r.__rowIndex) + '\')" class="text-red-400 hover:text-red-600 p-1" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td>' : '')
+            + '</tr>';
         }).join('');
     }).join('');
 
@@ -2655,12 +2791,22 @@
         : '<p class="text-sm text-gray-400 py-4 text-center">ยังไม่มีรายการ — เลือกประเภทงานแล้วกดเพิ่ม</p>')
       + '</div>'
       + '<div class="bg-white rounded-2xl p-5 border border-blue-100">'
-      + '<h3 class="font-bold mb-1">เกณฑ์หน่วยชั่วโมงภาระงาน</h3>'
+      + '<div class="flex flex-wrap items-center justify-between gap-2 mb-1"><h3 class="font-bold">เกณฑ์หน่วยชั่วโมงภาระงาน ปีการศึกษา ' + esc(st.year) + '</h3>'
+      + (manage ? '<button onclick="wlRateAdd()" class="px-3 py-1.5 bg-primary text-white rounded-lg text-sm hover:bg-primaryDark"><i data-lucide="plus" class="w-4 h-4 inline mr-1"></i>เพิ่มเกณฑ์</button>' : '')
+      + '</div>'
+      + (own
+          ? '<div class="flex flex-wrap items-center justify-between gap-2 mb-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-100 text-xs text-emerald-800">'
+            + '<span>ใช้เกณฑ์ของปีการศึกษา ' + esc(st.year) + ' เอง (' + rates.length + ' รายการ)</span>'
+            + (canEditRates() ? '<button onclick="wlRateDeleteYear()" class="text-red-600 hover:underline">ลบเกณฑ์ของปีนี้ทั้งชุด</button>' : '') + '</div>'
+          : '<div class="flex flex-wrap items-center justify-between gap-2 mb-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-100 text-xs text-amber-800">'
+            + '<span>ปีการศึกษา ' + esc(st.year) + ' ยังไม่มีเกณฑ์ของตัวเอง — ใช้' + (setYear ? 'เกณฑ์ของปีการศึกษา ' + esc(setYear) : 'เกณฑ์ตั้งต้น') + ' ไปก่อน</span>'
+            + (canEditRates() ? '<button onclick="wlRateCopyYear()" class="px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-800 hover:bg-amber-100">สร้างเกณฑ์ของปีนี้เพื่อแก้ไข</button>' : '') + '</div>')
       + '<p class="text-xs text-gray-500 mb-3">อ้างอิงเอกสารหลักสูตร ข้อ 1.6 การกำหนดภาระงานของนักศึกษา '
       + '— ตารางนี้ใช้กับ<b class="text-gray-700">พันธกิจด้านวิชาการ</b> ส่วนพันธกิจด้านอื่นคิดชั่วโมงตามจริง</p>'
       + '<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="bg-surface text-left">'
       + '<th class="px-4 py-2 font-semibold">รายการ</th><th class="px-4 py-2 font-semibold text-center">หน่วย</th>'
-      + '<th class="px-4 py-2 font-semibold text-center">ชั่วโมง</th></tr></thead><tbody>' + tbl + '</tbody></table></div>'
+      + '<th class="px-4 py-2 font-semibold text-center">ชั่วโมง</th>' + (manage ? '<th class="px-2 py-2 font-semibold text-center">จัดการ</th>' : '') + '</tr></thead><tbody>'
+      + (tbl || '<tr><td colspan="4" class="px-4 py-6 text-center text-gray-400 text-sm">ยังไม่มีเกณฑ์' + (manage ? ' — กด "เพิ่มเกณฑ์"' : '') + '</td></tr>') + '</tbody></table></div>'
       + '</div></div>';
   }
 
