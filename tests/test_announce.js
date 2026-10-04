@@ -61,5 +61,24 @@ t('ตรวจสิทธิ์ผู้ส่ง และคำนวณผ�
 t('อีเมลส่งแบบ BCC และกันส่งซ้ำ', () => { assert.ok(FN.includes('bcc: queue[i]')); assert.ok(FN.includes('extra.mail_sent')); });
 t('LINE ส่งเฉพาะกลุ่มที่เลือก broadcast ต้องติ๊กเอง', () => { assert.ok(FN.includes('wantIds.includes')); assert.ok(FN.includes('body.broadcast === true')); });
 
+console.log('\n[4] บริการอื่นๆ › ข่าวสาร/แจ้งเตือน');
+const addAnn = grab('function showAddAnnouncementModal', 'function annChannelFieldHTML');
+const edAnn = grab('function showEditAnnouncementModal', 'function showEditTrackingModal');
+const chf = grab('function annChannelFieldHTML', 'function annChannelOpts');
+t('ฟอร์มเพิ่ม/แก้ไขมีช่องเลือกผู้รับ และช่องทาง อีเมล + LINE', () => {
+  [addAnn, edAnn].forEach(f => { assert.ok(f.includes('annRolesFieldHTML(')); assert.ok(f.includes('annYearFieldHTML(')); assert.ok(f.includes('annChannelFieldHTML(')); });
+  assert.ok(chf.includes('id="annChMail"') && chf.includes('id="annChLine"'));
+});
+t('LINE ไม่ต้องเลือกกลุ่ม: ส่งทุกกลุ่มที่ติดต่อได้ และไม่ broadcast', () => {
+  const f = grab('async function annSendChannels', 'function showEditAnnouncementModal');
+  assert.ok(f.includes('annAllLineGroupIds()') && f.includes('broadcast: false'));
+  assert.ok(!chf.includes('sched-line-grp'), 'ไม่ควรมีช่องเลือกกลุ่ม');
+});
+t('บันทึกประกาศไม่สั่ง LINE แบบเดิมเอง', () => {
+  assert.ok(addAnn.includes("obj.line_notify = ''"));
+  assert.ok(edAnn.includes("a.line_notify = ''"));
+});
+t('ช่องทางที่ส่งไปแล้วถูกล็อกไว้ ไม่ส่งซ้ำ', () => { assert.ok(chf.includes("mailSent ? 'disabled'") && chf.includes("lineSent ? 'disabled'")); });
+
 console.log('\n' + (fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
 process.exit(fail ? 1 : 0);

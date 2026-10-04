@@ -3385,6 +3385,9 @@ document.addEventListener('change', function (ev) {
       && document.getElementById('schedNotifyYears')) {
     syncSchedNotifyYears();
     schedNotifyChanged();
+  } else if (t && t.classList && (t.classList.contains('ann-role-cb') || t.classList.contains('ann-yr-cb'))
+      && document.getElementById('annMailPreview')) {
+    annChannelChanged();
   }
 });
 
@@ -12603,22 +12606,111 @@ function showAddAnnouncementModal() {
       </div>
       ${annRolesFieldHTML('')}
       ${annYearFieldHTML('')}
-      <label class="flex items-center gap-2 bg-green-50 rounded-xl px-3 py-2 cursor-pointer"><input type="checkbox" name="line_notify" value="✓" class="w-4 h-4"><span class="text-sm text-green-700">📢 ส่งประกาศนี้เข้า LINE</span></label>
+      ${annChannelFieldHTML(null)}
       <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึก</button>
     </form>
   `);
+  loadAnnChannels(null);
   document.getElementById('addAnnForm').onsubmit = async (e) => {
     e.preventDefault();
+    const ch = annChannelOpts();
     await withLoading(e.target, async () => {
       const fd = new FormData(e.target);
       const obj = { type: 'announcement', created_at: new Date().toISOString() }; fd.forEach((v, k) => obj[k] = v);
       obj.roles = annCollectRoles();
       obj.yr = annCollectYears();
-      const r = await GSheetDB.create(obj);
-      if (r.isOk) { showToast(r.message && r.message !== 'บันทึกแล้ว' ? r.message : 'เพิ่มประกาศสำเร็จ'); closeModal(); renderCurrentPage(); }
+      obj.line_notify = '';   // ไม่ให้ระบบส่ง LINE เอง — ส่งต่อด้านล่างตามช่องทางที่เลือก
+      const r = await GSheetDB.create(obj, { noRefresh: true });
+      if (r.isOk) {
+        const msgs = await annSendChannels(r.rowIndex, ch);
+        if (GSheetDB.refreshTab) { try { await GSheetDB.refreshTab('announcement'); } catch (_) { } }
+        showToast('เพิ่มประกาศสำเร็จ' + (msgs.length ? ' · ' + msgs.join(' · ') : ''));
+        closeModal(); renderCurrentPage();
+      }
       else showToast('เกิดข้อผิดพลาด', 'error');
     });
   };
+}
+
+/* ---------- ช่องทางการประกาศ (หน้าบริการอื่นๆ) ----------
+   ในระบบ : ทุกครั้ง · อีเมล : ผู้รับตามบทบาท/ชั้นปีที่เลือก (คำนวณที่เซิร์ฟเวอร์) · LINE : ทุกกลุ่มของวิทยาลัย ไม่ต้องเลือก */
+function annChannelFieldHTML(a) {
+  const mailSent = a && norm(a.mail_sent);
+  const lineSent = a && norm(a.line_sent);
+  return `<div class="p-3 bg-green-50 rounded-xl border border-green-100 space-y-2">
+    <p class="text-sm font-semibold text-green-800">ช่องทางการประกาศ</p>
+    <label class="flex items-center gap-2 text-sm text-gray-500"><input type="checkbox" checked disabled class="w-4 h-4"> ในระบบ AAMs (กระดิ่งแจ้งเตือนและหน้าหลัก) — ประกาศทุกครั้ง</label>
+    <label class="flex items-center gap-2 text-sm text-gray-700 ${mailSent ? 'opacity-60' : 'cursor-pointer'}"><input type="checkbox" id="annChMail" ${mailSent ? 'disabled' : ''} onchange="annChannelChanged()" class="w-4 h-4 accent-primary"> ✉️ อีเมลถึงผู้รับตามกลุ่มที่เลือกด้านบน${mailSent ? ' <span class="text-xs text-green-700">(ส่งแล้ว ' + htmlEsc(mailSent) + ')</span>' : ''}</label>
+    <div id="annMailPreview" class="hidden ml-7 text-xs text-gray-500 bg-white rounded-lg px-3 py-2"></div>
+    <label class="flex items-center gap-2 text-sm text-gray-700 ${lineSent ? 'opacity-60' : 'cursor-pointer'}"><input type="checkbox" id="annChLine" ${lineSent ? 'disabled' : ''} onchange="annChannelChanged()" class="w-4 h-4 accent-primary"> 📢 LINE (ส่งเข้าทุกกลุ่มของวิทยาลัย)${lineSent ? ' <span class="text-xs text-green-700">(ส่งแล้ว ' + htmlEsc(lineSent) + ')</span>' : ''}</label>
+    <div id="annLineNote" class="hidden ml-7 text-xs text-gray-500"></div>
+  </div>`;
+}
+function annChannelOpts() {
+  const get = id => { const el = document.getElementById(id); return !!(el && el.checked && !el.disabled); };
+  return { mail: get('annChMail'), line: get('annChLine') };
+}
+// กลุ่ม LINE ที่จะส่ง = ทุกกลุ่มที่เปิดใช้งานและบอทยังติดต่อได้
+function annAllLineGroupIds() {
+  const o = window._annSendOpts || {};
+  return (o.lineGroups || []).filter(g => g.reachable !== false).map(g => Number(g.id));
+}
+async function loadAnnChannels(a) {
+  window._annEditNames = (a && norm(a.target_names)) || '';
+  if (!window._annSendOpts) window._annSendOpts = await annSendCall({ mode: 'options' });
+  const o = window._annSendOpts || {};
+  const m = document.getElementById('annChMail'), l = document.getElementById('annChLine');
+  if (o.isOk && !o.hasSmtp && m) { m.checked = false; m.disabled = true; m.parentElement.title = 'ยังไม่ได้ตั้งค่า SMTP ในระบบ'; m.parentElement.classList.add('opacity-50'); }
+  if (o.isOk && !o.hasLine && l) { l.checked = false; l.disabled = true; l.parentElement.title = 'ยังไม่ได้ตั้งค่าโทเคน LINE ในระบบ'; l.parentElement.classList.add('opacity-50'); }
+  annChannelChanged();
+}
+function annChannelChanged() {
+  const o = window._annSendOpts || {};
+  const l = document.getElementById('annChLine'), ln = document.getElementById('annLineNote');
+  if (ln) {
+    const on = !!(l && l.checked);
+    ln.classList.toggle('hidden', !on);
+    if (on) {
+      const gs = o.lineGroups || [];
+      const ok = gs.filter(g => g.reachable !== false), bad = gs.filter(g => g.reachable === false);
+      ln.innerHTML = !o.isOk ? 'กำลังตรวจรายชื่อกลุ่ม LINE...'
+        : !gs.length ? '<span class="text-amber-600">ยังไม่มีกลุ่ม LINE ที่เปิดใช้งาน</span>'
+        : 'จะส่งเข้า ' + ok.length + ' กลุ่ม: ' + ok.map(g => htmlEsc(g.name)).join(', ')
+          + (bad.length ? ' <span class="text-amber-600">· ข้าม ' + bad.length + ' กลุ่มที่ติดต่อไม่ได้</span>' : '');
+    }
+  }
+  const m = document.getElementById('annChMail'), pv = document.getElementById('annMailPreview');
+  if (!pv) return;
+  const on = !!(m && m.checked && !m.disabled);
+  pv.classList.toggle('hidden', !on);
+  if (!on) return;
+  pv.textContent = 'กำลังนับผู้รับอีเมล...';
+  clearTimeout(window._annMailTimer);
+  window._annMailTimer = setTimeout(async () => {
+    const r = await annSendCall({ mode: 'preview', roles: annCollectRoles(), years: annCollectYears(), names: window._annEditNames || '' });
+    const el = document.getElementById('annMailPreview');
+    if (!el) return;
+    if (!r.isOk) { el.innerHTML = '<span class="text-red-500">' + htmlEsc(r.error || 'นับผู้รับไม่สำเร็จ') + '</span>'; return; }
+    const g = r['แยกกลุ่ม'] || {};
+    el.innerHTML = 'จะส่งอีเมลถึง <b class="text-gray-800">' + (r['ผู้รับทั้งหมด'] || 0) + '</b> คน'
+      + (Object.keys(g).length ? ' — ' + Object.keys(g).map(k => htmlEsc(k) + ' ' + g[k]).join(' · ') : '')
+      + ' <span class="text-gray-400">(ส่งแบบ BCC ผู้รับไม่เห็นอีเมลกัน)</span>';
+  }, 450);
+}
+// ส่งประกาศที่บันทึกแล้วออกทางอีเมล / LINE — คืนข้อความสรุปสำหรับแจ้งผู้ใช้
+async function annSendChannels(id, ch) {
+  const msgs = [];
+  if (!id || !ch || !(ch.mail || ch.line)) return msgs;
+  if (ch.line && !window._annSendOpts) window._annSendOpts = await annSendCall({ mode: 'options' });
+  const groups = annAllLineGroupIds();
+  const r = await annSendCall({
+    mode: 'send', announcement_id: id, email: !!ch.mail, line: !!ch.line && groups.length > 0,
+    line_groups: groups, broadcast: false, url: window.location.href.split('#')[0]
+  });
+  const em = r && r['อีเมล'], ln = r && r['LINE'];
+  if (ch.mail) msgs.push(em && em.isOk ? (em.skipped || 'อีเมล ' + (em['ส่งถึง'] || 0) + ' คน') : 'อีเมลไม่สำเร็จ: ' + ((em && em.error) || (r && r.error) || ''));
+  if (ch.line) msgs.push(!groups.length ? 'LINE ไม่ได้ส่ง: ไม่มีกลุ่มที่ติดต่อได้' : (ln && ln.isOk ? (ln.skipped || 'LINE ' + (ln['ส่งสำเร็จ'] || 0) + ' กลุ่ม') : 'LINE ไม่สำเร็จ: ' + ((ln && ln.error) || (r && r.error) || '')));
+  return msgs;
 }
 
 function showEditAnnouncementModal(id) {
@@ -12633,11 +12725,25 @@ function showEditAnnouncementModal(id) {
       </div>
       ${annRolesFieldHTML(a.roles || '')}
       ${annYearFieldHTML(annYearsOf(a).join(','))}
-      <label class="flex items-center gap-2 bg-green-50 rounded-xl px-3 py-2 cursor-pointer"><input type="checkbox" name="line_notify" value="✓" class="w-4 h-4" ${['✓', '✔', 'true', 'yes', 'y', '1', 'ส่ง', 'แจ้ง'].includes(String(a.line_notify || '').trim().toLowerCase()) ? 'checked' : ''}><span class="text-sm text-green-700">📢 ส่งประกาศนี้เข้า LINE</span></label>
+      ${annChannelFieldHTML(a)}
       <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึกการแก้ไข</button>
     </form>
   `);
-  document.getElementById('editAnnForm').onsubmit = (e) => { e.preventDefault(); a.line_notify = e.target.querySelector('[name="line_notify"]').checked ? '✓' : ''; a.roles = annCollectRoles(); a.yr = annCollectYears(); editRecord(id, 'editAnnForm') };
+  loadAnnChannels(a);
+  document.getElementById('editAnnForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const ch = annChannelOpts();
+    a.roles = annCollectRoles(); a.yr = annCollectYears();
+    // กันไม่ให้การบันทึกแก้ไขไปสั่งส่ง LINE แบบเดิม (ทุกกลุ่ม + broadcast) เอง
+    if (!norm(a.line_sent)) a.line_notify = '';
+    await editRecord(id, 'editAnnForm');
+    // บันทึกการแก้ไขก่อน แล้วค่อยส่งอีเมล/LINE จากเนื้อหาล่าสุด
+    if (ch.mail || ch.line) {
+      const msgs = await annSendChannels(Number(a.__rowIndex) || 0, ch);
+      if (GSheetDB.refreshTab) { try { await GSheetDB.refreshTab('announcement'); renderCurrentPage(); } catch (_) { } }
+      if (msgs.length) showToast('ประกาศแล้ว · ' + msgs.join(' · '));
+    }
+  };
 }
 
 function showEditTrackingModal(id) {
