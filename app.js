@@ -3319,7 +3319,8 @@ async function loadSchedNotifyChannels() {
         // ชื่อกลุ่มดึงจาก LINE จริง · กลุ่มที่บอทติดต่อไม่ได้ (ถูกเชิญออก/กลุ่มถูกลบ) ไม่ติ๊กให้
         const bad = g.reachable === false;
         const cnt = (g.members != null) ? ' <span class="text-gray-400">(' + g.members + ' คน)</span>' : '';
-        return `<label class="flex items-center gap-1.5 ${bad ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-gray-50 border-gray-200 text-gray-700'} border rounded-lg px-2 py-1 cursor-pointer" title="${bad ? 'บอท LINE ติดต่อกลุ่มนี้ไม่ได้ อาจถูกเชิญออกจากกลุ่มแล้ว' : ''}"><input type="checkbox" class="sched-line-grp accent-primary" value="${g.id}" ${bad ? '' : 'checked'}> ${htmlEsc(g.name)}${cnt}${bad ? ' ⚠ ติดต่อไม่ได้' : ''}</label>`;
+        const info = annLineGroupInfo(g);
+        return `<label class="flex items-center gap-1.5 ${bad ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-gray-50 border-gray-200 text-gray-700'} border rounded-lg px-2 py-1 cursor-pointer" title="${bad ? 'บอท LINE ติดต่อกลุ่มนี้ไม่ได้ อาจถูกเชิญออกจากกลุ่มแล้ว' : htmlEsc(info.label)}"><input type="checkbox" class="sched-line-grp accent-primary" value="${g.id}" ${bad ? 'disabled' : ''} onchange="this.dataset.manual='1'"> ${htmlEsc(g.name)} <span class="text-gray-400">· ${htmlEsc(info.label)}</span>${cnt}${bad ? ' ⚠ ติดต่อไม่ได้' : ''}</label>`;
       }).join('')
       : '<span class="text-amber-600">ยังไม่มีกลุ่ม LINE ที่เปิดใช้งาน</span>';
   if (!o.hasSmtp) {
@@ -3331,6 +3332,13 @@ async function loadSchedNotifyChannels() {
 // อัปเดตคำอธิบายผู้รับ และนับผู้รับอีเมลล่วงหน้า (หน่วงเวลาไว้ไม่ให้เรียกถี่)
 function schedNotifyChanged() {
   const a = schedCollectAudience();
+  // ติ๊กกลุ่ม LINE ให้ตรงกับผู้รับอัตโนมัติ (กลุ่มที่ผู้ใช้ติ๊กหรือเอาออกเองแล้ว จะไม่ไปแตะ)
+  // แจ้งเฉพาะผู้คุมสอบ (ไม่เลือกบทบาท) → กลุ่มบุคลากรเท่านั้น
+  const match = (!a.roles && a.names ? annLineGroupsFor('teacher', '') : annLineGroupsFor(a.roles, a.years)).map(g => String(g.id));
+  document.querySelectorAll('.sched-line-grp').forEach(cb => {
+    if (cb.disabled || cb.dataset.manual === '1') return;
+    cb.checked = match.indexOf(cb.value) !== -1;
+  });
   const hint = document.getElementById('schedAudienceHint');
   if (hint) {
     const anyRole = document.querySelectorAll('.ann-role-cb:checked').length > 0;
@@ -12713,12 +12721,44 @@ function annChannelFieldHTML(a) {
 }
 function annChannelOpts() {
   const get = id => { const el = document.getElementById(id); return !!(el && el.checked && !el.disabled); };
-  return { mail: get('annChMail'), line: get('annChLine') };
+  // จับกลุ่ม LINE ตามผู้รับไว้ตอนกดบันทึก (ก่อนหน้าต่างปิด)
+  return { mail: get('annChMail'), line: get('annChLine'), lineGroups: get('annChLine') ? annAllLineGroupIds() : [] };
 }
 // กลุ่ม LINE ที่จะส่ง = ทุกกลุ่มที่เปิดใช้งานและบอทยังติดต่อได้
 function annAllLineGroupIds() {
+  return annLineGroupsFor(annCollectRoles(), annCollectYears()).map(g => Number(g.id));
+}
+/* กลุ่ม LINE ที่ตรงกับผู้รับประกาศ
+   • กลุ่มชื่อ "BCNB <รุ่น>" = กลุ่มนักศึกษารุ่นนั้น — หาชั้นปีปัจจุบันของรุ่นจากทะเบียนนักศึกษา
+     (เลื่อนชั้นปีแล้วกลุ่มก็ตามไปเอง ไม่ต้องแก้อะไร)
+   • กลุ่มอื่น = กลุ่มบุคลากร — ส่งเมื่อประกาศถึงบทบาทที่ไม่ใช่นักศึกษา หรือไม่ได้เลือกบทบาท (= ทุกคน)
+   roles/years เป็นข้อความคั่นด้วยจุลภาค ('' = ทั้งหมด) */
+function annBatchYear(batch) {
+  const cnt = {};
+  getDataByType('student').forEach(st => {
+    if (norm(st.batch) !== String(batch) || !isActiveStudent(st)) return;
+    const y = norm(st.year_level); if (y) cnt[y] = (cnt[y] || 0) + 1;
+  });
+  const ys = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a]);
+  return ys[0] || '';
+}
+function annLineGroupInfo(g) {
+  const m = norm(g && g.name).match(/BCNB\s*(\d{2,3})/i);
+  if (!m) return { kind: 'staff', label: 'บุคลากร' };
+  const yr = annBatchYear(m[1]);
+  return { kind: 'student', batch: m[1], year: yr, label: yr ? 'นักศึกษาชั้นปี ' + yr : 'รุ่น ' + m[1] + ' (ไม่พบในทะเบียนที่กำลังศึกษา)' };
+}
+function annLineGroupsFor(roles, years) {
   const o = window._annSendOpts || {};
-  return (o.lineGroups || []).filter(g => g.reachable !== false).map(g => Number(g.id));
+  const rs = annParseRoles(roles), ys = annParseYears(years);
+  const toStudents = !rs.length || rs.indexOf('student') !== -1;
+  const toStaff = !rs.length || rs.some(r => r !== 'student');
+  return (o.lineGroups || []).filter(g => g.reachable !== false).filter(g => {
+    const i = annLineGroupInfo(g);
+    if (i.kind === 'staff') return toStaff;
+    if (!toStudents || !i.year) return false;
+    return !ys.length || ys.indexOf(i.year) !== -1;
+  });
 }
 async function loadAnnChannels(a) {
   window._annEditNames = (a && norm(a.target_names)) || '';
@@ -12737,11 +12777,11 @@ function annChannelChanged() {
     ln.classList.toggle('hidden', !on);
     if (on) {
       const gs = o.lineGroups || [];
-      const ok = gs.filter(g => g.reachable !== false), bad = gs.filter(g => g.reachable === false);
+      const ok = annLineGroupsFor(annCollectRoles(), annCollectYears());
       ln.innerHTML = !o.isOk ? 'กำลังตรวจรายชื่อกลุ่ม LINE...'
         : !gs.length ? '<span class="text-amber-600">ยังไม่มีกลุ่ม LINE ที่เปิดใช้งาน</span>'
-        : 'จะส่งเข้า ' + ok.length + ' กลุ่ม: ' + ok.map(g => htmlEsc(g.name)).join(', ')
-          + (bad.length ? ' <span class="text-amber-600">· ข้าม ' + bad.length + ' กลุ่มที่ติดต่อไม่ได้</span>' : '');
+        : !ok.length ? '<span class="text-amber-600">ไม่มีกลุ่ม LINE ที่ตรงกับผู้รับที่เลือก จึงจะไม่ส่ง LINE</span>'
+        : 'จะส่งเข้า ' + ok.length + ' กลุ่มที่ตรงกับผู้รับ: ' + ok.map(g => htmlEsc(g.name) + ' <span class="text-gray-400">(' + htmlEsc(annLineGroupInfo(g).label) + ')</span>').join(', ');
     }
   }
   const m = document.getElementById('annChMail'), pv = document.getElementById('annMailPreview');
@@ -12767,14 +12807,14 @@ async function annSendChannels(id, ch) {
   const msgs = [];
   if (!id || !ch || !(ch.mail || ch.line)) return msgs;
   if (ch.line && !window._annSendOpts) window._annSendOpts = await annSendCall({ mode: 'options' });
-  const groups = annAllLineGroupIds();
+  const groups = ch.lineGroups || annAllLineGroupIds();
   const r = await annSendCall({
     mode: 'send', announcement_id: id, email: !!ch.mail, line: !!ch.line && groups.length > 0,
     line_groups: groups, broadcast: false, url: window.location.href.split('#')[0]
   });
   const em = r && r['อีเมล'], ln = r && r['LINE'];
   if (ch.mail) msgs.push(em && em.isOk ? (em.skipped || 'อีเมล ' + (em['ส่งถึง'] || 0) + ' คน') : 'อีเมลไม่สำเร็จ: ' + ((em && em.error) || (r && r.error) || ''));
-  if (ch.line) msgs.push(!groups.length ? 'LINE ไม่ได้ส่ง: ไม่มีกลุ่มที่ติดต่อได้' : (ln && ln.isOk ? (ln.skipped || 'LINE ' + (ln['ส่งสำเร็จ'] || 0) + ' กลุ่ม') : 'LINE ไม่สำเร็จ: ' + ((ln && ln.error) || (r && r.error) || '')));
+  if (ch.line) msgs.push(!groups.length ? 'LINE ไม่ได้ส่ง: ไม่มีกลุ่มที่ตรงกับผู้รับ' : (ln && ln.isOk ? (ln.skipped || 'LINE ' + (ln['ส่งสำเร็จ'] || 0) + ' กลุ่ม') : 'LINE ไม่สำเร็จ: ' + ((ln && ln.error) || (r && r.error) || '')));
   return msgs;
 }
 

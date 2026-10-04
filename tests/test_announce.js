@@ -69,7 +69,7 @@ t('ฟอร์มเพิ่ม/แก้ไขมีช่องเลือ�
   [addAnn, edAnn].forEach(f => { assert.ok(f.includes('annRolesFieldHTML(')); assert.ok(f.includes('annYearFieldHTML(')); assert.ok(f.includes('annChannelFieldHTML(')); });
   assert.ok(chf.includes('id="annChMail"') && chf.includes('id="annChLine"'));
 });
-t('LINE ไม่ต้องเลือกกลุ่ม: ส่งทุกกลุ่มที่ติดต่อได้ และไม่ broadcast', () => {
+t('LINE ไม่ต้องเลือกกลุ่ม: ส่งเฉพาะกลุ่มที่ตรงกับผู้รับ และไม่ broadcast', () => {
   const f = grab('async function annSendChannels', 'function showEditAnnouncementModal');
   assert.ok(f.includes('annAllLineGroupIds()') && f.includes('broadcast: false'));
   assert.ok(!chf.includes('sched-line-grp'), 'ไม่ควรมีช่องเลือกกลุ่ม');
@@ -94,6 +94,37 @@ t('บอทออกจากกลุ่ม → ปิดกลุ่ม', () 
 });
 t('กลุ่มเดิมที่ใช้อยู่ยังรับประกาศ', () => { assert.strictEqual(lineGroupStatus({ is_active: '1', note: null }).k, 'on'); });
 t('หน้าตั้งค่ามีส่วนอนุมัติกลุ่ม', () => { assert.ok(SRC.includes('id="lineGroupBox"') && SRC.includes("lineGroupSet(${g.id},'1')")); });
+
+console.log('\n[6] LINE ส่งเฉพาะกลุ่มที่ตรงกับผู้รับ · อีเมลตอบกลับไม่ได้');
+{
+  const STU = [];
+  [['78','4'],['79','3'],['80','2'],['81','1']].forEach(([b,y]) => { for (let i = 0; i < 3; i++) STU.push({ batch: b, year_level: y, status: 'กำลังศึกษา' }); });
+  STU.push({ batch: '80', year_level: '3', status: 'กำลังศึกษา' }); // ตกค้าง 1 คน ไม่ควรเปลี่ยนชั้นปีของรุ่น
+  global.window = { _annSendOpts: { lineGroups: [
+    { id: 2, name: 'ทีมงานวิชาการผู้เข้มแข็ง' }, { id: 3, name: 'BCNB 78' }, { id: 4, name: 'BCNB 79' },
+    { id: 5, name: 'BCNB 80' }, { id: 7, name: 'BCNB 81' }, { id: 9, name: 'BCNB 99', reachable: true }, { id: 10, name: 'BCNB 77', reachable: false } ] } };
+  global.getDataByType = () => STU;
+  global.isActiveStudent = st => st.status === 'กำลังศึกษา';
+  eval(grab('function annBatchYear', 'async function loadAnnChannels'));
+  const ids = (r, y) => annLineGroupsFor(r, y).map(g => g.id).sort((a, b) => a - b).join(',');
+  t('รุ่น → ชั้นปีจากทะเบียน (BCNB 80 = ชั้นปี 2)', () => { assert.strictEqual(annBatchYear('80'), '2'); assert.strictEqual(annLineGroupInfo({ name: 'BCNB 81' }).year, '1'); });
+  t('นักศึกษาชั้นปี 2 → เฉพาะ BCNB 80', () => assert.strictEqual(ids('student', '2'), '5'));
+  t('อาจารย์ → เฉพาะกลุ่มบุคลากร', () => assert.strictEqual(ids('teacher', ''), '2'));
+  t('นักศึกษา (ทุกชั้นปี) → ทุกกลุ่ม BCNB ที่พบในทะเบียน ไม่รวมบุคลากร', () => assert.strictEqual(ids('student', ''), '3,4,5,7'));
+  t('อาจารย์ + นักศึกษาปี 1,4 → บุคลากร + BCNB 78 + BCNB 81', () => assert.strictEqual(ids('student,teacher', '1,4'), '2,3,7'));
+  t('ไม่เลือกบทบาท (ทุกคน) → ทุกกลุ่มที่ติดต่อได้ ยกเว้นรุ่นที่ไม่อยู่ในทะเบียน', () => assert.strictEqual(ids('', ''), '2,3,4,5,7'));
+  t('กลุ่มที่บอทติดต่อไม่ได้ไม่ถูกส่ง', () => assert.ok(!ids('', '').split(',').includes('10')));
+  t('ปฏิทินติ๊กกลุ่มให้อัตโนมัติ แต่เคารพการแก้เอง', () => { const f = grab('function schedNotifyChanged', '\n}'); assert.ok(f.includes('annLineGroupsFor(') && f.includes('dataset.manual')); });
+}
+t('อีเมล: Reply-To เป็น no-reply + หัวจดหมายส่งอัตโนมัติ + ข้อความท้ายแจ้งว่าตอบกลับไม่ได้', () => {
+  assert.ok(FN.includes("replyTo: NO_REPLY") && FN.includes("'no-reply@'"));
+  assert.ok(FN.includes("'Auto-Submitted': 'auto-generated'"));
+  assert.ok(FN.includes('ไม่สามารถตอบกลับได้'));
+});
+t('LINE webhook ไม่ตอบข้อความแชต (ตอบเฉพาะตอนบอทเข้ากลุ่ม)', () => {
+  assert.ok(!/ev\.type === 'message'/.test(HOOK));
+  assert.strictEqual((HOOK.match(/message\/reply/g) || []).length, 1);
+});
 
 console.log('\n' + (fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
 process.exit(fail ? 1 : 0);

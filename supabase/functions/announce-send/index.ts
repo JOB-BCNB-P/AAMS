@@ -1,5 +1,5 @@
 // ============================================================
-// announce-send v2 — ส่งประกาศจากระบบ AAMS ออกทาง "อีเมล" และ/หรือ "LINE" ตามที่ผู้ประกาศเลือก
+// announce-send v3 — ส่งประกาศจากระบบ AAMS ออกทาง "อีเมล" และ/หรือ "LINE" ตามที่ผู้ประกาศเลือก
 //
 // โหมด
 //   options : คืนรายชื่อกลุ่ม LINE ที่เปิดใช้งาน และบอกว่าตั้งค่า LINE / SMTP ไว้แล้วหรือยัง
@@ -15,6 +15,7 @@
 //       - ไม่เลือกอะไรเลย                       → ทุกคน
 //   • ส่งอีเมลแบบ BCC ชุดละไม่เกิน 90 คน และส่งซ้ำไม่ได้ (เว้นแต่ส่ง force)
 //   • LINE ส่งเฉพาะกลุ่มที่เลือก ส่วน broadcast ถึงเพื่อนทุกคนของบัญชี LINE ต้องติ๊กเองเท่านั้น
+//   • อีเมลเป็นแบบแจ้งอย่างเดียว : Reply-To ชี้ไปที่ no-reply (MAIL_NO_REPLY) ตอบกลับแล้วไม่ถึงใคร
 //   • หัวเรื่องอีเมลเป็นอังกฤษล้วน และเนื้ออีเมลแปลงอักษรไทยเป็นรหัส HTML (เหตุผลเดียวกับ survey-invite-mail)
 // ============================================================
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
@@ -117,7 +118,7 @@ ${date ? `<p style="margin:0 0 14px;font-size:13px;color:#374151">วันท�
 <div style="background:#f0f7ff;border:1px solid #dbeafe;border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.9;white-space:pre-wrap">${esc(content)}</div>
 <p style="margin:22px 0"><a href="${esc(link)}" style="display:inline-block;background:#1e6fba;color:#fff;text-decoration:none;padding:11px 24px;border-radius:10px;font-size:14px;font-weight:600">เปิดระบบ AAMs</a></p>
 <p style="font-size:12px;color:#6b7280;margin-top:18px;line-height:1.8;border-top:1px solid #eef2f7;padding-top:12px">
-อีเมลฉบับนี้ส่งอัตโนมัติจากระบบ กรุณาอย่าตอบกลับ</p>
+อีเมลฉบับนี้ส่งอัตโนมัติจากระบบเพื่อแจ้งข่าวเท่านั้น ไม่สามารถตอบกลับได้ หากมีข้อสงสัยกรุณาติดต่องานวิชาการ</p>
 </div></body></html>`
 }
 
@@ -155,6 +156,7 @@ Deno.serve(async (req) => {
   const FROM_RAW = Deno.env.get('MAIL_FROM') ?? SMTP_USER
   const MAIL_FROM = (FROM_RAW.match(/<([^>]+)>/)?.[1] ?? FROM_RAW).trim()
   const hasSmtp = !!(SMTP_HOST && SMTP_USER && SMTP_PASS)
+  const NO_REPLY = (Deno.env.get('MAIL_NO_REPLY') ?? ('no-reply@' + DOMAIN)).trim()
 
   // ---------- ตรวจสิทธิ์ผู้เรียก ----------
   const caller = createClient(url, anonKey, { global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } } })
@@ -246,7 +248,13 @@ Deno.serve(async (req) => {
           let ok = false, err = '', tries = 0
           while (!ok && tries < 2) {
             tries++
-            try { await smtp.send({ from: MAIL_FROM, to: MAIL_FROM, bcc: queue[i], subject, html, content: text }); ok = true }
+            try {
+              const mail: Record<string, unknown> = { from: MAIL_FROM, to: MAIL_FROM, bcc: queue[i], subject, html, content: text, replyTo: NO_REPLY }
+              // ครั้งแรกใส่หัวอีเมลแบบ "ส่งอัตโนมัติ" ด้วย ถ้าตัวส่งไม่รับ ครั้งที่สองส่งแบบไม่มีหัวนี้
+              if (tries === 1) mail.headers = { 'Auto-Submitted': 'auto-generated', 'X-Auto-Response-Suppress': 'All' }
+              await smtp.send(mail as any)
+              ok = true
+            }
             catch (e) { err = String((e as Error)?.message ?? e).slice(0, 300); if (tries < 2) await sleep(2500) }
           }
           if (ok) okN += queue[i].length; else failN++
