@@ -2402,41 +2402,168 @@
       + 'oninput="wlmSet(\'' + mk + '\',' + i + ',\'' + field + '\',this.value)" '
       + 'class="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm ' + (cls || '') + '">';
   }
+  /* ช่องวันที่-เวลาของกิจกรรม (บริการวิชาการ / กิจการนักศึกษา) ในหน้าต่างแก้ไข
+     หน้าตาและการคิดชั่วโมงเหมือนหน้ากรอกภาระงานทุกอย่าง : วันที่กรอกเป็น พ.ศ. · ใส่เวลาแล้วคิดชั่วโมงให้ */
+  function wlmSpanFields(mk, i, r) {
+    var cells = [['date_from', 'วันที่เริ่ม (พ.ศ.)', 'date'], ['date_to', 'วันที่สิ้นสุด (พ.ศ.)', 'date'],
+      ['time_from', 'เวลาเริ่ม', 'time'], ['time_to', 'เวลาสิ้นสุด', 'time']].map(function (c) {
+      var isDate = c[2] === 'date';
+      var shown = isDate ? (isoToTh(r[c[0]]) || norm(r[c[0] + '_in'])) : norm(r[c[0]]);
+      return '<label class="block"><span class="block text-[11px] text-gray-500 mb-0.5">' + c[1] + '</span>'
+        + (isDate
+          ? '<input data-nodraft="1" type="text" inputmode="numeric" maxlength="10" placeholder="วว/ดด/ปปปป" value="' + esc(shown) + '" '
+            + 'oninput="wlmDate(\'' + mk + '\',' + i + ',\'' + c[0] + '\',this.value)" class="w-full border rounded-lg px-2 py-1.5 text-sm">'
+            + '<span class="block text-[11px] mt-0.5" data-wlm-dt="' + mk + '|' + i + '|' + c[0] + '">' + dateEcho(r, c[0]) + '</span>'
+          : '<input data-nodraft="1" type="time" value="' + esc(shown) + '" oninput="wlmSet(\'' + mk + '\',' + i + ',\'' + c[0] + '\',this.value)" class="w-full border rounded-lg px-2 py-1.5 text-sm">')
+        + '</label>';
+    }).join('');
+    var manual = norm(r.hours_manual) === '1';
+    return '<div class="col-span-12 rounded-xl bg-surface/60 border border-gray-100 p-2">'
+      + '<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">' + cells + '</div>'
+      + '<div class="flex flex-wrap items-center gap-2 text-[11px] mt-1.5"><i data-lucide="clock" class="w-3.5 h-3.5 text-gray-400"></i>'
+      + '<span data-wlm-span="' + mk + '|' + i + '">' + spanNote(r) + '</span>'
+      + (manual ? '<button type="button" data-no-loading onclick="wlmSpanAuto(\'' + mk + '\',' + i + ')" class="text-primary hover:underline">ให้คิดจากวันเวลาแทน</button>' : '')
+      + '</div></div>';
+  }
+  // ผู้เข้าร่วมกิจกรรม (เฉพาะแก้ไขรายชั้นปี) — เลือกในหน้าต่างเดียวกัน ไม่เปิดหน้าต่างซ้อน
+  function wlmPartLine(mk, i, r) {
+    var M = wlmState();
+    if (M.kind !== 'plan') return '';
+    var list = partOf(r), all = cohortStudents(M.lv);
+    var open = M.pick === mk + '|' + i;
+    var txt = list.length ? '<span class="text-amber-700">เฉพาะ ' + list.length + ' คน</span>'
+      : '<span class="text-gray-500">นักศึกษาทุกคนในชั้น (' + all.length + ' คน)</span>';
+    var html = '<div class="col-span-12 flex flex-wrap items-center gap-2 text-[11px] pl-1 -mt-1">'
+      + '<i data-lucide="users" class="w-3.5 h-3.5 text-gray-400"></i><span>ผู้เข้าร่วม: ' + txt + '</span>'
+      + '<button type="button" data-no-loading onclick="wlmPick(\'' + mk + '\',' + i + ')" class="text-primary hover:underline">' + (open ? 'ปิดรายชื่อ' : 'เลือกนักศึกษา') + '</button>'
+      + (list.length ? '<button type="button" data-no-loading onclick="wlmPickClear(\'' + mk + '\',' + i + ')" class="text-gray-400 hover:text-gray-600">ล้าง (ให้นับทุกคน)</button>' : '')
+      + '</div>';
+    if (open) {
+      var sel = {}; list.forEach(function (x) { sel[x] = 1; });
+      html += '<div class="col-span-12 border border-blue-100 rounded-xl p-2 bg-white">'
+        + '<div class="flex flex-wrap items-center gap-2 mb-2">'
+        + '<input data-nodraft="1" type="search" placeholder="ค้นหารหัส/ชื่อ" oninput="wlmPickFilter(this)" class="flex-1 min-w-[10rem] border rounded-lg px-2 py-1 text-xs">'
+        + '<button type="button" data-no-loading onclick="wlmPickAll(\'' + mk + '\',' + i + ',true)" class="px-2 py-1 rounded-lg bg-primaryLight text-primary text-xs">เลือกทั้งหมด</button>'
+        + '<button type="button" data-no-loading onclick="wlmPickAll(\'' + mk + '\',' + i + ',false)" class="px-2 py-1 rounded-lg bg-gray-100 text-gray-600 text-xs">ยกเลิกทั้งหมด</button></div>'
+        + '<div class="max-h-48 overflow-y-auto grid sm:grid-cols-2 gap-x-3">'
+        + all.map(function (u) {
+            var sid = norm(u.student_id);
+            return '<label class="flex items-center gap-2 text-xs py-0.5" data-wlm-q="' + esc((sid + ' ' + norm(u.name)).toLowerCase()) + '">'
+              + '<input data-nodraft="1" type="checkbox"' + (sel[sid] ? ' checked' : '') + ' onchange="wlmPickOne(\'' + mk + '\',' + i + ',\'' + esc(sid) + '\',this.checked)">'
+              + '<span class="font-mono text-gray-400">' + esc(sid) + '</span> ' + esc(norm(u.name)) + '</label>';
+          }).join('') + '</div></div>';
+    }
+    return html;
+  }
   function wlmMission(m) {
     var M = wlmState(), list = M.data[m.key] || [];
     var sum = list.reduce(function (a, r) { return a + n(r.hours); }, 0);
-    var body = list.map(function (r, i) {
-      var span = spanText(r), parts = partOf(r).length;
-      return '<tr class="border-t align-top">'
-        + '<td class="px-2 py-1.5 text-center text-xs text-gray-400 pt-3">' + (i + 1) + '</td>'
-        + (m.subject
-            ? '<td class="px-2 py-1.5">' + wlmCell(m.key, i, 'subject_name', norm(r.subject_name)) + '</td>'
-              + '<td class="px-2 py-1.5 w-24">' + wlmCell(m.key, i, 'pieces', norm(r.pieces), 'text-center') + '</td>'
-            : '<td class="px-2 py-1.5 w-40"><select data-nodraft="1" onchange="wlmSet(\'' + m.key + '\',' + i + ',\'kind\',this.value)" class="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white">'
-              + ACT_KINDS.map(function (k) { return '<option' + ((norm(r.kind) || ACT_KINDS[0]) === k ? ' selected' : '') + '>' + esc(k) + '</option>'; }).join('') + '</select></td>'
-              + '<td class="px-2 py-1.5">' + wlmCell(m.key, i, 'activity', norm(r.activity))
-              + ((span || parts) ? '<span class="block text-[11px] text-gray-400 mt-0.5">' + esc(span) + (span && parts ? ' · ' : '') + (parts ? 'ผู้เข้าร่วม ' + parts + ' คน' : '') + '</span>' : '')
-              + '</td>')
-        + '<td class="px-2 py-1.5 w-24">' + wlmCell(m.key, i, 'hours', norm(r.hours), 'text-center tabular-nums', 'number') + '</td>'
-        + '<td class="px-2 py-1.5 text-center pt-2.5"><button type="button" data-no-loading onclick="wlmDel(\'' + m.key + '\',' + i + ')" class="text-red-400 hover:text-red-600 p-1" title="ลบรายการนี้"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td>'
-        + '</tr>';
-    }).join('');
-    return '<details class="border border-gray-100 rounded-xl mb-2"' + (list.length ? ' open' : '') + '>'
+    var del = function (i) {
+      return '<button type="button" data-no-loading onclick="wlmDel(\'' + m.key + '\',' + i + ')" class="text-red-400 hover:text-red-600 p-1" title="ลบรายการนี้"><i data-lucide="trash-2" class="w-4 h-4"></i></button>';
+    };
+    var body;
+    if (!list.length) body = '<p class="text-xs text-gray-400 py-1">ยังไม่มีรายการ</p>';
+    else if (m.subject) {
+      body = '<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="bg-surface text-left text-xs">'
+        + '<th class="px-2 py-1.5 font-medium">รายวิชา</th><th class="px-2 py-1.5 font-medium text-center w-28">จำนวนชิ้นงาน</th>'
+        + '<th class="px-2 py-1.5 font-medium text-center w-28">เวลาที่ใช้ (ชม.)</th><th class="w-10"></th></tr></thead><tbody>'
+        + list.map(function (r, i) {
+            return '<tr class="border-t"><td class="px-2 py-1.5">' + wlmCell(m.key, i, 'subject_name', norm(r.subject_name)) + '</td>'
+              + '<td class="px-2 py-1.5">' + wlmCell(m.key, i, 'pieces', norm(r.pieces), 'text-center', 'number') + '</td>'
+              + '<td class="px-2 py-1.5">' + wlmCell(m.key, i, 'hours', norm(r.hours), 'text-center tabular-nums', 'number') + '</td>'
+              + '<td class="px-1 text-center">' + del(i) + '</td></tr>';
+          }).join('') + '</tbody></table></div>';
+    } else {
+      body = '<div class="space-y-3">' + list.map(function (r, i) {
+        return '<div class="grid grid-cols-12 gap-2 items-start border-t border-gray-50 pt-2">'
+          + '<div class="col-span-4 sm:col-span-2"><select data-nodraft="1" onchange="wlmSet(\'' + m.key + '\',' + i + ',\'kind\',this.value)" class="w-full border rounded-lg px-2 py-2 text-xs">'
+          + ACT_KINDS.map(function (k) { return '<option' + ((norm(r.kind) || ACT_KINDS[0]) === k ? ' selected' : '') + '>' + esc(k) + '</option>'; }).join('') + '</select></div>'
+          + '<div class="col-span-5 sm:col-span-7"><textarea data-nodraft="1" rows="2" placeholder="ชื่อกิจกรรม" oninput="wlmSet(\'' + m.key + '\',' + i + ',\'activity\',this.value)" class="w-full border rounded-lg px-2 py-1.5 text-sm">' + esc(norm(r.activity)) + '</textarea></div>'
+          + '<div class="col-span-2"><input data-nodraft="1" type="number" step="0.5" min="0" value="' + esc(norm(r.hours)) + '" data-wlm-hr="' + m.key + '|' + i + '" '
+          + 'oninput="wlmSet(\'' + m.key + '\',' + i + ',\'hours\',this.value)" placeholder="ชม." class="w-full border rounded-lg px-2 py-1.5 text-sm text-center tabular-nums"></div>'
+          + '<div class="col-span-1 pt-1 text-center">' + del(i) + '</div>'
+          + (m.timed ? wlmSpanFields(m.key, i, r) : '')
+          + wlmPartLine(m.key, i, r)
+          + '</div>';
+      }).join('') + '</div>';
+    }
+    return '<details data-mk="' + m.key + '" class="border border-gray-100 rounded-xl mb-2"' + (list.length || M.openMk === m.key ? ' open' : '') + '>'
       + '<summary class="px-3 py-2 flex items-center justify-between gap-2 cursor-pointer">'
       + '<span class="flex items-center gap-2 text-sm font-semibold"><span style="width:9px;height:9px;border-radius:50%;background:' + m.color + ';display:inline-block"></span>' + esc(m.label) + '</span>'
       + '<span class="text-xs text-gray-500">' + list.length + ' รายการ · <b id="wlmSum_' + m.key + '" style="color:' + m.color + '">' + fx(sum) + '</b> ชม.</span></summary>'
-      + '<div class="px-3 pb-3">'
-      + (list.length ? '<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="bg-surface text-left text-xs">'
-          + '<th class="px-2 py-1.5 font-medium text-center w-8">#</th>'
-          + (m.subject ? '<th class="px-2 py-1.5 font-medium">รายวิชา</th><th class="px-2 py-1.5 font-medium text-center">ชิ้นงาน</th>'
-                       : '<th class="px-2 py-1.5 font-medium">ประเภท</th><th class="px-2 py-1.5 font-medium">กิจกรรม</th>')
-          + '<th class="px-2 py-1.5 font-medium text-center">ชั่วโมง</th><th class="px-2 py-1.5 font-medium text-center w-10">ลบ</th></tr></thead>'
-          + '<tbody>' + body + '</tbody></table></div>'
-        : '<p class="text-xs text-gray-400 py-1">ยังไม่มีรายการ</p>')
+      + '<div class="px-3 pb-3">' + body
       + '<button type="button" data-no-loading onclick="wlmAdd(\'' + m.key + '\')" class="mt-2 px-3 py-1.5 rounded-lg bg-primaryLight text-primary text-xs hover:bg-primary hover:text-white transition">'
       + '<i data-lucide="plus" class="w-3.5 h-3.5 inline mr-1"></i>เพิ่มรายการ</button>'
       + '</div></details>';
   }
+  function wlmSumPaint(mk) {
+    var M = wlmState(), el = document.getElementById('wlmSum_' + mk);
+    if (el) el.textContent = fx(M.data[mk].reduce(function (a, r) { return a + n(r.hours); }, 0));
+  }
+  function wlmSpanApply(mk, i, r) {
+    if (norm(r.hours_manual) === '1') return;
+    var c = spanCalc(r);
+    r.hours = c.ready ? String(c.hours) : '';
+    var el = document.querySelector('[data-wlm-hr="' + mk + '|' + i + '"]');
+    if (el) el.value = r.hours;
+  }
+  function wlmSpanPaint(mk, i, r) {
+    var el = document.querySelector('[data-wlm-span="' + mk + '|' + i + '"]');
+    if (el) el.innerHTML = spanNote(r);
+  }
+  window.wlmDate = function (mk, i, field, text) {
+    var M = wlmState(); var r = M && M.data[mk] && M.data[mk][i]; if (!r) return;
+    var iso = thToIso(text);
+    r[field] = iso;
+    r[field + '_in'] = (norm(text) === '' || iso) ? '' : norm(text);
+    M.dirty[mk] = true;
+    wlmSpanApply(mk, i, r); wlmSpanPaint(mk, i, r);
+    var el = document.querySelector('[data-wlm-dt="' + mk + '|' + i + '|' + field + '"]');
+    if (el) el.innerHTML = dateEcho(r, field);
+    wlmSumPaint(mk);
+  };
+  window.wlmSpanAuto = function (mk, i) {
+    var M = wlmState(); var r = M && M.data[mk] && M.data[mk][i]; if (!r) return;
+    r.hours_manual = ''; M.dirty[mk] = true;
+    wlmSpanApply(mk, i, r); wlmRender();
+  };
+  window.wlmPick = function (mk, i) {
+    var M = wlmState(); if (!M) return;
+    M.pick = M.pick === mk + '|' + i ? '' : mk + '|' + i;
+    wlmRender();
+  };
+  function wlmSetParts(mk, i, arr) {
+    var M = wlmState(), r = M.data[mk][i];
+    if (arr.length) r.students = arr; else delete r.students;
+    M.dirty[mk] = true;
+  }
+  window.wlmPickOne = function (mk, i, sid, on) {
+    var M = wlmState(); if (!M) return;
+    var cur = partOf(M.data[mk][i]), k = cur.indexOf(sid);
+    if (on && k < 0) cur.push(sid);
+    if (!on && k >= 0) cur.splice(k, 1);
+    wlmSetParts(mk, i, cur);
+    var box = document.querySelector('[onclick="wlmPick(\'' + mk + '\',' + i + ')"]');
+    if (box && box.previousElementSibling) box.previousElementSibling.innerHTML = 'ผู้เข้าร่วม: ' + (cur.length
+      ? '<span class="text-amber-700">เฉพาะ ' + cur.length + ' คน</span>' : '<span class="text-gray-500">นักศึกษาทุกคนในชั้น</span>');
+  };
+  window.wlmPickAll = function (mk, i, on) {
+    var M = wlmState(); if (!M) return;
+    // "เลือกทั้งหมด" = ทุกคนที่แสดงอยู่ (ตามคำค้น) · ถ้าเลือกครบทั้งชั้นก็เท่ากับนับทุกคน
+    var shown = Array.prototype.filter.call(document.querySelectorAll('[data-wlm-q]'), function (l) { return l.style.display !== 'none'; })
+      .map(function (l) { return l.querySelector('input').getAttribute('onchange').match(/'([^']+)',this\.checked/)[1]; });
+    var cur = partOf(M.data[mk][i]);
+    shown.forEach(function (sid) { var k = cur.indexOf(sid); if (on && k < 0) cur.push(sid); if (!on && k >= 0) cur.splice(k, 1); });
+    if (on && cur.length >= cohortStudents(M.lv).length) cur = [];
+    wlmSetParts(mk, i, cur); wlmRender();
+  };
+  window.wlmPickClear = function (mk, i) { var M = wlmState(); if (!M) return; wlmSetParts(mk, i, []); wlmRender(); };
+  window.wlmPickFilter = function (el) {
+    var q = norm(el.value).toLowerCase();
+    Array.prototype.forEach.call(document.querySelectorAll('[data-wlm-q]'), function (l) {
+      l.style.display = !q || l.getAttribute('data-wlm-q').indexOf(q) >= 0 ? '' : 'none';
+    });
+  };
   function wlmRender() {
     var M = wlmState(), box = document.getElementById('wlmBody');
     if (!M || !box) return;
@@ -2450,9 +2577,18 @@
         + '</select>'
         + '<span class="text-xs text-gray-500">แสดงเฉพาะรายการที่นักศึกษาคนนี้เข้าร่วม · บันทึกแล้วจะเป็นค่าเฉพาะรายของคนนี้ ไม่กระทบเพื่อนในชั้นปี</span></div>'
       : '<p class="text-xs text-gray-500 mb-3">ค่ามาตรฐานของชั้นปีที่ ' + esc(M.lv) + ' ภาค ' + semName(M.sm) + ' ปีการศึกษา ' + esc(st.year) + ' — ใช้กับนักศึกษาทุกคนในชั้นปีที่ไม่มีค่าเฉพาะราย</p>';
+    // วาดใหม่แล้วคงตำแหน่งเลื่อนและการ์ดพันธกิจที่เปิดอยู่ไว้ ไม่ให้เด้งกลับขึ้นบนสุด
+    var scroller = box.closest('.modal-content'), top = scroller ? scroller.scrollTop : 0;
+    var openSet = {}, had = box.querySelectorAll('details[data-mk]').length > 0;
+    Array.prototype.forEach.call(box.querySelectorAll('details[data-mk]'), function (d) { openSet[d.getAttribute('data-mk')] = d.open; });
     box.innerHTML = head + MISSIONS.map(wlmMission).join('')
-      + '<p class="text-[11px] text-gray-400 mt-2">ช่วงวันที่-เวลา และรายชื่อผู้เข้าร่วมของแต่ละรายการคงไว้ตามเดิม · '
-      + 'ต้องการแก้ส่วนนี้ <button type="button" onclick="wlmFull()" class="text-primary underline">เปิดหน้ากรอกภาระงาน</button></p>';
+      + '<p class="text-[11px] text-gray-400 mt-2">ต้องการเครื่องมือเต็ม (ดึงรายวิชาที่เปิดสอน ฯลฯ) '
+      + '<button type="button" onclick="wlmFull()" class="text-primary underline">เปิดหน้ากรอกภาระงาน</button></p>';
+    if (had) Array.prototype.forEach.call(box.querySelectorAll('details[data-mk]'), function (d) {
+      var k = d.getAttribute('data-mk');
+      if (k in openSet) d.open = openSet[k] || M.openMk === k;
+    });
+    if (scroller) scroller.scrollTop = top;
     if (window.lucide) lucide.createIcons();
   }
   function wlmOpen(kind, lv, sm, sid, name) {
@@ -2472,14 +2608,20 @@
   }
   window.wlmSet = function (mk, i, field, v) {
     var M = wlmState(); if (!M || !M.data[mk] || !M.data[mk][i]) return;
-    M.data[mk][i][field] = v; M.dirty[mk] = true;
-    if (field === 'hours') {
-      var el = document.getElementById('wlmSum_' + mk);
-      if (el) el.textContent = fx(M.data[mk].reduce(function (a, r) { return a + n(r.hours); }, 0));
+    var r = M.data[mk][i];
+    r[field] = v; M.dirty[mk] = true;
+    var m = missionOf(mk);
+    if (m && m.timed) {
+      // พิมพ์ชั่วโมงเอง = คุมตัวเลขด้วยมือ (ลบจนว่างกลับไปคิดอัตโนมัติ) · แก้วันเวลา = คิดชั่วโมงใหม่
+      if (field === 'hours') r.hours_manual = norm(v) === '' ? '' : '1';
+      else if (SPAN_FIELDS.indexOf(field) !== -1) wlmSpanApply(mk, i, r);
+      wlmSpanPaint(mk, i, r);
     }
+    wlmSumPaint(mk);
   };
   window.wlmAdd = function (mk) {
     var M = wlmState(); if (!M) return;
+    M.openMk = mk;
     var m = missionOf(mk);
     var r = m && m.subject ? { subject_name: '', pieces: '', hours: '' } : { kind: ACT_KINDS[0], activity: '', hours: '' };
     // ค่าเฉพาะรายของนักศึกษาคนเดียว — ให้รายการใหม่นับเฉพาะคนนี้

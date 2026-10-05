@@ -40,5 +40,10 @@ t('เกณฑ์หน่วยชั่วโมงแยกตามปี�
   ['wlRateAdd', 'wlRateEdit', 'wlRateSave', 'wlRateDelete', 'wlRateCopyYear', 'wlRateDeleteYear'].forEach(f => assert.ok(WL.includes('window.' + f + ' = '), f));
   assert.ok(WL.includes('o.academic_year = norm(state().year);'), 'เกณฑ์ที่บันทึกต้องผูกปีการศึกษา');
 });
+t('หน้าต่างแก้ไขมีกิจกรรม วันที่ เวลา และผู้เข้าร่วม เหมือนหน้ากรอกภาระงาน', () => {
+  assert.ok(WL.includes('function wlmSpanFields(mk, i, r)') && WL.includes('window.wlmDate = function'));
+  assert.ok(WL.includes('(m.timed ? wlmSpanFields(m.key, i, r)'), 'พันธกิจที่คิดจากวันเวลาต้องมีช่องวันที่-เวลา');
+  assert.ok(WL.includes('function wlmPartLine(mk, i, r)') && WL.includes('window.wlmPickOne = function'));
+});
 console.log('\n' + (fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
 process.exit(fail ? 1 : 0);
