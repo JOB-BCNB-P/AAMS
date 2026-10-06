@@ -4904,7 +4904,7 @@ function engCriteriaHTML() {
           <div class="text-sm">${rows(newList)}</div>
         </div>
       </div>
-      <p class="text-[11px] text-gray-400 mt-3"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ระบบตัดสิน "ผ่าน/ไม่ผ่าน" ของข้อสอบ PBRI (สบช.) อัตโนมัติตามรุ่น: รุ่น ≥ 81 หรือปีการศึกษา ≥ 2569 → ผ่านเมื่อ ≥ 51 · รุ่นก่อนหน้า → ผ่านเมื่อ ≥ 41 · การสอบจากภายนอกให้เทียบเกณฑ์ตามตารางข้างต้น</p>
+      <p class="text-[11px] text-gray-400 mt-3"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ระบบตัดสิน "ผ่าน/ไม่ผ่าน" ของข้อสอบ PBRI (สบช.) อัตโนมัติตามรุ่น: รุ่น 81 เป็นต้นไป → ผ่านเมื่อ ≥ 51 · รุ่น 80 ลงไป → ผ่านเมื่อ ≥ 41 (ไม่ว่าจะสอบปีการศึกษาใด) · การสอบจากภายนอกให้เทียบเกณฑ์ตามตารางข้างต้น</p>
     </div>
   </details>`;
 }
@@ -5348,14 +5348,17 @@ function engResultsPage() {
 }
 
 // ---- Eng helpers ----
-// เกณฑ์ผ่านสอบภาษาอังกฤษ (สบช.):
-//   นักศึกษารุ่นที่ 81 เป็นต้นไป หรือ ปีการศึกษา 2569 เป็นต้นไป → ผ่านเมื่อคะแนน ≥ 51
-//   รุ่น/ปีก่อนหน้านั้น → ใช้เกณฑ์เดิม ผ่านเมื่อคะแนน ≥ 41
+// เกณฑ์ผ่านสอบภาษาอังกฤษ (สบช.) — ตัดสินตาม "รุ่น" ของนักศึกษา
+//   รุ่นที่ 81 เป็นต้นไป → เกณฑ์ใหม่ ผ่านเมื่อคะแนน ≥ 51
+//   รุ่นที่ 80 ลงไป → เกณฑ์เดิม ผ่านเมื่อคะแนน ≥ 41 ไม่ว่าจะสอบในปีการศึกษาใด
+//   (เดิมใช้ "รุ่น ≥ 81 หรือปีการศึกษา ≥ 2569" ทำให้รุ่นเก่าที่สอบในปี 2569 ถูกตัดด้วยเกณฑ์ 51)
+//   ไม่มีเลขรุ่นในทะเบียนเท่านั้น จึงใช้ปีการศึกษาที่สอบแทน (≥ 2569 ใช้เกณฑ์ใหม่)
 function engIsNewCriterion(studentId, academicYear) {
   const stu = getDataByType('student').find(s => norm(s.student_id) === norm(studentId));
   const b = parseInt(norm(stu && stu.batch), 10);
+  if (!isNaN(b)) return b >= 81;
   const y = parseInt(norm(academicYear), 10);
-  return (!isNaN(b) && b >= 81) || (!isNaN(y) && y >= 2569);
+  return !isNaN(y) && y >= 2569;
 }
 function engPassThreshold(studentId, academicYear) {
   return engIsNewCriterion(studentId, academicYear) ? 51 : 41;
