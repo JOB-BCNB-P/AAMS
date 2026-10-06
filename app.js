@@ -5025,12 +5025,115 @@ function engRoundCardHTML() {
         <span class="flex-1"></span>
         <input type="search" value="${htmlEsc(f._rdQ || '')}" placeholder="ค้นหารหัส/ชื่อ" oninput="APP.filters._rdQ=this.value;clearTimeout(window._rdT);window._rdT=setTimeout(renderCurrentPage,300)" class="border border-gray-200 rounded-xl px-3 py-1.5 text-sm w-48 max-w-full">
         <button type="button" onclick="engRoundCsv()" class="px-3 py-1.5 rounded-xl border border-emerald-500 text-emerald-600 text-sm hover:bg-emerald-50"><i data-lucide="download" class="w-4 h-4 inline mr-1"></i>CSV</button>
+        ${engPdfAllowed() ? `<button type="button" onclick="engRoundPdf()" class="px-3 py-1.5 rounded-xl border border-red-400 text-red-600 text-sm hover:bg-red-50"><i data-lucide="file-down" class="w-4 h-4 inline mr-1"></i>PDF</button>` : ''}
       </div>
       <p class="text-xs text-gray-500 mb-2">แสดง ${list.length} รายการ${stSel ? ' · สถานะ ' + htmlEsc(stSel) : ''} · ${htmlEsc(R.type)} · ${htmlEsc(R.round === '__all' ? 'ทุกรอบ' : engRoundLabel(R.round))}</p>
       ${body}
     </div>
   </details>`;
 }
+/* ================= ส่งออก PDF (ผู้ดูแลระบบ / งานวิชาการ / งานทะเบียน) =================
+   เปิดหน้ารายงานในแท็บใหม่ จัดหน้า A4 แล้วสั่งพิมพ์ — เลือก "บันทึกเป็น PDF" ในหน้าต่างพิมพ์
+   ใช้ฟอนต์ Sarabun และหัวรายงานแบบเดียวกันทั้งสองรายงาน */
+function engPdfAllowed() { return ['admin', 'academic', 'registrar'].includes(APP.currentRole); }
+function engPdfOpen(title, subtitle, bodyHtml) {
+  const college = (APP.config && APP.config.college_name) || 'วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ';
+  const now = new Date();
+  const printed = now.getDate() + '/' + (now.getMonth() + 1) + '/' + (now.getFullYear() + 543) + ' ' + String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') + ' น.';
+  const who = (APP.currentUser && APP.currentUser.name) || '';
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${htmlEsc(title)}</title>
+<style>@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap');
+*{font-family:'Sarabun',sans-serif;box-sizing:border-box}body{margin:0;padding:10mm 12mm;color:#1f2937;font-size:12.5px}
+h1{font-size:18px;margin:0 0 2px}.sub{color:#4b5563;margin:0 0 10px;font-size:12.5px}
+.meta{display:flex;justify-content:space-between;color:#6b7280;font-size:11px;border-bottom:1.5px solid #1e6fba;padding-bottom:6px;margin-bottom:12px}
+.stats{display:flex;gap:8px;margin:0 0 12px}.stat{flex:1;border:1px solid #dbe6f3;border-radius:8px;padding:6px 10px}
+.stat b{display:block;font-size:18px}.ok b{color:#047857}.no b{color:#b91c1c}.ab b{color:#c2410c}
+h2{font-size:14px;margin:14px 0 6px;color:#1e4f8a}
+table{width:100%;border-collapse:collapse;font-size:11.5px}th,td{border:1px solid #d6dde7;padding:3px 6px;text-align:left}
+th{background:#eaf2fb}td.c,th.c{text-align:center}tr{break-inside:avoid}thead{display:table-header-group}
+.pass{color:#047857;font-weight:600}.fail{color:#b91c1c;font-weight:600}.abs{color:#c2410c;font-weight:600}
+@media print{@page{size:A4;margin:10mm}body{padding:0}.no-print{display:none}}</style></head><body>
+<h1>${htmlEsc(title)}</h1><p class="sub">${subtitle}</p>
+<div class="meta"><span>${htmlEsc(college)} · ระบบบริหารจัดการงานวิชาการ (AAMs)</span><span>พิมพ์เมื่อ ${printed}${who ? ' · โดย ' + htmlEsc(who) : ''}</span></div>
+${bodyHtml}
+<p class="no-print" style="margin-top:16px;color:#6b7280;font-size:12px">หน้าต่างพิมพ์จะเปิดขึ้นเอง — เลือกปลายทาง "บันทึกเป็น PDF"</p>
+<script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script></body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) { showToast('เบราว์เซอร์บล็อกหน้าต่างใหม่ กรุณาอนุญาต Popup แล้วลองอีกครั้ง', 'error'); return; }
+  w.document.write(html); w.document.close();
+}
+function engPdfStatusCls(st) { return st === 'ผ่าน' ? 'pass' : st === 'ไม่เข้าสอบ' ? 'abs' : 'fail'; }
+
+// สรุปผลสอบภาษาอังกฤษ — ใช้ขอบเขตเดียวกับการ์ดสรุปบนหน้าจอ (ปีการศึกษา ชั้นปี อาจารย์ที่ปรึกษา ที่เลือกไว้)
+function engSummaryPdf() {
+  if (!engPdfAllowed()) return;
+  const sc = engSummaryScope();
+  const yr = APP.filters._engYear || '';
+  const adv = APP.filters._engAdvisor || '';
+  const scope = [sc.scopeLabel || 'นักศึกษาที่กำลังศึกษาทุกชั้นปี', yr ? 'ปีการศึกษา ' + yr : 'ทุกปีการศึกษา', adv ? 'อาจารย์ที่ปรึกษา ' + adv : ''].filter(Boolean).join(' · ');
+  const total = sc.students.length, p = sc.passed.length, f = sc.notPassed.length;
+  const pct = total ? Math.round(p / total * 1000) / 10 : 0;
+  const byYr = ['1', '2', '3', '4'].map(y => {
+    const ys = sc.students.filter(s => norm(s.year_level) === y);
+    if (!ys.length) return '';
+    const yp = ys.filter(s => sc.passedIds.has(norm(s.student_id))).length;
+    return `<tr><td>ชั้นปีที่ ${y}</td><td class="c">${ys.length}</td><td class="c pass">${yp}</td><td class="c fail">${ys.length - yp}</td><td class="c">${Math.round(yp / ys.length * 1000) / 10}%</td></tr>`;
+  }).join('');
+  const by = {};
+  (sc.allEng || []).forEach(e => { const k = norm(e.student_id); (by[k] = by[k] || []).push(e); });
+  const list = sc.students.slice().sort((a, b) => norm(a.student_id).localeCompare(norm(b.student_id)));
+  const rows = list.map((s, i) => {
+    const last = engLatestOf(by[norm(s.student_id)] || []);
+    const ok = sc.passedIds.has(norm(s.student_id));
+    const lastTxt = last ? `${htmlEsc(norm(last.eng_type))}${norm(last.eng_status) === 'ไม่เข้าสอบ' ? ' · ไม่เข้าสอบ' : ' · ' + htmlEsc(norm(last.eng_score) || '-')}${norm(last.eng_date) ? ' (' + htmlEsc(norm(last.eng_date)) + ')' : ''}` : '<span style="color:#9ca3af">ยังไม่มีผลสอบ</span>';
+    return `<tr><td class="c">${i + 1}</td><td>${htmlEsc(norm(s.student_id))}</td><td>${htmlEsc(norm(s.title_prefix) + norm(s.name))}</td><td class="c">${htmlEsc(norm(s.year_level) || '-')}</td><td>${lastTxt}</td><td class="c ${ok ? 'pass' : 'fail'}">${ok ? 'ผ่าน' : 'ยังไม่ผ่าน'}</td></tr>`;
+  }).join('');
+  const body = `<div class="stats"><div class="stat"><span>นักศึกษาทั้งหมด</span><b>${total}</b></div>
+    <div class="stat ok"><span>สอบผ่าน</span><b>${p}</b></div><div class="stat no"><span>ยังไม่ผ่าน</span><b>${f}</b></div>
+    <div class="stat"><span>ร้อยละที่ผ่าน</span><b>${pct}%</b></div></div>
+    ${byYr ? `<h2>แยกรายชั้นปี</h2><table><thead><tr><th>ชั้นปี</th><th class="c">จำนวน</th><th class="c">ผ่าน</th><th class="c">ยังไม่ผ่าน</th><th class="c">ร้อยละผ่าน</th></tr></thead><tbody>${byYr}</tbody></table>` : ''}
+    <h2>รายชื่อนักศึกษา (${total} คน)</h2>
+    <table><thead><tr><th class="c">ลำดับ</th><th>รหัสนักศึกษา</th><th>ชื่อ-สกุล</th><th class="c">ชั้นปี</th><th>ผลสอบครั้งล่าสุด</th><th class="c">ผลสอบภาษาอังกฤษ</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="c">ไม่มีข้อมูล</td></tr>'}</tbody></table>`;
+  engPdfOpen('สรุปผลสอบภาษาอังกฤษ', htmlEsc(scope), body);
+}
+
+// ผลสอบรายรอบ — ตามตัวกรองบนหน้าจอทั้งหมด (ปี รูปแบบ รอบ สถานะ คำค้น)
+function engRoundPdf() {
+  if (!engPdfAllowed()) return;
+  const R = engRoundRows(), f = APP.filters;
+  const stuMap = {};
+  getDataByType('student').forEach(st => { stuMap[norm(st.student_id)] = st; });
+  const counts = { 'ผ่าน': 0, 'ไม่ผ่าน': 0, 'ไม่เข้าสอบ': 0, 'ไม่ระบุ': 0 };
+  R.rows.forEach(e => { counts[engRoundStatusOf(e)]++; });
+  const stSel = f._rdStatus || '';
+  const q = norm(f._rdQ).toLowerCase();
+  let list = R.rows.filter(e => !stSel || engRoundStatusOf(e) === stSel);
+  if (q) list = list.filter(e => { const st = stuMap[norm(e.student_id)] || {}; return (norm(e.student_id) + ' ' + norm(st.name)).toLowerCase().includes(q); });
+  list = list.slice().sort((a, b) => norm(a.student_id).localeCompare(norm(b.student_id)));
+  const allRounds = R.round === '__all';
+  const rows = list.map((e, i) => {
+    const st = stuMap[norm(e.student_id)] || {};
+    const absent = norm(e.eng_status) === 'ไม่เข้าสอบ';
+    const lv = absent ? '' : (e.eng_level || (norm(e.eng_type) === 'สบช.' ? getEngLevel(Number(e.eng_score) || 0) : ''));
+    return `<tr><td class="c">${i + 1}</td><td>${htmlEsc(norm(e.student_id))}</td><td>${htmlEsc(norm(st.title_prefix) + norm(st.name) || '-')}</td>
+      <td class="c">${htmlEsc(norm(st.year_level) || '-')}</td><td class="c">${htmlEsc(norm(st.batch) || '-')}</td>
+      ${allRounds ? `<td>${htmlEsc(engRoundLabel(engRoundKeyOf(e)))}</td>` : ''}
+      <td class="c">${absent ? '-' : htmlEsc(norm(e.eng_score) || '-')}</td><td class="c">${htmlEsc(lv || '-')}</td>
+      <td class="c ${engPdfStatusCls(engRoundStatusOf(e))}">${htmlEsc(norm(e.eng_status) || '-')}</td></tr>`;
+  }).join('');
+  const pct = R.rows.length ? Math.round(counts['ผ่าน'] / R.rows.length * 1000) / 10 : 0;
+  const sub = ['ปีการศึกษา ' + R.year, R.type === 'สบช.' ? 'สบช. (PBRI)' : R.type, allRounds ? 'ทุกรอบ' : 'รอบ ' + engRoundLabel(R.round),
+    stSel ? 'เฉพาะสถานะ ' + stSel : '', q ? 'คำค้น "' + f._rdQ + '"' : ''].filter(Boolean).map(htmlEsc).join(' · ');
+  const body = `<div class="stats"><div class="stat"><span>ผู้เข้าสอบในรอบ</span><b>${R.rows.length}</b></div>
+    <div class="stat ok"><span>ผ่าน</span><b>${counts['ผ่าน']}</b></div><div class="stat no"><span>ไม่ผ่าน</span><b>${counts['ไม่ผ่าน']}</b></div>
+    ${counts['ไม่เข้าสอบ'] ? `<div class="stat ab"><span>ไม่เข้าสอบ</span><b>${counts['ไม่เข้าสอบ']}</b></div>` : ''}
+    <div class="stat"><span>ร้อยละที่ผ่าน</span><b>${pct}%</b></div></div>
+    <h2>รายชื่อ${stSel ? 'ผู้ที่' + htmlEsc(stSel) : ''} (${list.length} คน)</h2>
+    <table><thead><tr><th class="c">ลำดับ</th><th>รหัสนักศึกษา</th><th>ชื่อ-สกุล</th><th class="c">ชั้นปี</th><th class="c">รุ่น</th>${allRounds ? '<th>รอบสอบ</th>' : ''}<th class="c">คะแนน</th><th class="c">ระดับ</th><th class="c">สถานะ</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="${allRounds ? 9 : 8}" class="c">ไม่มีข้อมูล</td></tr>`}</tbody></table>`;
+  engPdfOpen('ผลสอบภาษาอังกฤษรายรอบ', sub, body);
+}
+
 function engRoundCsv() {
   const R = engRoundRows(), f = APP.filters;
   const stuMap = {};
@@ -5416,6 +5519,7 @@ function engResultsPage() {
         <i data-lucide="chevron-down" class="chev w-5 h-5 text-gray-400"></i>
       </summary>`}
       <div class="px-5 pb-5">
+      ${engPdfAllowed() ? `<div class="flex justify-end mb-3"><button type="button" onclick="engSummaryPdf()" class="px-3 py-1.5 rounded-xl border border-red-400 text-red-600 text-sm hover:bg-red-50"><i data-lucide="file-down" class="w-4 h-4 inline mr-1"></i>ส่งออก PDF</button></div>` : ''}
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div class="relative group cursor-pointer" onclick="showEngStudentList('pass')" title="คลิกเพื่อดูรายชื่อผู้สอบผ่าน">
           ${statCard('check-circle', 'สอบผ่าน', passedCount, 'คน', 'bg-green-500')}

@@ -18,5 +18,10 @@ t('รอบสอบ = ครั้งที่ + วันที่สอบ (
 t('กรองสถานะ ผ่าน / ไม่ผ่าน / ไม่เข้าสอบ และส่งออก CSV', () => {
   assert.ok(SRC.includes("chip('ผ่าน', 'ผ่าน'") && SRC.includes("chip('ไม่ผ่าน', 'ไม่ผ่าน'") && SRC.includes('function engRoundCsv()'));
 });
+t('ส่งออก PDF ทั้งสรุปผลสอบและผลสอบรายรอบ เฉพาะผู้ดูแลระบบ งานวิชาการ งานทะเบียน', () => {
+  assert.ok(SRC.includes("function engPdfAllowed() { return ['admin', 'academic', 'registrar'].includes(APP.currentRole); }"));
+  assert.ok(SRC.includes('function engSummaryPdf()') && SRC.includes('function engRoundPdf()'));
+  assert.ok(SRC.includes('onclick="engSummaryPdf()"') && SRC.includes('onclick="engRoundPdf()"'));
+});
 console.log('\n' + (fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
 process.exit(fail ? 1 : 0);
