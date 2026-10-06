@@ -4913,6 +4913,147 @@ function engCriteriaHTML() {
    แยกมาเป็นฟังก์ชันเดียว เพื่อให้ตัวเลขบนการ์ดกับรายชื่อที่เปิดดูจากการ์ด
    มาจากชุดข้อมูลเดียวกันเสมอ ไม่มีทางคลาดเคลื่อนกันได้
    อ่านเงื่อนไขจากตัวกรองที่ผู้ใช้เลือกไว้ (ปีการศึกษา/ชั้นปี/รุ่น/อาจารย์ที่ปรึกษา) และบทบาทผู้ใช้ */
+/* ================= ผลสอบรายรอบ (ผู้ดูแลระบบ / ผู้บริหาร / งานวิชาการ / งานทะเบียน) =================
+   เลือก ปีการศึกษา → รูปแบบการสอบ → รอบสอบ แล้วกรองว่าใครผ่าน / ไม่ผ่าน / ไม่เข้าสอบ
+   "รอบสอบ" = วันที่จัดสอบ (การสอบ สบช. แยกตามครั้งที่ด้วย) · รายการที่ไม่ได้ลงวันที่รวมเป็นรอบ "ไม่ระบุวันที่"
+   วันที่ในข้อมูลมีหลายรูปแบบ (22/07/2023, 2023-07-22) จึงแปลงเป็นวันเดียวกันก่อนจัดกลุ่ม */
+function engRoundDateKey(v) {
+  const d = parseDate(v);
+  if (!d || isNaN(d)) return '';
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function engRoundKeyOf(e) {
+  const att = norm(e.eng_type) === 'สบช.' ? (norm(e.eng_attempt) || '-') : '';
+  return att + '|' + engRoundDateKey(e.eng_date);
+}
+function engRoundLabel(key) {
+  const [att, iso] = String(key).split('|');
+  const th = iso ? (typeof toBuddhistDate === 'function' ? toBuddhistDate(iso) : iso) : 'ไม่ระบุวันที่';
+  return (att ? 'ครั้งที่ ' + att + ' · ' : '') + th;
+}
+function engRoundRows() {
+  const f = APP.filters;
+  const all = getDataByType('eng_result');
+  const years = [...new Set(all.map(e => norm(e.academic_year)).filter(Boolean))].sort().reverse();
+  const year = f._rdYear && years.includes(f._rdYear) ? f._rdYear : (years[0] || '');
+  const inYear = all.filter(e => norm(e.academic_year) === year);
+  const types = [...new Set(inYear.map(e => norm(e.eng_type)).filter(Boolean))].sort((a, b) => a === 'สบช.' ? -1 : b === 'สบช.' ? 1 : a.localeCompare(b));
+  const type = f._rdType && types.includes(f._rdType) ? f._rdType : (types[0] || '');
+  const inType = inYear.filter(e => norm(e.eng_type) === type);
+  const cnt = {};
+  inType.forEach(e => { const k = engRoundKeyOf(e); cnt[k] = (cnt[k] || 0) + 1; });
+  // รอบล่าสุดอยู่บนสุด · รอบที่ไม่ลงวันที่อยู่ท้าย
+  const rounds = Object.keys(cnt).sort((a, b) => {
+    const da = a.split('|')[1], db = b.split('|')[1];
+    if (!da !== !db) return da ? -1 : 1;
+    return db.localeCompare(da) || a.localeCompare(b);
+  });
+  const round = f._rdKey && (f._rdKey === '__all' || rounds.includes(f._rdKey)) ? f._rdKey : (rounds[0] || '');
+  const rows = round === '__all' ? inType : inType.filter(e => engRoundKeyOf(e) === round);
+  return { years, year, types, type, rounds, cnt, round, rows, total: inType.length };
+}
+function engRoundSet(k, v) {
+  APP.filters[k] = v;
+  // เปลี่ยนปี/รูปแบบ = ดูชุดข้อมูลใหม่ ล้างตัวกรองสถานะด้วย ไม่งั้นเห็นตารางว่างโดยไม่รู้ตัว
+  if (k === '_rdYear') { APP.filters._rdType = ''; APP.filters._rdKey = ''; APP.filters._rdStatus = ''; }
+  if (k === '_rdType') { APP.filters._rdKey = ''; APP.filters._rdStatus = ''; }
+  renderCurrentPage();
+}
+function engRoundStatusOf(e) {
+  const st = norm(e.eng_status);
+  return st === 'ผ่าน' || st === 'ไม่เข้าสอบ' ? st : (st ? 'ไม่ผ่าน' : 'ไม่ระบุ');
+}
+function engRoundCardHTML() {
+  const R = engRoundRows();
+  const f = APP.filters;
+  const stuMap = {};
+  getDataByType('student').forEach(st => { stuMap[norm(st.student_id)] = st; });
+  const counts = { 'ผ่าน': 0, 'ไม่ผ่าน': 0, 'ไม่เข้าสอบ': 0, 'ไม่ระบุ': 0 };
+  R.rows.forEach(e => { counts[engRoundStatusOf(e)]++; });
+  const stSel = f._rdStatus || '';
+  const q = norm(f._rdQ).toLowerCase();
+  let list = R.rows.filter(e => !stSel || engRoundStatusOf(e) === stSel);
+  if (q) list = list.filter(e => { const st = stuMap[norm(e.student_id)] || {}; return (norm(e.student_id) + ' ' + norm(st.name)).toLowerCase().includes(q); });
+  list = list.slice().sort((a, b) => norm(a.student_id).localeCompare(norm(b.student_id)));
+  const sel = (key, val, opts) => `<select onchange="engRoundSet('${key}', this.value)" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">${opts.map(o => `<option value="${htmlEsc(o[0])}" ${o[0] === val ? 'selected' : ''}>${htmlEsc(o[1])}</option>`).join('')}</select>`;
+  const chip = (v, label, cls) => {
+    const on = stSel === v;
+    const n = v ? counts[v] : R.rows.length;
+    return `<button type="button" onclick="engRoundSet('_rdStatus','${v}')" class="px-3 py-1.5 rounded-xl text-sm border transition ${on ? cls + ' font-semibold' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}">${label} <b class="tabular-nums">${n}</b></button>`;
+  };
+  const pct = R.rows.length ? Math.round(counts['ผ่าน'] / R.rows.length * 1000) / 10 : 0;
+  const body = !R.rows.length
+    ? '<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีผลสอบในปีการศึกษาและรูปแบบที่เลือก</p>'
+    : `<div class="overflow-auto border border-gray-100 rounded-xl max-h-[60vh]"><table class="w-full text-sm">
+        <thead class="sticky top-0 z-10"><tr class="bg-surface text-left">
+          <th class="px-3 py-2 font-semibold text-center w-12 bg-surface">ลำดับ</th><th class="px-3 py-2 font-semibold bg-surface">รหัสนักศึกษา</th>
+          <th class="px-3 py-2 font-semibold bg-surface">ชื่อ-สกุล</th><th class="px-3 py-2 font-semibold text-center bg-surface">ชั้นปี</th>
+          <th class="px-3 py-2 font-semibold text-center bg-surface">รุ่น</th>${R.round === '__all' ? '<th class="px-3 py-2 font-semibold bg-surface">รอบสอบ</th>' : ''}
+          <th class="px-3 py-2 font-semibold text-center bg-surface">คะแนน</th><th class="px-3 py-2 font-semibold text-center bg-surface">ระดับ</th>
+          <th class="px-3 py-2 font-semibold text-center bg-surface">สถานะ</th></tr></thead>
+        <tbody>${list.map((e, i) => {
+          const st = stuMap[norm(e.student_id)] || {};
+          const absent = norm(e.eng_status) === 'ไม่เข้าสอบ';
+          const lv = absent ? '' : (e.eng_level || (norm(e.eng_type) === 'สบช.' ? getEngLevel(Number(e.eng_score) || 0) : ''));
+          return `<tr class="border-t border-gray-50 hover:bg-gray-50">
+            <td class="px-3 py-1.5 text-center text-xs text-gray-400">${i + 1}</td>
+            <td class="px-3 py-1.5 font-mono text-xs text-primary">${htmlEsc(norm(e.student_id))}</td>
+            <td class="px-3 py-1.5">${htmlEsc(norm(st.title_prefix) + norm(st.name) || norm(e.name) || '-')}</td>
+            <td class="px-3 py-1.5 text-center">${htmlEsc(norm(st.year_level) || '-')}</td>
+            <td class="px-3 py-1.5 text-center">${htmlEsc(norm(st.batch) || '-')}</td>
+            ${R.round === '__all' ? `<td class="px-3 py-1.5 text-xs text-gray-500 whitespace-nowrap">${htmlEsc(engRoundLabel(engRoundKeyOf(e)))}</td>` : ''}
+            <td class="px-3 py-1.5 text-center tabular-nums font-semibold">${absent ? '-' : htmlEsc(norm(e.eng_score) || '-')}</td>
+            <td class="px-3 py-1.5 text-center text-xs text-gray-600">${htmlEsc(lv || '-')}</td>
+            <td class="px-3 py-1.5 text-center">${engStatusBadge(norm(e.eng_status)) || '<span class="text-xs text-gray-300">-</span>'}</td></tr>`;
+        }).join('') || `<tr><td colspan="9" class="px-3 py-6 text-center text-gray-400">ไม่พบรายการตามเงื่อนไข</td></tr>`}</tbody></table></div>`;
+  return `<details id="engRoundCard"${detailsOpen('engRoundCard')} ontoggle="rememberDetails(this)" class="bg-white rounded-2xl border border-blue-100 mb-6">
+    <summary class="p-5 flex items-center justify-between gap-3 cursor-pointer">
+      <span class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="list-filter" class="w-5 h-5 text-primary"></i>ผลสอบรายรอบ — ใครผ่าน / ไม่ผ่าน</span>
+      <i data-lucide="chevron-down" class="chev w-5 h-5 text-gray-400"></i></summary>
+    <div class="px-5 pb-5">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+        <div><p class="text-xs text-gray-500 mb-1">ปีการศึกษา</p>${sel('_rdYear', R.year, R.years.map(y => [y, 'ปีการศึกษา ' + y]))}</div>
+        <div><p class="text-xs text-gray-500 mb-1">รูปแบบการสอบ</p>${sel('_rdType', R.type, R.types.map(t => [t, t === 'สบช.' ? 'สบช. (PBRI)' : t]))}</div>
+        <div><p class="text-xs text-gray-500 mb-1">รอบสอบ</p>${sel('_rdKey', R.round, [['__all', 'ทุกรอบในปีนี้ (' + R.total + ' รายการ)']].concat(R.rounds.map(k => [k, engRoundLabel(k) + ' (' + R.cnt[k] + ' คน)'])))}</div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 mb-3">
+        ${chip('', 'ทั้งหมด', 'bg-primaryLight border-primary text-primary')}
+        ${chip('ผ่าน', 'ผ่าน', 'bg-green-50 border-green-300 text-green-700')}
+        ${chip('ไม่ผ่าน', 'ไม่ผ่าน', 'bg-red-50 border-red-300 text-red-700')}
+        ${counts['ไม่เข้าสอบ'] ? chip('ไม่เข้าสอบ', 'ไม่เข้าสอบ', 'bg-orange-50 border-orange-300 text-orange-700') : ''}
+        <span class="text-xs text-gray-500 ml-1">ผ่าน ${pct}% ของรอบนี้</span>
+        <span class="flex-1"></span>
+        <input type="search" value="${htmlEsc(f._rdQ || '')}" placeholder="ค้นหารหัส/ชื่อ" oninput="APP.filters._rdQ=this.value;clearTimeout(window._rdT);window._rdT=setTimeout(renderCurrentPage,300)" class="border border-gray-200 rounded-xl px-3 py-1.5 text-sm w-48 max-w-full">
+        <button type="button" onclick="engRoundCsv()" class="px-3 py-1.5 rounded-xl border border-emerald-500 text-emerald-600 text-sm hover:bg-emerald-50"><i data-lucide="download" class="w-4 h-4 inline mr-1"></i>CSV</button>
+      </div>
+      <p class="text-xs text-gray-500 mb-2">แสดง ${list.length} รายการ${stSel ? ' · สถานะ ' + htmlEsc(stSel) : ''} · ${htmlEsc(R.type)} · ${htmlEsc(R.round === '__all' ? 'ทุกรอบ' : engRoundLabel(R.round))}</p>
+      ${body}
+    </div>
+  </details>`;
+}
+function engRoundCsv() {
+  const R = engRoundRows(), f = APP.filters;
+  const stuMap = {};
+  getDataByType('student').forEach(st => { stuMap[norm(st.student_id)] = st; });
+  const stSel = f._rdStatus || '';
+  const rows = R.rows.filter(e => !stSel || engRoundStatusOf(e) === stSel)
+    .sort((a, b) => norm(a.student_id).localeCompare(norm(b.student_id)));
+  const cell = v => { const t = String(v == null ? '' : v); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  const lines = [['รหัสนักศึกษา', 'ชื่อ-สกุล', 'ชั้นปี', 'รุ่น', 'ปีการศึกษา', 'รูปแบบ', 'รอบสอบ', 'คะแนน', 'สถานะ'].join(',')];
+  rows.forEach(e => {
+    const st = stuMap[norm(e.student_id)] || {};
+    // รหัสนักศึกษาใส่ = นำหน้า กัน Excel ตัดเลขศูนย์/แปลงเป็นตัวเลข
+    lines.push(['="' + norm(e.student_id) + '"', norm(st.title_prefix) + norm(st.name), norm(st.year_level), norm(st.batch), norm(e.academic_year),
+      norm(e.eng_type), engRoundLabel(engRoundKeyOf(e)), norm(e.eng_score), norm(e.eng_status)].map(cell).join(','));
+  });
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ผลสอบรายรอบ_' + R.year + '_' + R.type + (stSel ? '_' + stSel : '') + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 function engSummaryScope() {
   const role = APP.currentRole;
   const canFilterByAdvisor = isAdminRole() || role === 'executive';
@@ -5300,6 +5441,7 @@ function engResultsPage() {
   ${engCriteriaHTML()}
   ${['admin', 'academic', 'registrar', 'executive'].includes(APP.currentRole) ? engAnalyticsHTML() : ''}
   ${summaryTableHtml}
+  ${['admin', 'academic', 'registrar', 'executive'].includes(APP.currentRole) ? engRoundCardHTML() : ''}
   ${yearPickerHtml}
   ${studentSelector}
   ${noSelectionMsg || `<div class="bg-white rounded-2xl border border-blue-100 p-4 mb-4">
