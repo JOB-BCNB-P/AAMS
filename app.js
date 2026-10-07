@@ -734,7 +734,9 @@ function renderCurrentPage() {
   const mc = document.getElementById('mainContent');
   const p = APP.currentPage;
   const r = APP.currentRole;
-  mc.innerHTML = '<div class="fade-in">' + getPageContent(p, r) + '</div>';
+  // เปลี่ยนหน้าให้ไวและนิ่ง  ของเดิมใช้ fade-in ซึ่งจางเข้าพร้อมเลื่อนขึ้น 8 พิกเซล นาน 0.3 วินาที
+  // เวลาสลับเมนูจึงเห็นหน้าว่างแล้วค่อยไหลขึ้นมา ดูเหมือนระบบกำลังโหลดทั้งที่ไม่ได้โหลดอะไรเลย
+  mc.innerHTML = '<div class="page-swap">' + getPageContent(p, r) + '</div>';
   lucide.createIcons();
   initPageScripts(p);
 }
