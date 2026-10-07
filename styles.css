@@ -416,7 +416,11 @@ table th {
   background: #8fbde3;
 }
 
-/* ---------------- สถานะกำลังบันทึก (แมววิ่ง) ---------------- */
+/* ---------------- สถานะกำลังทำงาน (วงกลมหมุน) ----------------
+   ของเดิมเป็นภาพแมววิ่ง ซึ่งโหลดจากอินเทอร์เน็ตทุกครั้งและดูไม่เข้ากับหน้าจอทำงาน
+   เปลี่ยนเป็นวงแหวนหมุนที่วาดด้วย CSS ล้วน จึงขึ้นทันทีแม้เน็ตช้า
+   และใช้สีหลักของระบบ #1e6fba ให้เป็นชุดเดียวกับปุ่มและเมนู            */
+
 button[type="submit"],
 button[onclick*="save"],
 button[onclick*="delete"],
@@ -430,6 +434,65 @@ button:disabled {
   cursor: wait;
 }
 
+/* วงแหวนหมุนขนาดเท่าตัวอักษร ใช้วางในปุ่มหรือข้อความ */
+.ems-spin {
+  display: inline-block;
+  width: 1.15em;
+  height: 1.15em;
+  flex-shrink: 0;
+  vertical-align: -0.2em;
+  margin-right: .45em;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  opacity: .85;
+  animation: ems-spin 820ms linear infinite;
+}
+
+/* วงแหวนขนาดใหญ่ สำหรับหน้าจอกำลังโหลดและกล่องกลางจอ */
+.ems-spin-lg {
+  display: block;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto;
+  border: 4px solid #d7e7f5;
+  border-top-color: #1e6fba;
+  border-radius: 50%;
+  animation: ems-spin 900ms cubic-bezier(.5, .12, .5, .88) infinite;
+}
+
+/* วงนอกจาง ๆ ที่ค่อย ๆ ขยายออก ให้ดูมีชีวิตขึ้นโดยไม่รบกวนสายตา */
+.ems-spin-wrap {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ems-spin-wrap::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid #1e6fba;
+  opacity: .18;
+  animation: ems-pulse 1.8s ease-out infinite;
+}
+
+@keyframes ems-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ems-pulse {
+  0%   { transform: scale(.72); opacity: .28; }
+  70%  { transform: scale(1);   opacity: 0; }
+  100% { transform: scale(1);   opacity: 0; }
+}
+
+/* ปุ่มที่กำลังทำงาน ซ่อนข้อความเดิมแล้ววางวงแหวนไว้กึ่งกลาง */
 .btn-spin {
   color: transparent !important;
   position: relative;
@@ -444,26 +507,44 @@ button:disabled {
   content: "";
   position: absolute;
   top: 50%;
-  left: 0;
-  width: 1.9em;
-  height: 1.9em;
-  margin: -0.95em 0 0 0;
-  background: url("https://cdn.jsdelivr.net/gh/JOB-BCNB-P/picture/cat_run_transparent.gif") center/contain no-repeat;
-  animation: catrun 1.4s linear infinite;
+  left: 50%;
+  width: 1.25em;
+  height: 1.25em;
+  margin: -0.625em 0 0 -0.625em;
+  border: 2px solid rgba(255, 255, 255, .45);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: ems-spin 760ms linear infinite;
 }
 
-@keyframes catrun {
-  0% { left: -16%; }
-  100% { left: 100%; }
+/* ปุ่มพื้นอ่อน ใช้วงแหวนสีหลักแทนสีขาว จะได้เห็นชัด */
+.btn-spin.ems-btn-ghost::after,
+.btn-spin.bg-white::after,
+.btn-spin.border::after {
+  border-color: rgba(30, 111, 186, .25);
+  border-top-color: #1e6fba;
 }
 
+/* ชื่อเดิมของภาพแมว คงไว้เผื่อมีที่ใดเรียกใช้อยู่ ให้กลายเป็นวงแหวนแทน */
 .cat-run-inline {
   display: inline-block;
-  width: 1.5em;
-  height: 1.5em;
-  object-fit: contain;
-  vertical-align: middle;
-  margin-right: .35em;
+  width: 1.15em;
+  height: 1.15em;
+  vertical-align: -0.2em;
+  margin-right: .45em;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  opacity: .85;
+  animation: ems-spin 820ms linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ems-spin,
+  .ems-spin-lg,
+  .cat-run-inline,
+  .btn-spin::after { animation-duration: 2.4s; }
+  .ems-spin-wrap::before { animation: none; opacity: .14; }
 }
 
 /* การเคลื่อนไหวของปุ่มเวลาเอาเมาส์ไปชี้ (ทำเฉพาะเครื่องที่มีเมาส์ บนมือถือรบกวนสายตา)
@@ -1230,135 +1311,6 @@ html {
 .ems-sidebar {
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
-}
-
-/* ---------- 11.5) สลับหน้า / แท็บ / เปิดดูข้อมูล ----------
-   เข้าหน้าใหม่ : จางเข้าและเลื่อนขึ้นเล็กน้อย
-   สลับแท็บในหน้า : จางเข้าเบา ๆ ไม่เลื่อน (เนื้อหาอยู่ที่เดิม ตาไม่ต้องตาม)
-   วาดซ้ำในหน้าเดิม (ติ๊ก กรอง เรียง หลังบันทึก) : ไม่เล่นอะไร หน้าจอจึงไม่กระพริบ
-   เบราว์เซอร์ที่รองรับ View Transitions : หน้าเดิมจางออกขณะหน้าใหม่จางเข้าพร้อมกัน เฉพาะพื้นที่เนื้อหา */
-.ems-page-in {
-  animation: emsPageIn 240ms cubic-bezier(.4, 0, .2, 1) both;
-}
-@keyframes emsPageIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: none; }
-}
-.ems-tab-in {
-  animation: emsTabIn 180ms cubic-bezier(.4, 0, .2, 1) both;
-}
-@keyframes emsTabIn {
-  from { opacity: .35; }
-  to   { opacity: 1; }
-}
-#mainContent {
-  view-transition-name: ems-main;
-}
-::view-transition-old(ems-main) {
-  animation: emsVtOut 140ms cubic-bezier(.4, 0, 1, 1) both;
-}
-::view-transition-new(ems-main) {
-  animation: emsPageIn 240ms cubic-bezier(0, 0, .2, 1) 60ms both;
-}
-@keyframes emsVtOut {
-  to { opacity: 0; }
-}
-/* กาง/หุบการ์ด (details) — smooth.js คุมความสูงและการจางของเนื้อหา
-   ไม่ใส่แอนิเมชันไว้ที่ details[open] เพราะจะเล่นซ้ำทุกครั้งที่หน้าวาดใหม่ (ติ๊ก/กรอง) ทำให้กระพริบ
-   ระหว่างกำลังหุบ ลูกศรหมุนกลับทันที ไม่ต้องรอให้หุบเสร็จ */
-details.ems-closing > summary .chev { transform: none; }
-.dropdown-item.ems-dd-closing > .dropdown-menu { animation: none; }
-/* ตัวเลือกที่ติ๊ก/ช่องกรอก เปลี่ยนสีขอบแบบนุ่ม */
-input,
-select,
-textarea {
-  transition: border-color 150ms cubic-bezier(.4, 0, .2, 1), box-shadow 150ms cubic-bezier(.4, 0, .2, 1), background-color 150ms cubic-bezier(.4, 0, .2, 1);
-}
-/* แถบแจ้งว่ากู้ข้อมูลที่กรอกค้างไว้ */
-.ems-draft-note {
-  animation: emsSlideDown 220ms cubic-bezier(.4, 0, .2, 1);
-}
-@media (prefers-reduced-motion: reduce) {
-  ::view-transition-old(ems-main),
-  ::view-transition-new(ems-main) { animation: none !important; }
-}
-
-/* ---------- ขั้นตอนในฟอร์มบันทึกข้อมูล (steps.js) ----------
-   เลขวงกลมนำหน้าแต่ละหมวด เส้นเชื่อมลงมาถึงหมวดถัดไป
-   น้ำเงิน = ยังไม่เสร็จ · วงแหวน = ทำขั้นนี้ต่อ · เขียวมีเครื่องหมายถูก = กรอกช่องบังคับครบแล้ว */
-form.ems-stepped { display: block; }
-form.ems-stepped > * + * { margin-top: 0; }
-.ems-step {
-  position: relative;
-  padding: 0 0 1rem 2.6rem;
-}
-.ems-step::before {
-  content: "";
-  position: absolute;
-  left: .95rem;
-  top: 2.1rem;
-  bottom: .25rem;
-  width: 2px;
-  border-radius: 2px;
-  background: #dbe6f3;
-  transition: background-color 200ms cubic-bezier(.4, 0, .2, 1);
-}
-.ems-step:last-of-type::before,
-.ems-step.ems-step-final::before { display: none; }
-.ems-step.is-done::before { background: #a7e3c9; }
-.ems-step-off { display: none; }
-.ems-step-head {
-  display: flex;
-  align-items: flex-start;
-  gap: .6rem;
-  min-height: 1.95rem;
-  margin-bottom: .55rem;
-}
-.ems-step-no {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 1.95rem;
-  height: 1.95rem;
-  border-radius: 9999px;
-  background: #1e6fba;
-  color: #fff;
-  font-weight: 700;
-  font-size: .85rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 0 0 0 rgba(30, 111, 186, 0);
-  transition: background-color 200ms cubic-bezier(.4, 0, .2, 1), box-shadow 200ms cubic-bezier(.4, 0, .2, 1), color 200ms;
-}
-.ems-step.is-active .ems-step-no { box-shadow: 0 0 0 4px rgba(30, 111, 186, .18); }
-.ems-step.is-done .ems-step-no { background: #059669; color: transparent; }
-.ems-step.is-done .ems-step-no::after {
-  content: "";
-  position: absolute;
-  width: .45rem;
-  height: .8rem;
-  border: solid #fff;
-  border-width: 0 2.5px 2.5px 0;
-  transform: translateY(-1px) rotate(45deg);
-}
-.ems-step-final .ems-step-no { background: #0f4c81; }
-.ems-step-title {
-  font-weight: 700;
-  font-size: .9rem;
-  line-height: 1.95rem;
-  color: #1f2937;
-  margin: 0;
-}
-.ems-step-sub {
-  font-size: .75rem;
-  color: #6b7280;
-  margin: -.35rem 0 0;
-  line-height: 1.35;
-}
-.ems-step-body > * + * { margin-top: .75rem; }
-@media (max-width: 480px) {
-  .ems-step { padding-left: 2.3rem; }
 }
 
 /* ---------- 12) เคารพการตั้งค่าของผู้ใช้ ----------
