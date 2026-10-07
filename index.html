@@ -49,8 +49,8 @@
   <!-- สไตล์ของ Tailwind ที่คอมไพล์ไว้ล่วงหน้าจากโค้ดในโปรเจกต์
        มาพร้อมเว็บโดยตรง ไม่ต้องรอ CDN และไม่ต้องอาศัยการสร้างสไตล์ตอนใช้งาน
        จึงแสดงผลเหมือนกันทุกเครื่อง ทั้งคอมพิวเตอร์ แท็บเล็ต และมือถือ -->
-  <link rel="stylesheet" href="tailwind.css?v=20261006c-engpdf">
-  <link rel="stylesheet" href="styles.css?v=20261006c-engpdf">
+  <link rel="stylesheet" href="tailwind.css?v=20261007a-spinner">
+  <link rel="stylesheet" href="styles.css?v=20261007a-spinner">
 </head>
 
 <body class="bg-gray-50">
@@ -59,9 +59,9 @@
     <!-- ═══════════ หน้าจอกำลังโหลด ═══════════ -->
     <div id="loadingScreen" class="ems-screen flex items-center justify-center bg-gradient-to-br from-sky-50 via-white to-blue-50">
       <div class="text-center px-6">
-        <img src="https://cdn.jsdelivr.net/gh/JOB-BCNB-P/picture/cat_pose_white.gif" alt="กำลังโหลด"
-          class="w-24 h-24 sm:w-28 sm:h-28 mx-auto mb-4 object-contain">
-        <p class="text-gray-500">กำลังโหลดข้อมูล....กรุณารอสักครู่</p>
+        <div class="ems-spin-wrap mb-5"><div class="ems-spin-lg"></div></div>
+        <p class="text-gray-700 font-semibold">กำลังโหลดข้อมูล</p>
+        <p class="text-gray-500 text-sm mt-1">กรุณารอสักครู่</p>
       </div>
     </div>
 
@@ -252,23 +252,20 @@
     </div>
   </div>
 
-  <script>window.__APP_VER = '20261006c-engpdf';</script>
-  <script src="config.js?v=20261006c-engpdf"></script>
-  <script src="supabase-db.js?v=20261006c-engpdf"></script>
-  <script src="auth.js?v=20261006c-engpdf"></script>
-  <script src="grad-images.js?v=20261006c-engpdf"></script>
-  <script src="app.js?v=20261006c-engpdf"></script>
-  <script src="app-patch.js?v=20261006c-engpdf"></script>
-  <script src="workload.js?v=20261006c-engpdf"></script>
-  <script src="curriculum.js?v=20261006c-engpdf"></script>
-  <script src="plo.js?v=20261006c-engpdf"></script>
-  <script src="eval.js?v=20261006c-engpdf"></script>
-  <script src="counsel.js?v=20261006c-engpdf"></script>
-  <script src="wellbeing.js?v=20261006c-engpdf"></script>
-  <script src="profile.js?v=20261006c-engpdf"></script>
-  <script src="draft.js?v=20261006c-engpdf"></script>
-  <script src="steps.js?v=20261006c-engpdf"></script>
-  <script src="smooth.js?v=20261006c-engpdf"></script>
+  <script>window.__APP_VER = '20260930b-counsel';</script>
+  <script src="config.js?v=20261007a-spinner"></script>
+  <script src="supabase-db.js?v=20261007a-spinner"></script>
+  <script src="auth.js?v=20261007a-spinner"></script>
+  <script src="grad-images.js?v=20261007a-spinner"></script>
+  <script src="app.js?v=20261007a-spinner"></script>
+  <script src="app-patch.js?v=20261007a-spinner"></script>
+  <script src="workload.js?v=20261007a-spinner"></script>
+  <script src="curriculum.js?v=20261007a-spinner"></script>
+  <script src="plo.js?v=20261007a-spinner"></script>
+  <script src="eval.js?v=20261007a-spinner"></script>
+  <script src="counsel.js?v=20261007a-spinner"></script>
+  <script src="wellbeing.js?v=20261007a-spinner"></script>
+  <script src="profile.js?v=20261007a-spinner"></script>
 </body>
 
 </html>
