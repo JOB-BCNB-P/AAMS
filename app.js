@@ -726,19 +726,43 @@ function navigateTo(page) {
     n.classList.toggle('text-primary', n.dataset.page === page);
     n.classList.toggle('font-semibold', n.dataset.page === page);
   });
-  renderCurrentPage();
+  emsSwapPage(() => renderCurrentPage());
   if (APP.sidebarOpen) toggleSidebar();
 }
 
+/* วาดหน้าปัจจุบัน
+   • เข้าหน้าใหม่ (สลับเมนู/บทบาท) → ค่อย ๆ จางเข้าพร้อมเลื่อนขึ้นเล็กน้อย (.ems-page-in)
+   • วาดซ้ำในหน้าเดิม (ติ๊ก กรอง เรียง บันทึกเสร็จ) → ไม่เล่นแอนิเมชันเข้าใหม่ทั้งหน้า
+     เดิมทุกครั้งที่วาดซ้ำหน้าจะกระพริบและเด้งขึ้น 8px ดูกระตุก ตอนนี้แค่เปลี่ยนเนื้อหาเงียบ ๆ
+   ถ้าเบราว์เซอร์รองรับ View Transitions ตอนสลับเมนูจะจางหน้าเดิมออกพร้อมกันด้วย (ดู navigateTo) */
 function renderCurrentPage() {
   const mc = document.getElementById('mainContent');
   const p = APP.currentPage;
   const r = APP.currentRole;
-  // เปลี่ยนหน้าให้ไวและนิ่ง  ของเดิมใช้ fade-in ซึ่งจางเข้าพร้อมเลื่อนขึ้น 8 พิกเซล นาน 0.3 วินาที
-  // เวลาสลับเมนูจึงเห็นหน้าว่างแล้วค่อยไหลขึ้นมา ดูเหมือนระบบกำลังโหลดทั้งที่ไม่ได้โหลดอะไรเลย
-  mc.innerHTML = '<div class="page-swap">' + getPageContent(p, r) + '</div>';
+  const entering = APP._renderedPage !== p || APP._renderedRole !== r;
+  const tabbing = !entering && APP._tabClickAt && (Date.now() - APP._tabClickAt) < 700;
+  APP._renderedPage = p; APP._renderedRole = r; APP._tabClickAt = 0;
+  const cls = APP._inViewTransition ? 'ems-page' : entering ? 'ems-page-in' : tabbing ? 'ems-tab-in' : 'ems-page';
+  mc.innerHTML = '<div class="' + cls + '">' + getPageContent(p, r) + '</div>';
   lucide.createIcons();
   initPageScripts(p);
+}
+// กดแท็บภายในหน้า (ปุ่มที่เรียก ...Tab(...)) → หน้าที่วาดถัดไปค่อย ๆ จางเข้าเบา ๆ
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('click', function (e) {
+    const b = e.target && e.target.closest && e.target.closest('button,a,[role="tab"]');
+    if (b && /Tab\s*\(/.test(b.getAttribute('onclick') || '')) APP._tabClickAt = Date.now();
+  }, true);
+}
+// สลับหน้าแบบนุ่มด้วย View Transitions API (Chrome/Edge/Safari รุ่นใหม่) — ไม่รองรับก็ใช้ .ems-page-in แทน
+function emsSwapPage(fn) {
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (typeof document.startViewTransition !== 'function' || reduce || !APP._renderedPage) { fn(); return; }
+  try {
+    APP._inViewTransition = true;
+    const vt = document.startViewTransition(() => { try { fn(); } finally { APP._inViewTransition = false; } });
+    if (vt && vt.finished) vt.finished.catch(() => { }).then(() => { APP._inViewTransition = false; });
+  } catch (e) { APP._inViewTransition = false; fn(); }
 }
 
 // ======================== HELPERS ========================
@@ -3068,6 +3092,7 @@ function renderSchedProctorChips(idx) {
   box.innerHTML = arr.length
     ? arr.map((s, i) => `<span class="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-100 rounded-lg px-2 py-1 text-xs">${String(s).replace(/</g, '&lt;')}<button type="button" onclick="removeSchedProctor(${idx},${i})" class="text-amber-400 hover:text-red-600 font-bold leading-none">×</button></span>`).join('')
     : '<span class="text-xs text-gray-400">ยังไม่ได้เลือกผู้คุมสอบ</span>';
+  if (document.getElementById('schedMailPreview')) schedNotifyChanged();
 }
 function addSchedProctor(idx) {
   const el = document.getElementById('schedProctorSelect' + idx); if (!el || !el.value.trim()) return;
@@ -3116,6 +3141,8 @@ function onScheduleTypeChange(el) {
   const sc1 = document.querySelector('[name="student_count"]');
   const sp = document.getElementById('schedExamSplit');
   if (ex) ex.classList.toggle('hidden', !isExam);
+  const pw = document.getElementById('schedNotifyProctorWrap');
+  if (pw) { pw.classList.toggle('hidden', !isExam); pw.classList.toggle('flex', isExam); }
   if (sw) sw.classList.toggle('hidden', isExam);
   if (mw) mw.classList.toggle('hidden', !isExam);
   if (si) si.disabled = isExam;
@@ -3234,21 +3261,143 @@ function scheduleFormBody(s, isNew) {
       </div>
     </div>
     <div class="p-3 bg-green-50 rounded-xl border border-green-100 space-y-2">
-      <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="schedNotify" ${notifyDefault ? 'checked' : ''} onchange="toggleSchedNotify()" class="w-4 h-4"><span class="text-sm font-medium text-green-800">🔔 สร้างประกาศแจ้งเตือนจากรายการนี้</span></label>
-      <div id="schedNotifyOptions" class="${notifyDefault ? '' : 'hidden'} space-y-2">
-        ${annRolesFieldHTML(notifyRolesDefault)}
-        <div id="schedNotifyYears" class="${annParseRoles(notifyRolesDefault).indexOf('student') !== -1 ? '' : 'hidden'}">
-          ${annYearFieldHTML(norm(s.year_level))}
+      <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="schedNotify" ${notifyDefault ? 'checked' : ''} onchange="toggleSchedNotify()" class="w-4 h-4"><span class="text-sm font-medium text-green-800">🔔 ประกาศแจ้งเตือนจากรายการนี้</span></label>
+      <div id="schedNotifyOptions" class="${notifyDefault ? '' : 'hidden'} space-y-3">
+        <div class="bg-white rounded-xl border border-green-100 p-3 space-y-2">
+          <p class="text-sm font-semibold text-gray-700">1. ประกาศให้ใครทราบ</p>
+          ${annRolesFieldHTML(notifyRolesDefault)}
+          <div id="schedNotifyYears" class="${annParseRoles(notifyRolesDefault).indexOf('student') !== -1 ? '' : 'hidden'}">
+            ${annYearFieldHTML(norm(s.year_level))}
+          </div>
+          <label id="schedNotifyProctorWrap" class="${isExam ? 'flex' : 'hidden'} items-center gap-2 text-sm text-gray-700 cursor-pointer"><input type="checkbox" id="schedNotifyProctors" checked onchange="schedNotifyChanged()" class="w-4 h-4 accent-primary"> แจ้งอาจารย์ผู้คุมสอบตามรายชื่อในรายการนี้ด้วย</label>
+          <p id="schedAudienceHint" class="text-[11px] text-gray-500"></p>
         </div>
-        <label class="flex items-center gap-2 bg-white rounded-xl px-3 py-2 cursor-pointer border border-green-100"><input type="checkbox" id="schedNotifyLine" checked class="w-4 h-4"><span class="text-sm text-green-700">📢 ส่งประกาศนี้เข้า LINE</span></label>
+        <div class="bg-white rounded-xl border border-green-100 p-3 space-y-2">
+          <p class="text-sm font-semibold text-gray-700">2. ช่องทางการประกาศ</p>
+          <label class="flex items-center gap-2 text-sm text-gray-500"><input type="checkbox" checked disabled class="w-4 h-4"> ในระบบ AAMs (กระดิ่งแจ้งเตือนและหน้าหลัก) — ประกาศทุกครั้ง</label>
+          <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"><input type="checkbox" id="schedNotifyMail" onchange="schedNotifyChanged()" class="w-4 h-4 accent-primary"> ✉️ อีเมลถึงผู้รับตามกลุ่มข้อ 1</label>
+          <div id="schedMailPreview" class="hidden ml-7 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2"></div>
+          <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"><input type="checkbox" id="schedNotifyLine" checked onchange="schedNotifyChanged()" class="w-4 h-4 accent-primary"> 📢 LINE</label>
+          <div id="schedLineBox" class="ml-7 space-y-1.5">
+            <div id="schedLineGroups" class="flex flex-wrap gap-2 text-xs text-gray-400">กำลังโหลดรายชื่อกลุ่ม LINE...</div>
+            <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer"><input type="checkbox" id="schedLineBroadcast" class="w-3.5 h-3.5 accent-primary"> ส่งถึงเพื่อนทุกคนของบัญชี LINE ของวิทยาลัยด้วย (broadcast)</label>
+          </div>
+        </div>
       </div>
     </div>`;
+}
+
+/* ---------- ผู้รับและช่องทางการประกาศจากปฏิทิน ----------
+   ผู้รับ  : บทบาท + ชั้นปีนักศึกษา + อาจารย์ผู้คุมสอบ (เฉพาะการสอบ)
+   ช่องทาง : ในระบบเสมอ · อีเมล · LINE (เลือกกลุ่มได้)
+   รายชื่อผู้รับอีเมลคำนวณที่ Edge Function "announce-send" จากตัวประกาศเสมอ */
+function schedIsExamNow() {
+  const t = document.querySelector('[name="schedule_type"]');
+  return !!(t && String(t.value || '').includes('สอบ'));
+}
+function schedProctorNames() {
+  return ['schedProctorValue1', 'schedProctorValue2'].map(id => {
+    const el = document.getElementById(id); return el && !el.disabled ? norm(el.value) : '';
+  }).filter(Boolean).join(', ');
+}
+function schedCollectAudience() {
+  const all = Array.prototype.map.call(document.querySelectorAll('.ann-role-cb'), el => el.value);
+  const on = Array.prototype.map.call(document.querySelectorAll('.ann-role-cb:checked'), el => el.value);
+  const pc = document.getElementById('schedNotifyProctors');
+  const names = (schedIsExamNow() && pc && pc.checked) ? schedProctorNames() : '';
+  // ติ๊กครบทุกบทบาท = ทุกบทบาท แต่ถ้ามีรายชื่อผู้คุมสอบด้วย ต้องเก็บบทบาทไว้ตรง ๆ
+  // เพราะ "ไม่ระบุบทบาท + มีรายชื่อ" หมายถึงแจ้งเฉพาะคนในรายชื่อ
+  let roles = on.join(',');
+  if (!on.length || (on.length === all.length && !names)) roles = '';
+  return { roles, names, years: annCollectYears() };
+}
+function schedChannelOpts() {
+  const get = id => { const el = document.getElementById(id); return !!(el && el.checked); };
+  return {
+    mail: get('schedNotifyMail'),
+    line: get('schedNotifyLine'),
+    broadcast: get('schedLineBroadcast'),
+    lineGroups: Array.prototype.map.call(document.querySelectorAll('.sched-line-grp:checked'), el => Number(el.value))
+  };
+}
+async function annSendCall(body) {
+  try {
+    const { data, error } = await GSheetDB.client().functions.invoke('announce-send', { body });
+    if (error) {
+      let d = (error && error.message) || 'เรียกใช้งานไม่สำเร็จ';
+      try { const j = await error.context.json(); if (j && j.error) d = j.error; } catch (e) { }
+      return { isOk: false, error: d };
+    }
+    return data || { isOk: false, error: 'ไม่มีข้อมูลตอบกลับ' };
+  } catch (e) { return { isOk: false, error: String((e && e.message) || e) }; }
+}
+async function loadSchedNotifyChannels() {
+  const box = document.getElementById('schedLineGroups');
+  if (!box) return;
+  if (!window._annSendOpts) window._annSendOpts = await annSendCall({ mode: 'options' });
+  const o = window._annSendOpts || {};
+  const box2 = document.getElementById('schedLineGroups');
+  if (!box2) return;
+  if (!o.isOk) { box2.innerHTML = '<span class="text-red-500">' + htmlEsc(o.error || 'โหลดรายชื่อกลุ่ม LINE ไม่สำเร็จ') + '</span>'; return; }
+  const gs = o.lineGroups || [];
+  box2.innerHTML = !o.hasLine ? '<span class="text-amber-600">ยังไม่ได้ตั้งค่าโทเคน LINE ในระบบ</span>'
+    : gs.length ? gs.map(g => {
+        // ชื่อกลุ่มดึงจาก LINE จริง · กลุ่มที่บอทติดต่อไม่ได้ (ถูกเชิญออก/กลุ่มถูกลบ) ไม่ติ๊กให้
+        const bad = g.reachable === false;
+        const cnt = (g.members != null) ? ' <span class="text-gray-400">(' + g.members + ' คน)</span>' : '';
+        const info = annLineGroupInfo(g);
+        return `<label class="flex items-center gap-1.5 ${bad ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-gray-50 border-gray-200 text-gray-700'} border rounded-lg px-2 py-1 cursor-pointer" title="${bad ? 'บอท LINE ติดต่อกลุ่มนี้ไม่ได้ อาจถูกเชิญออกจากกลุ่มแล้ว' : htmlEsc(info.label)}"><input type="checkbox" class="sched-line-grp accent-primary" value="${g.id}" ${bad ? 'disabled' : ''} onchange="this.dataset.manual='1'"> ${htmlEsc(g.name)} <span class="text-gray-400">· ${htmlEsc(info.label)}</span>${cnt}${bad ? ' ⚠ ติดต่อไม่ได้' : ''}</label>`;
+      }).join('')
+      : '<span class="text-amber-600">ยังไม่มีกลุ่ม LINE ที่เปิดใช้งาน</span>';
+  if (!o.hasSmtp) {
+    const m = document.getElementById('schedNotifyMail');
+    if (m) { m.checked = false; m.disabled = true; m.parentElement.title = 'ยังไม่ได้ตั้งค่า SMTP ในระบบ'; m.parentElement.classList.add('opacity-50'); }
+  }
+  schedNotifyChanged();
+}
+// อัปเดตคำอธิบายผู้รับ และนับผู้รับอีเมลล่วงหน้า (หน่วงเวลาไว้ไม่ให้เรียกถี่)
+function schedNotifyChanged() {
+  const a = schedCollectAudience();
+  // ติ๊กกลุ่ม LINE ให้ตรงกับผู้รับอัตโนมัติ (กลุ่มที่ผู้ใช้ติ๊กหรือเอาออกเองแล้ว จะไม่ไปแตะ)
+  // แจ้งเฉพาะผู้คุมสอบ (ไม่เลือกบทบาท) → กลุ่มบุคลากรเท่านั้น
+  const match = (!a.roles && a.names ? annLineGroupsFor('teacher', '') : annLineGroupsFor(a.roles, a.years)).map(g => String(g.id));
+  document.querySelectorAll('.sched-line-grp').forEach(cb => {
+    if (cb.disabled || cb.dataset.manual === '1') return;
+    cb.checked = match.indexOf(cb.value) !== -1;
+  });
+  const hint = document.getElementById('schedAudienceHint');
+  if (hint) {
+    const anyRole = document.querySelectorAll('.ann-role-cb:checked').length > 0;
+    hint.textContent = (!anyRole && a.names) ? 'ไม่ได้เลือกบทบาท — จะแจ้งเฉพาะอาจารย์ผู้คุมสอบในรายการนี้'
+      : (!anyRole ? 'ไม่ได้เลือกบทบาท — จะแจ้งทุกบทบาท' : '');
+  }
+  const ln = document.getElementById('schedNotifyLine');
+  const lb = document.getElementById('schedLineBox');
+  if (lb) lb.classList.toggle('hidden', !(ln && ln.checked));
+  const m = document.getElementById('schedNotifyMail');
+  const pv = document.getElementById('schedMailPreview');
+  if (!pv) return;
+  pv.classList.toggle('hidden', !(m && m.checked));
+  if (!(m && m.checked)) return;
+  pv.textContent = 'กำลังนับผู้รับอีเมล...';
+  clearTimeout(window._schedMailTimer);
+  window._schedMailTimer = setTimeout(async () => {
+    const r = await annSendCall({ mode: 'preview', roles: a.roles, years: a.years, names: a.names });
+    const el = document.getElementById('schedMailPreview');
+    if (!el) return;
+    if (!r.isOk) { el.innerHTML = '<span class="text-red-500">' + htmlEsc(r.error || 'นับผู้รับไม่สำเร็จ') + '</span>'; return; }
+    const g = r['แยกกลุ่ม'] || {};
+    el.innerHTML = 'จะส่งอีเมลถึง <b class="text-gray-800">' + (r['ผู้รับทั้งหมด'] || 0) + '</b> คน'
+      + (Object.keys(g).length ? ' — ' + Object.keys(g).map(k => htmlEsc(k) + ' ' + g[k]).join(' · ') : '')
+      + ' <span class="text-gray-400">(ส่งแบบ BCC ผู้รับไม่เห็นอีเมลกัน)</span>';
+  }, 450);
 }
 function toggleSchedNotify() {
   const c = document.getElementById('schedNotify');
   const o = document.getElementById('schedNotifyOptions');
   if (o) o.classList.toggle('hidden', !(c && c.checked));
   syncSchedNotifyYears();
+  schedNotifyChanged();
 }
 // ช่องเลือกชั้นปีจะแสดงเมื่อประกาศถึง "นักศึกษา" เท่านั้น
 function syncSchedNotifyYears() {
@@ -3269,11 +3418,19 @@ document.addEventListener('change', function (ev) {
   if (t && t.classList && (t.classList.contains('ann-role-cb') || t.classList.contains('ann-yr-cb'))
       && document.getElementById('schedNotifyYears')) {
     syncSchedNotifyYears();
+    schedNotifyChanged();
+  } else if (t && t.classList && (t.classList.contains('ann-role-cb') || t.classList.contains('ann-yr-cb'))
+      && document.getElementById('annMailPreview')) {
+    annChannelChanged();
   }
 });
 
-// สร้างประกาศแจ้งเตือนจากรายการปฏิทิน — เลือกบทบาทผู้รับ (roles) และเลือกส่ง LINE ได้
-async function createScheduleAnnouncement(s, roles, sendLine) {
+// สร้างประกาศแจ้งเตือนจากรายการปฏิทิน
+//   aud : { roles, names, years } จาก schedCollectAudience()
+//   ch  : { mail, line, lineGroups, broadcast } จาก schedChannelOpts()  (null = ในระบบอย่างเดียว)
+//   allDates : วันที่ทั้งหมดของรายการที่จัดหลายวัน (แสดงในประกาศ)
+async function createScheduleAnnouncement(s, aud, ch, allDates) {
+  aud = aud || { roles: '', names: '', years: '' };
   const subjects = norm(s.subject_name).replace(/,\s*/g, ', ');
   const yr = norm(s.year_level);
   const type = norm(s.schedule_type);
@@ -3286,7 +3443,9 @@ async function createScheduleAnnouncement(s, roles, sendLine) {
   if (type) lines.push('ประเภท: ' + type);
   if (isExam && norm(s.exam_round)) lines.push('ครั้งที่: ' + norm(s.exam_round));
   lines.push('ชั้นปี: ' + (yr ? ('ชั้นปีที่ ' + annParseYears(yr).join(', ')) : 'ทุกชั้นปี'));
-  if (dateTh) lines.push('วันที่: ' + dateTh);
+  if (allDates && allDates.length > 1) {
+    lines.push('วันที่: ' + allDates.map(d => (typeof toBuddhistDate === 'function' && toBuddhistDate(d)) || d).join(', '));
+  } else if (dateTh) lines.push('วันที่: ' + dateTh);
   if (timeRange.trim()) lines.push('เวลา: ' + timeRange);
   const isSplit = isExam && norm(s.exam_split) !== '';
   if (isSplit) {
@@ -3306,13 +3465,30 @@ async function createScheduleAnnouncement(s, roles, sendLine) {
     announcement_content: lines.join('\n'),
     announcement_date: norm(s.schedule_date) || new Date().toISOString().slice(0, 10),
     event_type: isExam ? 'สอบ' : (type || 'ทั่วไป'),
-    roles: roles || '',
+    roles: aud.roles || '',
     yr: yr || '',
-    target_names: (isExam && [norm(s.proctor), norm(s.proctor2)].filter(Boolean).join(', ')) || '',
-    line_notify: sendLine ? '✓' : '',
+    target_names: (isExam && aud.names) || '',
+    // ไม่ติ๊ก line_notify ตรงนี้ เพื่อไม่ให้ระบบส่ง LINE เข้าทุกกลุ่มอัตโนมัติ
+    // การส่งอีเมล/LINE ทำต่อด้านล่างตามกลุ่มที่ผู้ประกาศเลือกเท่านั้น
+    line_notify: '',
     created_at: new Date().toISOString()
   };
-  try { return await GSheetDB.create(obj); } catch (_) { return { isOk: false }; }
+  let res;
+  try { res = await GSheetDB.create(obj, { noRefresh: true }); } catch (_) { return { isOk: false }; }
+  if (!res || !res.isOk) return res || { isOk: false };
+  const out = { isOk: true, id: res.rowIndex, msgs: [] };
+  if (ch && (ch.mail || ch.line) && res.rowIndex) {
+    const r = await annSendCall({
+      mode: 'send', announcement_id: res.rowIndex,
+      email: !!ch.mail, line: !!ch.line, line_groups: ch.lineGroups || [], broadcast: !!ch.broadcast,
+      url: window.location.href.split('#')[0]
+    });
+    const em = r && r['อีเมล'], ln = r && r['LINE'];
+    if (ch.mail) out.msgs.push(em && em.isOk ? 'อีเมล ' + (em['ส่งถึง'] || 0) + ' คน' : 'อีเมลไม่สำเร็จ: ' + ((em && em.error) || (r && r.error) || ''));
+    if (ch.line) out.msgs.push(ln && ln.isOk ? 'LINE ' + (ln['ส่งสำเร็จ'] || 0) + ' ช่องทาง' : 'LINE ไม่สำเร็จ: ' + ((ln && ln.error) || (r && r.error) || ''));
+    out.isOk = !!(r && r.isOk);
+  }
+  return out;
 }
 
 function showAddScheduleModal() {
@@ -3327,14 +3503,15 @@ function showAddScheduleModal() {
   renderSchedExtraDateChips();
   updateSchedSplitState();
   window._schedWasExam = false;
+  loadSchedNotifyChannels();
   document.getElementById('addScheduleForm').onsubmit = async (e) => {
     e.preventDefault();
     // อ่านค่าการแจ้งเตือนก่อน (เพราะ modal จะถูกปิดหลังบันทึก)
     const notifyEl = document.getElementById('schedNotify');
     const doNotify = !!(notifyEl && notifyEl.checked);
-    const roles = doNotify ? annCollectRoles() : '';
-    const lineEl = document.getElementById('schedNotifyLine');
-    const sendLine = !!(lineEl && lineEl.checked);
+    const aud = doNotify ? schedCollectAudience() : null;
+    const ch = doNotify ? schedChannelOpts() : null;
+    if (doNotify && ch.line && !ch.lineGroups.length && !ch.broadcast) { showToast('เลือกกลุ่ม LINE อย่างน้อย 1 กลุ่ม หรือยกเลิกการส่ง LINE', 'error'); return; }
     await withLoading(e.target, async () => {
       const fd = new FormData(e.target);
       if (!(fd.get('schedule_type') || '').trim()) { showToast('กรุณาระบุประเภท', 'error'); return; }
@@ -3348,8 +3525,16 @@ function showAddScheduleModal() {
       const objs = dates.map(d => Object.assign({}, base, { schedule_date: d }));
       const r = await GSheetDB.createMany(objs);
       if (r.isOk || r.ok) {
-        if (doNotify) { for (const o of objs) { await createScheduleAnnouncement(o, roles, sendLine); } }
-        showToast('เพิ่มรายการสำเร็จ ' + (r.ok || objs.length) + ' วัน' + (doNotify ? ' + สร้างประกาศแจ้งเตือน' : ''));
+        let extMsg = [];
+        if (doNotify) {
+          // หลายวัน: ประกาศในระบบทุกวัน แต่ส่งอีเมล/LINE ครั้งเดียว (ประกาศแรก ระบุวันที่ครบทุกวัน)
+          for (let i = 0; i < objs.length; i++) {
+            const res = await createScheduleAnnouncement(objs[i], aud, i === 0 ? ch : null, i === 0 ? dates : null);
+            if (i === 0 && res && res.msgs) extMsg = res.msgs;
+          }
+          if (GSheetDB.refreshTab) { try { await GSheetDB.refreshTab('announcement'); } catch (_) { } }
+        }
+        showToast('เพิ่มรายการสำเร็จ ' + (r.ok || objs.length) + ' วัน' + (doNotify ? ' + ประกาศในระบบ' : '') + (extMsg.length ? ' · ' + extMsg.join(' · ') : ''));
         closeModal();
       } else showToast('เกิดข้อผิดพลาด', 'error');
     });
@@ -3718,13 +3903,19 @@ function gpaxByStudentCardHTML() {
     </button>`;
   }).join('');
 
-  return `<details id="gradeGpaxCard"${detailsOpen('gradeGpaxCard')} ontoggle="rememberDetails(this)" class="bg-white rounded-2xl border border-blue-100 mb-4">
-    <summary class="cursor-pointer select-none p-5 flex items-center justify-between gap-3">
-      <span class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="bar-chart-3" class="w-5 h-5 text-primary"></i>ภาพรวมผลการเรียน (GPAx)
+  // อาจารย์ / อาจารย์ประจำชั้น : แสดงการ์ดเปิดไว้เลย ไม่ต้องกดยุบ-ขยาย
+  const fixedOpen = ['teacher', 'classTeacher'].includes(APP.currentRole);
+  const headTxt = `<span class="font-bold text-gray-800 flex items-center gap-2 flex-wrap"><i data-lucide="bar-chart-3" class="w-5 h-5 text-primary"></i>ภาพรวมผลการเรียน (GPAx)
         <span class="text-sm font-normal text-gray-500">— ${sc.label} · ${withGpax.length} คนมีผลการเรียนแล้ว${avg !== null ? ' · เฉลี่ย ' + avg.toFixed(2) : ''}</span>
-        <span class="text-xs font-normal text-gray-400">— คลิกเพื่อดู</span></span>
+        ${fixedOpen ? '' : '<span class="text-xs font-normal text-gray-400">— คลิกเพื่อดู</span>'}</span>`;
+  return `${fixedOpen
+    ? `<div id="gradeGpaxCard" class="bg-white rounded-2xl border border-blue-100 mb-4">
+    <div class="p-5 flex items-center justify-between gap-3">${headTxt}</div>`
+    : `<details id="gradeGpaxCard"${detailsOpen('gradeGpaxCard')} ontoggle="rememberDetails(this)" class="bg-white rounded-2xl border border-blue-100 mb-4">
+    <summary class="cursor-pointer select-none p-5 flex items-center justify-between gap-3">
+      ${headTxt}
       <i data-lucide="chevron-down" class="chev w-5 h-5 text-gray-400 flex-shrink-0"></i>
-    </summary>
+    </summary>`}
     <div class="px-5 pb-5">
       ${gpaxYearFilterHTML()}
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
@@ -3742,7 +3933,7 @@ function gpaxByStudentCardHTML() {
       <p class="text-xs text-gray-500 mb-2">GPAx คิดจากผลการเรียนทั้งหมดที่มีในระบบ — กดปุ่ม <i data-lucide="eye" class="w-3.5 h-3.5 inline"></i> เพื่อดูเกรดรายวิชาและเลือกดูเฉพาะปี/ภาคที่ต้องการ</p>
       ${gpaxTableHTML(ranked)}
     </div>
-  </details>`;
+  ${fixedOpen ? '</div>' : '</details>'}`;
 }
 
 /* การ์ดภาพรวมผลการเรียนของหน้าผลการเรียน
@@ -4713,7 +4904,7 @@ function engCriteriaHTML() {
           <div class="text-sm">${rows(newList)}</div>
         </div>
       </div>
-      <p class="text-[11px] text-gray-400 mt-3"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ระบบตัดสิน "ผ่าน/ไม่ผ่าน" ของข้อสอบ PBRI (สบช.) อัตโนมัติตามรุ่น: รุ่น ≥ 81 หรือปีการศึกษา ≥ 2569 → ผ่านเมื่อ ≥ 51 · รุ่นก่อนหน้า → ผ่านเมื่อ ≥ 41 · การสอบจากภายนอกให้เทียบเกณฑ์ตามตารางข้างต้น</p>
+      <p class="text-[11px] text-gray-400 mt-3"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ระบบตัดสิน "ผ่าน/ไม่ผ่าน" ของข้อสอบ PBRI (สบช.) อัตโนมัติตามรุ่น: รุ่น 81 เป็นต้นไป → ผ่านเมื่อ ≥ 51 · รุ่น 80 ลงไป → ผ่านเมื่อ ≥ 41 (ไม่ว่าจะสอบปีการศึกษาใด) · การสอบจากภายนอกให้เทียบเกณฑ์ตามตารางข้างต้น</p>
     </div>
   </details>`;
 }
@@ -4722,6 +4913,250 @@ function engCriteriaHTML() {
    แยกมาเป็นฟังก์ชันเดียว เพื่อให้ตัวเลขบนการ์ดกับรายชื่อที่เปิดดูจากการ์ด
    มาจากชุดข้อมูลเดียวกันเสมอ ไม่มีทางคลาดเคลื่อนกันได้
    อ่านเงื่อนไขจากตัวกรองที่ผู้ใช้เลือกไว้ (ปีการศึกษา/ชั้นปี/รุ่น/อาจารย์ที่ปรึกษา) และบทบาทผู้ใช้ */
+/* ================= ผลสอบรายรอบ (ผู้ดูแลระบบ / ผู้บริหาร / งานวิชาการ / งานทะเบียน) =================
+   เลือก ปีการศึกษา → รูปแบบการสอบ → รอบสอบ แล้วกรองว่าใครผ่าน / ไม่ผ่าน / ไม่เข้าสอบ
+   "รอบสอบ" = วันที่จัดสอบ (การสอบ สบช. แยกตามครั้งที่ด้วย) · รายการที่ไม่ได้ลงวันที่รวมเป็นรอบ "ไม่ระบุวันที่"
+   วันที่ในข้อมูลมีหลายรูปแบบ (22/07/2023, 2023-07-22) จึงแปลงเป็นวันเดียวกันก่อนจัดกลุ่ม */
+function engRoundDateKey(v) {
+  const d = parseDate(v);
+  if (!d || isNaN(d)) return '';
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function engRoundKeyOf(e) {
+  const att = norm(e.eng_type) === 'สบช.' ? (norm(e.eng_attempt) || '-') : '';
+  return att + '|' + engRoundDateKey(e.eng_date);
+}
+function engRoundLabel(key) {
+  const [att, iso] = String(key).split('|');
+  const th = iso ? (typeof toBuddhistDate === 'function' ? toBuddhistDate(iso) : iso) : 'ไม่ระบุวันที่';
+  return (att ? 'ครั้งที่ ' + att + ' · ' : '') + th;
+}
+function engRoundRows() {
+  const f = APP.filters;
+  const all = getDataByType('eng_result');
+  const years = [...new Set(all.map(e => norm(e.academic_year)).filter(Boolean))].sort().reverse();
+  const year = f._rdYear && years.includes(f._rdYear) ? f._rdYear : (years[0] || '');
+  const inYear = all.filter(e => norm(e.academic_year) === year);
+  const types = [...new Set(inYear.map(e => norm(e.eng_type)).filter(Boolean))].sort((a, b) => a === 'สบช.' ? -1 : b === 'สบช.' ? 1 : a.localeCompare(b));
+  const type = f._rdType && types.includes(f._rdType) ? f._rdType : (types[0] || '');
+  const inType = inYear.filter(e => norm(e.eng_type) === type);
+  const cnt = {};
+  inType.forEach(e => { const k = engRoundKeyOf(e); cnt[k] = (cnt[k] || 0) + 1; });
+  // รอบล่าสุดอยู่บนสุด · รอบที่ไม่ลงวันที่อยู่ท้าย
+  const rounds = Object.keys(cnt).sort((a, b) => {
+    const da = a.split('|')[1], db = b.split('|')[1];
+    if (!da !== !db) return da ? -1 : 1;
+    return db.localeCompare(da) || a.localeCompare(b);
+  });
+  const round = f._rdKey && (f._rdKey === '__all' || rounds.includes(f._rdKey)) ? f._rdKey : (rounds[0] || '');
+  const rows = round === '__all' ? inType : inType.filter(e => engRoundKeyOf(e) === round);
+  return { years, year, types, type, rounds, cnt, round, rows, total: inType.length };
+}
+function engRoundSet(k, v) {
+  APP.filters[k] = v;
+  // เปลี่ยนปี/รูปแบบ = ดูชุดข้อมูลใหม่ ล้างตัวกรองสถานะด้วย ไม่งั้นเห็นตารางว่างโดยไม่รู้ตัว
+  if (k === '_rdYear') { APP.filters._rdType = ''; APP.filters._rdKey = ''; APP.filters._rdStatus = ''; }
+  if (k === '_rdType') { APP.filters._rdKey = ''; APP.filters._rdStatus = ''; }
+  renderCurrentPage();
+}
+function engRoundStatusOf(e) {
+  const st = norm(e.eng_status);
+  return st === 'ผ่าน' || st === 'ไม่เข้าสอบ' ? st : (st ? 'ไม่ผ่าน' : 'ไม่ระบุ');
+}
+function engRoundCardHTML() {
+  const R = engRoundRows();
+  const f = APP.filters;
+  const stuMap = {};
+  getDataByType('student').forEach(st => { stuMap[norm(st.student_id)] = st; });
+  const counts = { 'ผ่าน': 0, 'ไม่ผ่าน': 0, 'ไม่เข้าสอบ': 0, 'ไม่ระบุ': 0 };
+  R.rows.forEach(e => { counts[engRoundStatusOf(e)]++; });
+  const stSel = f._rdStatus || '';
+  const q = norm(f._rdQ).toLowerCase();
+  let list = R.rows.filter(e => !stSel || engRoundStatusOf(e) === stSel);
+  if (q) list = list.filter(e => { const st = stuMap[norm(e.student_id)] || {}; return (norm(e.student_id) + ' ' + norm(st.name)).toLowerCase().includes(q); });
+  list = list.slice().sort((a, b) => norm(a.student_id).localeCompare(norm(b.student_id)));
+  const sel = (key, val, opts) => `<select onchange="engRoundSet('${key}', this.value)" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">${opts.map(o => `<option value="${htmlEsc(o[0])}" ${o[0] === val ? 'selected' : ''}>${htmlEsc(o[1])}</option>`).join('')}</select>`;
+  const chip = (v, label, cls) => {
+    const on = stSel === v;
+    const n = v ? counts[v] : R.rows.length;
+    return `<button type="button" onclick="engRoundSet('_rdStatus','${v}')" class="px-3 py-1.5 rounded-xl text-sm border transition ${on ? cls + ' font-semibold' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}">${label} <b class="tabular-nums">${n}</b></button>`;
+  };
+  const pct = R.rows.length ? Math.round(counts['ผ่าน'] / R.rows.length * 1000) / 10 : 0;
+  const body = !R.rows.length
+    ? '<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีผลสอบในปีการศึกษาและรูปแบบที่เลือก</p>'
+    : `<div class="overflow-auto border border-gray-100 rounded-xl max-h-[60vh]"><table class="w-full text-sm">
+        <thead class="sticky top-0 z-10"><tr class="bg-surface text-left">
+          <th class="px-3 py-2 font-semibold text-center w-12 bg-surface">ลำดับ</th><th class="px-3 py-2 font-semibold bg-surface">รหัสนักศึกษา</th>
+          <th class="px-3 py-2 font-semibold bg-surface">ชื่อ-สกุล</th><th class="px-3 py-2 font-semibold text-center bg-surface">ชั้นปี</th>
+          <th class="px-3 py-2 font-semibold text-center bg-surface">รุ่น</th>${R.round === '__all' ? '<th class="px-3 py-2 font-semibold bg-surface">รอบสอบ</th>' : ''}
+          <th class="px-3 py-2 font-semibold text-center bg-surface">คะแนน</th><th class="px-3 py-2 font-semibold text-center bg-surface">ระดับ</th>
+          <th class="px-3 py-2 font-semibold text-center bg-surface">สถานะ</th></tr></thead>
+        <tbody>${list.map((e, i) => {
+          const st = stuMap[norm(e.student_id)] || {};
+          const absent = norm(e.eng_status) === 'ไม่เข้าสอบ';
+          const lv = absent ? '' : (e.eng_level || (norm(e.eng_type) === 'สบช.' ? getEngLevel(Number(e.eng_score) || 0) : ''));
+          return `<tr class="border-t border-gray-50 hover:bg-gray-50">
+            <td class="px-3 py-1.5 text-center text-xs text-gray-400">${i + 1}</td>
+            <td class="px-3 py-1.5 font-mono text-xs text-primary">${htmlEsc(norm(e.student_id))}</td>
+            <td class="px-3 py-1.5">${htmlEsc(norm(st.title_prefix) + norm(st.name) || norm(e.name) || '-')}</td>
+            <td class="px-3 py-1.5 text-center">${htmlEsc(norm(st.year_level) || '-')}</td>
+            <td class="px-3 py-1.5 text-center">${htmlEsc(norm(st.batch) || '-')}</td>
+            ${R.round === '__all' ? `<td class="px-3 py-1.5 text-xs text-gray-500 whitespace-nowrap">${htmlEsc(engRoundLabel(engRoundKeyOf(e)))}</td>` : ''}
+            <td class="px-3 py-1.5 text-center tabular-nums font-semibold">${absent ? '-' : htmlEsc(norm(e.eng_score) || '-')}</td>
+            <td class="px-3 py-1.5 text-center text-xs text-gray-600">${htmlEsc(lv || '-')}</td>
+            <td class="px-3 py-1.5 text-center">${engStatusBadge(norm(e.eng_status)) || '<span class="text-xs text-gray-300">-</span>'}</td></tr>`;
+        }).join('') || `<tr><td colspan="9" class="px-3 py-6 text-center text-gray-400">ไม่พบรายการตามเงื่อนไข</td></tr>`}</tbody></table></div>`;
+  return `<details id="engRoundCard"${detailsOpen('engRoundCard')} ontoggle="rememberDetails(this)" class="bg-white rounded-2xl border border-blue-100 mb-6">
+    <summary class="p-5 flex items-center justify-between gap-3 cursor-pointer">
+      <span class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="list-filter" class="w-5 h-5 text-primary"></i>ผลสอบรายรอบ — ใครผ่าน / ไม่ผ่าน</span>
+      <i data-lucide="chevron-down" class="chev w-5 h-5 text-gray-400"></i></summary>
+    <div class="px-5 pb-5">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+        <div><p class="text-xs text-gray-500 mb-1">ปีการศึกษา</p>${sel('_rdYear', R.year, R.years.map(y => [y, 'ปีการศึกษา ' + y]))}</div>
+        <div><p class="text-xs text-gray-500 mb-1">รูปแบบการสอบ</p>${sel('_rdType', R.type, R.types.map(t => [t, t === 'สบช.' ? 'สบช. (PBRI)' : t]))}</div>
+        <div><p class="text-xs text-gray-500 mb-1">รอบสอบ</p>${sel('_rdKey', R.round, [['__all', 'ทุกรอบในปีนี้ (' + R.total + ' รายการ)']].concat(R.rounds.map(k => [k, engRoundLabel(k) + ' (' + R.cnt[k] + ' คน)'])))}</div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 mb-3">
+        ${chip('', 'ทั้งหมด', 'bg-primaryLight border-primary text-primary')}
+        ${chip('ผ่าน', 'ผ่าน', 'bg-green-50 border-green-300 text-green-700')}
+        ${chip('ไม่ผ่าน', 'ไม่ผ่าน', 'bg-red-50 border-red-300 text-red-700')}
+        ${counts['ไม่เข้าสอบ'] ? chip('ไม่เข้าสอบ', 'ไม่เข้าสอบ', 'bg-orange-50 border-orange-300 text-orange-700') : ''}
+        <span class="text-xs text-gray-500 ml-1">ผ่าน ${pct}% ของรอบนี้</span>
+        <span class="flex-1"></span>
+        <input type="search" value="${htmlEsc(f._rdQ || '')}" placeholder="ค้นหารหัส/ชื่อ" oninput="APP.filters._rdQ=this.value;clearTimeout(window._rdT);window._rdT=setTimeout(renderCurrentPage,300)" class="border border-gray-200 rounded-xl px-3 py-1.5 text-sm w-48 max-w-full">
+        <button type="button" onclick="engRoundCsv()" class="px-3 py-1.5 rounded-xl border border-emerald-500 text-emerald-600 text-sm hover:bg-emerald-50"><i data-lucide="download" class="w-4 h-4 inline mr-1"></i>CSV</button>
+        ${engPdfAllowed() ? `<button type="button" onclick="engRoundPdf()" class="px-3 py-1.5 rounded-xl border border-red-400 text-red-600 text-sm hover:bg-red-50"><i data-lucide="file-down" class="w-4 h-4 inline mr-1"></i>PDF</button>` : ''}
+      </div>
+      <p class="text-xs text-gray-500 mb-2">แสดง ${list.length} รายการ${stSel ? ' · สถานะ ' + htmlEsc(stSel) : ''} · ${htmlEsc(R.type)} · ${htmlEsc(R.round === '__all' ? 'ทุกรอบ' : engRoundLabel(R.round))}</p>
+      ${body}
+    </div>
+  </details>`;
+}
+/* ================= ส่งออก PDF (ผู้ดูแลระบบ / งานวิชาการ / งานทะเบียน) =================
+   เปิดหน้ารายงานในแท็บใหม่ จัดหน้า A4 แล้วสั่งพิมพ์ — เลือก "บันทึกเป็น PDF" ในหน้าต่างพิมพ์
+   ใช้ฟอนต์ Sarabun และหัวรายงานแบบเดียวกันทั้งสองรายงาน */
+function engPdfAllowed() { return ['admin', 'academic', 'registrar'].includes(APP.currentRole); }
+function engPdfOpen(title, subtitle, bodyHtml) {
+  const college = (APP.config && APP.config.college_name) || 'วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ';
+  const now = new Date();
+  const printed = now.getDate() + '/' + (now.getMonth() + 1) + '/' + (now.getFullYear() + 543) + ' ' + String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') + ' น.';
+  const who = (APP.currentUser && APP.currentUser.name) || '';
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${htmlEsc(title)}</title>
+<style>@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap');
+*{font-family:'Sarabun',sans-serif;box-sizing:border-box}body{margin:0;padding:10mm 12mm;color:#1f2937;font-size:12.5px}
+h1{font-size:18px;margin:0 0 2px}.sub{color:#4b5563;margin:0 0 10px;font-size:12.5px}
+.meta{display:flex;justify-content:space-between;color:#6b7280;font-size:11px;border-bottom:1.5px solid #1e6fba;padding-bottom:6px;margin-bottom:12px}
+.stats{display:flex;gap:8px;margin:0 0 12px}.stat{flex:1;border:1px solid #dbe6f3;border-radius:8px;padding:6px 10px}
+.stat b{display:block;font-size:18px}.ok b{color:#047857}.no b{color:#b91c1c}.ab b{color:#c2410c}
+h2{font-size:14px;margin:14px 0 6px;color:#1e4f8a}
+table{width:100%;border-collapse:collapse;font-size:11.5px}th,td{border:1px solid #d6dde7;padding:3px 6px;text-align:left}
+th{background:#eaf2fb}td.c,th.c{text-align:center}tr{break-inside:avoid}thead{display:table-header-group}
+.pass{color:#047857;font-weight:600}.fail{color:#b91c1c;font-weight:600}.abs{color:#c2410c;font-weight:600}
+@media print{@page{size:A4;margin:10mm}body{padding:0}.no-print{display:none}}</style></head><body>
+<h1>${htmlEsc(title)}</h1><p class="sub">${subtitle}</p>
+<div class="meta"><span>${htmlEsc(college)} · ระบบบริหารจัดการงานวิชาการ (AAMs)</span><span>พิมพ์เมื่อ ${printed}${who ? ' · โดย ' + htmlEsc(who) : ''}</span></div>
+${bodyHtml}
+<p class="no-print" style="margin-top:16px;color:#6b7280;font-size:12px">หน้าต่างพิมพ์จะเปิดขึ้นเอง — เลือกปลายทาง "บันทึกเป็น PDF"</p>
+<script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script></body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) { showToast('เบราว์เซอร์บล็อกหน้าต่างใหม่ กรุณาอนุญาต Popup แล้วลองอีกครั้ง', 'error'); return; }
+  w.document.write(html); w.document.close();
+}
+function engPdfStatusCls(st) { return st === 'ผ่าน' ? 'pass' : st === 'ไม่เข้าสอบ' ? 'abs' : 'fail'; }
+
+// สรุปผลสอบภาษาอังกฤษ — ใช้ขอบเขตเดียวกับการ์ดสรุปบนหน้าจอ (ปีการศึกษา ชั้นปี อาจารย์ที่ปรึกษา ที่เลือกไว้)
+function engSummaryPdf() {
+  if (!engPdfAllowed()) return;
+  const sc = engSummaryScope();
+  const yr = APP.filters._engYear || '';
+  const adv = APP.filters._engAdvisor || '';
+  const scope = [sc.scopeLabel || 'นักศึกษาที่กำลังศึกษาทุกชั้นปี', yr ? 'ปีการศึกษา ' + yr : 'ทุกปีการศึกษา', adv ? 'อาจารย์ที่ปรึกษา ' + adv : ''].filter(Boolean).join(' · ');
+  const total = sc.students.length, p = sc.passed.length, f = sc.notPassed.length;
+  const pct = total ? Math.round(p / total * 1000) / 10 : 0;
+  const byYr = ['1', '2', '3', '4'].map(y => {
+    const ys = sc.students.filter(s => norm(s.year_level) === y);
+    if (!ys.length) return '';
+    const yp = ys.filter(s => sc.passedIds.has(norm(s.student_id))).length;
+    return `<tr><td>ชั้นปีที่ ${y}</td><td class="c">${ys.length}</td><td class="c pass">${yp}</td><td class="c fail">${ys.length - yp}</td><td class="c">${Math.round(yp / ys.length * 1000) / 10}%</td></tr>`;
+  }).join('');
+  const by = {};
+  (sc.allEng || []).forEach(e => { const k = norm(e.student_id); (by[k] = by[k] || []).push(e); });
+  const list = sc.students.slice().sort((a, b) => norm(a.student_id).localeCompare(norm(b.student_id)));
+  const rows = list.map((s, i) => {
+    const last = engLatestOf(by[norm(s.student_id)] || []);
+    const ok = sc.passedIds.has(norm(s.student_id));
+    const lastTxt = last ? `${htmlEsc(norm(last.eng_type))}${norm(last.eng_status) === 'ไม่เข้าสอบ' ? ' · ไม่เข้าสอบ' : ' · ' + htmlEsc(norm(last.eng_score) || '-')}${norm(last.eng_date) ? ' (' + htmlEsc(norm(last.eng_date)) + ')' : ''}` : '<span style="color:#9ca3af">ยังไม่มีผลสอบ</span>';
+    return `<tr><td class="c">${i + 1}</td><td>${htmlEsc(norm(s.student_id))}</td><td>${htmlEsc(norm(s.title_prefix) + norm(s.name))}</td><td class="c">${htmlEsc(norm(s.year_level) || '-')}</td><td>${lastTxt}</td><td class="c ${ok ? 'pass' : 'fail'}">${ok ? 'ผ่าน' : 'ยังไม่ผ่าน'}</td></tr>`;
+  }).join('');
+  const body = `<div class="stats"><div class="stat"><span>นักศึกษาทั้งหมด</span><b>${total}</b></div>
+    <div class="stat ok"><span>สอบผ่าน</span><b>${p}</b></div><div class="stat no"><span>ยังไม่ผ่าน</span><b>${f}</b></div>
+    <div class="stat"><span>ร้อยละที่ผ่าน</span><b>${pct}%</b></div></div>
+    ${byYr ? `<h2>แยกรายชั้นปี</h2><table><thead><tr><th>ชั้นปี</th><th class="c">จำนวน</th><th class="c">ผ่าน</th><th class="c">ยังไม่ผ่าน</th><th class="c">ร้อยละผ่าน</th></tr></thead><tbody>${byYr}</tbody></table>` : ''}
+    <h2>รายชื่อนักศึกษา (${total} คน)</h2>
+    <table><thead><tr><th class="c">ลำดับ</th><th>รหัสนักศึกษา</th><th>ชื่อ-สกุล</th><th class="c">ชั้นปี</th><th>ผลสอบครั้งล่าสุด</th><th class="c">ผลสอบภาษาอังกฤษ</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="c">ไม่มีข้อมูล</td></tr>'}</tbody></table>`;
+  engPdfOpen('สรุปผลสอบภาษาอังกฤษ', htmlEsc(scope), body);
+}
+
+// ผลสอบรายรอบ — ตามตัวกรองบนหน้าจอทั้งหมด (ปี รูปแบบ รอบ สถานะ คำค้น)
+function engRoundPdf() {
+  if (!engPdfAllowed()) return;
+  const R = engRoundRows(), f = APP.filters;
+  const stuMap = {};
+  getDataByType('student').forEach(st => { stuMap[norm(st.student_id)] = st; });
+  const counts = { 'ผ่าน': 0, 'ไม่ผ่าน': 0, 'ไม่เข้าสอบ': 0, 'ไม่ระบุ': 0 };
+  R.rows.forEach(e => { counts[engRoundStatusOf(e)]++; });
+  const stSel = f._rdStatus || '';
+  const q = norm(f._rdQ).toLowerCase();
+  let list = R.rows.filter(e => !stSel || engRoundStatusOf(e) === stSel);
+  if (q) list = list.filter(e => { const st = stuMap[norm(e.student_id)] || {}; return (norm(e.student_id) + ' ' + norm(st.name)).toLowerCase().includes(q); });
+  list = list.slice().sort((a, b) => norm(a.student_id).localeCompare(norm(b.student_id)));
+  const allRounds = R.round === '__all';
+  const rows = list.map((e, i) => {
+    const st = stuMap[norm(e.student_id)] || {};
+    const absent = norm(e.eng_status) === 'ไม่เข้าสอบ';
+    const lv = absent ? '' : (e.eng_level || (norm(e.eng_type) === 'สบช.' ? getEngLevel(Number(e.eng_score) || 0) : ''));
+    return `<tr><td class="c">${i + 1}</td><td>${htmlEsc(norm(e.student_id))}</td><td>${htmlEsc(norm(st.title_prefix) + norm(st.name) || '-')}</td>
+      <td class="c">${htmlEsc(norm(st.year_level) || '-')}</td><td class="c">${htmlEsc(norm(st.batch) || '-')}</td>
+      ${allRounds ? `<td>${htmlEsc(engRoundLabel(engRoundKeyOf(e)))}</td>` : ''}
+      <td class="c">${absent ? '-' : htmlEsc(norm(e.eng_score) || '-')}</td><td class="c">${htmlEsc(lv || '-')}</td>
+      <td class="c ${engPdfStatusCls(engRoundStatusOf(e))}">${htmlEsc(norm(e.eng_status) || '-')}</td></tr>`;
+  }).join('');
+  const pct = R.rows.length ? Math.round(counts['ผ่าน'] / R.rows.length * 1000) / 10 : 0;
+  const sub = ['ปีการศึกษา ' + R.year, R.type === 'สบช.' ? 'สบช. (PBRI)' : R.type, allRounds ? 'ทุกรอบ' : 'รอบ ' + engRoundLabel(R.round),
+    stSel ? 'เฉพาะสถานะ ' + stSel : '', q ? 'คำค้น "' + f._rdQ + '"' : ''].filter(Boolean).map(htmlEsc).join(' · ');
+  const body = `<div class="stats"><div class="stat"><span>ผู้เข้าสอบในรอบ</span><b>${R.rows.length}</b></div>
+    <div class="stat ok"><span>ผ่าน</span><b>${counts['ผ่าน']}</b></div><div class="stat no"><span>ไม่ผ่าน</span><b>${counts['ไม่ผ่าน']}</b></div>
+    ${counts['ไม่เข้าสอบ'] ? `<div class="stat ab"><span>ไม่เข้าสอบ</span><b>${counts['ไม่เข้าสอบ']}</b></div>` : ''}
+    <div class="stat"><span>ร้อยละที่ผ่าน</span><b>${pct}%</b></div></div>
+    <h2>รายชื่อ${stSel ? 'ผู้ที่' + htmlEsc(stSel) : ''} (${list.length} คน)</h2>
+    <table><thead><tr><th class="c">ลำดับ</th><th>รหัสนักศึกษา</th><th>ชื่อ-สกุล</th><th class="c">ชั้นปี</th><th class="c">รุ่น</th>${allRounds ? '<th>รอบสอบ</th>' : ''}<th class="c">คะแนน</th><th class="c">ระดับ</th><th class="c">สถานะ</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="${allRounds ? 9 : 8}" class="c">ไม่มีข้อมูล</td></tr>`}</tbody></table>`;
+  engPdfOpen('ผลสอบภาษาอังกฤษรายรอบ', sub, body);
+}
+
+function engRoundCsv() {
+  const R = engRoundRows(), f = APP.filters;
+  const stuMap = {};
+  getDataByType('student').forEach(st => { stuMap[norm(st.student_id)] = st; });
+  const stSel = f._rdStatus || '';
+  const rows = R.rows.filter(e => !stSel || engRoundStatusOf(e) === stSel)
+    .sort((a, b) => norm(a.student_id).localeCompare(norm(b.student_id)));
+  const cell = v => { const t = String(v == null ? '' : v); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  const lines = [['รหัสนักศึกษา', 'ชื่อ-สกุล', 'ชั้นปี', 'รุ่น', 'ปีการศึกษา', 'รูปแบบ', 'รอบสอบ', 'คะแนน', 'สถานะ'].join(',')];
+  rows.forEach(e => {
+    const st = stuMap[norm(e.student_id)] || {};
+    // รหัสนักศึกษาใส่ = นำหน้า กัน Excel ตัดเลขศูนย์/แปลงเป็นตัวเลข
+    lines.push(['="' + norm(e.student_id) + '"', norm(st.title_prefix) + norm(st.name), norm(st.year_level), norm(st.batch), norm(e.academic_year),
+      norm(e.eng_type), engRoundLabel(engRoundKeyOf(e)), norm(e.eng_score), norm(e.eng_status)].map(cell).join(','));
+  });
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ผลสอบรายรอบ_' + R.year + '_' + R.type + (stSel ? '_' + stSel : '') + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 function engSummaryScope() {
   const role = APP.currentRole;
   const canFilterByAdvisor = isAdminRole() || role === 'executive';
@@ -5071,13 +5506,20 @@ function engResultsPage() {
       }
     }
 
+    // อาจารย์ / อาจารย์ประจำชั้น : การ์ดเปิดไว้เลย และมีตารางรายชื่อแบบเดียวกับหน้าผลการเรียน
+    const engFixed = ['teacher', 'classTeacher'].includes(APP.currentRole);
+    const engHead = `<span class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="bar-chart-3" class="w-5 h-5 text-primary"></i>สรุปผลสอบภาษาอังกฤษ${scopeLabel ? ` <span class="text-sm font-normal text-gray-500">— ${scopeLabel}</span>` : (engFixed ? ` <span class="text-sm font-normal text-gray-500">— ${APP.currentRole === 'classTeacher' ? 'ชั้นปีที่ดูแล' : 'นักศึกษาในที่ปรึกษา'} · ${summaryStudents.length} คน</span>` : '')}</span>`;
     summaryTableHtml = `
-    <details id="engSummaryCard"${detailsOpen('engSummaryCard')} ontoggle="rememberDetails(this)" class="bg-white rounded-2xl border border-blue-100 mb-4">
+    ${engFixed
+      ? `<div id="engSummaryCard" class="bg-white rounded-2xl border border-blue-100 mb-4">
+      <div class="p-5">${engHead}</div>`
+      : `<details id="engSummaryCard"${detailsOpen('engSummaryCard')} ontoggle="rememberDetails(this)" class="bg-white rounded-2xl border border-blue-100 mb-4">
       <summary class="cursor-pointer select-none p-5 flex items-center justify-between">
-        <span class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="bar-chart-3" class="w-5 h-5 text-primary"></i>สรุปผลสอบภาษาอังกฤษ${scopeLabel ? ` <span class="text-sm font-normal text-gray-500">— ${scopeLabel}</span>` : ''}</span>
+        ${engHead}
         <i data-lucide="chevron-down" class="chev w-5 h-5 text-gray-400"></i>
-      </summary>
+      </summary>`}
       <div class="px-5 pb-5">
+      ${engPdfAllowed() ? `<div class="flex justify-end mb-3"><button type="button" onclick="engSummaryPdf()" class="px-3 py-1.5 rounded-xl border border-red-400 text-red-600 text-sm hover:bg-red-50"><i data-lucide="file-down" class="w-4 h-4 inline mr-1"></i>ส่งออก PDF</button></div>` : ''}
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div class="relative group cursor-pointer" onclick="showEngStudentList('pass')" title="คลิกเพื่อดูรายชื่อผู้สอบผ่าน">
           ${statCard('check-circle', 'สอบผ่าน', passedCount, 'คน', 'bg-green-500')}
@@ -5091,8 +5533,9 @@ function engResultsPage() {
         </div>
       </div>
       ${perYearCardsHtml}
+      ${engFixed ? engStudentTableHTML(_sc) : ''}
       </div>
-    </details>`;
+    ${engFixed ? '</div>' : '</details>'}`;
   }
 
   return `<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -5102,6 +5545,7 @@ function engResultsPage() {
   ${engCriteriaHTML()}
   ${['admin', 'academic', 'registrar', 'executive'].includes(APP.currentRole) ? engAnalyticsHTML() : ''}
   ${summaryTableHtml}
+  ${['admin', 'academic', 'registrar', 'executive'].includes(APP.currentRole) ? engRoundCardHTML() : ''}
   ${yearPickerHtml}
   ${studentSelector}
   ${noSelectionMsg || `<div class="bg-white rounded-2xl border border-blue-100 p-4 mb-4">
@@ -5150,14 +5594,17 @@ function engResultsPage() {
 }
 
 // ---- Eng helpers ----
-// เกณฑ์ผ่านสอบภาษาอังกฤษ (สบช.):
-//   นักศึกษารุ่นที่ 81 เป็นต้นไป หรือ ปีการศึกษา 2569 เป็นต้นไป → ผ่านเมื่อคะแนน ≥ 51
-//   รุ่น/ปีก่อนหน้านั้น → ใช้เกณฑ์เดิม ผ่านเมื่อคะแนน ≥ 41
+// เกณฑ์ผ่านสอบภาษาอังกฤษ (สบช.) — ตัดสินตาม "รุ่น" ของนักศึกษา
+//   รุ่นที่ 81 เป็นต้นไป → เกณฑ์ใหม่ ผ่านเมื่อคะแนน ≥ 51
+//   รุ่นที่ 80 ลงไป → เกณฑ์เดิม ผ่านเมื่อคะแนน ≥ 41 ไม่ว่าจะสอบในปีการศึกษาใด
+//   (เดิมใช้ "รุ่น ≥ 81 หรือปีการศึกษา ≥ 2569" ทำให้รุ่นเก่าที่สอบในปี 2569 ถูกตัดด้วยเกณฑ์ 51)
+//   ไม่มีเลขรุ่นในทะเบียนเท่านั้น จึงใช้ปีการศึกษาที่สอบแทน (≥ 2569 ใช้เกณฑ์ใหม่)
 function engIsNewCriterion(studentId, academicYear) {
   const stu = getDataByType('student').find(s => norm(s.student_id) === norm(studentId));
   const b = parseInt(norm(stu && stu.batch), 10);
+  if (!isNaN(b)) return b >= 81;
   const y = parseInt(norm(academicYear), 10);
-  return (!isNaN(b) && b >= 81) || (!isNaN(y) && y >= 2569);
+  return !isNaN(y) && y >= 2569;
 }
 function engPassThreshold(studentId, academicYear) {
   return engIsNewCriterion(studentId, academicYear) ? 51 : 41;
@@ -5174,8 +5621,8 @@ function getEngLevel(score) {
 }
 // ======================== แจ้งผลสอบภาษาอังกฤษถึงอาจารย์ที่ปรึกษา ========================
 // เรียก Edge Function 'eng-report-mail' — ตรวจสิทธิ์และส่งอีเมลจากฝั่งเซิร์ฟเวอร์เท่านั้น
-async function engMailCall(mode) {
-  const { data, error } = await GSheetDB.client().functions.invoke('eng-report-mail', { body: { mode: mode } });
+async function engMailCall(mode, extra) {
+  const { data, error } = await GSheetDB.client().functions.invoke('eng-report-mail', { body: Object.assign({ mode: mode }, extra || {}) });
   if (error) {
     let detail = (error && error.message) || 'เรียกใช้งานไม่สำเร็จ';
     try { const j = await error.context.json(); if (j && j.error) detail = j.error; } catch (e) { }
@@ -5184,51 +5631,120 @@ async function engMailCall(mode) {
   return data || { isOk: false, error: 'ไม่มีข้อมูลตอบกลับ' };
 }
 
+/* หน้าต่างแจ้งผลสอบ — เลือกอาจารย์ที่จะส่งได้ กรองจากชื่อ-สกุล หรือสาขา
+   รายชื่ออาจารย์มาจากฝั่งเซิร์ฟเวอร์ (จับคู่ชื่อโดยตัดคำนำหน้าแล้ว) เก็บไว้ใน window._engMail */
 async function showEngMailModal() {
   showModal('แจ้งผลสอบภาษาอังกฤษถึงอาจารย์ที่ปรึกษา', `
     <div id="engMailBody" class="space-y-3">
       <p class="text-sm text-gray-500">กำลังตรวจข้อมูล...</p>
-    </div>`);
+    </div>`, null, 'max-w-2xl');
   const r = await engMailCall('preview');
   const box = document.getElementById('engMailBody');
   if (!box) return;
-  if (!r.isOk) { box.innerHTML = `<p class="text-sm text-red-600">${r.error || 'ตรวจข้อมูลไม่สำเร็จ'}</p>`; return; }
+  if (!r.isOk) { box.innerHTML = `<p class="text-sm text-red-600">${htmlEsc(r.error || 'ตรวจข้อมูลไม่สำเร็จ')}</p>`; return; }
 
+  const list = r['อาจารย์'] || [];
+  window._engMail = { list: list, picked: new Set(list.filter(x => x.ok).map(x => x.key)), q: '', dept: '' };
+  const depts = [...new Set(list.map(x => norm(x.department)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th'));
   const skipped = r['ข้ามไป'] || [];
   box.innerHTML = `
     <div class="grid grid-cols-3 gap-2 text-center">
       <div class="bg-surface rounded-xl p-3"><p class="text-2xl font-bold text-gray-800">${r['นักศึกษาที่กำลังศึกษา']}</p><p class="text-xs text-gray-500">กำลังศึกษา</p></div>
       <div class="bg-red-50 rounded-xl p-3"><p class="text-2xl font-bold text-red-600">${r['ยังไม่ผ่าน']}</p><p class="text-xs text-gray-500">ยังไม่ผ่าน</p></div>
-      <div class="bg-emerald-50 rounded-xl p-3"><p class="text-2xl font-bold text-emerald-600">${r['อาจารย์ที่จะได้รับอีเมล']}</p><p class="text-xs text-gray-500">อาจารย์ที่จะได้รับ</p></div>
+      <div class="bg-emerald-50 rounded-xl p-3"><p class="text-2xl font-bold text-emerald-600">${r['อาจารย์ที่จะได้รับอีเมล']}</p><p class="text-xs text-gray-500">อาจารย์ที่ส่งได้</p></div>
     </div>
     <p class="text-xs text-gray-500">อีเมลแต่ละฉบับมีเฉพาะนักศึกษาในความดูแลของอาจารย์ท่านนั้น พร้อมรหัสนักศึกษา ชื่อ-สกุล รูปแบบการสอบ คะแนน ครั้งที่สอบ วันที่สอบ ปีการศึกษา และสถานะ</p>
     ${skipped.length ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3">
-      <p class="text-xs font-semibold text-amber-800 mb-1">ข้ามไป ${skipped.length} ท่าน</p>
-      ${skipped.map(x => `<p class="text-xs text-amber-700">• ${x.advisor} — ${x.reason} (นักศึกษา ${x.students} คน)</p>`).join('')}
+      <p class="text-xs font-semibold text-amber-800 mb-1">ส่งไม่ได้ ${skipped.length} ท่าน</p>
+      ${skipped.map(x => `<p class="text-xs text-amber-700">• ${htmlEsc(x.advisor)} — ${htmlEsc(x.reason)} (นักศึกษา ${x.students} คน)</p>`).join('')}
     </div>` : ''}
-    ${r['ไม่มีอาจารย์ที่ปรึกษา'] ? `<p class="text-xs text-amber-600">* นักศึกษา ${r['ไม่มีอาจารย์ที่ปรึกษา']} คนยังไม่ได้ระบุอาจารย์ที่ปรึกษา จึงไม่มีใครได้รับรายชื่อของนักศึกษากลุ่มนี้</p>` : ''}
+    ${r['ไม่มีอาจารย์ที่ปรึกษา'] ? `<p class="text-xs text-amber-600">* นักศึกษา ${r['ไม่มีอาจารย์ที่ปรึกษา']} คนยังไม่ได้ระบุอาจารย์ที่ปรึกษา จึงไม่อยู่ในอีเมลฉบับใด</p>` : ''}
+
+    <div class="border border-blue-100 rounded-xl p-3">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <p class="text-sm font-semibold text-gray-800">เลือกอาจารย์ที่จะแจ้ง</p>
+        <p class="text-xs text-gray-500">เลือกแล้ว <b id="engMailPicked" class="text-primary text-sm">0</b> ท่าน</p>
+      </div>
+      <div class="flex flex-col sm:flex-row gap-2 mb-2">
+        <input id="engMailQ" type="search" oninput="engMailFilter('q', this.value)" placeholder="ค้นหาชื่อ-สกุลอาจารย์"
+          class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm" data-nodraft="1">
+        <select id="engMailDept" onchange="engMailFilter('dept', this.value)" class="sm:w-60 border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" data-nodraft="1">
+          <option value="">ทุกสาขา</option>
+          ${depts.map(d => `<option value="${htmlEsc(d)}">${htmlEsc(d)}</option>`).join('')}
+          ${list.some(x => !norm(x.department)) ? '<option value="__none">ไม่ระบุสาขา</option>' : ''}
+        </select>
+      </div>
+      <div class="flex flex-wrap gap-2 mb-2 text-xs">
+        <button data-no-loading type="button" onclick="engMailPickShown(true)" class="px-2.5 py-1 rounded-lg bg-primaryLight text-primary hover:bg-primary hover:text-white transition">เลือกทั้งหมดที่แสดง</button>
+        <button data-no-loading type="button" onclick="engMailPickShown(false)" class="px-2.5 py-1 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition">ยกเลิกที่แสดง</button>
+      </div>
+      <div id="engMailList" class="max-h-64 overflow-y-auto divide-y divide-gray-100 border border-gray-100 rounded-lg"></div>
+    </div>
+
     <div class="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-800">
-      ส่งเฉพาะอีเมลโดเมนของวิทยาลัย · ไม่มีเลขบัตรประชาชนในอีเมล · บันทึกการส่งทุกครั้งเพื่อตรวจสอบย้อนหลัง
+      ส่งเฉพาะอีเมลโดเมนของวิทยาลัย · ไม่มีเลขบัตรประชาชนในอีเมล · อีเมลตอบกลับไม่ได้ · บันทึกการส่งทุกครั้งเพื่อตรวจสอบย้อนหลัง
     </div>
     <div class="flex flex-col sm:flex-row gap-2">
       <button onclick="engMailRun('test')" class="flex-1 border border-primary text-primary py-2.5 rounded-xl text-sm hover:bg-primaryLight">ส่งทดสอบถึงตัวเองก่อน</button>
-      <button onclick="engMailRun('send')" class="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl text-sm hover:bg-emerald-700">ส่งจริงถึงอาจารย์ ${r['อาจารย์ที่จะได้รับอีเมล']} ท่าน</button>
+      <button id="engMailSendBtn" onclick="engMailRun('send')" class="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl text-sm hover:bg-emerald-700">ส่งจริงถึงอาจารย์ที่เลือก</button>
     </div>
     <div id="engMailResult"></div>`;
+  engMailRenderList();
   if (window.lucide) lucide.createIcons();
 }
 
+function engMailShown() {
+  const st = window._engMail; if (!st) return [];
+  const q = norm(st.q).toLowerCase().replace(/\s+/g, '');
+  return st.list.filter(x => {
+    if (st.dept === '__none' ? norm(x.department) : (st.dept && norm(x.department) !== st.dept)) return false;
+    if (q && !(norm(x.name).toLowerCase().replace(/\s+/g, '').includes(q) || norm(x.email).toLowerCase().includes(q))) return false;
+    return true;
+  });
+}
+function engMailRenderList() {
+  const st = window._engMail, box = document.getElementById('engMailList');
+  if (!st || !box) return;
+  const shown = engMailShown();
+  box.innerHTML = shown.length ? shown.map(x => `
+    <label class="flex items-start gap-3 px-3 py-2 ${x.ok ? 'cursor-pointer hover:bg-surface' : 'opacity-60'}">
+      <input type="checkbox" class="mt-1 rounded" ${x.ok ? '' : 'disabled'} ${st.picked.has(x.key) ? 'checked' : ''}
+        onchange="engMailToggle(${JSON.stringify(x.key).replace(/"/g, '&quot;')}, this.checked)" data-nodraft="1">
+      <span class="flex-1 min-w-0">
+        <span class="block text-sm text-gray-800">${htmlEsc(x.name)} <span class="text-xs text-red-600">· ยังไม่ผ่าน ${x.students} คน</span></span>
+        <span class="block text-xs text-gray-500 truncate">${htmlEsc(x.department || 'ไม่ระบุสาขา')} · ${x.ok ? htmlEsc(x.email) : '<span class="text-amber-700">' + htmlEsc(x.reason) + '</span>'}</span>
+      </span>
+    </label>`).join('') : '<p class="px-3 py-6 text-center text-sm text-gray-400">ไม่พบอาจารย์ตามเงื่อนไขที่กรอง</p>';
+  const n = document.getElementById('engMailPicked'); if (n) n.textContent = st.picked.size;
+  const b = document.getElementById('engMailSendBtn');
+  if (b) { b.textContent = 'ส่งจริงถึงอาจารย์ที่เลือก ' + st.picked.size + ' ท่าน'; b.disabled = !st.picked.size; b.classList.toggle('opacity-50', !st.picked.size); }
+}
+function engMailFilter(k, v) { if (!window._engMail) return; window._engMail[k] = v; engMailRenderList(); }
+function engMailToggle(key, on) {
+  const st = window._engMail; if (!st) return;
+  if (on) st.picked.add(key); else st.picked.delete(key);
+  engMailRenderList();
+}
+function engMailPickShown(on) {
+  const st = window._engMail; if (!st) return;
+  engMailShown().filter(x => x.ok).forEach(x => { if (on) st.picked.add(x.key); else st.picked.delete(x.key); });
+  engMailRenderList();
+}
+
 async function engMailRun(mode) {
-  if (mode === 'send' && !confirm('ยืนยันส่งอีเมลถึงอาจารย์ที่ปรึกษาทุกท่าน?\nอีเมลจะมีรายชื่อและคะแนนของนักศึกษาที่ยังไม่ผ่าน')) return;
+  const st = window._engMail;
+  const keys = st ? [...st.picked] : [];
+  if (!keys.length) { showToast('กรุณาเลือกอาจารย์อย่างน้อย 1 ท่าน', 'error'); return; }
+  if (mode === 'send' && !confirm('ยืนยันส่งอีเมลถึงอาจารย์ที่ปรึกษา ' + keys.length + ' ท่านที่เลือก?\nอีเมลจะมีรายชื่อและคะแนนของนักศึกษาในความดูแลของแต่ละท่าน')) return;
   const out = document.getElementById('engMailResult');
   if (out) out.innerHTML = '<p class="text-sm text-gray-500 mt-2">กำลังส่ง...</p>';
-  const r = await engMailCall(mode);
+  const r = await engMailCall(mode, { advisors: keys });
   if (!out) return;
-  if (!r.isOk) { out.innerHTML = `<p class="text-sm text-red-600 mt-2">${r.error || 'ส่งไม่สำเร็จ'}</p>`; return; }
+  if (!r.isOk) { out.innerHTML = `<p class="text-sm text-red-600 mt-2">${htmlEsc(r.error || 'ส่งไม่สำเร็จ')}</p>`; return; }
   const rows = r['รายละเอียด'] || [];
   out.innerHTML = `<div class="mt-2 p-3 bg-green-50 border border-green-200 rounded-xl">
-    <p class="text-sm font-semibold text-green-700">ส่งสำเร็จ ${r['ส่งสำเร็จ']} จาก ${r['ทั้งหมด']} ฉบับ <span class="font-normal text-gray-500">(${r['ช่องทาง'] || ''})</span></p>
-    <div class="max-h-40 overflow-auto mt-2">${rows.map(x => `<p class="text-xs ${x['สำเร็จ'] ? 'text-gray-600' : 'text-red-600'}">${x['สำเร็จ'] ? '✓' : '✗'} ${x['อาจารย์']} · ${x['อีเมล']} · ${x['นักศึกษา']} คน ${x['สาเหตุ'] ? '— ' + x['สาเหตุ'] : ''}</p>`).join('')}</div>
+    <p class="text-sm font-semibold text-green-700">${mode === 'test' ? 'ส่งทดสอบถึงอีเมลของคุณแล้ว (ใช้ข้อมูลของอาจารย์ท่านแรกที่เลือก)' : 'ส่งสำเร็จ ' + r['ส่งสำเร็จ'] + ' จาก ' + r['ทั้งหมด'] + ' ฉบับ'} <span class="font-normal text-gray-500">(${htmlEsc(r['ช่องทาง'] || '')})</span></p>
+    <div class="max-h-40 overflow-auto mt-2">${rows.map(x => `<p class="text-xs ${x['สำเร็จ'] ? 'text-gray-600' : 'text-red-600'}">${x['สำเร็จ'] ? '✓' : '✗'} ${htmlEsc(x['อาจารย์'])} · ${htmlEsc(x['อีเมล'])} · นักศึกษา ${x['นักศึกษา']} คน${x['สาเหตุ'] ? ' · ' + htmlEsc(x['สาเหตุ']) : ''}</p>`).join('')}</div>
   </div>`;
 }
 
@@ -5237,6 +5753,135 @@ const ENG_LEVELS = ['Beginner', 'Elementary', 'Intermediate', 'Upper Intermediat
 const ENG_EXT_TYPES = ['TOEIC', 'CU-TEP', 'IELTS', 'TOEIC-ITP', 'TOEFL', 'TU-GET', 'LICMU'];
 // คืน map { รหัสนักศึกษา: ระดับ PBRI } โดยยึด "การสอบ สบช. ครั้งล่าสุด" ของแต่ละคน
 // (ใช้กติกาเดียวกับการ์ดวิเคราะห์ผลสอบ เพื่อให้ตัวเลขตรงกัน)
+/* ================= ตารางรายชื่อผลสอบภาษาอังกฤษ (อาจารย์ / อาจารย์ประจำชั้น) =================
+   รูปแบบเดียวกับตารางในการ์ดภาพรวมผลการเรียน : ลำดับ · รหัส · ชื่อ-สกุล · ชั้นปี · ผลสอบครั้งล่าสุด · ปุ่มดูผลสอบ
+   "ครั้งล่าสุด" เรียงตามวันที่สอบก่อน ถ้าวันที่อ่านไม่ออกหรือเท่ากัน ใช้ครั้งที่สอบตัดสิน */
+function engSortKey(e) {
+  const d = parseDate(e && e.eng_date);
+  const t = (d && !isNaN(d)) ? d.getTime() : 0;
+  return [t, parseInt(norm(e && e.eng_attempt), 10) || 0];
+}
+function engIsLater(a, b) {
+  const ka = engSortKey(a), kb = engSortKey(b);
+  return ka[0] !== kb[0] ? ka[0] > kb[0] : ka[1] > kb[1];
+}
+function engLatestOf(list) {
+  let best = null;
+  (list || []).forEach(e => { if (!best || engIsLater(e, best)) best = e; });
+  return best;
+}
+function engStatusBadge(st) {
+  const v = norm(st);
+  const cls = v === 'ผ่าน' ? 'bg-green-100 text-green-700' : v === 'ไม่เข้าสอบ' ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700';
+  return v ? `<span class="px-2 py-0.5 rounded-full text-xs ${cls}">${htmlEsc(v)}</span>` : '';
+}
+function engStudentTableHTML(sc) {
+  const by = {};
+  (sc.allEng || []).forEach(e => { const k = norm(e.student_id); (by[k] = by[k] || []).push(e); });
+  const list = (sc.students || []).slice().sort((a, b) => norm(a.student_id).localeCompare(norm(b.student_id)));
+  const rows = list.map((s, i) => {
+    const sid = norm(s.student_id);
+    const mine = by[sid] || [];
+    const last = engLatestOf(mine);
+    const passed = sc.passedIds && sc.passedIds.has(sid);
+    let lastTxt = '<span class="text-xs text-gray-300">ยังไม่มีผลสอบ</span>';
+    if (last) {
+      const isSbch = norm(last.eng_type) === 'สบช.';
+      const absent = norm(last.eng_status) === 'ไม่เข้าสอบ';
+      const lv = absent ? '' : (norm(last.eng_level) || (isSbch ? getEngLevel(Number(last.eng_score) || 0) : ''));
+      lastTxt = `<div class="flex flex-wrap items-center gap-1.5">
+          <span class="font-medium">${htmlEsc(norm(last.eng_type) || '-')}</span>
+          ${absent ? '' : `<span class="tabular-nums">${htmlEsc(norm(last.eng_score) || '-')} คะแนน</span>`}
+          ${lv ? `<span class="text-xs text-blue-700">(${htmlEsc(lv)})</span>` : ''}
+          ${engStatusBadge(last.eng_status)}
+        </div>
+        <div class="text-[11px] text-gray-400">${norm(last.eng_attempt) ? 'ครั้งที่ ' + htmlEsc(norm(last.eng_attempt)) + ' · ' : ''}${htmlEsc(formatDate(last.eng_date) || '-')}${(passed && norm(last.eng_status) !== 'ผ่าน') ? ' · <span class="text-green-600">เคยสอบผ่านแล้ว</span>' : ''}</div>`;
+    }
+    return `<tr class="border-t border-gray-50 hover:bg-gray-50">
+      <td class="px-3 py-2 text-center text-gray-400">${i + 1}</td>
+      <td class="px-3 py-2 font-mono text-primary">${htmlEsc(sid)}</td>
+      <td class="px-3 py-2">${studentDisplayName(s)}</td>
+      <td class="px-3 py-2 text-center">${htmlEsc(norm(s.year_level) || '-')}</td>
+      <td class="px-3 py-2">${lastTxt}</td>
+      <td class="px-3 py-2 text-center">${mine.length
+        ? `<button onclick="showStudentEngSheet('${htmlEsc(sid)}')" class="text-gray-400 hover:text-primary" title="ดูผลสอบภาษาอังกฤษ"><i data-lucide="eye" class="w-4 h-4"></i></button>`
+        : '<span class="text-xs text-gray-300">ยังไม่มีผล</span>'}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="mt-4 pt-4 border-t border-gray-100">
+    <p class="text-sm font-semibold text-gray-600 mb-2"><i data-lucide="list-ordered" class="w-4 h-4 inline mr-1"></i>รายชื่อนักศึกษาและผลสอบ
+      <span class="font-normal text-gray-400">(${list.length} คน${APP.filters._engYear ? ' · ปีการศึกษา ' + htmlEsc(APP.filters._engYear) : ''})</span></p>
+    <p class="text-xs text-gray-500 mb-2">กดปุ่ม <i data-lucide="eye" class="w-3.5 h-3.5 inline"></i> เพื่อดูผลสอบทุกครั้งของนักศึกษาแต่ละคน</p>
+    <div class="border border-gray-100 rounded-xl overflow-hidden">
+      <div class="overflow-auto" style="max-height:420px"><table class="w-full text-sm">
+        <thead class="sticky top-0 z-10"><tr class="bg-surface text-left">
+          <th class="px-3 py-2 font-semibold text-center">ลำดับ</th>
+          <th class="px-3 py-2 font-semibold">รหัสนักศึกษา</th>
+          <th class="px-3 py-2 font-semibold">ชื่อ-สกุล</th>
+          <th class="px-3 py-2 font-semibold text-center">ชั้นปี</th>
+          <th class="px-3 py-2 font-semibold">ผลสอบครั้งล่าสุด</th>
+          <th class="px-3 py-2 font-semibold text-center">ผลสอบภาษาอังกฤษ</th>
+        </tr></thead>
+        <tbody>${rows || '<tr><td colspan="6" class="px-3 py-6 text-center text-gray-400">ไม่มีนักศึกษาในกลุ่มนี้</td></tr>'}</tbody>
+      </table></div>
+    </div>
+  </div>`;
+}
+// หน้าต่างผลสอบภาษาอังกฤษทุกครั้งของนักศึกษาหนึ่งคน (เรียงจากล่าสุด)
+function showStudentEngSheet(sid) {
+  sid = norm(sid);
+  const stu = getDataByType('student').filter(x => norm(x.student_id) === sid)[0] || {};
+  const list = getDataByType('eng_result').filter(e => norm(e.student_id) === sid)
+    .slice().sort((a, b) => engIsLater(a, b) ? -1 : engIsLater(b, a) ? 1 : 0);
+  const passed = list.some(e => norm(e.eng_status) === 'ผ่าน');
+  const rows = list.map(e => {
+    const isSbch = norm(e.eng_type) === 'สบช.';
+    const absent = norm(e.eng_status) === 'ไม่เข้าสอบ';
+    const lv = absent ? '' : (norm(e.eng_level) || (isSbch ? getEngLevel(Number(e.eng_score) || 0) : ''));
+    return `<tr class="border-t border-gray-50">
+      <td class="px-3 py-2 font-medium">${htmlEsc(norm(e.eng_type) || '-')}</td>
+      <td class="px-3 py-2 text-center">${isSbch ? htmlEsc(norm(e.eng_listening) || '-') : '-'}</td>
+      <td class="px-3 py-2 text-center">${isSbch ? htmlEsc(norm(e.eng_grammar) || '-') : '-'}</td>
+      <td class="px-3 py-2 text-center">${isSbch ? htmlEsc(norm(e.eng_reading) || '-') : '-'}</td>
+      <td class="px-3 py-2 text-center font-semibold">${htmlEsc(norm(e.eng_score) || '-')}</td>
+      <td class="px-3 py-2 text-xs text-blue-700">${htmlEsc(lv || '-')}</td>
+      <td class="px-3 py-2 text-center">${htmlEsc(norm(e.eng_attempt) || '-')}</td>
+      <td class="px-3 py-2 whitespace-nowrap">${htmlEsc(formatDate(e.eng_date) || '-')}</td>
+      <td class="px-3 py-2 text-center">${htmlEsc(norm(e.academic_year) || '-')}</td>
+      <td class="px-3 py-2">${engStatusBadge(e.eng_status)}</td>
+    </tr>`;
+  }).join('');
+  const body = `<div class="space-y-4">
+    <div class="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <p class="font-semibold text-gray-800">${studentDisplayName(stu) || '-'}</p>
+        <p class="text-xs text-gray-500 font-mono">${htmlEsc(sid)}${norm(stu.year_level) ? ' · ชั้นปี ' + htmlEsc(norm(stu.year_level)) : ''}${norm(stu.room) ? ' · ห้อง ' + htmlEsc(norm(stu.room)) : ''}</p>
+      </div>
+      <div class="text-right">
+        <p class="text-xs text-gray-500">ผลรวม</p>
+        <p class="text-lg font-bold ${passed ? 'text-green-600' : 'text-red-600'}">${passed ? 'สอบผ่านแล้ว' : 'ยังไม่ผ่าน'}</p>
+        <p class="text-[11px] text-gray-500">เข้าสอบทั้งหมด ${list.length} ครั้ง</p>
+      </div>
+    </div>
+    ${list.length ? `<div class="border border-gray-100 rounded-xl overflow-hidden"><div class="overflow-auto" style="max-height:52vh"><table class="w-full text-sm">
+      <thead class="sticky top-0 z-10"><tr class="bg-surface text-left">
+        <th class="px-3 py-2 font-semibold">รูปแบบ</th>
+        <th class="px-3 py-2 font-semibold text-center">Listening</th>
+        <th class="px-3 py-2 font-semibold text-center">Grammar</th>
+        <th class="px-3 py-2 font-semibold text-center">Reading</th>
+        <th class="px-3 py-2 font-semibold text-center">คะแนนรวม</th>
+        <th class="px-3 py-2 font-semibold">ระดับ</th>
+        <th class="px-3 py-2 font-semibold text-center">ครั้งที่</th>
+        <th class="px-3 py-2 font-semibold">วันที่สอบ</th>
+        <th class="px-3 py-2 font-semibold text-center">ปีการศึกษา</th>
+        <th class="px-3 py-2 font-semibold">สถานะ</th>
+      </tr></thead><tbody>${rows}</tbody></table></div></div>`
+      : '<p class="text-center text-gray-400 py-8">ยังไม่มีผลสอบภาษาอังกฤษ</p>'}
+  </div>`;
+  showModal('ผลสอบภาษาอังกฤษ <span class="text-sm font-normal text-gray-500">— ' + htmlEsc(studentDisplayName(stu) || sid) + '</span>', body, null, 'max-w-4xl');
+  if (window.lucide) lucide.createIcons();
+}
+
 function engLatestPbriLevelMap(engList) {
   const attNum = e => parseInt(norm(e.eng_attempt), 10) || 0;
   const isLater = (a, b) => { const aa = attNum(a), ab = attNum(b); if (aa !== ab) return aa > ab; return norm(a.eng_date) > norm(b.eng_date); };
@@ -8130,13 +8775,16 @@ function annMyYear() {
 }
 function annVisibleTo(a, role) {
   // ประกาศที่เจาะจงรายบุคคล (เช่น แจ้งผู้คุมสอบ) — เห็นเฉพาะคนที่มีชื่อ + ผู้ดูแล/งานวิชาการ
+  // รายชื่อเจาะจง (เช่น ผู้คุมสอบ) เห็นเสมอ และ "เพิ่ม" จากบทบาทที่เลือก ไม่ได้แทนที่
+  // ถ้าไม่ได้เลือกบทบาทเลยแต่มีรายชื่อ = ประกาศเฉพาะคนในรายชื่อ
   const targets = annParseNames(a && a.target_names);
+  const rs = annParseRoles(a && a.roles);
   if (targets.length) {
     if (role === 'admin' || role === 'academic') return true;
     const myKey = annNameKey((APP.currentUser && APP.currentUser.name) || '');
-    return !!myKey && targets.some(n => annNameKey(n) === myKey);
+    if (myKey && targets.some(n => annNameKey(n) === myKey)) return true;
+    if (!rs.length) return false;
   }
-  const rs = annParseRoles(a && a.roles);
   if (rs.length && rs.indexOf(role) === -1) return false;
   // นักศึกษา: ถ้าประกาศระบุชั้นปีไว้ ต้องตรงกับชั้นปีของตนเท่านั้น
   if (role === 'student') {
@@ -8399,13 +9047,13 @@ function trackingPage() {
     const submitted = subjectsFiltered.filter(s => isTracked(s));
     if (notSubmitted.length) {
       notSubmittedSection = `<div class="bg-red-50 rounded-2xl p-4 border border-red-200 mb-4">
-        <h3 onclick="this.parentElement.querySelector('.tracking-list-body').classList.toggle('hidden')" class="font-bold text-red-700 mb-2 text-sm flex items-center gap-2 cursor-pointer select-none"><i data-lucide="alert-triangle" class="w-4 h-4"></i>รายวิชาที่ยังไม่ส่งรายละเอียด (${notSubmitted.length} วิชา) <i data-lucide="chevron-down" class="w-4 h-4 ml-auto"></i></h3>
+        <h3 onclick="(window.emsSmoothToggle||function(e){e.classList.toggle('hidden')})(this.parentElement.querySelector('.tracking-list-body'))" class="font-bold text-red-700 mb-2 text-sm flex items-center gap-2 cursor-pointer select-none"><i data-lucide="alert-triangle" class="w-4 h-4"></i>รายวิชาที่ยังไม่ส่งรายละเอียด (${notSubmitted.length} วิชา) <i data-lucide="chevron-down" class="w-4 h-4 ml-auto"></i></h3>
         <div class="flex flex-wrap gap-2 tracking-list-body">${notSubmitted.map(s => `<span class="px-3 py-1 bg-white border border-red-200 rounded-lg text-xs text-red-700">${s.subject_code ? s.subject_code + ' ' : ''}${s.subject_name || ''} <span class="text-gray-400">(ภาค ${s.semester || ''})</span></span>`).join('')}</div>
       </div>`;
     }
     if (submitted.length) {
       notSubmittedSection += `<div class="bg-green-50 rounded-2xl p-4 border border-green-200 mb-4">
-        <h3 onclick="this.parentElement.querySelector('.tracking-list-body').classList.toggle('hidden')" class="font-bold text-green-700 mb-2 text-sm flex items-center gap-2 cursor-pointer select-none"><i data-lucide="check-circle" class="w-4 h-4"></i>รายวิชาที่ส่งรายละเอียดแล้ว (${submitted.length} วิชา) <i data-lucide="chevron-down" class="w-4 h-4 ml-auto"></i></h3>
+        <h3 onclick="(window.emsSmoothToggle||function(e){e.classList.toggle('hidden')})(this.parentElement.querySelector('.tracking-list-body'))" class="font-bold text-green-700 mb-2 text-sm flex items-center gap-2 cursor-pointer select-none"><i data-lucide="check-circle" class="w-4 h-4"></i>รายวิชาที่ส่งรายละเอียดแล้ว (${submitted.length} วิชา) <i data-lucide="chevron-down" class="w-4 h-4 ml-auto"></i></h3>
         <div class="flex flex-wrap gap-2 tracking-list-body hidden">${submitted.map(s => `<span class="px-3 py-1 bg-white border border-green-200 rounded-lg text-xs text-green-700">${s.subject_code ? s.subject_code + ' ' : ''}${s.subject_name || ''} <span class="text-gray-400">(ภาค ${s.semester || ''})</span></span>`).join('')}</div>
       </div>`;
     }
@@ -8655,13 +9303,13 @@ function resultTrackingPage() {
     const submitted = subjectsFiltered.filter(s => isTracked(s));
     if (notSubmitted.length) {
       notSubmittedSection = `<div class="bg-red-50 rounded-2xl p-4 border border-red-200 mb-4">
-        <h3 onclick="this.parentElement.querySelector('.tracking-list-body').classList.toggle('hidden')" class="font-bold text-red-700 mb-2 text-sm flex items-center gap-2 cursor-pointer select-none"><i data-lucide="alert-triangle" class="w-4 h-4"></i>รายวิชาที่ยังไม่ส่งผลการดำเนินงาน (${notSubmitted.length} วิชา) <i data-lucide="chevron-down" class="w-4 h-4 ml-auto"></i></h3>
+        <h3 onclick="(window.emsSmoothToggle||function(e){e.classList.toggle('hidden')})(this.parentElement.querySelector('.tracking-list-body'))" class="font-bold text-red-700 mb-2 text-sm flex items-center gap-2 cursor-pointer select-none"><i data-lucide="alert-triangle" class="w-4 h-4"></i>รายวิชาที่ยังไม่ส่งผลการดำเนินงาน (${notSubmitted.length} วิชา) <i data-lucide="chevron-down" class="w-4 h-4 ml-auto"></i></h3>
         <div class="flex flex-wrap gap-2 tracking-list-body">${notSubmitted.map(s => `<span class="px-3 py-1 bg-white border border-red-200 rounded-lg text-xs text-red-700">${s.subject_code ? s.subject_code + ' ' : ''}${s.subject_name || ''} <span class="text-gray-400">(ภาค ${s.semester || ''})</span></span>`).join('')}</div>
       </div>`;
     }
     if (submitted.length) {
       notSubmittedSection += `<div class="bg-green-50 rounded-2xl p-4 border border-green-200 mb-4">
-        <h3 onclick="this.parentElement.querySelector('.tracking-list-body').classList.toggle('hidden')" class="font-bold text-green-700 mb-2 text-sm flex items-center gap-2 cursor-pointer select-none"><i data-lucide="check-circle" class="w-4 h-4"></i>รายวิชาที่ส่งผลการดำเนินงานแล้ว (${submitted.length} วิชา) <i data-lucide="chevron-down" class="w-4 h-4 ml-auto"></i></h3>
+        <h3 onclick="(window.emsSmoothToggle||function(e){e.classList.toggle('hidden')})(this.parentElement.querySelector('.tracking-list-body'))" class="font-bold text-green-700 mb-2 text-sm flex items-center gap-2 cursor-pointer select-none"><i data-lucide="check-circle" class="w-4 h-4"></i>รายวิชาที่ส่งผลการดำเนินงานแล้ว (${submitted.length} วิชา) <i data-lucide="chevron-down" class="w-4 h-4 ml-auto"></i></h3>
         <div class="flex flex-wrap gap-2 tracking-list-body hidden">${submitted.map(s => `<span class="px-3 py-1 bg-white border border-green-200 rounded-lg text-xs text-green-700">${s.subject_code ? s.subject_code + ' ' : ''}${s.subject_name || ''} <span class="text-gray-400">(ภาค ${s.semester || ''})</span></span>`).join('')}</div>
       </div>`;
     }
@@ -10524,36 +11172,11 @@ async function pwOtpConfirm(mode) {
   }
 }
 
-// แท็บในหน้าตั้งค่า (ผู้ดูแลระบบ): จัดการผู้ใช้ / บันทึกการเปลี่ยนรหัสผ่าน
-function changeSettingsTab(t) { APP._settingsTab = t; renderCurrentPage(); }
-
-function passwordLogSection() {
-  const roleLabels = { admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อาจารย์ประจำชั้น', deptHead: 'ประธานสาขา', registrar: 'เจ้าหน้าที่งานทะเบียน', student: 'นักศึกษา' };
-  const actionLabels = { forgot: 'ลืมรหัสผ่าน (รีเซ็ตผ่านอีเมล)', reset: 'ลืมรหัสผ่าน (รีเซ็ตผ่านอีเมล)', change: 'เปลี่ยนรหัสผ่านในระบบ' };
-  let logs = getDataByType('password_log').slice();
-  logs.sort((a, b) => String(b.created_at || b.timestamp || '').localeCompare(String(a.created_at || a.timestamp || '')));
-  const rows = logs.map(l => `<tr class="border-t hover:bg-gray-50">
-    <td class="px-4 py-3 text-sm whitespace-nowrap">${l.timestamp || ''}</td>
-    <td class="px-4 py-3 text-sm">${l.user_name || ''}</td>
-    <td class="px-4 py-3 text-sm">${l.email || ''}</td>
-    <td class="px-4 py-3 text-sm">${roleLabels[l.role] || l.role || ''}</td>
-    <td class="px-4 py-3 text-sm"><span class="px-2 py-1 rounded-full text-xs ${l.action === 'change' ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-700'}">${actionLabels[l.action] || l.action || ''}</span></td>
-  </tr>`).join('');
-  return `<div class="bg-white rounded-2xl p-5 border border-blue-100">
-    <h3 class="font-bold mb-1 flex items-center gap-2"><i data-lucide="key-round" class="w-5 h-5 text-primary"></i>บันทึกการเปลี่ยนรหัสผ่าน</h3>
-    <p class="text-xs text-gray-500 mb-4">บันทึกทุกครั้งที่มีการตั้ง/เปลี่ยนรหัสผ่านผ่านอีเมล (ล่าสุดอยู่บนสุด) — รวม ${logs.length} รายการ</p>
-    <div class="overflow-x-auto"><table class="w-full text-sm">
-      <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">วันที่-เวลา</th><th class="px-4 py-3 font-semibold">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold">อีเมล</th><th class="px-4 py-3 font-semibold">บทบาท</th><th class="px-4 py-3 font-semibold">ประเภท</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">ยังไม่มีบันทึกการเปลี่ยนรหัสผ่าน</td></tr>'}</tbody>
-    </table></div>
-  </div>`;
-}
-
 function settingsPage() {
   const roles = ['admin', 'academic', 'registrar', 'deptHead', 'executive', 'teacher', 'classTeacher', 'otherStaff', 'student'];
-  const modules = ['dashboard', 'curriculum', 'ploAssess', 'students', 'teachers', 'advisors', 'specialTeachers', 'alumni', 'schedule', 'subjects', 'grades', 'engResults', 'teacherDirectory', 'services', 'tracking', 'resultTracking', 'gradeTracking', 'fileTracking', 'leave', 'workload', 'survey',
+  const modules = ['dashboard', 'curriculum', 'ploAssess', 'students', 'teachers', 'advisors', 'specialTeachers', 'practicumSites', 'alumni', 'schedule', 'subjects', 'grades', 'engResults', 'teacherDirectory', 'services', 'tracking', 'resultTracking', 'gradeTracking', 'fileTracking', 'leave', 'workload', 'survey',
     'evalCourse', 'evalDo', 'evalSetup', 'evalReport', 'evalMine', 'counsel'];
-  const moduleLabels = { dashboard: 'หน้าหลัก', curriculum: 'ข้อมูลหลักสูตร', ploAssess: 'ประเมินผลหลักสูตร PLOs', students: 'ข้อมูลนักศึกษา', teachers: 'ข้อมูลอาจารย์', advisors: 'ข้อมูลอาจารย์ที่ปรึกษา', specialTeachers: 'ข้อมูลอาจารย์พิเศษ', alumni: 'ข้อมูลศิษย์เก่า', schedule: 'ปฏิทินกิจกรรมวิชาการ', subjects: 'รายวิชาที่เปิดสอน', grades: 'ผลการเรียน', engResults: 'ผลสอบ ENG', teacherDirectory: 'ทำเนียบอาจารย์', services: 'บริการอื่นๆ', tracking: 'ติดตามการส่งรายละเอียดรายวิชา', resultTracking: 'ติดตามการส่งผลการดำเนินงานรายวิชา', gradeTracking: 'ติดตามการส่งเกรดรายวิชา', fileTracking: 'ติดตามส่งแฟ้มรายวิชา', leave: 'ระบบการลาของนักศึกษา', workload: 'ภาระงานนักศึกษา (Student workload)', survey: 'แบบประเมินความพึงพอใจ',
+  const moduleLabels = { dashboard: 'หน้าหลัก', curriculum: 'ข้อมูลหลักสูตร', ploAssess: 'ประเมินผลหลักสูตร PLOs', students: 'ข้อมูลนักศึกษา', teachers: 'ข้อมูลอาจารย์', advisors: 'ข้อมูลอาจารย์ที่ปรึกษา', specialTeachers: 'ข้อมูลอาจารย์พิเศษ', practicumSites: 'ข้อมูลแหล่งฝึกภาคปฏิบัติ', alumni: 'ข้อมูลศิษย์เก่า', schedule: 'ปฏิทินกิจกรรมวิชาการ', subjects: 'รายวิชาที่เปิดสอน', grades: 'ผลการเรียน', engResults: 'ผลสอบ ENG', teacherDirectory: 'ทำเนียบอาจารย์', services: 'บริการอื่นๆ', tracking: 'ติดตามการส่งรายละเอียดรายวิชา', resultTracking: 'ติดตามการส่งผลการดำเนินงานรายวิชา', gradeTracking: 'ติดตามการส่งเกรดรายวิชา', fileTracking: 'ติดตามส่งแฟ้มรายวิชา', leave: 'ระบบการลาของนักศึกษา', workload: 'ภาระงานนักศึกษา (Student workload)', survey: 'แบบประเมินความพึงพอใจ',
     evalCourse: 'ประเมินผลรายวิชา (เห็นกลุ่มเมนู)',
     evalDo: '— ประเมินรายวิชา (นักศึกษาตอบ)',
     evalSetup: '— ตั้งค่าแบบประเมิน + คลังข้อคำถาม',
@@ -10571,15 +11194,11 @@ function settingsPage() {
     <td class="px-4 py-3"><div class="flex gap-1">${(typeof emsCanViewAs === 'function' && emsCanViewAs()) ? `<button onclick="emsViewAsUser('${u.__backendId}')" class="text-amber-500 hover:text-amber-700" title="ดูแทนผู้ใช้ (อ่านอย่างเดียว)"><i data-lucide="eye" class="w-4 h-4"></i></button>` : ''}<button onclick="showEditUserModal('${u.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${u.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>
   </tr>`).join('');
 
-  const _stab = APP._settingsTab || 'users';
-  const _tabBar = `<h2 class="text-xl font-bold text-gray-800 mb-6"><i data-lucide="settings" class="w-6 h-6 inline mr-2"></i>ตั้งค่าระบบ</h2>
-  <div class="flex gap-1 mb-5 border-b">
-    <button onclick="changeSettingsTab('users')" class="px-4 py-2 text-sm font-medium ${_stab === 'users' ? 'border-b-2 border-primary text-primary' : 'text-gray-500 hover:text-gray-700'}"><i data-lucide="users" class="w-4 h-4 inline mr-1"></i>จัดการผู้ใช้งาน</button>
-    <button onclick="changeSettingsTab('pwlog')" class="px-4 py-2 text-sm font-medium ${_stab === 'pwlog' ? 'border-b-2 border-primary text-primary' : 'text-gray-500 hover:text-gray-700'}"><i data-lucide="key-round" class="w-4 h-4 inline mr-1"></i>บันทึกการเปลี่ยนรหัสผ่าน</button>
-  </div>`;
-  if (_stab === 'pwlog') return _tabBar + passwordLogSection();
+  // หน้า "บันทึกการเปลี่ยนรหัสผ่าน" ถอดออกแล้ว — ทุกคนเข้าระบบด้วยอีเมลวิทยาลัย (Google) ไม่มีรหัสผ่านของระบบให้เปลี่ยน
+  const _tabBar = `<h2 class="text-xl font-bold text-gray-800 mb-6"><i data-lucide="settings" class="w-6 h-6 inline mr-2"></i>ตั้งค่าระบบ</h2>`;
   return _tabBar + `
   <div id="driveLinkBox" class="mb-6"></div>
+  <div id="lineGroupBox" class="mb-6"></div>
   
   <div class="bg-white rounded-2xl p-5 border border-blue-100 mb-6">
     <div class="flex items-center justify-between mb-4">
@@ -11396,8 +12015,72 @@ function toggleLeaveSubjectHours(checkbox) {
 // updateEvalTeacherOptions / setEvalScore removed (eval feature removed)
 
 // ======================== INIT PAGE SCRIPTS ========================
+// ======================== กลุ่ม LINE ที่รับประกาศ (หน้าตั้งค่าระบบ) ========================
+// กลุ่มถูกเพิ่มอัตโนมัติเมื่อเชิญบอทของวิทยาลัยเข้ากลุ่ม (Edge Function line-webhook)
+// กลุ่มใหม่เริ่มที่ "รออนุมัติ" — ผู้ดูแลกดอนุมัติที่นี่ครั้งเดียว กลุ่มจึงจะได้รับประกาศ
+// สถานะเก็บที่ is_active ('1' = รับประกาศ, '0' = ไม่รับ) และเหตุผลอยู่ที่ note
+function lineGroupStatus(g) {
+  const on = !['0', 'false', 'ปิด'].includes(String(g.is_active == null ? '1' : g.is_active).trim());
+  const note = norm(g.note);
+  if (on) return { k: 'on', label: 'รับประกาศ', cls: 'bg-green-100 text-green-700' };
+  if (/^รออนุมัติ/.test(note)) return { k: 'pending', label: 'รออนุมัติ', cls: 'bg-amber-100 text-amber-700' };
+  if (/บอทออกจากกลุ่ม|ถูกเชิญออก/.test(note)) return { k: 'left', label: 'บอทไม่อยู่ในกลุ่มแล้ว', cls: 'bg-gray-100 text-gray-500' };
+  return { k: 'off', label: 'ปิดใช้งาน', cls: 'bg-gray-100 text-gray-500' };
+}
+async function renderLineGroupBox() {
+  const box = document.getElementById('lineGroupBox');
+  if (!box) return;
+  const { data, error } = await GSheetDB.client().from('line_group').select('id, name, is_active, note, updated_at').order('id');
+  const b2 = document.getElementById('lineGroupBox');
+  if (!b2) return;
+  if (error) { b2.innerHTML = ''; return; }   // บทบาทที่อ่านตารางนี้ไม่ได้ ไม่ต้องแสดง
+  const rows = (data || []).map(g => ({ g, st: lineGroupStatus(g) }));
+  const order = { pending: 0, on: 1, off: 2, left: 3 };
+  rows.sort((a, b) => order[a.st.k] - order[b.st.k] || a.g.id - b.g.id);
+  const pend = rows.filter(r => r.st.k === 'pending').length;
+  const hook = (window.EMS_CONFIG && window.EMS_CONFIG.SUPABASE_URL ? window.EMS_CONFIG.SUPABASE_URL : '') + '/functions/v1/line-webhook';
+  b2.innerHTML = `<div class="bg-white rounded-2xl p-5 border border-blue-100">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+      <h3 class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="message-circle" class="w-5 h-5 text-green-600"></i>กลุ่ม LINE ที่รับประกาศ
+        ${pend ? `<span class="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">รออนุมัติ ${pend} กลุ่ม</span>` : ''}</h3>
+      <button type="button" onclick="renderLineGroupBox()" class="text-xs text-primary hover:underline">รีเฟรช</button>
+    </div>
+    <p class="text-xs text-gray-500 mb-3">เชิญบอท LINE ของวิทยาลัยเข้ากลุ่มใหม่ ระบบจะเพิ่มกลุ่มให้ที่นี่เองในสถานะ "รออนุมัติ" — กดอนุมัติครั้งเดียว กลุ่มนั้นจึงจะได้รับประกาศ
+      (กันไม่ให้ประกาศหลุดไปกลุ่มภายนอกที่มีคนเชิญบอทเข้าไป)</p>
+    ${rows.length ? `<div class="overflow-x-auto"><table class="w-full text-sm">
+      <thead><tr class="bg-surface text-left"><th class="px-3 py-2 font-semibold">ชื่อกลุ่ม</th><th class="px-3 py-2 font-semibold">สถานะ</th><th class="px-3 py-2 font-semibold">หมายเหตุ</th><th class="px-3 py-2"></th></tr></thead>
+      <tbody>${rows.map(({ g, st }) => `<tr class="border-t">
+        <td class="px-3 py-2 font-medium">${htmlEsc(norm(g.name) || ('กลุ่ม ' + g.id))}</td>
+        <td class="px-3 py-2"><span class="px-2 py-0.5 rounded-full text-xs ${st.cls}">${st.label}</span></td>
+        <td class="px-3 py-2 text-xs text-gray-500">${htmlEsc(norm(g.note) || '-')}</td>
+        <td class="px-3 py-2 text-right whitespace-nowrap">${st.k === 'pending'
+          ? `<button onclick="lineGroupSet(${g.id},'1')" class="px-3 py-1 rounded-lg text-xs bg-green-600 text-white hover:bg-green-700">อนุมัติ</button> <button onclick="lineGroupSet(${g.id},'0')" class="px-3 py-1 rounded-lg text-xs border border-gray-200 text-gray-600 hover:bg-gray-50">ไม่อนุมัติ</button>`
+          : st.k === 'on'
+            ? `<button onclick="lineGroupSet(${g.id},'0')" class="px-3 py-1 rounded-lg text-xs border border-gray-200 text-gray-600 hover:bg-gray-50">หยุดส่ง</button>`
+            : st.k === 'off' ? `<button onclick="lineGroupSet(${g.id},'1')" class="px-3 py-1 rounded-lg text-xs border border-green-600 text-green-700 hover:bg-green-50">เปิดรับประกาศ</button>` : ''}</td>
+      </tr>`).join('')}</tbody></table></div>`
+      : '<p class="text-sm text-gray-400">ยังไม่มีกลุ่ม LINE ในระบบ</p>'}
+    <details class="mt-3 text-xs text-gray-500"><summary class="cursor-pointer">การตั้งค่าครั้งแรก (Webhook URL)</summary>
+      <p class="mt-2">ใน LINE Developers › Messaging API ใส่ Webhook URL นี้ แล้วเปิด Use webhook และเปิด Allow bot to join group chats</p>
+      <input readonly value="${htmlEsc(hook)}" onclick="this.select()" class="mt-1 w-full border rounded-lg px-2 py-1 font-mono text-xs bg-gray-50">
+    </details>
+  </div>`;
+  if (window.lucide) lucide.createIcons();
+}
+async function lineGroupSet(id, on) {
+  const now = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+  const who = (APP.currentUser && APP.currentUser.name) || '';
+  const note = on === '1' ? `อนุมัติแล้ว — โดย ${who} เมื่อ ${now}` : `ปิดใช้งาน — โดย ${who} เมื่อ ${now}`;
+  const { error } = await GSheetDB.client().from('line_group').update({ is_active: on, note, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) { showToast('บันทึกไม่สำเร็จ: ' + error.message, 'error'); return; }
+  window._annSendOpts = null;   // ให้ฟอร์มประกาศโหลดรายชื่อกลุ่มใหม่
+  showToast(on === '1' ? 'อนุมัติกลุ่มแล้ว กลุ่มนี้จะได้รับประกาศ' : 'ปิดการส่งประกาศเข้ากลุ่มนี้แล้ว');
+  renderLineGroupBox();
+}
+
 function initPageScripts(page) {
   if (page === 'dashboard') { renderCalendar('dashCalendar') }
+  if (page === 'settings' && document.getElementById('lineGroupBox')) { renderLineGroupBox(); }
   if (page === 'schedule') { renderCalendar('scheduleCalendar') }
 
   // Student leave form (multi-subject)
@@ -12139,6 +12822,7 @@ function showEditScheduleModal(id) {
   renderSchedProctorChips(2);
   updateSchedSplitState();
   window._schedWasExam = norm(s.schedule_type).includes('สอบ');
+  loadSchedNotifyChannels();
   document.getElementById('editScheduleForm').onsubmit = async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -12146,13 +12830,17 @@ function showEditScheduleModal(id) {
     // อ่านค่าการแจ้งเตือนก่อนปิด modal
     const notifyEl = document.getElementById('schedNotify');
     const doNotify = !!(notifyEl && notifyEl.checked);
-    const roles = doNotify ? annCollectRoles() : '';
-    const lineEl = document.getElementById('schedNotifyLine');
-    const sendLine = !!(lineEl && lineEl.checked);
+    const aud = doNotify ? schedCollectAudience() : null;
+    const ch = doNotify ? schedChannelOpts() : null;
+    if (doNotify && ch.line && !ch.lineGroups.length && !ch.broadcast) { showToast('เลือกกลุ่ม LINE อย่างน้อย 1 กลุ่ม หรือยกเลิกการส่ง LINE', 'error'); return; }
     await editRecord(id, 'editScheduleForm');
     if (doNotify) {
       const rec = APP.allData.find(d => d.__backendId === id);
-      if (rec) { await createScheduleAnnouncement(rec, roles, sendLine); showToast('บันทึกและสร้างประกาศแจ้งเตือนแล้ว'); }
+      if (rec) {
+        const res = await createScheduleAnnouncement(rec, aud, ch, null);
+        if (GSheetDB.refreshTab) { try { await GSheetDB.refreshTab('announcement'); } catch (_) { } }
+        showToast('บันทึกและประกาศในระบบแล้ว' + (res && res.msgs && res.msgs.length ? ' · ' + res.msgs.join(' · ') : ''));
+      }
     }
   };
 }
@@ -12305,22 +12993,143 @@ function showAddAnnouncementModal() {
       </div>
       ${annRolesFieldHTML('')}
       ${annYearFieldHTML('')}
-      <label class="flex items-center gap-2 bg-green-50 rounded-xl px-3 py-2 cursor-pointer"><input type="checkbox" name="line_notify" value="✓" class="w-4 h-4"><span class="text-sm text-green-700">📢 ส่งประกาศนี้เข้า LINE</span></label>
+      ${annChannelFieldHTML(null)}
       <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึก</button>
     </form>
   `);
+  loadAnnChannels(null);
   document.getElementById('addAnnForm').onsubmit = async (e) => {
     e.preventDefault();
+    const ch = annChannelOpts();
     await withLoading(e.target, async () => {
       const fd = new FormData(e.target);
       const obj = { type: 'announcement', created_at: new Date().toISOString() }; fd.forEach((v, k) => obj[k] = v);
       obj.roles = annCollectRoles();
       obj.yr = annCollectYears();
-      const r = await GSheetDB.create(obj);
-      if (r.isOk) { showToast(r.message && r.message !== 'บันทึกแล้ว' ? r.message : 'เพิ่มประกาศสำเร็จ'); closeModal(); renderCurrentPage(); }
+      obj.line_notify = '';   // ไม่ให้ระบบส่ง LINE เอง — ส่งต่อด้านล่างตามช่องทางที่เลือก
+      const r = await GSheetDB.create(obj, { noRefresh: true });
+      if (r.isOk) {
+        const msgs = await annSendChannels(r.rowIndex, ch);
+        if (GSheetDB.refreshTab) { try { await GSheetDB.refreshTab('announcement'); } catch (_) { } }
+        showToast('เพิ่มประกาศสำเร็จ' + (msgs.length ? ' · ' + msgs.join(' · ') : ''));
+        closeModal(); renderCurrentPage();
+      }
       else showToast('เกิดข้อผิดพลาด', 'error');
     });
   };
+}
+
+/* ---------- ช่องทางการประกาศ (หน้าบริการอื่นๆ) ----------
+   ในระบบ : ทุกครั้ง · อีเมล : ผู้รับตามบทบาท/ชั้นปีที่เลือก (คำนวณที่เซิร์ฟเวอร์) · LINE : ทุกกลุ่มของวิทยาลัย ไม่ต้องเลือก */
+function annChannelFieldHTML(a) {
+  const mailSent = a && norm(a.mail_sent);
+  const lineSent = a && norm(a.line_sent);
+  return `<div class="p-3 bg-green-50 rounded-xl border border-green-100 space-y-2">
+    <p class="text-sm font-semibold text-green-800">ช่องทางการประกาศ</p>
+    <label class="flex items-center gap-2 text-sm text-gray-500"><input type="checkbox" checked disabled class="w-4 h-4"> ในระบบ AAMs (กระดิ่งแจ้งเตือนและหน้าหลัก) — ประกาศทุกครั้ง</label>
+    <label class="flex items-center gap-2 text-sm text-gray-700 ${mailSent ? 'opacity-60' : 'cursor-pointer'}"><input type="checkbox" id="annChMail" ${mailSent ? 'disabled' : ''} onchange="annChannelChanged()" class="w-4 h-4 accent-primary"> ✉️ อีเมลถึงผู้รับตามกลุ่มที่เลือกด้านบน${mailSent ? ' <span class="text-xs text-green-700">(ส่งแล้ว ' + htmlEsc(mailSent) + ')</span>' : ''}</label>
+    <div id="annMailPreview" class="hidden ml-7 text-xs text-gray-500 bg-white rounded-lg px-3 py-2"></div>
+    <label class="flex items-center gap-2 text-sm text-gray-700 ${lineSent ? 'opacity-60' : 'cursor-pointer'}"><input type="checkbox" id="annChLine" ${lineSent ? 'disabled' : ''} onchange="annChannelChanged()" class="w-4 h-4 accent-primary"> 📢 LINE (ส่งเข้าทุกกลุ่มของวิทยาลัย)${lineSent ? ' <span class="text-xs text-green-700">(ส่งแล้ว ' + htmlEsc(lineSent) + ')</span>' : ''}</label>
+    <div id="annLineNote" class="hidden ml-7 text-xs text-gray-500"></div>
+  </div>`;
+}
+function annChannelOpts() {
+  const get = id => { const el = document.getElementById(id); return !!(el && el.checked && !el.disabled); };
+  // จับกลุ่ม LINE ตามผู้รับไว้ตอนกดบันทึก (ก่อนหน้าต่างปิด)
+  return { mail: get('annChMail'), line: get('annChLine'), lineGroups: get('annChLine') ? annAllLineGroupIds() : [] };
+}
+// กลุ่ม LINE ที่จะส่ง = ทุกกลุ่มที่เปิดใช้งานและบอทยังติดต่อได้
+function annAllLineGroupIds() {
+  return annLineGroupsFor(annCollectRoles(), annCollectYears()).map(g => Number(g.id));
+}
+/* กลุ่ม LINE ที่ตรงกับผู้รับประกาศ
+   • กลุ่มชื่อ "BCNB <รุ่น>" = กลุ่มนักศึกษารุ่นนั้น — หาชั้นปีปัจจุบันของรุ่นจากทะเบียนนักศึกษา
+     (เลื่อนชั้นปีแล้วกลุ่มก็ตามไปเอง ไม่ต้องแก้อะไร)
+   • กลุ่มอื่น = กลุ่มบุคลากร — ส่งเมื่อประกาศถึงบทบาทที่ไม่ใช่นักศึกษา หรือไม่ได้เลือกบทบาท (= ทุกคน)
+   roles/years เป็นข้อความคั่นด้วยจุลภาค ('' = ทั้งหมด) */
+function annBatchYear(batch) {
+  const cnt = {};
+  getDataByType('student').forEach(st => {
+    if (norm(st.batch) !== String(batch) || !isActiveStudent(st)) return;
+    const y = norm(st.year_level); if (y) cnt[y] = (cnt[y] || 0) + 1;
+  });
+  const ys = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a]);
+  return ys[0] || '';
+}
+function annLineGroupInfo(g) {
+  const m = norm(g && g.name).match(/BCNB\s*(\d{2,3})/i);
+  if (!m) return { kind: 'staff', label: 'บุคลากร' };
+  const yr = annBatchYear(m[1]);
+  return { kind: 'student', batch: m[1], year: yr, label: yr ? 'นักศึกษาชั้นปี ' + yr : 'รุ่น ' + m[1] + ' (ไม่พบในทะเบียนที่กำลังศึกษา)' };
+}
+function annLineGroupsFor(roles, years) {
+  const o = window._annSendOpts || {};
+  const rs = annParseRoles(roles), ys = annParseYears(years);
+  const toStudents = !rs.length || rs.indexOf('student') !== -1;
+  const toStaff = !rs.length || rs.some(r => r !== 'student');
+  return (o.lineGroups || []).filter(g => g.reachable !== false).filter(g => {
+    const i = annLineGroupInfo(g);
+    if (i.kind === 'staff') return toStaff;
+    if (!toStudents || !i.year) return false;
+    return !ys.length || ys.indexOf(i.year) !== -1;
+  });
+}
+async function loadAnnChannels(a) {
+  window._annEditNames = (a && norm(a.target_names)) || '';
+  if (!window._annSendOpts) window._annSendOpts = await annSendCall({ mode: 'options' });
+  const o = window._annSendOpts || {};
+  const m = document.getElementById('annChMail'), l = document.getElementById('annChLine');
+  if (o.isOk && !o.hasSmtp && m) { m.checked = false; m.disabled = true; m.parentElement.title = 'ยังไม่ได้ตั้งค่า SMTP ในระบบ'; m.parentElement.classList.add('opacity-50'); }
+  if (o.isOk && !o.hasLine && l) { l.checked = false; l.disabled = true; l.parentElement.title = 'ยังไม่ได้ตั้งค่าโทเคน LINE ในระบบ'; l.parentElement.classList.add('opacity-50'); }
+  annChannelChanged();
+}
+function annChannelChanged() {
+  const o = window._annSendOpts || {};
+  const l = document.getElementById('annChLine'), ln = document.getElementById('annLineNote');
+  if (ln) {
+    const on = !!(l && l.checked);
+    ln.classList.toggle('hidden', !on);
+    if (on) {
+      const gs = o.lineGroups || [];
+      const ok = annLineGroupsFor(annCollectRoles(), annCollectYears());
+      ln.innerHTML = !o.isOk ? 'กำลังตรวจรายชื่อกลุ่ม LINE...'
+        : !gs.length ? '<span class="text-amber-600">ยังไม่มีกลุ่ม LINE ที่เปิดใช้งาน</span>'
+        : !ok.length ? '<span class="text-amber-600">ไม่มีกลุ่ม LINE ที่ตรงกับผู้รับที่เลือก จึงจะไม่ส่ง LINE</span>'
+        : 'จะส่งเข้า ' + ok.length + ' กลุ่มที่ตรงกับผู้รับ: ' + ok.map(g => htmlEsc(g.name) + ' <span class="text-gray-400">(' + htmlEsc(annLineGroupInfo(g).label) + ')</span>').join(', ');
+    }
+  }
+  const m = document.getElementById('annChMail'), pv = document.getElementById('annMailPreview');
+  if (!pv) return;
+  const on = !!(m && m.checked && !m.disabled);
+  pv.classList.toggle('hidden', !on);
+  if (!on) return;
+  pv.textContent = 'กำลังนับผู้รับอีเมล...';
+  clearTimeout(window._annMailTimer);
+  window._annMailTimer = setTimeout(async () => {
+    const r = await annSendCall({ mode: 'preview', roles: annCollectRoles(), years: annCollectYears(), names: window._annEditNames || '' });
+    const el = document.getElementById('annMailPreview');
+    if (!el) return;
+    if (!r.isOk) { el.innerHTML = '<span class="text-red-500">' + htmlEsc(r.error || 'นับผู้รับไม่สำเร็จ') + '</span>'; return; }
+    const g = r['แยกกลุ่ม'] || {};
+    el.innerHTML = 'จะส่งอีเมลถึง <b class="text-gray-800">' + (r['ผู้รับทั้งหมด'] || 0) + '</b> คน'
+      + (Object.keys(g).length ? ' — ' + Object.keys(g).map(k => htmlEsc(k) + ' ' + g[k]).join(' · ') : '')
+      + ' <span class="text-gray-400">(ส่งแบบ BCC ผู้รับไม่เห็นอีเมลกัน)</span>';
+  }, 450);
+}
+// ส่งประกาศที่บันทึกแล้วออกทางอีเมล / LINE — คืนข้อความสรุปสำหรับแจ้งผู้ใช้
+async function annSendChannels(id, ch) {
+  const msgs = [];
+  if (!id || !ch || !(ch.mail || ch.line)) return msgs;
+  if (ch.line && !window._annSendOpts) window._annSendOpts = await annSendCall({ mode: 'options' });
+  const groups = ch.lineGroups || annAllLineGroupIds();
+  const r = await annSendCall({
+    mode: 'send', announcement_id: id, email: !!ch.mail, line: !!ch.line && groups.length > 0,
+    line_groups: groups, broadcast: false, url: window.location.href.split('#')[0]
+  });
+  const em = r && r['อีเมล'], ln = r && r['LINE'];
+  if (ch.mail) msgs.push(em && em.isOk ? (em.skipped || 'อีเมล ' + (em['ส่งถึง'] || 0) + ' คน') : 'อีเมลไม่สำเร็จ: ' + ((em && em.error) || (r && r.error) || ''));
+  if (ch.line) msgs.push(!groups.length ? 'LINE ไม่ได้ส่ง: ไม่มีกลุ่มที่ตรงกับผู้รับ' : (ln && ln.isOk ? (ln.skipped || 'LINE ' + (ln['ส่งสำเร็จ'] || 0) + ' กลุ่ม') : 'LINE ไม่สำเร็จ: ' + ((ln && ln.error) || (r && r.error) || '')));
+  return msgs;
 }
 
 function showEditAnnouncementModal(id) {
@@ -12335,11 +13144,25 @@ function showEditAnnouncementModal(id) {
       </div>
       ${annRolesFieldHTML(a.roles || '')}
       ${annYearFieldHTML(annYearsOf(a).join(','))}
-      <label class="flex items-center gap-2 bg-green-50 rounded-xl px-3 py-2 cursor-pointer"><input type="checkbox" name="line_notify" value="✓" class="w-4 h-4" ${['✓', '✔', 'true', 'yes', 'y', '1', 'ส่ง', 'แจ้ง'].includes(String(a.line_notify || '').trim().toLowerCase()) ? 'checked' : ''}><span class="text-sm text-green-700">📢 ส่งประกาศนี้เข้า LINE</span></label>
+      ${annChannelFieldHTML(a)}
       <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึกการแก้ไข</button>
     </form>
   `);
-  document.getElementById('editAnnForm').onsubmit = (e) => { e.preventDefault(); a.line_notify = e.target.querySelector('[name="line_notify"]').checked ? '✓' : ''; a.roles = annCollectRoles(); a.yr = annCollectYears(); editRecord(id, 'editAnnForm') };
+  loadAnnChannels(a);
+  document.getElementById('editAnnForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const ch = annChannelOpts();
+    a.roles = annCollectRoles(); a.yr = annCollectYears();
+    // กันไม่ให้การบันทึกแก้ไขไปสั่งส่ง LINE แบบเดิม (ทุกกลุ่ม + broadcast) เอง
+    if (!norm(a.line_sent)) a.line_notify = '';
+    await editRecord(id, 'editAnnForm');
+    // บันทึกการแก้ไขก่อน แล้วค่อยส่งอีเมล/LINE จากเนื้อหาล่าสุด
+    if (ch.mail || ch.line) {
+      const msgs = await annSendChannels(Number(a.__rowIndex) || 0, ch);
+      if (GSheetDB.refreshTab) { try { await GSheetDB.refreshTab('announcement'); renderCurrentPage(); } catch (_) { } }
+      if (msgs.length) showToast('ประกาศแล้ว · ' + msgs.join(' · '));
+    }
+  };
 }
 
 function showEditTrackingModal(id) {
@@ -12541,35 +13364,47 @@ lucide.createIcons();
 // กดปุ่มใดก็แสดงสปินเนอร์ + กันกดซ้ำ จนกว่าจะเรนเดอร์ใหม่/หมดเวลา
 // ข้ามปุ่มที่ทำงานทันที (เมนู, dropdown, กระดิ่ง, popup, ออกจากระบบ, เปิด modal) และปุ่มที่ใส่ data-no-loading
 (function () {
-  var SKIP = /toggleSidebar|toggleDropdown|Notifications|contactPopup|handleLogout|closeModal|classList\.|Modal\(/i;
+  // navigateTo อยู่ในรายการยกเว้น เพราะการสลับเมนูไม่ได้โหลดข้อมูล วาดหน้าจากของในหน่วยความจำ
+  // ของเดิมปุ่มเมนูจึงถูกซ่อนตัวหนังสือแล้วขึ้นวงหมุนแวบหนึ่งทุกครั้ง ซึ่งอ่านได้เป็นอาการสะดุด
+  var SKIP = /navigateTo|toggleSidebar|toggleDropdown|Notifications|contactPopup|handleLogout|closeModal|classList\.|Modal\(/i;
+  var DELAY = 200;    // งานที่เสร็จเร็วกว่านี้ ไม่ต้องบอกผู้ใช้ว่ากำลังทำงาน
+  var MAXWAIT = 1200; // กันปุ่มค้างถ้าไม่มีอะไรเปลี่ยนบนหน้าจอเลย
   var active = new Set();
   function clearBtn(btn) {
     btn.classList.remove('btn-spin');
     btn.style.removeProperty('min-width');
     btn.style.removeProperty('min-height');
+    if (btn._showTimer) { clearTimeout(btn._showTimer); btn._showTimer = null; }
     if (btn._loadTimer) { clearTimeout(btn._loadTimer); btn._loadTimer = null; }
     active.delete(btn);
   }
-  function clearAll() { Array.prototype.slice.call(active).forEach(clearBtn); }
-  document.addEventListener('click', function (e) {
-    var btn = e.target.closest ? e.target.closest('button') : null;
-    if (!btn) return;
-    if (btn.disabled || btn.classList.contains('btn-spin')) return;
-    if (btn.hasAttribute('data-no-loading')) return;
-    if (SKIP.test(btn.getAttribute('onclick') || '')) return;
+  /* วัดขนาดปุ่มตอนจะแสดงจริงเท่านั้น ไม่ใช่ตอนคลิก
+     เพราะ getBoundingClientRect กับ getComputedStyle บังคับให้เบราว์เซอร์คำนวณผังหน้าใหม่ทันที */
+  function showSpin(btn) {
+    if (!btn.isConnected) { clearBtn(btn); return; }
     var r = btn.getBoundingClientRect();
     btn.style.minWidth = r.width + 'px';
     btn.style.minHeight = r.height + 'px';
     btn.style.setProperty('--spin-color', getComputedStyle(btn).color);
     btn.classList.add('btn-spin');
+  }
+  function clearAll() { Array.prototype.slice.call(active).forEach(clearBtn); }
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('button') : null;
+    if (!btn) return;
+    if (btn.disabled || btn.classList.contains('btn-spin') || btn._showTimer) return;
+    if (btn.hasAttribute('data-no-loading')) return;
+    if (SKIP.test(btn.getAttribute('onclick') || '')) return;
     active.add(btn);
-    btn._loadTimer = setTimeout(function () { clearBtn(btn); }, 1500);
+    btn._showTimer = setTimeout(function () { btn._showTimer = null; showSpin(btn); }, DELAY);
+    btn._loadTimer = setTimeout(function () { clearBtn(btn); }, MAXWAIT);
   }, true);
   function observe(id) {
     var el = document.getElementById(id);
     if (el) new MutationObserver(clearAll).observe(el, { childList: true, subtree: true });
   }
-  function setup() { observe('mainContent'); observe('modalContainer'); }
+  // เฝ้าแถบแจ้งเตือนด้วย เพราะงานหลายอย่างจบด้วยข้อความแจ้งเตือนโดยไม่ได้วาดหน้าใหม่
+  function setup() { observe('mainContent'); observe('modalContainer'); observe('toastContainer'); }
   if (document.readyState !== 'loading') setup();
   else document.addEventListener('DOMContentLoaded', setup);
 })();
@@ -12723,7 +13558,21 @@ function surveyIsOpenForRole(year, role) {
   const cfg = surveyConfigForYear(year);
   if (!cfg || String(cfg.status).trim() !== 'open') return false;
   const rs = surveyParseRoles(cfg.open_roles);
-  return rs.length === 0 || rs.indexOf(role) !== -1;
+  if (!(rs.length === 0 || rs.indexOf(role) !== -1)) return false;
+  // นักศึกษา: เปิดเฉพาะชั้นปีที่ติ๊กไว้ (ว่าง = ทุกชั้นปี)
+  if (role === 'student') {
+    const ys = surveyOpenYearsFor(year);
+    if (ys.length) {
+      const d = (APP.currentUser && APP.currentUser.data) || {};
+      return ys.indexOf(norm(d.year_level)) !== -1;
+    }
+  }
+  return true;
+}
+// ชั้นปีของนักศึกษาที่เปิดรับของปีนั้น (ว่าง = ทุกชั้นปี) — เก็บในช่อง open_years
+function surveyOpenYearsFor(year) {
+  const cfg = surveyConfigForYear(year);
+  return cfg ? String(cfg.open_years || '').split(/[,\s]+/).map(x => norm(x)).filter(x => ['1', '2', '3', '4'].indexOf(x) !== -1) : [];
 }
 function surveyAllYears() {
   const set = new Set();
@@ -12962,8 +13811,11 @@ function surveyConfigTabHTML(year) {
 
   const openRoles = surveyOpenRolesFor(year);           // [] = ทุกบทบาท (เมื่อเปิด)
   const isRoleOpen = r => isOpen && (openRoles.length === 0 || openRoles.indexOf(r) !== -1);
+  const openYrs = surveyOpenYearsFor(year);              // [] = ทุกชั้นปี
+  const stuOpen = isRoleOpen('student');
+  const yrText = (stuOpen && openYrs.length) ? ' (นักศึกษาเฉพาะชั้นปีที่ ' + openYrs.join(', ') + ')' : '';
   const statusText = !isOpen ? '○ ปิดรับการประเมิน'
-    : (openRoles.length === 0 ? '● เปิดรับ (ทุกบทบาท)' : '● เปิดรับ: ' + openRoles.map(r => SURVEY_ROLE_LABEL[r] || r).join(', '));
+    : (openRoles.length === 0 ? '● เปิดรับ (ทุกบทบาท)' : '● เปิดรับ: ' + openRoles.map(r => SURVEY_ROLE_LABEL[r] || r).join(', ')) + yrText;
 
   return `<div class="bg-white rounded-2xl p-5 border border-blue-100 max-w-2xl">
     <div class="flex items-center justify-between mb-4">
@@ -12988,12 +13840,19 @@ function surveyConfigTabHTML(year) {
         ${SURVEY_EVAL_ROLES.map(r => `<label class="flex items-center gap-2 text-sm text-gray-700 bg-white rounded-lg px-2 py-1.5 border border-green-100"><input type="checkbox" class="survey-open-role accent-green-600" value="${r}" ${isRoleOpen(r) ? 'checked' : ''}> ${SURVEY_ROLE_LABEL[r] || r}</label>`).join('')}
       </div>
       <p class="text-[11px] text-gray-500 mt-2">ติ๊กบทบาทที่ต้องการให้ทำแบบประเมิน แล้วกด "บันทึกการตั้งค่า" — บทบาทที่ไม่ติ๊กจะยังทำไม่ได้ (ไม่ติ๊กเลย = ปิดรับทั้งหมด)</p>
+      <div class="mt-3 pt-3 border-t border-green-100">
+        <label class="text-sm font-semibold text-green-800">นักศึกษา: เปิดรับเฉพาะชั้นปี</label>
+        <div class="flex flex-wrap gap-2 mt-1.5">
+          ${['1', '2', '3', '4'].map(y => `<label class="flex items-center gap-2 text-sm text-gray-700 bg-white rounded-lg px-2.5 py-1.5 border border-green-100"><input type="checkbox" class="survey-open-year accent-green-600" value="${y}" ${(!openYrs.length || openYrs.indexOf(y) !== -1) ? 'checked' : ''}> ชั้นปีที่ ${y}</label>`).join('')}
+        </div>
+        <p class="text-[11px] text-gray-500 mt-1.5">มีผลเมื่อติ๊กบทบาท "นักศึกษา" ไว้ด้านบน — ชั้นปีที่ไม่ติ๊กจะไม่เห็นแบบประเมิน (ติ๊กครบทุกชั้นปี = เปิดให้ทุกชั้นปี)</p>
+      </div>
     </div>
 
     <div class="flex flex-wrap gap-2">
       <button onclick="surveyPreview('${year}')" class="px-4 py-2 bg-white border border-primary text-primary rounded-xl text-sm hover:bg-primaryLight flex items-center gap-1"><i data-lucide="eye" class="w-4 h-4"></i>แสดงตัวอย่างแบบประเมิน</button>
       <button id="surveyCfgSaveBtn" onclick="surveySaveOpenRoles('${year}')" class="px-4 py-2 bg-green-600 text-white rounded-xl text-sm hover:bg-green-700 flex items-center gap-1"><i data-lucide="save" class="w-4 h-4"></i>บันทึกการตั้งค่า (ชื่อ/คำชี้แจง/การเปิดรับ)</button>
-      ${isOpen && surveyCanInvite() ? `<button onclick="showSurveyInviteModal('${year}', [...document.querySelectorAll('.survey-open-role:checked')].map(el=>el.value))" class="px-4 py-2 bg-white border border-green-600 text-green-700 rounded-xl text-sm hover:bg-green-50 flex items-center gap-1"><i data-lucide="mail" class="w-4 h-4"></i>ส่งอีเมลเชิญทำแบบประเมิน</button>` : ''}
+      ${isOpen && surveyCanInvite() ? `<button onclick="showSurveyInviteModal('${year}', [...document.querySelectorAll('.survey-open-role:checked')].map(el=>el.value), [...document.querySelectorAll('.survey-open-year:checked')].map(el=>el.value))" class="px-4 py-2 bg-white border border-green-600 text-green-700 rounded-xl text-sm hover:bg-green-50 flex items-center gap-1"><i data-lucide="mail" class="w-4 h-4"></i>ส่งอีเมลเชิญทำแบบประเมิน</button>` : ''}
       ${qCount === 0 ? `<button onclick="surveyCreateDefaultQuestions('${year}')" class="px-4 py-2 bg-primary text-white rounded-xl text-sm hover:bg-primaryDark">สร้างชุดคำถามเริ่มต้น (ใช้ร่วมทุกบทบาท)</button>` : ''}
     </div>
   </div>`;
@@ -13056,6 +13915,10 @@ function surveyPreviewInner(year, role) {
 
 async function surveySaveOpenRoles(year) {
   const roles = [...document.querySelectorAll('.survey-open-role:checked')].map(el => el.value);
+  const yrs = [...document.querySelectorAll('.survey-open-year:checked')].map(el => el.value);
+  if (roles.indexOf('student') !== -1 && !yrs.length) { showToast('เปิดรับนักศึกษาแล้ว กรุณาติ๊กชั้นปีอย่างน้อย 1 ชั้นปี', 'error'); return; }
+  // ติ๊กครบ 4 ชั้นปี → เก็บว่าง (= ทุกชั้นปี)
+  const openYearsStr = yrs.length === 4 ? '' : yrs.join(',');
   const title = (document.getElementById('surveyCfgTitle') || {}).value || '';
   const desc = (document.getElementById('surveyCfgDesc') || {}).value || '';
   const existing = surveyConfigForYear(year);
@@ -13065,18 +13928,19 @@ async function surveySaveOpenRoles(year) {
   const openRolesStr = (roles.length === SURVEY_EVAL_ROLES.length) ? '' : roles.join(',');
   const now = new Date().toISOString();
   await withLoading(document.getElementById('surveyCfgSaveBtn'), async () => {
-    const payload = { status, open_roles: openRolesStr, title, description: desc, updated_at: now };
+    const payload = { status, open_roles: openRolesStr, open_years: openYearsStr, title, description: desc, updated_at: now };
     let res;
     if (existing) res = await GSheetDB.update({ ...existing, ...payload });
     else res = await GSheetDB.create({ type: 'survey_config', academic_year: year, created_at: now, ...payload });
     if (res && res.isOk) {
-      if (status === 'open' && !wasOpen) await surveyCreateOpenAnnouncement(year, title, openRolesStr);
-      const openLabel = !roles.length ? 'ปิดรับทั้งหมด' : (openRolesStr === '' ? 'เปิดรับทุกบทบาท' : 'เปิดรับ: ' + roles.map(r => SURVEY_ROLE_LABEL[r] || r).join(', '));
+      if (status === 'open' && !wasOpen) await surveyCreateOpenAnnouncement(year, title, openRolesStr, openYearsStr);
+      const openLabel = (!roles.length ? 'ปิดรับทั้งหมด' : (openRolesStr === '' ? 'เปิดรับทุกบทบาท' : 'เปิดรับ: ' + roles.map(r => SURVEY_ROLE_LABEL[r] || r).join(', ')))
+        + ((roles.indexOf('student') !== -1 && openYearsStr) ? ' (นักศึกษาชั้นปีที่ ' + openYearsStr + ')' : '');
       showToast('บันทึกแล้ว — ' + openLabel, 'success');
       if (typeof updateNotifBadge === 'function') updateNotifBadge();
       renderCurrentPage();
       // เปิดรับการประเมิน → ถามก่อนว่าจะส่งอีเมลแจ้งผู้เกี่ยวข้องด้วยหรือไม่
-      if (status === 'open' && roles.length && surveyCanInvite()) showSurveyInviteModal(year, roles);
+      if (status === 'open' && roles.length && surveyCanInvite()) showSurveyInviteModal(year, roles, yrs);
     } else showToast((res && res.error) || 'บันทึกไม่สำเร็จ', 'error');
   });
 }
@@ -13106,11 +13970,20 @@ async function surveyInviteCall(mode, year, roles, years) {
 function surveyInviteSelection() {
   return {
     roles: [...document.querySelectorAll('.svinv-role:checked')].map(el => el.value),
-    years: [...document.querySelectorAll('.svinv-year:checked')].map(el => el.value)
+    years: (function () {
+      const all = [...document.querySelectorAll('.svinv-year')].map(el => el.value);
+      const on = [...document.querySelectorAll('.svinv-year:checked')].map(el => el.value);
+      // ไม่ติ๊กเลยแต่รายการถูกจำกัดตามชั้นปีที่เปิดรับ → ส่งเฉพาะชั้นปีที่เปิดรับ ไม่ใช่ทุกชั้นปี
+      return on.length ? on : (all.length < 4 ? all : []);
+    })()
   };
 }
-async function showSurveyInviteModal(year, roles) {
+async function showSurveyInviteModal(year, roles, openYrs) {
   const hasStudent = roles.indexOf('student') !== -1;
+  // ชั้นปีที่ให้เลือกส่งอีเมล = เฉพาะชั้นปีที่เปิดรับ (ไม่ส่งเชิญชั้นปีที่ทำแบบประเมินไม่ได้)
+  const yrChoices = (openYrs && openYrs.length) ? openYrs : surveyOpenYearsFor(year);
+  const yrList = yrChoices.length ? yrChoices : ['1', '2', '3', '4'];
+  const yrPre = yrChoices.length && yrChoices.length < 4;
   showModal('ส่งอีเมลเชิญทำแบบประเมิน', `
     <div class="space-y-3">
       <p class="text-sm text-gray-600">บันทึกการตั้งค่าเรียบร้อยแล้ว — ต้องการส่งอีเมลเชิญผู้เกี่ยวข้องด้วยหรือไม่</p>
@@ -13123,7 +13996,7 @@ async function showSurveyInviteModal(year, roles) {
       ${hasStudent ? `<div>
         <label class="block text-xs text-gray-600 mb-1">ชั้นปีของนักศึกษา <span class="text-gray-400">(ไม่เลือกเลย = ทุกชั้นปี)</span></label>
         <div class="flex flex-wrap gap-2">
-          ${['1', '2', '3', '4'].map(y => `<label class="flex items-center gap-1.5 text-sm text-gray-700 bg-surface rounded-lg px-2.5 py-1.5"><input type="checkbox" class="svinv-year accent-primary" value="${y}" onchange="surveyInviteRefresh('${year}')"> ชั้นปีที่ ${y}</label>`).join('')}
+          ${yrList.map(y => `<label class="flex items-center gap-1.5 text-sm text-gray-700 bg-surface rounded-lg px-2.5 py-1.5"><input type="checkbox" class="svinv-year accent-primary" value="${y}" ${yrPre ? 'checked' : ''} onchange="surveyInviteRefresh('${year}')"> ชั้นปีที่ ${y}</label>`).join('')}
         </div>
       </div>` : ''}
       <div id="svinvSummary" class="text-sm text-gray-500 bg-surface rounded-xl p-3">กำลังตรวจจำนวนผู้รับ...</div>
@@ -13196,7 +14069,7 @@ async function surveySaveConfig(year, status) {
 
 // สร้างประกาศแจ้งเตือน "เปิดให้ทำแบบประเมิน" เข้าระบบ (กระดิ่ง + การ์ดหน้าหลัก)
 // ตั้ง line_sent ไว้ล่วงหน้า เพื่อกันไม่ให้ตัวแจ้งเตือน LINE (line-announcement-notify.gs) หยิบไปส่ง
-async function surveyCreateOpenAnnouncement(year, title, roles) {
+async function surveyCreateOpenAnnouncement(year, title, roles, years) {
   try {
     const pad = n => String(n).padStart(2, '0');
     const d = new Date();
@@ -13208,6 +14081,7 @@ async function surveyCreateOpenAnnouncement(year, title, roles) {
       announcement_content: 'ขอเชิญผู้ใช้งานร่วมทำ "' + t + '" ประจำปีการศึกษา ' + year + ' ได้ที่เมนู "แบบประเมินความพึงพอใจ" (ทำได้ครั้งเดียวต่อปีการศึกษา)',
       announcement_date: dateStr,
       roles: roles || '',
+      yr: years || '',
       line_sent: 'ไม่ส่ง LINE (แจ้งเฉพาะในระบบ)',
       line_notify: ''
     });
