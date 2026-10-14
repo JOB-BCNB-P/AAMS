@@ -10468,7 +10468,7 @@ function leavePage() {
         </div>
         <div id="leaveDocBox" class="border border-gray-200 rounded-xl bg-white overflow-x-auto">
           <div id="leaveDocFit" class="origin-top-left">
-            <div id="leaveDocPreview" class="p-4 sm:p-5 text-[13px] leading-relaxed text-gray-800 min-w-[460px]"></div>
+            <div id="leaveDocPreview" class="p-6 bg-white" style="width:728px"></div>
           </div>
         </div>
         <p class="text-xs text-gray-400 mt-2 sm:hidden">ใบลาถูกย่อให้พอดีจอ เวลาสั่งพิมพ์จะได้ขนาดเต็มตามจริง</p>
@@ -11775,11 +11775,15 @@ function leavePrintRecord(id) {
 function leaveDocHTML(d) {
   d = d || {};
   const e = v => htmlEsc(v == null ? '' : String(v));
-  // ช่องที่ยังไม่ได้กรอก แสดงเป็นเส้นประ เหมือนใบลากระดาษที่ยังไม่เขียน
-  const fill = (v, w) => String(v || '').trim()
-    ? '<span class="ld-v">' + e(v) + '</span>'
-    : '<span class="ld-blank" style="min-width:' + (w || 70) + 'px"></span>';
-  const line = w => '<span class="ld-blank" style="min-width:' + w + 'px"></span>';
+  /* ทุกบรรทัดจัดเป็นแถว flex ตามกระดาษจริง: ข้อความคงที่ + ช่องเส้นประให้กรอก
+     ช่อง "f" ยืดเต็มที่เหลือของบรรทัด ช่องที่ระบุความกว้างจะคงที่ */
+  const has = v => String(v == null ? '' : v).trim() !== '';
+  const fld = (v, w) => '<span class="ld-f' + (w ? ' w' : '') + '"'
+    + (w ? ' style="width:' + w + 'px"' : '') + '>' + (has(v) ? e(v) : '') + '</span>';
+  const raw = (html, w) => '<span class="ld-f' + (w ? ' w' : '') + '"'
+    + (w ? ' style="width:' + w + 'px"' : '') + '>' + (html || '') + '</span>';
+  const row = (inner, cls) => '<div class="ld-row' + (cls ? ' ' + cls : '') + '">' + inner + '</div>';
+  const t = s => '<span class="ld-t">' + s + '</span>';
   // ตาราง student เก็บคำนำหน้าแยกจากชื่อ แต่บางระเบียนพิมพ์รวมมาแล้ว จึงไม่เติมซ้ำ
   const pre = String(d.title_prefix || '').trim(), nm = String(d.name || '').trim();
   const fullName = !nm ? '' : (!pre || nm.indexOf(pre) === 0) ? nm : (pre + nm);
@@ -11795,118 +11799,132 @@ function leaveDocHTML(d) {
   const toTxt = range.length ? toThaiLongDate(range[range.length - 1]) + tag(range.length > 1 ? d.half_end : d.half_start) : '';
   const now = new Date();
   const box = on => '<span class="ld-box' + (on ? ' on' : '') + '"></span>';
-  /* ลายเซ็นในเอกสาร
-     ดึงจากโปรไฟล์ของเจ้าตัว และขึ้นเฉพาะช่องที่ "มีการลงนามจริงในระบบแล้ว"
-     ช่องที่ยังไม่ลงนามจะเว้นเส้นไว้ให้เซ็นบนกระดาษเหมือนเดิม */
+  /* ลายเซ็นในเอกสาร — ขึ้นเฉพาะช่องที่ "ลงนามในระบบแล้ว"
+     ช่องที่ยังไม่ลงนามเว้นเส้นไว้ให้เซ็นบนกระดาษเหมือนเดิม */
   const app = d.approvals || {};
-  const sigOf = who => (typeof profileSignatureTag === 'function' && String(who || '').trim())
-    ? profileSignatureTag(who, 'ld-sig') : '';
-  const slot = (html, align) => '<div class="ld-slot" style="justify-content:' + (align || 'flex-end') + '">'
-    + (html || '') + '</div>';
+  const sigOf = (who, cls) => (typeof profileSignatureTag === 'function' && has(who))
+    ? profileSignatureTag(who, cls || 'ld-sig') : '';
+  const pct = s => (s.percent == null || s.percent === '' || isNaN(s.percent)) ? '' : Number(s.percent).toFixed(2);
 
-  const hourLine = s => 'วิชา ' + fill(s.name, 200)
-    + ' จำนวน ' + fill(s.hours, 40) + ' ชั่วโมง คิดเป็นร้อยละ '
-    + fill(s.percent == null ? '' : s.percent.toFixed(2), 50) + ' %';
-  const theoryRows = (theory.length ? theory : [{}]).map(s => '<div class="ld-item">'
-    + hourLine(s)
-    + '<div>อาจารย์ผู้ประสานวิชา ลงนาม ('
-    + (s.approved ? (sigOf(s.coordinator) || line(150)) : line(150)) + ')'
-    + (s.coordinator ? '<span class="ld-hint"> ' + e(s.coordinator) + '</span>' : '') + '</div>'
+  // ภาคทฤษฎี: กระดาษมี 3 ช่องเสมอ — มีวิชาน้อยกว่านั้นก็เว้นช่องว่างไว้
+  const tList = theory.slice();
+  while (tList.length < 3) tList.push({});
+  const pList = practice.length ? practice : [{}];
+  const subjLine = s => row(t('วิชา') + fld(s.name) + t('จำนวน') + fld(s.hours, 56)
+    + t('ชั่วโมง คิดเป็นร้อยละ') + fld(pct(s), 64) + t('%'));
+  const tItems = tList.map(s => '<div class="ld-item">' + subjLine(s)
+    + row(t('อาจารย์ผู้ประสานวิชา ลงนาม (') + raw(s.approved ? sigOf(s.coordinator, 'ld-sig-sm') : '', 230) + t(')'))
     + '</div>').join('');
-  const practiceRows = (practice.length ? practice : [{}]).map(s => '<div class="ld-item">'
-    + hourLine(s)
-    + '<div>Ward ที่ขึ้นปฏิบัติงาน ' + fill(s.ward, 180) + '</div>'
-    + '<div>ลงชื่ออาจารย์ผู้ประจำวิชา '
-    + (s.approved ? (sigOf(s.coordinator) || line(180)) : line(180))
-    + (s.coordinator ? '<span class="ld-hint"> ' + e(s.coordinator) + '</span>' : '') + '</div>'
+  const pItems = pList.map(s => '<div class="ld-item">' + subjLine(s)
+    + row(t('Ward ที่ขึ้นปฏิบัติงาน') + fld(s.ward, 250))
+    + row(t('ลงชื่ออาจารย์ผู้ประจำวิชา') + raw(s.approved ? sigOf(s.coordinator, 'ld-sig-sm') : '', 230))
     + '</div>').join('');
+
+  // เหตุผลยาวเกินหนึ่งบรรทัด ให้ไหลต่อลงบรรทัดเส้นประถัดไป เหมือนเขียนบนกระดาษ
+  const reason = String(d.reason || '').trim();
+  let cut = reason.length;
+  if (reason.length > 38) {
+    // ตัดที่ช่องว่างใกล้ ๆ ก่อน ถ้าไม่มีก็ตัดตามตัวอักษร แต่ไม่ตัดกลางสระ/วรรณยุกต์
+    const sp = reason.lastIndexOf(' ', 38);
+    cut = sp > 24 ? sp : 38;
+    while (cut < reason.length && /[\u0E31\u0E33-\u0E3A\u0E47-\u0E4E]/.test(reason.charAt(cut))) cut++;
+  }
+  const r1 = reason.slice(0, cut).trim();
+  const r2 = reason.slice(cut).trim();
 
   return '<style>'
-    + '.ld-doc{font-family:"Sarabun","TH SarabunPSK","Noto Sans Thai",sans-serif;color:#111827;line-height:1.9;font-size:15px}'
-    + '.ld-doc .r{text-align:right}'
-    + '.ld-title{text-align:center;font-weight:700;font-size:1.25em;letter-spacing:.5px}'
-    + '.ld-rule{height:1px;background:#d1d5db;margin:6px auto 12px;max-width:180px}'
-    + '.ld-blank{display:inline-block;border-bottom:1px dotted #9ca3af;height:1.05em;vertical-align:baseline}'
-    + '.ld-v{font-weight:600;border-bottom:1px dotted #d1d5db;padding:0 2px}'
-    + '.ld-muted{color:#9ca3af}.ld-hint{color:#9ca3af;font-size:.82em}'
-    + '.ld-lbl{display:inline-block;min-width:44px;font-weight:600}'
-    + '.ld-p{text-indent:2.5em;margin:8px 0}'
-    + '.ld-box{display:inline-block;width:13px;height:13px;line-height:11px;text-align:center;'
-    + 'border:1px solid #374151;margin-right:6px;vertical-align:-2px;font-size:11px;font-weight:700}'
+    + '.ld-doc{font-family:"Sarabun","TH SarabunPSK","Noto Sans Thai",sans-serif;color:#000;'
+    + 'font-size:14.5px;line-height:1.6;width:680px;box-sizing:border-box;background:#fff}'
+    + '.ld-doc *{box-sizing:border-box}'
+    + '.ld-row{display:flex;align-items:flex-end;gap:5px;white-space:nowrap}'
+    + '.ld-t{flex:none}'
+    + '.ld-f{flex:1 1 auto;min-width:20px;border-bottom:1px dotted #333;min-height:1.45em;'
+    + 'padding:0 4px;font-weight:600;color:#1e3a8a;white-space:normal;text-align:center;line-height:1.45}'
+    + '.ld-f.w{flex:none}'
+    + '.ld-title{display:flex;justify-content:center;align-items:flex-end;gap:2px;font-weight:700;font-size:1.15em;margin-bottom:10px}'
+    + '.ld-title .ld-f{width:110px;flex:none}'
+    + '.ld-hdr{margin-left:auto;width:260px}'
+    + '.ld-hdr .c{text-align:right;font-weight:700}'
+    + '.ld-lbl{font-weight:700;width:52px;flex:none}'
+    + '.ld-ind{padding-left:52px}'
+    + '.ld-grp{display:grid;grid-template-columns:100px 1fr;margin-top:6px}'
+    + '.ld-grp .g{font-weight:700;display:flex;align-items:flex-start;padding-top:2px}'
+    + '.ld-item{margin-bottom:4px}'
+    + '.ld-box{display:inline-block;width:15px;height:15px;line-height:13px;text-align:center;'
+    + 'border:1.3px solid #000;margin:4px 5px 0 0;font-size:12px;font-weight:700;flex:none}'
     + '.ld-box.on::after{content:"\\2713"}'
-    + '.ld-sec{margin:10px 0 4px}.ld-sec>b{font-weight:700}'
-    + '.ld-items{margin-left:34px}.ld-item{margin-bottom:6px}'
-    + '.ld-sign{margin-top:16px;text-align:right}'
-    + '.ld-slot{display:flex;align-items:flex-end;height:46px;margin-bottom:-6px}'
-    + '.ld-sig{max-height:44px;max-width:190px;object-fit:contain}'
-    + '.ld-two{display:flex;gap:18px;margin-top:16px;flex-wrap:wrap;align-items:flex-start}'
-    + '.ld-two>div{flex:1;min-width:210px}'
-    + '.ld-two .h{font-weight:700;margin-bottom:6px}'
-    + '.ld-ind{margin-left:40px}'
-    + '.ld-note{margin-top:16px;font-size:.85em;line-height:1.6}'
+    + '.ld-sign{margin:4px 0 0 auto;width:320px;text-align:center}'
+    + '.ld-slot{height:34px;display:flex;align-items:flex-end;justify-content:center}'
+    + '.ld-sig{max-height:36px;max-width:180px;object-fit:contain}'
+    + '.ld-sig-sm{max-height:24px;max-width:170px;object-fit:contain;vertical-align:bottom}'
+    + '.ld-two{display:grid;grid-template-columns:1fr 1fr;gap:34px;margin-top:8px}'
+    + '.ld-two .h{font-weight:700;text-decoration:none;margin-bottom:2px}'
+    + '.ld-col{padding:0 14px}'
+    + '.ld-ln{border-bottom:1px dotted #333;height:1.6em}'
+    + '.ld-note{margin-top:8px;font-size:.8em;line-height:1.4}'
     + '.ld-note b{display:block}'
-    + '.ld-note ol{margin:2px 0 0 18px;padding:0}'
-    + '@media print{@page{size:A4;margin:16mm 15mm}.ld-doc{font-size:15px}}'
+    + '.ld-note ol{margin:0 0 0 18px;padding:0}'
+    + '@media print{.ld-doc{width:100%}.ld-f{color:#000}}'
     + '</style>'
     + '<div class="ld-doc">'
 
-    + '<div class="ld-title">ใบลา' + fill(kind, 90) + '</div>'
-    + '<div class="ld-rule"></div>'
-    + '<div class="r"><b>วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ</b></div>'
-    + '<div class="r">วันที่ ' + fill(now.getDate(), 34) + ' เดือน '
-    + fill(THAI_MONTHS[now.getMonth() + 1], 76) + ' พ.ศ. ' + fill(now.getFullYear() + 543, 50) + '</div>'
+    + '<div class="ld-title"><span>ใบลา</span>' + fld(kind) + '</div>'
+    + '<div class="ld-hdr"><div class="c">วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ</div>'
+    + row(t('วันที่') + fld(now.getDate(), 40) + t('เดือน') + fld(THAI_MONTHS[now.getMonth() + 1]) + t('พ.ศ.') + fld(now.getFullYear() + 543, 60)) + '</div>'
 
-    + '<div><span class="ld-lbl">เรื่อง</span> ขอลา' + fill(kind, 140) + '</div>'
-    + '<div><span class="ld-lbl">เรียน</span> ผู้อำนวยการวิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ</div>'
+    + row('<span class="ld-lbl">เรื่อง</span>' + t('ขอลา') + fld(kind, 150))
+    + row('<span class="ld-lbl">เรียน</span>' + t('ผู้อำนวยการวิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ'))
 
-    + '<p class="ld-p">เนื่องด้วยข้าพเจ้า นาย, นาง, นางสาว ' + fill(fullName, 220)
-    + ' มีความจำเป็นจะขอลา' + fill(kind, 110) + ' เนื่องจาก ' + fill(d.reason, 300) + '</p>'
-    + '<div>ตั้งแต่วันที่ ' + fill(fromTxt, 210) + ' ถึงวันที่ ' + fill(toTxt, 210) + '</div>'
-    + '<div>รวมเวลา ' + fill(days || '', 50) + ' วัน &nbsp;&nbsp; เคยลามาแล้วในเทอมนี้ '
-    + fill(d.prior_days, 50) + ' วัน ทั้งนี้ในวันที่ลาข้าพเจ้าขาดเรียน</div>'
+    + row(t('<span style="display:inline-block;width:52px"></span>เนื่องด้วยข้าพเจ้า นาย, นาง, นางสาว') + fld(fullName) + t('มีความจำเป็น'))
+    + row(t('จะขอลา') + fld(kind, 170) + t('เนื่องจาก') + fld(r1))
+    + row(fld(r2))
+    + row(t('ตั้งแต่วันที่') + fld(fromTxt) + t('ถึงวันที่') + fld(toTxt))
+    + row(t('รวมเวลา') + fld(days || '', 80) + t('วัน &nbsp; เคยลามาแล้วในเทอมนี้') + fld(d.prior_days, 70)
+      + t('วัน ทั้งนี้ในวันที่ลาข้าพเจ้าขาดเรียน'))
 
-    + '<div class="ld-sec">' + box(theory.length > 0) + '<b>ภาคทฤษฎี</b></div>'
-    + '<div class="ld-items">' + theoryRows + '</div>'
-    + '<div class="ld-sec">' + box(practice.length > 0) + '<b>ภาคปฏิบัติ</b></div>'
-    + '<div class="ld-items">' + practiceRows + '</div>'
+    + '<div class="ld-grp"><div class="g">' + box(theory.length > 0) + 'ภาคทฤษฎี</div><div>' + tItems + '</div></div>'
+    + '<div class="ld-grp"><div class="g">' + box(practice.length > 0) + 'ภาคปฏิบัติ</div><div>' + pItems + '</div></div>'
 
-    + (d.attach_name ? '<div style="margin-top:8px">หลักฐานแนบ : ' + e(d.attach_label) + ' — ' + e(d.attach_name) + '</div>' : '')
-    + '<p class="ld-p" style="margin-top:10px">จึงเรียนมาเพื่อโปรดพิจารณาอนุมัติ</p>'
+    + (d.attach_name ? row(t('หลักฐานแนบ : ' + e(d.attach_label) + ' — ' + e(d.attach_name)), 'ld-ind') : '')
+    + '<div class="ld-ind" style="margin-top:6px">จึงเรียนมาเพื่อโปรดพิจารณาอนุมัติ</div>'
 
     + '<div class="ld-sign">'
     + '<div>ขอแสดงความนับถืออย่างสูง</div>'
-    + slot(sigOf(d.student_id || d.name))
-    + '<div>ลงชื่อ ' + line(190) + '</div>'
-    + '<div>( ' + (fullName ? e(fullName) : line(180)) + ' )</div>'
-    + '<div>นักศึกษาพยาบาลศาสตร์ ชั้นปีที่ ' + fill(d.year_level, 34) + ' รุ่น ' + fill(d.batch, 46) + '</div>'
-    + '<div>เบอร์โทรศัพท์ ' + fill(d.phone, 130) + '</div>'
+    + '<div class="ld-slot">' + sigOf(d.student_id || d.name) + '</div>'
+    + row(t('(') + fld(fullName) + t(')'))
+    + row(t('นักศึกษาพยาบาลศาสตร์ ชั้นปีที่') + fld(d.year_level, 50) + t('รุ่น') + fld(d.batch))
+    + row(t('เบอร์โทรศัพท์') + fld(d.phone))
     + '</div>'
 
     + '<div class="ld-two">'
     + '<div><div class="h">ความคิดเห็นอาจารย์ประจำชั้น</div>'
-    + '<div>' + line(240) + '</div><div>' + line(240) + '</div>'
-    + '<div class="ld-ind">' + slot(app.class_teacher ? sigOf(d.class_teacher) : '', 'flex-start') + '</div>'
-    + '<div class="ld-ind">ลงชื่อ ' + line(150) + '</div>'
-    + '<div class="ld-ind">( ' + (String(d.class_teacher || '').trim() ? e(d.class_teacher) : line(140)) + ' )</div>'
-    + '<div class="ld-ind">วันที่ ' + line(150) + '</div></div>'
-    + '<div><div class="h">คำสั่ง</div>'
-    + '<div class="ld-ind">' + box(!!app.deputy) + 'อนุญาต &nbsp;&nbsp;&nbsp;' + box(false) + 'ไม่อนุญาต</div>'
-    + '<div class="ld-ind">' + slot(app.deputy ? sigOf(d.deputy_by) : '', 'flex-start') + '</div>'
-    + '<div class="ld-ind">ลงชื่อ ' + line(150) + '</div>'
-    + '<div class="ld-ind">( ' + (String(d.deputy_by || '').trim() ? e(d.deputy_by) : line(150)) + ' )</div>'
-    + '<div class="ld-ind">ตำแหน่ง ' + line(140) + '</div>'
-    + '<div class="ld-ind">วันที่ ' + line(150) + '</div></div>'
+    + '<div class="ld-ln"></div><div class="ld-ln"></div>'
+    + '<div class="ld-col">'
+    + '<div class="ld-slot">' + (app.class_teacher ? sigOf(d.class_teacher) : '') + '</div>'
+    + row(t('ลงชื่อ') + raw(''))
+    + row(t('(') + fld(d.class_teacher) + t(')'))
+    + row(t('วันที่') + raw(''))
     + '</div>'
-
     + '<div class="ld-note"><b>หมายเหตุ</b><ol>'
-    + '<li>ส่งใบลาล่วงหน้าอย่างน้อย 1 วัน ที่อาจารย์ประจำชั้น และติดตามผลการลาก่อน</li>'
-    + '<li>มอบใบลาฉบับจริงให้อาจารย์ประจำชั้น หรืออาจารย์ฝ่ายปกครอง</li>'
-    + '<li>สำเนาส่งอาจารย์ผู้ประสานวิชา 1 ฉบับ และอาจารย์ประจำตึก 1 ฉบับ (กรณีขาดภาคปฏิบัติ)</li>'
-    + '</ol></div>'
+    + '<li>ส่งใบลาล่วงหน้าอย่างน้อย 1 วัน ที่อาจารย์ประจำชั้น<br>และติดตามผลการลาก่อน</li>'
+    + '<li>มอบใบลาฉบับจริงให้อาจารย์ประจำชั้น<br>หรืออาจารย์ฝ่ายปกครอง</li>'
+    + '<li>สำเนาส่งอาจารย์ผู้ประสานวิชา 1 ฉบับ<br>และอาจารย์ประจำตึก 1 ฉบับ (กรณีขาดภาคปฏิบัติ)</li>'
+    + '</ol></div></div>'
+
+    + '<div><div class="h">คำสั่ง</div>'
+    + '<div class="ld-col">'
+    + '<div style="text-align:center;margin:4px 0">' + box(!!app.deputy) + 'อนุญาต &nbsp;&nbsp;&nbsp;&nbsp; ' + box(false) + 'ไม่อนุญาต</div>'
+    + '<div class="ld-slot">' + (app.deputy ? sigOf(d.deputy_by) : '') + '</div>'
+    + row(t('ลงชื่อ') + raw(''))
+    + row(t('(') + fld(d.deputy_by) + t(')'))
+    + row(t('ตำแหน่ง') + raw(''))
+    + row(t('วันที่') + raw(''))
+    + '</div></div>'
+    + '</div>'
     + '</div>';
 }
 
-/* ใบลามีความกว้างตายตัว 460 พิกเซล ตามสัดส่วนกระดาษจริง
+/* ใบลามีความกว้างตายตัว 680 พิกเซล (+ขอบ 24) ตามสัดส่วนกระดาษ A4 จริง
    บนมือถือจอแคบกว่านั้น เดิมต้องเลื่อนซ้าย-ขวาดูทีละส่วน มองภาพรวมไม่ออก
    จึงย่อทั้งใบลงให้พอดีความกว้างที่มี แล้วหดความสูงกรอบตามอัตราที่ย่อ */
 function leaveDocFit() {
@@ -11917,7 +11935,7 @@ function leaveDocFit() {
   fit.style.width = '';
   box.style.height = '';
   const avail = box.clientWidth;
-  const natural = fit.scrollWidth || 460;
+  const natural = fit.scrollWidth || 728;
   if (!avail || avail >= natural) return;      // จอกว้างพอแล้ว ไม่ต้องย่อ
   const k = avail / natural;
   fit.style.width = natural + 'px';
@@ -11966,11 +11984,28 @@ function leaveDocOpenPrint(d) {
   const win = window.open('', '_blank');
   if (!win) { showToast('เบราว์เซอร์ปิดกั้นหน้าต่างใหม่ — อนุญาต pop-up ของเว็บนี้ก่อน แล้วกดพิมพ์อีกครั้ง', 'error'); return; }
   win.document.write('<!doctype html><html lang="th"><head><meta charset="utf-8"><title>ใบลานักศึกษา</title>'
-    + '<style>body{margin:18mm 16mm;background:#fff}</style></head><body>' + leaveDocHTML(d) + '</body></html>');
+    + '<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">'
+    // ระยะขอบกำหนดที่ @page ที่เดียว — เดิมซ้อนกับ margin ของ body จนใบลาล้นเป็น 2 หน้า
+    + '<style>@page{size:A4;margin:12mm 14mm}html,body{margin:0;padding:0;background:#fff}'
+    + '*{-webkit-print-color-adjust:exact;print-color-adjust:exact}</style></head><body>' + leaveDocHTML(d) + '</body></html>');
   win.document.close();
   win.focus();
   // รอให้ฟอนต์และตารางจัดหน้าเสร็จก่อน ไม่งั้นบางเบราว์เซอร์พิมพ์หน้าว่าง
-  setTimeout(function () { try { win.print(); } catch (err) { } }, 400);
+  const go = function () {
+    /* ใบลาต้องจบใน A4 หน้าเดียวเหมือนกระดาษจริง — ถ้าเนื้อหายาวเกิน (เช่น ลาหลายวิชา)
+       ย่อทั้งใบลงให้พอดีหน้า ความสูงที่พิมพ์ได้ = 297 − 24 มม. ≈ 1030 px */
+    try {
+      const doc = win.document.querySelector('.ld-doc');
+      const h = doc ? doc.scrollHeight : 0;
+      if (h > 1025) doc.style.zoom = String(Math.max(0.6, 1025 / h));
+    } catch (err) { }
+    try { win.print(); } catch (err) { }
+  };
+  try {
+    if (win.document.fonts && win.document.fonts.ready) {
+      win.document.fonts.ready.then(function () { setTimeout(go, 150); });
+    } else { setTimeout(go, 500); }
+  } catch (err) { setTimeout(go, 500); }
 }
 
 // ----- ตัวช่วยของแถวรายวิชาในแบบฟอร์ม -----
