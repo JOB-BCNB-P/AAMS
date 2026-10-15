@@ -56,6 +56,51 @@
     return m ? Number(m[1]) : null;
   }
   function cloKey(id) { return 'plo_clo_' + id; }   // กุญแจฝั่งหน้าเว็บ = __backendId
+  /* ================= องค์ประกอบคะแนนของ CLO =================
+     CLO หนึ่งข้อแบ่งเป็นหลายการประเมินได้ เช่น
+       สอบกลางภาค เต็ม 40 คิด 20% (มีสอบซ่อม เกณฑ์ผ่าน 24)
+       สอบปลายภาค เต็ม 25 คิด 5%  (มีสอบซ่อม เกณฑ์ผ่าน 15)
+       ผังความคิด เต็ม 20 คิด 5%
+       → รวม CLO 30%
+     อาจารย์กรอก "คะแนนดิบ" ระบบคิดคะแนนที่ได้ คิดเป็น % และรวม CLO ให้
+     ผลรวมแปลงเป็นร้อยละของน้ำหนัก CLO (เช่น 21.5/30 = 71.67%) แล้วเทียบกับเกณฑ์ผ่านของ CLO
+     ที่เก็บ  : นิยามองค์ประกอบ → plo_clo.components (JSON)
+               คะแนนดิบรายคน → ตาราง plo_score_part (94_plo_score_part.sql)
+               ร้อยละรวม      → plo_score.score ตามเดิม (หน้าสรุปผลจึงคำนวณได้เหมือนเดิม) */
+  function comps(clo) {
+    var raw = clo && clo.components;
+    if (!raw) return [];
+    try {
+      var a = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      return Array.isArray(a) ? a.filter(function (c) { return c && s(c.name) && n(c.full) > 0; }) : [];
+    } catch (e) { return []; }
+  }
+  function compWeight(list) { return list.reduce(function (t, c) { return t + n(c.weight); }, 0); }
+  // คะแนนที่ใช้คิดของการประเมินหนึ่งรายการ (คืน null ถ้ายังไม่กรอก)
+  function compUsed(c, d) {
+    d = d || {};
+    var sc = s(d.s) === '' ? null : n(d.s);
+    var rt = (c.retake && s(d.r) !== '') ? n(d.r) : null;
+    if (sc === null && rt === null) return null;
+    if (rt === null) return sc;
+    var pass = s(c.pass) === '' ? null : n(c.pass);
+    if (c.rule === 'actual' || pass === null) return Math.max(sc || 0, rt);
+    // สอบซ่อมผ่าน = ได้เท่าเกณฑ์ผ่าน · ไม่ผ่าน = ใช้คะแนนที่มากกว่า
+    return rt >= pass ? Math.max(sc || 0, pass) : Math.max(sc || 0, rt);
+  }
+  function compCalc(clo, det) {
+    var list = comps(clo), W = compWeight(list), tot = 0, done = 0;
+    var rows = list.map(function (c) {
+      var u = compUsed(c, (det || {})[c.id]);
+      var w = u === null ? null : Math.min(u, n(c.full)) / n(c.full) * n(c.weight);
+      if (w !== null) { tot += w; done++; }
+      return { used: u, w: w };
+    });
+    var complete = list.length > 0 && done === list.length;
+    return { rows: rows, total: tot, W: W, complete: complete,
+             pct: (complete && W > 0) ? Math.round(tot / W * 10000) / 100 : null };
+  }
+  function f2(v) { return v == null ? '' : (Math.round(v * 100) / 100).toString(); }
 
   function state() {
     if (!APP._plo) {
@@ -1182,13 +1227,18 @@
               + '<td class="px-3 py-2 font-semibold">' + esc(r.clo_code) + '</td>'
               + '<td class="px-3 py-2">' + esc(r.statement_th) + '</td>'
               + '<td class="px-3 py-2"><span class="px-2 py-0.5 rounded-lg bg-blue-50 text-primary text-xs">'
-              + esc(r.plo_code || '—') + '</span></td>'
+              + esc(r.plo_code || '—') + '</span>'
+              + (comps(r).length ? '<div class="text-[11px] text-emerald-700 mt-1">' + comps(r).length + ' การประเมิน · รวม ' + f2(compWeight(comps(r))) + '%</div>' : '')
+              + '</td>'
               + '<td class="px-3 py-2 text-center">' + (s(r.max_score) && n(r.max_score) !== 100
                   ? '<span class="text-amber-700" title="CLO เดิม — กดแก้ไขแล้วบันทึกเพื่อเปลี่ยนเป็น 100%">' + esc(r.max_score) + ' ⚠</span>' : '100%') + '</td>'
               + '<td class="px-3 py-2 text-center">' + esc(r.pass_score) + '%</td>'
               + '<td class="px-3 py-2 text-right whitespace-nowrap">'
               // รหัสแถวเป็นข้อความ (เช่น plo_clo_20) ต้องครอบเครื่องหมายคำพูด
               // ไม่งั้นเบราว์เซอร์อ่านเป็นชื่อตัวแปรแล้วฟ้องว่าไม่รู้จัก
+              + '<button onclick="ploEditComps(\'' + esc(r.__backendId) + '\')" class="mr-2 px-2 py-0.5 rounded-lg border text-[11px] '
+              + (comps(r).length ? 'border-emerald-300 text-emerald-700 bg-emerald-50' : 'border-gray-200 text-gray-500 hover:border-primary hover:text-primary') + '" title="กำหนดว่า CLO นี้มีคะแนนอะไรเท่าไหร่บ้าง">'
+              + '<i data-lucide="list-checks" class="w-3.5 h-3.5 inline"></i> องค์ประกอบคะแนน</button>'
               + '<button onclick="ploEditClo(\'' + esc(r.__backendId) + '\')" class="text-gray-300 hover:text-primary mr-2" title="แก้ไข CLO นี้">'
               + '<i data-lucide="pencil" class="w-4 h-4"></i></button>'
               + '<button onclick="ploDeleteClo(\'' + esc(r.__backendId) + '\')" class="text-gray-300 hover:text-red-500" title="ลบ CLO นี้">'
@@ -1368,6 +1418,191 @@
       ? '<span class="px-2 py-0.5 rounded-full text-[11px] bg-emerald-50 text-emerald-700">ผ่าน</span>'
       : '<span class="px-2 py-0.5 rounded-full text-[11px] bg-red-50 text-red-600">ไม่ผ่าน</span>';
   }
+  /* ---------- ตารางกรอกคะแนนแบบมีองค์ประกอบ (โหมดทีละ CLO) ---------- */
+  function compGrid(cur, studs, hide) {
+    var st = state();
+    var list = comps(cur), W = compWeight(list);
+    if (!st.detail) st.detail = {};
+    var head1 = '<th rowspan="2" class="px-2 py-2 text-center w-10 bg-surface">#</th>'
+      + '<th rowspan="2" class="px-2 py-2 bg-surface sticky left-0 z-30 min-w-[13rem] text-left">นักศึกษา</th>'
+      + list.map(function (c) {
+          var span = c.retake ? 4 : 3;
+          return '<th colspan="' + span + '" class="px-2 py-1.5 text-center border-l border-gray-200 bg-blue-50/60">'
+            + esc(c.name) + '<div class="text-[10px] font-normal text-gray-500">เต็ม ' + esc(c.full) + ' · คิด ' + esc(c.weight) + '%'
+            + (s(c.pass) !== '' ? ' · ผ่าน ' + esc(c.pass) : '') + '</div></th>';
+        }).join('')
+      + '<th rowspan="2" class="px-2 py-2 text-center border-l border-gray-300 bg-gray-100 whitespace-nowrap">รวม CLO<div class="text-[10px] font-normal text-gray-500">(' + f2(W) + '%)</div></th>'
+      + '<th rowspan="2" class="px-2 py-2 text-center bg-gray-100 whitespace-nowrap">ร้อยละ<div class="text-[10px] font-normal text-gray-500">ผ่าน ' + esc(cur.pass_score) + '%</div></th>'
+      + '<th rowspan="2" class="px-2 py-2 text-center bg-gray-100">ผล</th>';
+    var head2 = list.map(function (c) {
+      return '<th class="px-1 py-1 text-[11px] font-normal text-gray-600 border-l border-gray-200 bg-surface">คะแนน</th>'
+        + (c.retake ? '<th class="px-1 py-1 text-[11px] font-normal text-amber-700 bg-surface">สอบซ่อม</th>' : '')
+        + '<th class="px-1 py-1 text-[11px] font-normal text-gray-600 bg-surface">ที่ได้</th>'
+        + '<th class="px-1 py-1 text-[11px] font-normal text-primary bg-blue-50/60">คิด ' + esc(c.weight) + '%</th>';
+    }).join('');
+    var inp = function (key, c, part, v) {
+      return '<input type="number" step="0.01" min="0" max="' + esc(c.full) + '" value="' + esc(v == null ? '' : v) + '"'
+        + ' data-ckey="' + esc(key) + '" data-comp="' + esc(c.id) + '" data-part="' + part + '" data-clo="' + esc(cur.__backendId) + '-' + esc(c.id) + part + '"'
+        + ' oninput="ploCompInput(this)" onkeydown="ploScoreKey(event,this)" data-nodraft="1"'
+        + ' class="w-16 border rounded-lg px-1.5 py-1 text-sm text-center tabular-nums' + (part === 'r' ? ' border-amber-200' : '') + '">';
+    };
+    var body = studs.map(function (u, i) {
+      var key = cur.__backendId + '|' + u.student_id;
+      var det = st.detail[key] || {};
+      var calc = compCalc(cur, det);
+      return '<tr class="border-t border-gray-50" data-q="' + esc((u.student_id + ' ' + u.name).toLowerCase()) + '"' + hide(u) + '>'
+        + '<td class="px-2 py-1 text-center text-xs text-gray-400">' + (i + 1) + '</td>'
+        + '<td class="px-2 py-1 sticky left-0 bg-white z-10 whitespace-nowrap"><span class="font-mono text-xs text-gray-400">' + esc(u.student_id) + '</span> ' + esc(u.name) + '</td>'
+        + list.map(function (c, j) {
+            var d = det[c.id] || {};
+            return '<td class="px-1 py-1 text-center border-l border-gray-100">' + inp(key, c, 's', d.s) + '</td>'
+              + (c.retake ? '<td class="px-1 py-1 text-center">' + inp(key, c, 'r', d.r) + '</td>' : '')
+              + '<td class="px-1 py-1 text-center text-xs tabular-nums text-gray-600" data-cu="' + esc(key + '|' + c.id) + '">' + f2(calc.rows[j].used) + '</td>'
+              + '<td class="px-1 py-1 text-center text-xs tabular-nums font-semibold text-primary bg-blue-50/40" data-cw="' + esc(key + '|' + c.id) + '">' + f2(calc.rows[j].w) + '</td>';
+          }).join('')
+        + '<td class="px-2 py-1 text-center tabular-nums font-semibold border-l border-gray-200 bg-gray-50" data-ct="' + esc(key) + '">' + (calc.rows.some(function (x) { return x.w !== null; }) ? f2(calc.total) : '') + '</td>'
+        + '<td class="px-2 py-1 text-center tabular-nums bg-gray-50" data-cp="' + esc(key) + '">' + (calc.pct === null ? '' : f2(calc.pct) + '%') + '</td>'
+        + '<td class="px-2 py-1 text-center" data-res="' + esc(key) + '">' + compBadge(cur, calc) + '</td></tr>';
+    }).join('');
+    return '<div class="overflow-auto border border-gray-100 rounded-xl max-h-[65vh]"><table class="text-sm" style="min-width:100%">'
+      + '<thead class="sticky top-0 z-20"><tr>' + head1 + '</tr><tr>' + head2 + '</tr></thead><tbody>' + body + '</tbody></table></div>'
+      + '<p class="text-[11px] text-gray-500 mt-1">กรอกคะแนนดิบ ระบบคิด "ที่ได้" (รวมกติกาสอบซ่อม) · คิดเป็น % · รวม CLO และร้อยละให้เอง · '
+      + 'ผล CLO นับเมื่อกรอกครบทุกการประเมิน · บันทึกระหว่างทางได้</p>'
+      + (st._partMissing ? '<p class="text-xs text-red-600 mt-1">ยังไม่ได้ติดตั้งตารางเก็บคะแนนรายองค์ประกอบ — ผู้ดูแลระบบต้องรัน supabase/security/94_plo_score_part.sql ก่อน</p>' : '');
+  }
+  function compBadge(cur, calc) {
+    if (calc.pct === null) {
+      return calc.rows.some(function (x) { return x.w !== null; })
+        ? '<span class="text-[11px] text-amber-600">กรอกยังไม่ครบ</span>' : '<span class="text-[11px] text-gray-300">ยังไม่กรอก</span>';
+    }
+    return calc.pct >= n(cur.pass_score)
+      ? '<span class="px-2 py-0.5 rounded-full text-[11px] bg-emerald-50 text-emerald-700">ผ่าน</span>'
+      : '<span class="px-2 py-0.5 rounded-full text-[11px] bg-red-50 text-red-600">ไม่ผ่าน</span>';
+  }
+  window.ploCompInput = function (el) {
+    var st = state();
+    var key = el.getAttribute('data-ckey'), cid = el.getAttribute('data-comp'), part = el.getAttribute('data-part');
+    if (!st.detail) st.detail = {};
+    var det = st.detail[key] = st.detail[key] || {};
+    det[cid] = det[cid] || {};
+    det[cid][part] = el.value;
+    var clo = closOf(st.eYear, st.eSem, st.eSubject).filter(function (r) { return key.indexOf(r.__backendId + '|') === 0; })[0];
+    if (!clo) return;
+    var calc = compCalc(clo, det);
+    comps(clo).forEach(function (c, j) {
+      var u = document.querySelector('[data-cu="' + key + '|' + c.id + '"]'); if (u) u.textContent = f2(calc.rows[j].used);
+      var w = document.querySelector('[data-cw="' + key + '|' + c.id + '"]'); if (w) w.textContent = f2(calc.rows[j].w);
+    });
+    var t = document.querySelector('[data-ct="' + key + '"]'); if (t) t.textContent = calc.rows.some(function (x) { return x.w !== null; }) ? f2(calc.total) : '';
+    var p = document.querySelector('[data-cp="' + key + '"]'); if (p) p.textContent = calc.pct === null ? '' : f2(calc.pct) + '%';
+    var b = document.querySelector('[data-res="' + key + '"]'); if (b) b.innerHTML = compBadge(clo, calc);
+    st.scores[key] = calc.pct === null ? '' : calc.pct;
+    if (!st._dirty) st._dirty = {};
+    st._dirty[key] = true;
+    var m = document.getElementById('ploScoreMsg');
+    if (m) { m.textContent = 'มีการแก้ไขที่ยังไม่บันทึก ' + Object.keys(st._dirty).length + ' คน'; m.className = 'text-xs text-amber-600'; }
+  };
+
+  /* ---------- หน้าต่างกำหนดองค์ประกอบคะแนนของ CLO ---------- */
+  window.ploEditComps = function (id) {
+    var rec = (APP.allData || []).filter(function (d) { return String(d.__backendId) === String(id); })[0];
+    if (!rec) { showToast('ไม่พบ CLO', 'error'); return; }
+    var st = state();
+    st._compDraft = { id: id, list: comps(rec).map(function (c) { return Object.assign({}, c); }) };
+    if (!st._compDraft.list.length) st._compDraft.list = [{ id: 'c1', name: '', full: '', weight: '', pass: '', retake: false, rule: 'cap' }];
+    showModal('องค์ประกอบคะแนน ' + esc(rec.clo_code), '<div id="ploCompBox"></div>', null, 'max-w-4xl');
+    compDraw();
+  };
+  function compDraw() {
+    var st = state(), d = st._compDraft; if (!d) return;
+    var box = document.getElementById('ploCompBox'); if (!box) return;
+    var rec = (APP.allData || []).filter(function (x) { return String(x.__backendId) === String(d.id); })[0] || {};
+    var W = d.list.reduce(function (t, c) { return t + n(c.weight); }, 0);
+    var cell = function (i, k, v, type, ph, w) {
+      return '<input ' + (type ? 'type="' + type + '" step="0.01" min="0" ' : '') + 'value="' + esc(v == null ? '' : v) + '" placeholder="' + esc(ph || '') + '"'
+        + ' oninput="ploCompSet(' + i + ',\'' + k + '\',this.value)" data-nodraft="1" class="' + (w || 'w-20') + ' border rounded-lg px-2 py-1.5 text-sm">';
+    };
+    box.innerHTML = '<p class="text-xs text-gray-600 mb-3">ระบุการประเมินที่รวมเป็นคะแนนของ CLO นี้ เช่น สอบกลางภาค เต็ม 40 คิด 20% · '
+      + 'อาจารย์จะกรอกคะแนนดิบ ระบบคิดเป็น % และรวมให้ · ผล CLO เทียบกับเกณฑ์ผ่าน <b>' + esc(rec.pass_score || '-') + '%</b> ของน้ำหนักรวม '
+      + '(แก้เกณฑ์ผ่านของ CLO ได้ที่ปุ่มดินสอ)</p>'
+      + '<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="bg-surface text-left text-xs">'
+      + '<th class="px-2 py-2">#</th><th class="px-2 py-2">ชื่อการประเมิน</th><th class="px-2 py-2">คะแนนเต็ม</th><th class="px-2 py-2">คิดเป็น %</th>'
+      + '<th class="px-2 py-2">มีสอบซ่อม</th><th class="px-2 py-2">เกณฑ์ผ่าน (คะแนน)</th><th class="px-2 py-2">สอบซ่อมผ่าน ให้คะแนน</th><th></th></tr></thead><tbody>'
+      + d.list.map(function (c, i) {
+          return '<tr class="border-t border-gray-50">'
+            + '<td class="px-2 py-1.5 text-gray-400">' + (i + 1) + '</td>'
+            + '<td class="px-2 py-1.5">' + cell(i, 'name', c.name, '', 'เช่น สอบกลางภาค', 'w-44') + '</td>'
+            + '<td class="px-2 py-1.5">' + cell(i, 'full', c.full, 'number', '40') + '</td>'
+            + '<td class="px-2 py-1.5">' + cell(i, 'weight', c.weight, 'number', '20') + '</td>'
+            + '<td class="px-2 py-1.5 text-center"><input type="checkbox" ' + (c.retake ? 'checked ' : '') + 'onchange="ploCompSet(' + i + ',\'retake\',this.checked,true)" class="w-4 h-4"></td>'
+            + '<td class="px-2 py-1.5">' + cell(i, 'pass', c.pass, 'number', c.retake ? 'เช่น 24' : 'ไม่บังคับ') + '</td>'
+            + '<td class="px-2 py-1.5">' + (c.retake
+                ? '<select onchange="ploCompSet(' + i + ',\'rule\',this.value)" class="border rounded-lg px-2 py-1.5 text-xs">'
+                  + '<option value="cap"' + (c.rule !== 'actual' ? ' selected' : '') + '>เท่าเกณฑ์ผ่าน</option>'
+                  + '<option value="actual"' + (c.rule === 'actual' ? ' selected' : '') + '>ตามคะแนนที่สอบได้</option></select>'
+                : '<span class="text-xs text-gray-300">—</span>') + '</td>'
+            + '<td class="px-2 py-1.5 text-right"><button type="button" onclick="ploCompDel(' + i + ')" class="text-gray-300 hover:text-red-500" title="ลบรายการนี้"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td></tr>';
+        }).join('')
+      + '</tbody><tfoot><tr class="border-t bg-gray-50"><td></td><td class="px-2 py-2 text-sm font-semibold">รวม CLO</td><td></td>'
+      + '<td class="px-2 py-2 text-sm font-semibold" id="ploCompW">' + f2(W) + '%</td><td colspan="4"></td></tr></tfoot></table></div>'
+      + '<div class="flex flex-wrap items-center justify-between gap-2 mt-3">'
+      + '<button type="button" onclick="ploCompAdd()" class="px-3 py-1.5 border border-primary text-primary rounded-lg text-sm"><i data-lucide="plus" class="w-4 h-4 inline"></i> เพิ่มการประเมิน</button>'
+      + '<div class="flex gap-2">'
+      + (comps(rec).length ? '<button type="button" onclick="ploCompClear()" class="px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg text-sm">ไม่ใช้องค์ประกอบ (กรอกร้อยละตรง)</button>' : '')
+      + '<button type="button" onclick="ploCompSave()" class="px-4 py-1.5 bg-primary text-white rounded-lg text-sm"><i data-lucide="save" class="w-4 h-4 inline"></i> บันทึก</button></div></div>'
+      + '<p class="text-[11px] text-gray-500 mt-2">สอบซ่อม: "เท่าเกณฑ์ผ่าน" = สอบซ่อมผ่านได้คะแนนเท่าเกณฑ์ (เช่น 24) · "ตามคะแนนที่สอบได้" = ใช้คะแนนสอบซ่อมจริง · สอบซ่อมไม่ผ่านใช้คะแนนที่มากกว่าเสมอ</p>';
+    if (window.lucide) lucide.createIcons();
+  }
+  window.ploCompSet = function (i, k, v, redraw) {
+    var d = state()._compDraft; if (!d || !d.list[i]) return;
+    d.list[i][k] = v;
+    if (redraw) { compDraw(); return; }
+    if (k === 'weight') { var w = document.getElementById('ploCompW'); if (w) w.textContent = f2(d.list.reduce(function (t, c) { return t + n(c.weight); }, 0)) + '%'; }
+  };
+  window.ploCompAdd = function () {
+    var d = state()._compDraft; if (!d) return;
+    var ids = d.list.map(function (c) { return Number(String(c.id).replace(/\D/g, '')) || 0; });
+    d.list.push({ id: 'c' + (Math.max.apply(null, ids.concat([0])) + 1), name: '', full: '', weight: '', pass: '', retake: false, rule: 'cap' });
+    compDraw();
+  };
+  window.ploCompDel = function (i) { var d = state()._compDraft; if (!d) return; d.list.splice(i, 1); compDraw(); };
+  async function compStore(id, list) {
+    var rec = (APP.allData || []).filter(function (x) { return String(x.__backendId) === String(id); })[0];
+    if (!rec) return false;
+    var r = await GSheetDB.update(Object.assign({}, rec, { components: list.length ? JSON.stringify(list) : '',
+      updated_by: (APP.currentUser && APP.currentUser.name) || '' }));
+    if (!r || !r.isOk) { showToast('บันทึกไม่สำเร็จ: ' + ((r && r.error) || ''), 'error'); return false; }
+    return true;
+  }
+  window.ploCompSave = async function () {
+    var d = state()._compDraft; if (!d) return;
+    var list = d.list.filter(function (c) { return s(c.name) || s(c.full) || s(c.weight); });
+    for (var i = 0; i < list.length; i++) {
+      var c = list[i];
+      if (!s(c.name)) { showToast('รายการที่ ' + (i + 1) + ' ยังไม่มีชื่อการประเมิน', 'error'); return; }
+      if (!(n(c.full) > 0)) { showToast(c.name + ': คะแนนเต็มต้องมากกว่า 0', 'error'); return; }
+      if (!(n(c.weight) > 0)) { showToast(c.name + ': ต้องระบุว่าคิดเป็นกี่ %', 'error'); return; }
+      if (c.retake && s(c.pass) === '') { showToast(c.name + ': มีสอบซ่อมต้องระบุเกณฑ์ผ่าน', 'error'); return; }
+      if (s(c.pass) !== '' && n(c.pass) > n(c.full)) { showToast(c.name + ': เกณฑ์ผ่านมากกว่าคะแนนเต็ม', 'error'); return; }
+      list[i] = { id: c.id, name: s(c.name), full: s(c.full), weight: s(c.weight), pass: s(c.pass), retake: !!c.retake, rule: c.rule === 'actual' ? 'actual' : 'cap' };
+    }
+    if (!list.length) { showToast('ยังไม่มีการประเมิน', 'error'); return; }
+    if (await compStore(d.id, list)) {
+      closeModal(); state()._compDraft = null; state().scores = null;   // ให้โหลดคะแนนใหม่ตามโครงใหม่
+      showToast('บันทึกองค์ประกอบคะแนนแล้ว — รวม CLO ' + f2(compWeight(list)) + '%');
+      if (typeof renderCurrentPage === 'function') renderCurrentPage();
+    }
+  };
+  window.ploCompClear = async function () {
+    var d = state()._compDraft; if (!d) return;
+    if (!confirm('ยกเลิกองค์ประกอบคะแนนของ CLO นี้?\nคะแนนร้อยละรวมที่บันทึกไว้แล้วยังอยู่ แต่จะกรอกเป็นร้อยละตรง ๆ แทน')) return;
+    if (await compStore(d.id, [])) {
+      closeModal(); state()._compDraft = null; state().scores = null;
+      showToast('เปลี่ยนเป็นกรอกร้อยละตรงแล้ว');
+      if (typeof renderCurrentPage === 'function') renderCurrentPage();
+    }
+  };
+
   function scoreGrid(rows) {
     var st = state();
     var batch = cohortPrefix(st.eYear, st.eLevel);
@@ -1381,7 +1616,8 @@
         + studs.length + ' คน × ' + rows.length + ' CLO)</button>');
     }
 
-    var mode = st.gridMode || (rows.length > 6 ? 'one' : 'all');
+    // CLO ที่มีหลายการประเมินกรอกได้ในโหมดทีละ CLO — เปิดโหมดนั้นให้ก่อน
+    var mode = st.gridMode || ((rows.length > 6 || rows.some(function (r) { return comps(r).length; })) ? 'one' : 'all');
     var cur = rows.filter(function (r) { return String(r.__backendId) === String(st.gridClo); })[0] || rows[0];
     var curIdx = rows.indexOf(cur);
     var dirtyN = st._dirty ? Object.keys(st._dirty).length : 0;
@@ -1421,8 +1657,13 @@
         + '<div class="min-w-0"><p class="text-sm font-semibold text-gray-800">' + esc(cur.clo_code)
         + ' <span class="ml-1 px-2 py-0.5 rounded-lg bg-blue-50 text-primary text-xs font-normal">' + esc(cur.plo_code || '—') + '</span></p>'
         + '<p class="text-xs text-gray-600 mt-0.5">' + esc(cur.statement_th || '') + '</p>'
-        + '<p class="text-[11px] text-gray-400 mt-0.5">กรอกเป็นร้อยละ (เต็ม ' + esc(s(cur.max_score) || '100') + '%) · เกณฑ์ผ่าน ' + esc(cur.pass_score) + '%</p></div>'
+        + '<p class="text-[11px] text-gray-400 mt-0.5">' + (comps(cur).length
+            ? comps(cur).map(function (c) { return esc(c.name) + ' ' + esc(c.weight) + '%'; }).join(' + ') + ' = ' + f2(compWeight(comps(cur))) + '% · ผ่านเมื่อได้ ≥ ' + esc(cur.pass_score) + '% ของน้ำหนักรวม'
+            : 'กรอกเป็นร้อยละ (เต็ม ' + esc(s(cur.max_score) || '100') + '%) · เกณฑ์ผ่าน ' + esc(cur.pass_score) + '%')
+        + ' · <button type="button" onclick="ploEditComps(\'' + esc(cur.__backendId) + '\')" class="text-primary hover:underline">'
+        + (comps(cur).length ? 'แก้องค์ประกอบคะแนน' : 'แบ่งเป็นหลายการประเมิน (กลางภาค/ปลายภาค/งาน)') + '</button></p></div>'
         + '<div class="flex gap-2 flex-shrink-0">' + nav(prev, '‹ CLO ก่อนหน้า') + nav(next, 'CLO ถัดไป ›') + '</div></div>';
+      if (comps(cur).length) { table = chips + info + compGrid(cur, studs, hide); } else
       table = chips + info
         + '<div class="overflow-auto border border-gray-100 rounded-xl max-h-[65vh]"><table class="w-full text-sm">'
         + '<thead class="sticky top-0 z-20"><tr class="bg-surface text-left">'
@@ -1453,7 +1694,14 @@
             return '<tr class="border-t border-gray-50" data-q="' + esc((u.student_id + ' ' + u.name).toLowerCase()) + '"' + hide(u) + '>'
               + '<td class="px-3 py-1.5 sticky left-0 bg-white z-10 whitespace-nowrap">'
               + '<span class="font-mono text-xs text-gray-400">' + esc(u.student_id) + '</span> ' + esc(u.name) + '</td>'
-              + rows.map(function (r) { return '<td class="px-1 py-1 text-center">' + scoreInput(r, u, false) + '</td>'; }).join('')
+              + rows.map(function (r) {
+                  if (comps(r).length) {
+                    var cv = st.scores[r.__backendId + '|' + u.student_id];
+                    return '<td class="px-1 py-1 text-center text-xs tabular-nums ' + (s(cv) === '' ? 'text-gray-300' : (n(cv) >= n(r.pass_score) ? 'text-emerald-700' : 'text-red-600'))
+                      + '" title="CLO นี้มีหลายการประเมิน — กรอกในโหมด ทีละ CLO">' + (s(cv) === '' ? '—' : f2(n(cv)) + '%') + '</td>';
+                  }
+                  return '<td class="px-1 py-1 text-center">' + scoreInput(r, u, false) + '</td>';
+                }).join('')
               + '<td class="px-2 py-1.5 text-center text-xs tabular-nums whitespace-nowrap text-gray-600">' + ok + '/' + rows.length + '</td></tr>';
           }).join('') + '</tbody></table></div>'
         + '<p class="text-[11px] text-gray-400 mt-1">ชี้ที่หัวคอลัมน์เพื่อดูคำอธิบาย CLO · หัวตารางและชื่อนักศึกษาตรึงไว้ขณะเลื่อน</p>';
@@ -1501,6 +1749,18 @@
         // ฐานข้อมูลคืน clo_id เป็นตัวเลข — แปลงกลับเป็นกุญแจเดียวกับที่ตารางกรอกคะแนนใช้
         (r.data || []).forEach(function (x) { st.scores[cloKey(x.clo_id) + '|' + x.student_id] = x.score; });
       } catch (e) { showToast('โหลดคะแนนไม่สำเร็จ: ' + e, 'error'); return; }
+      // คะแนนดิบรายองค์ประกอบ — เฉพาะ CLO ที่กำหนดองค์ประกอบไว้
+      st.detail = {}; st._partMissing = false;
+      var cIds = rows.filter(function (r) { return comps(r).length; }).map(cloNum).filter(Boolean);
+      for (var from = 0; cIds.length; from += 1000) {
+        var pr = await sb().from('plo_score_part').select('clo_id,student_id,detail').in('clo_id', cIds).range(from, from + 999);
+        if (pr.error) { st._partMissing = true; console.warn('plo_score_part:', pr.error.message); break; }
+        (pr.data || []).forEach(function (x) {
+          var d = x.detail; if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = {}; } }
+          st.detail[cloKey(x.clo_id) + '|' + x.student_id] = d || {};
+        });
+        if (!pr.data || pr.data.length < 1000) break;
+      }
     }
     st._dirty = {};
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
@@ -1532,19 +1792,35 @@
     var dirty = Object.keys(st._dirty || {});
     if (!dirty.length) { showToast('ไม่มีการแก้ไข'); return; }
     var who = (APP.currentUser && APP.currentUser.name) || '';
+    // คะแนนดิบรายองค์ประกอบ — บันทึกได้แม้ยังกรอกไม่ครบ (เช่น มีแต่คะแนนกลางภาค)
+    var parts = dirty.filter(function (k) { return st.detail && st.detail[k]; }).map(function (k) {
+      var p = k.split('|');
+      return { clo_id: cloNum(p[0]), student_id: p[1], detail: st.detail[k], updated_by: who };
+    }).filter(function (x) { return x.clo_id; });
     var payload = dirty.map(function (k) {
       var p = k.split('|');
       return { clo_id: cloNum(p[0]), student_id: p[1],
                score: s(st.scores[k]) === '' ? null : Number(st.scores[k]), updated_by: who };
     }).filter(function (x) { return x.score !== null && x.clo_id; });
 
-    if (typeof showToast === 'function') showToast('กำลังบันทึก ' + payload.length + ' รายการ...');
-    var r = await sb().from('plo_score').upsert(payload, { onConflict: 'clo_id,student_id' });
+    if (typeof showToast === 'function') showToast('กำลังบันทึก ' + Math.max(payload.length, parts.length) + ' รายการ...');
+    if (parts.length) {
+      if (st._partMissing) { var t0 = document.getElementById('loadingToast'); if (t0) t0.remove();
+        showToast('ยังไม่ได้ติดตั้งตารางเก็บคะแนนรายองค์ประกอบ (94_plo_score_part.sql) — แจ้งผู้ดูแลระบบ', 'error'); return; }
+      for (var b = 0; b < parts.length; b += 500) {
+        var rp = await sb().from('plo_score_part').upsert(parts.slice(b, b + 500), { onConflict: 'clo_id,student_id' });
+        if (rp.error) { var t1 = document.getElementById('loadingToast'); if (t1) t1.remove();
+          showToast('บันทึกคะแนนรายองค์ประกอบไม่สำเร็จ: ' + rp.error.message, 'error'); return; }
+      }
+    }
+    var r = payload.length ? await sb().from('plo_score').upsert(payload, { onConflict: 'clo_id,student_id' }) : { error: null };
     var t = document.getElementById('loadingToast'); if (t) t.remove();
     if (r.error) { showToast('บันทึกไม่สำเร็จ: ' + r.error.message, 'error'); return; }
+    var partial = parts.filter(function (x) { return s(st.scores[cloKey(x.clo_id) + '|' + x.student_id]) === ''; }).length;
     st._dirty = {};
     st.summary = null;
-    showToast('บันทึกคะแนนเรียบร้อย ' + payload.length + ' รายการ');
+    showToast('บันทึกคะแนนเรียบร้อย ' + Math.max(payload.length, parts.length) + ' รายการ'
+      + (partial ? ' · ' + partial + ' คนยังกรอกไม่ครบทุกการประเมิน (ยังไม่นับผล CLO)' : ''));
     var m = document.getElementById('ploScoreMsg');
     if (m) { m.textContent = 'บันทึกแล้ว'; m.className = 'text-xs text-emerald-600'; }
   };

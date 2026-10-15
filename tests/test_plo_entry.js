@@ -6,7 +6,7 @@ const PLO = fs.readFileSync(path.join(__dirname, '..', 'plo.js'), 'utf8');
 let pass = 0, fail = 0;
 function t(n, f) { try { f(); pass++; console.log('  ✓ ' + n); } catch (e) { fail++; console.log('  ✗ ' + n + '\n      ' + e.message); } }
 t('มีมุมมอง "ทีละ CLO" และ "ทุก CLO" — CLO เกิน 6 เริ่มที่ทีละ CLO', () => {
-  assert.ok(PLO.includes("var mode = st.gridMode || (rows.length > 6 ? 'one' : 'all');"));
+  assert.ok(PLO.includes("var mode = st.gridMode || ((rows.length > 6 || rows.some(function (r) { return comps(r).length; })) ? 'one' : 'all');"));
 });
 t('หัวตารางตรึง + ค้นหานักศึกษา + Enter ไปคนถัดไป', () => {
   assert.ok(PLO.includes('thead class="sticky top-0') && PLO.includes('window.ploGridFilter') && PLO.includes('window.ploScoreKey'));
