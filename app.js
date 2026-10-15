@@ -1336,24 +1336,6 @@ function renderNotifications() {
       </div>`;
     }
   }
-  // === ส่วน "ผลการเรียนยังไม่ครบ" (ผู้ดูแลระบบ / งานทะเบียน) ===
-  const gmGroups = gradeMissingGroups();
-  if (gmGroups.length) {
-    const totalSubj = gmGroups.reduce((n, g) => n + g.items.length, 0);
-    html += `<div class="mb-3"><p class="text-xs font-semibold text-red-700 mb-2 flex items-center gap-1">
-      <i data-lucide="file-warning" class="w-3 h-3"></i>รายวิชาที่ยังไม่มีผลการเรียน (${totalSubj} รายวิชา)</p>`
-      + gmGroups.slice(0, 8).map(g => {
-        const lv = {};
-        g.items.forEach(x => { const k = x.level || '-'; lv[k] = (lv[k] || 0) + 1; });
-        const lvTxt = Object.keys(lv).sort().map(k => (k === '-' ? 'ไม่ระบุชั้นปี' : 'ปี ' + k) + ': ' + lv[k]).join(' · ');
-        return `<div class="p-3 bg-red-50 border border-red-200 rounded-xl mb-2 cursor-pointer hover:bg-red-100 transition" onclick="closeNotifications();gradeMissingGoto('${htmlEsc(g.yr)}','${htmlEsc(g.sem)}')">
-          <p class="font-medium text-sm text-gray-800">ภาคการศึกษา ${htmlEsc(semLabel(g.sem))} ปีการศึกษา ${htmlEsc(g.yr || '-')}</p>
-          <p class="text-xs text-gray-700 mt-1">ยังไม่มีผลการเรียน ${g.items.length} รายวิชา</p>
-          <p class="text-[11px] text-gray-500 mt-0.5">${htmlEsc(lvTxt)}</p>
-          <p class="text-xs text-red-700 font-medium mt-1">คลิกเพื่อดูรายวิชา</p>
-        </div>`;
-      }).join('') + (gmGroups.length > 8 ? `<p class="text-[11px] text-gray-500">และอีก ${gmGroups.length - 8} ภาคการศึกษา</p>` : '') + `</div>`;
-  }
   // === ส่วน "ใบลาไม่อนุมัติ" (นักศึกษา) ===
   const rejectedLeaves = getRejectedLeavesForStudent();
   if (rejectedLeaves.length) {
@@ -1428,8 +1410,7 @@ function updateNotifBadge() {
   const pendingLeaves = getPendingLeavesForCurrentRole().length;
   const pendingTracks = getPendingTrackingsForCurrentRole().length;
   const rejectedLeaves = getRejectedLeavesForStudent().length;   // นักศึกษา: ค้างจนกว่าจะยื่นใหม่
-  const gradeMissing = gradeMissingGroups().length;               // ผู้ดูแล/งานทะเบียน: นับ 1 ต่อภาคการศึกษาที่ยังค้างผล
-  const total = unseenAnn + pendingLeaves + pendingTracks + rejectedLeaves + gradeMissing;
+  const total = unseenAnn + pendingLeaves + pendingTracks + rejectedLeaves;
   if (total > 0) { b.textContent = total > 99 ? '99+' : total; b.classList.remove('hidden'); } else b.classList.add('hidden');
 }
 
@@ -4069,7 +4050,7 @@ function gradeOverviewCardsHTML() {
 }
 
 /* ================= รายวิชาที่ยังไม่มีผลการเรียน =================
-   แจ้งเตือน "ผู้ดูแลระบบ" และ "เจ้าหน้าที่งานทะเบียน"
+   แสดงเฉพาะในหน้าผลการเรียน (ไม่แจ้งที่กระดิ่ง) และเห็นเฉพาะ "ผู้ดูแลระบบ" กับ "เจ้าหน้าที่งานทะเบียน"
    เทียบ "รายวิชาที่เปิดสอน" (ตาราง subject) กับผลการเรียน (ตาราง grade) ด้วย รหัสวิชา/ชื่อวิชา + ภาค + ปีการศึกษา
    ถือว่า "มีผลแล้ว" เมื่อมีอย่างน้อย 1 แถวที่กรอกเกรดแล้ว — แถวที่นำเข้ารายชื่อไว้แต่ยังไม่มีเกรดนับว่ายังไม่มีผล
    ไม่นับปีการศึกษาที่ยังมาไม่ถึง (มากกว่าปีการศึกษาปัจจุบัน) */
@@ -4105,22 +4086,6 @@ function gradeMissingSubjects() {
     || a.sem.localeCompare(b.sem) || a.level.localeCompare(b.level)
     || norm(a.subj.subject_code).localeCompare(norm(b.subj.subject_code), 'th', { numeric: true }));
   return out;
-}
-// จัดกลุ่มตาม ปีการศึกษา/ภาค — ใช้กับกระดิ่งแจ้งเตือน (นับ 1 ต่อภาคการศึกษา ป้ายตัวเลขจะได้ไม่พุ่ง)
-function gradeMissingGroups() {
-  if (!gradeMissingCanSee()) return [];
-  const map = {};
-  gradeMissingSubjects().forEach(x => {
-    const key = x.yr + '|' + x.sem;
-    (map[key] = map[key] || { yr: x.yr, sem: x.sem, items: [] }).items.push(x);
-  });
-  return Object.values(map).sort((a, b) => b.yr.localeCompare(a.yr, 'th', { numeric: true }) || a.sem.localeCompare(b.sem));
-}
-function gradeMissingGoto(yr, sem) {
-  APP.filters._gmYear = yr || ''; APP.filters._gmSem = sem || '';
-  if (!APP._openCards) APP._openCards = {};
-  APP._openCards.gradeMissingCard = true;
-  navigateTo('grades');
 }
 function gradeMissingSet(k, v) { APP.filters[k] = v; if (!APP._openCards) APP._openCards = {}; APP._openCards.gradeMissingCard = true; renderCurrentPage(); }
 function gradeMissingCardHTML() {
