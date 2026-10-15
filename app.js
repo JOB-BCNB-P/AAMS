@@ -197,8 +197,32 @@ function htmlEsc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').r
 // ======================== ดึงข้อมูลจาก "รายวิชาที่เปิดสอน" ========================
 // ใช้ร่วมกันในหน้าติดตามการส่งทั้ง 4 หน้า และในฟอร์มเพิ่มรายวิชา
 // จัดกลุ่มตามปีการศึกษา ปีล่าสุดอยู่บนสุด เพื่อให้เลือกของปีก่อนหน้าได้ด้วย
-function subjectPickOptionsHTML(selectedId) {
-  const list = getDataByType('subject').filter(s => norm(s.subject_name));
+/* รายวิชานี้ถูกลงข้อมูลติดตามการส่ง (ประเภท type) ไปแล้วหรือยัง
+   ถือว่า "ซ้ำ" เมื่อ รายวิชา (รหัสหรือชื่อ) + ภาคการศึกษา + ปีการศึกษา + ห้อง ตรงกัน
+   ห้องว่างฝั่งใดฝั่งหนึ่ง = ไม่ได้แยกห้อง จึงนับว่าตรงกัน
+   → คนละห้อง หรือคนละภาค/ปีการศึกษา ยังเลือกได้ตามปกติ */
+function subjectAlreadyTracked(sj, type) {
+  const code = norm(sj.subject_code).toLowerCase(), name = norm(sj.subject_name).toLowerCase();
+  const sem = normSem(sj.semester), yr = norm(sj.academic_year), room = norm(sj.room).toLowerCase();
+  return getDataByType(type).some(r => {
+    const rc = norm(r.subject_code).toLowerCase(), rn = norm(r.subject_name).toLowerCase();
+    const same = (code && rc) ? rc === code : (rn && rn === name);
+    if (!same) return false;
+    if (normSem(r.semester) !== sem || norm(r.academic_year) !== yr) return false;
+    const rr = norm(r.room).toLowerCase();
+    return !rr || !room || rr === room;
+  });
+}
+function subjectPickOptionsHTML(selectedId, opts) {
+  const o = opts || {};
+  let list = getDataByType('subject').filter(s => norm(s.subject_name));
+  // ฟอร์มเพิ่มข้อมูลติดตามการส่ง: ซ่อนรายวิชาที่ลงข้อมูลประเภทนี้ไปแล้ว
+  subjectPickOptionsHTML.hidden = 0;
+  if (o.excludeTracked) {
+    const before = list.length;
+    list = list.filter(s => String(s.__backendId) === String(selectedId || '') || !subjectAlreadyTracked(s, o.excludeTracked));
+    subjectPickOptionsHTML.hidden = before - list.length;
+  }
   const byYear = {};
   list.forEach(s => { const y = norm(s.academic_year) || 'ไม่ระบุปี'; (byYear[y] = byYear[y] || []).push(s); });
   const years = Object.keys(byYear).sort((a, b) => b.localeCompare(a, 'th', { numeric: true }));
@@ -9362,7 +9386,8 @@ function applyTrackingBackfill(obj) {
 
 function showAddTrackingModal() {
   const subjects = getDataByType('subject');
-  const subjectOptions = subjectPickOptionsHTML();
+  const subjectOptions = subjectPickOptionsHTML('', { excludeTracked: 'tracking' });
+  const hiddenSubj = subjectPickOptionsHTML.hidden;
   const teachers = getDataByType('teacher');
   const teacherList = [...new Set(teachers.map(t => (t.name || '').trim()).filter(Boolean))].sort();
   const myName = (APP.currentUser && APP.currentUser.name || '').trim();
@@ -9373,7 +9398,7 @@ function showAddTrackingModal() {
   const currentYear = (APP.filters && APP.filters._trackingYear) || '2568';
   showModal('เพิ่มรายละเอียดรายวิชา', `
     <form id="addTrackingForm" class="space-y-3">
-      <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *</label><select name="subject_name" id="trackingSubjectSelect" required class="w-full border rounded-xl px-3 py-2 text-sm"><option value="">-- เลือกรายวิชา --</option>${subjectOptions}</select></div>
+      <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *${hiddenSubj ? ' <span class="text-[11px] font-normal text-gray-400">(ซ่อน ' + hiddenSubj + ' รายวิชาที่ลงข้อมูลแล้ว)</span>' : ''}</label><select name="subject_name" id="trackingSubjectSelect" required class="w-full border rounded-xl px-3 py-2 text-sm"><option value="">-- เลือกรายวิชา --</option>${subjectOptions}</select></div>
       <input type="hidden" name="subject_code" id="trackingSubjectCode">
       <div class="grid grid-cols-2 gap-3">
         <div><label class="block text-xs text-gray-600 mb-1">ทฤษฎี/ปฏิบัติ</label><select name="theory_practice" class="w-full border rounded-xl px-3 py-2 text-sm">${subjectTypeOptionsHTML('')}</select></div>
@@ -9599,7 +9624,8 @@ function resultTrackingPage() {
 
 function showAddResultTrackingModal() {
   const subjects = getDataByType('subject');
-  const subjectOptions = subjectPickOptionsHTML();
+  const subjectOptions = subjectPickOptionsHTML('', { excludeTracked: 'result_tracking' });
+  const hiddenSubj = subjectPickOptionsHTML.hidden;
   const teachers = getDataByType('teacher');
   const teacherList = [...new Set(teachers.map(t => (t.name || '').trim()).filter(Boolean))].sort();
   const myName = (APP.currentUser && APP.currentUser.name || '').trim();
@@ -9609,7 +9635,7 @@ function showAddResultTrackingModal() {
   }).join('');
   showModal('เพิ่มข้อมูลติดตามการส่งผลการดำเนินงานรายวิชา', `
     <form id="addResultTrackingForm" class="space-y-3">
-      <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *</label><select name="subject_name" id="resultTrackingSubjectSelect" required class="w-full border rounded-xl px-3 py-2 text-sm"><option value="">-- เลือกรายวิชา --</option>${subjectOptions}</select></div>
+      <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *${hiddenSubj ? ' <span class="text-[11px] font-normal text-gray-400">(ซ่อน ' + hiddenSubj + ' รายวิชาที่ลงข้อมูลแล้ว)</span>' : ''}</label><select name="subject_name" id="resultTrackingSubjectSelect" required class="w-full border rounded-xl px-3 py-2 text-sm"><option value="">-- เลือกรายวิชา --</option>${subjectOptions}</select></div>
       <input type="hidden" name="subject_code" id="resultTrackingSubjectCode">
       <div class="grid grid-cols-2 gap-3">
         <div><label class="block text-xs text-gray-600 mb-1">ทฤษฎี/ปฏิบัติ</label><select name="theory_practice" class="w-full border rounded-xl px-3 py-2 text-sm">${subjectTypeOptionsHTML('')}</select></div>
@@ -9761,7 +9787,8 @@ function gradeTrackingPage() {
 }
 function showAddGradeTrackingModal() {
   const subjects = getDataByType('subject');
-  const subjectOptions = subjectPickOptionsHTML();
+  const subjectOptions = subjectPickOptionsHTML('', { excludeTracked: 'grade_tracking' });
+  const hiddenSubj = subjectPickOptionsHTML.hidden;
   const teachers = getDataByType('teacher');
   const teacherList = [...new Set(teachers.map(t => (t.name || '').trim()).filter(Boolean))].sort();
   const myName = (APP.currentUser && APP.currentUser.name || '').trim();
@@ -9771,7 +9798,7 @@ function showAddGradeTrackingModal() {
   }).join('');
   showModal('เพิ่มข้อมูลติดตามการส่งเกรดรายวิชา', `
     <form id="addGradeTrackingForm" class="space-y-3">
-      <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *</label><select name="subject_name" id="gradeTrackingSubjectSelect" required class="w-full border rounded-xl px-3 py-2 text-sm"><option value="">-- เลือกรายวิชา --</option>${subjectOptions}</select></div>
+      <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *${hiddenSubj ? ' <span class="text-[11px] font-normal text-gray-400">(ซ่อน ' + hiddenSubj + ' รายวิชาที่ลงข้อมูลแล้ว)</span>' : ''}</label><select name="subject_name" id="gradeTrackingSubjectSelect" required class="w-full border rounded-xl px-3 py-2 text-sm"><option value="">-- เลือกรายวิชา --</option>${subjectOptions}</select></div>
       <input type="hidden" name="subject_code" id="gradeTrackingSubjectCode">
       <div class="grid grid-cols-2 gap-3">
         <div><label class="block text-xs text-gray-600 mb-1">ทฤษฎี/ปฏิบัติ</label><select name="theory_practice" class="w-full border rounded-xl px-3 py-2 text-sm">${subjectTypeOptionsHTML('')}</select></div>
@@ -9924,7 +9951,8 @@ function fileTrackingPage() {
 }
 function showAddFileTrackingModal() {
   const subjects = getDataByType('subject');
-  const subjectOptions = subjectPickOptionsHTML();
+  const subjectOptions = subjectPickOptionsHTML('', { excludeTracked: 'file_tracking' });
+  const hiddenSubj = subjectPickOptionsHTML.hidden;
   const teachers = getDataByType('teacher');
   const teacherList = [...new Set(teachers.map(t => (t.name || '').trim()).filter(Boolean))].sort();
   const myName = (APP.currentUser && APP.currentUser.name || '').trim();
@@ -9934,7 +9962,7 @@ function showAddFileTrackingModal() {
   }).join('');
   showModal('เพิ่มข้อมูลติดตามการส่งแฟ้มรายวิชา', `
     <form id="addFileTrackingForm" class="space-y-3">
-      <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *</label><select name="subject_name" id="fileTrackingSubjectSelect" required class="w-full border rounded-xl px-3 py-2 text-sm"><option value="">-- เลือกรายวิชา --</option>${subjectOptions}</select></div>
+      <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *${hiddenSubj ? ' <span class="text-[11px] font-normal text-gray-400">(ซ่อน ' + hiddenSubj + ' รายวิชาที่ลงข้อมูลแล้ว)</span>' : ''}</label><select name="subject_name" id="fileTrackingSubjectSelect" required class="w-full border rounded-xl px-3 py-2 text-sm"><option value="">-- เลือกรายวิชา --</option>${subjectOptions}</select></div>
       <input type="hidden" name="subject_code" id="fileTrackingSubjectCode">
       <div class="grid grid-cols-2 gap-3">
         <div><label class="block text-xs text-gray-600 mb-1">ทฤษฎี/ปฏิบัติ</label><select name="theory_practice" class="w-full border rounded-xl px-3 py-2 text-sm">${subjectTypeOptionsHTML('')}</select></div>

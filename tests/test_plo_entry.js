@@ -16,7 +16,7 @@ t('CSV แยกขั้นที่ 1 CLO และขั้นที่ 2 ค
   assert.ok(PLO.includes('นำเข้า CLO ที่ผูกกับ PLO') && PLO.includes('นำเข้าคะแนนรายคน'));
   assert.ok(PLO.includes("ploCsvPick('clo')") && PLO.includes("ploCsvPick('score')"));
 });
-t('ขั้นที่ 2 ใช้ได้เมื่อเลือกรายวิชาและมี CLO แล้ว', () => assert.ok(PLO.includes('รายวิชานี้ยังไม่มี CLO — ทำขั้นที่ 1 ก่อน')));
+t('ขั้นที่ 2 ใช้ได้เมื่อเลือกรายวิชาและมี CLO แล้ว', () => assert.ok(PLO.includes('รายวิชานี้ยังไม่มี CLO — นำเข้าไฟล์ CLO (ก) หรือเพิ่มในขั้นที่ 3 ก่อน')));
 t('อัปโหลดไฟล์ผิดขั้นถูกปฏิเสธ', () => assert.ok(PLO.includes('if (want && got && got !== \'all\' && got !== want)')));
 console.log('\n' + (fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
 process.exit(fail ? 1 : 0);

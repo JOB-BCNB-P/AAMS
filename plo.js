@@ -107,18 +107,18 @@
       + '<p class="text-sm text-gray-500 mt-0.5">อัตราการบรรลุผลลัพธ์การเรียนรู้ระดับรายวิชา หลักสูตร และชั้นปี</p></div>'
       + '</div>';
 
-    var tabs = '<div class="flex flex-wrap gap-2 mb-5 border-b border-gray-100 pb-3">'
-      + [['summary', 'สรุปผลรวม', 'bar-chart-3'], ['entry', 'บันทึกข้อมูล', 'pencil-line']]
-        .map(function (t) {
-          if (t[0] === 'entry' && !canEdit()) return '';
-          var on = st.tab === t[0];
-          return '<button onclick="ploSet(\'tab\',\'' + t[0] + '\')" class="px-3.5 py-2 rounded-xl text-sm flex items-center gap-2 transition '
-            + (on ? 'bg-primary text-white' : 'text-gray-600 hover:bg-surface') + '">'
-            + '<i data-lucide="' + t[2] + '" class="w-4 h-4"></i>' + t[1] + '</button>';
-        }).join('')
+    /* เมนูย่อยอยู่ที่แถบเมนูด้านซ้ายแล้ว (สรุปผลรวม · บันทึกข้อมูล)
+       ในหน้าแสดงแค่ป้ายบอกว่ากำลังอยู่ส่วนไหน */
+    var isEntry = st.tab === 'entry' && canEdit();
+    var tabs = '<div class="flex items-center gap-2 mb-5 border-b border-gray-100 pb-3 text-sm">'
+      + '<span class="px-3 py-1.5 rounded-xl bg-primary text-white flex items-center gap-2">'
+      + '<i data-lucide="' + (isEntry ? 'pencil-line' : 'bar-chart-3') + '" class="w-4 h-4"></i>'
+      + (isEntry ? 'บันทึกข้อมูล' : 'สรุปผลรวม') + '</span>'
+      + (canEdit() ? '<button onclick="navigateTo(\'' + (isEntry ? 'ploSummary' : 'ploEntry') + '\')" class="text-xs text-gray-500 hover:text-primary">'
+        + (isEntry ? 'ไปที่สรุปผลรวม →' : 'ไปที่บันทึกข้อมูล →') + '</button>' : '')
       + '</div>';
 
-    var body = st.tab === 'entry' && canEdit() ? entryTab() : summaryTab();
+    var body = isEntry ? entryTab() : summaryTab();
     return '<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 md:p-6">'
       + head + tabs + body + '</div>';
   };
@@ -486,7 +486,7 @@
           }).join('') + '</select></div>';
     };
 
-    var pick = '<div class="flex flex-wrap items-end gap-3 mb-5">'
+    var pick = '<div class="flex flex-wrap items-end gap-3">'
       + sel('ปีการศึกษา', 'eYear', yearsList().map(function (y) { return [y, y]; }))
       + sel('ภาคการศึกษา', 'eSem', SEMS.map(function (x) { return [x, x === '3' ? 'ฤดูร้อน' : x]; }))
       + sel('ชั้นปี', 'eLevel', ['1', '2', '3', '4'].map(function (l) {
@@ -496,9 +496,15 @@
       + '</div>';
 
     var subs = subjectsOf(st.eYear, st.eSem, st.eLevel);
-    if (!subs.length) return pick + hint('ไม่มีรายวิชาที่เปิดสอนในภาค/ปี/ชั้นปีที่เลือก');
+    var scopeTxt = 'ปีการศึกษา ' + st.eYear + ' · ภาค ' + (st.eSem === '3' ? 'ฤดูร้อน' : st.eSem) + ' · ชั้นปีที่ ' + st.eLevel;
+    if (!subs.length) {
+      return '<div class="ems-stepped">'
+        + step(1, 'เลือกปีการศึกษา ภาคการศึกษา และชั้นปี', scopeTxt, pick, 'active')
+        + step(2, 'เลือกรายวิชา', '', hint('ไม่มีรายวิชาที่เปิดสอนในภาค/ปี/ชั้นปีที่เลือก'), 'wait')
+        + '</div>';
+    }
 
-    var list = '<div class="grid md:grid-cols-2 gap-2 mb-6">'
+    var list = '<div class="grid md:grid-cols-2 gap-2">'
       + subs.map(function (x) {
           var nc = closOf(st.eYear, st.eSem, x.subject_code).length;
           var on = s(st.eSubject) === s(x.subject_code);
@@ -514,9 +520,34 @@
         }).join('')
       + '</div>';
 
-    var body = st.eSubject ? cloEditor() : hint('เลือกรายวิชาด้านบนเพื่อกำหนด CLO และกรอกคะแนน');
-    return pick + section('รายวิชาที่เปิดสอน <span class="text-xs font-normal text-gray-400">('
-      + subs.length + ' วิชา)</span>', list) + csvPanel() + body;
+    var subj = st.eSubject ? subs.filter(function (x) { return s(x.subject_code) === s(st.eSubject); })[0] : null;
+    var nClo = st.eSubject ? closOf(st.eYear, st.eSem, st.eSubject).length : 0;
+    var ed = subj ? cloEditor() : null;
+    var waitMsg = function (m) { return '<p class="text-sm text-gray-400">' + esc(m) + '</p>'; };
+
+    return '<div class="ems-stepped">'
+      + step(1, 'เลือกปีการศึกษา ภาคการศึกษา และชั้นปี', scopeTxt, pick, 'done')
+      + step(2, 'เลือกรายวิชา', 'รายวิชาที่เปิดสอน ' + subs.length + ' วิชา' + (subj ? ' · เลือกแล้ว: ' + s(subj.subject_name) : ''),
+          list, subj ? 'done' : 'active')
+      + step(3, 'กำหนด CLO และผูกกับ PLO', subj ? 'รายวิชา ' + s(subj.subject_name) + ' · มี ' + nClo + ' CLO' : 'ทำหลังเลือกรายวิชา',
+          ed ? ed.clo : waitMsg('เลือกรายวิชาในขั้นที่ 2 ก่อน'), !subj ? 'wait' : (nClo ? 'done' : 'active'))
+      + step(4, 'กรอกคะแนนนักศึกษารายคน', nClo ? 'คะแนนแต่ละ CLO · กดบันทึกเมื่อกรอกเสร็จ' : 'ทำหลังกำหนด CLO แล้ว',
+          (ed && ed.scores) ? ed.scores : waitMsg(!subj ? 'เลือกรายวิชาในขั้นที่ 2 ก่อน' : 'เพิ่ม CLO ในขั้นที่ 3 ก่อน'),
+          (subj && nClo) ? 'active' : 'wait')
+      + step(5, 'นำเข้าผ่านไฟล์ CSV', 'ไม่บังคับ · ทางลัดแทนขั้นที่ 3–4 เมื่อมีข้อมูลหลายรายวิชา', csvPanel(), 'opt')
+      + '</div>';
+  }
+
+  /* กรอบขั้นตอนมีหมายเลข — ใช้ชุดสไตล์เดียวกับฟอร์มเพิ่มข้อมูลหน้าอื่น (steps.js / styles.css .ems-step)
+     state: done = เสร็จแล้ว (เลขสีเขียว ✓) · active = ขั้นที่ต้องทำต่อ · wait = ยังทำไม่ได้ · opt = ไม่บังคับ */
+  function step(no, title, sub, inner, state, final) {
+    var cls = 'ems-step' + (state === 'done' ? ' is-done' : '') + (state === 'active' ? ' is-active' : '')
+      + (final ? ' ems-step-final' : '');
+    return '<section class="' + cls + '"' + (state === 'wait' ? ' style="opacity:.6"' : '') + '>'
+      + '<div class="ems-step-head"><span class="ems-step-no" aria-hidden="true">' + no + '</span>'
+      + '<div class="min-w-0"><p class="ems-step-title">' + esc(title) + '</p>'
+      + (sub ? '<p class="ems-step-sub">' + esc(sub) + '</p>' : '') + '</div></div>'
+      + '<div class="ems-step-body space-y-3">' + inner + '</div></section>';
   }
 
   /* ================= นำเข้า/ส่งออกข้อมูลผ่านไฟล์ CSV =================
@@ -539,7 +570,7 @@
 
     // ขั้นที่ 1 : CLO ที่ผูกกับ PLO
     var step1 = '<div class="bg-white border border-blue-100 rounded-xl p-4">'
-      + '<div class="flex items-start gap-3 mb-2">' + no(1, nClo > 0)
+      + '<div class="flex items-start gap-3 mb-2">' + no('ก', nClo > 0)
       + '<div><p class="text-sm font-semibold text-gray-800">นำเข้า CLO ที่ผูกกับ PLO</p>'
       + '<p class="text-[11px] text-gray-500">' + (subj ? 'รายวิชา ' + esc(subj.subject_name) : 'ทุกรายวิชาของชั้นปีนี้ (' + subs.length + ' วิชา)')
       + ' · คอลัมน์: รหัสวิชา · รหัส CLO · คำอธิบาย · PLO ที่ผูก · คะแนนเต็ม · เกณฑ์ผ่าน</p></div></div>'
@@ -551,9 +582,9 @@
       + '</div>';
 
     // ขั้นที่ 2 : คะแนนรายคน — ต้องเลือกรายวิชาและมี CLO แล้ว
-    var why = !st.eSubject ? 'เลือกรายวิชาด้านบนก่อน' : (!nClo ? 'รายวิชานี้ยังไม่มี CLO — ทำขั้นที่ 1 ก่อน' : '');
+    var why = !st.eSubject ? 'เลือกรายวิชาในขั้นที่ 2 ก่อน' : (!nClo ? 'รายวิชานี้ยังไม่มี CLO — นำเข้าไฟล์ CLO (ก) หรือเพิ่มในขั้นที่ 3 ก่อน' : '');
     var step2 = '<div class="bg-white border ' + (why ? 'border-gray-100' : 'border-blue-100') + ' rounded-xl p-4">'
-      + '<div class="flex items-start gap-3 mb-2">' + no(2, false)
+      + '<div class="flex items-start gap-3 mb-2">' + no('ข', false)
       + '<div><p class="text-sm font-semibold ' + (why ? 'text-gray-400' : 'text-gray-800') + '">นำเข้าคะแนนรายคน <span class="font-normal text-xs">(หลังเพิ่ม CLO แล้ว)</span></p>'
       + '<p class="text-[11px] text-gray-500">' + (why ? '<span class="text-amber-700">' + why + '</span>'
           : 'รายวิชา ' + esc(subj ? subj.subject_name : st.eSubject) + ' · ' + nClo + ' CLO · คอลัมน์: รหัสนักศึกษา · ชื่อ · คะแนนแต่ละ CLO (1 คอลัมน์ต่อ 1 CLO)')
@@ -565,7 +596,7 @@
       + (why ? '' : '<p class="text-[11px] text-gray-400 mt-2 ml-10">ช่องที่เว้นว่างจะไม่ถูกแตะ (ไม่ใช่ให้ 0) · กด "เปิดตารางกรอกคะแนน" ก่อนดาวน์โหลด คะแนนเดิมจะติดมาในแม่แบบ</p>')
       + '</div>';
 
-    return '<div class="border border-emerald-100 bg-emerald-50/40 rounded-2xl p-4 mb-6">'
+    return '<div class="border border-emerald-100 bg-emerald-50/40 rounded-2xl p-4">'
       + '<div class="flex flex-wrap items-center justify-between gap-2 mb-3">'
       + '<p class="text-sm font-semibold text-gray-700"><i data-lucide="file-spreadsheet" class="w-4 h-4 inline mr-1 text-emerald-600"></i>นำเข้าข้อมูลผ่านไฟล์ CSV</p>'
       + '<span class="text-[11px] text-gray-500">' + scope + '</span></div>'
@@ -1167,8 +1198,8 @@
 
     var scores = rows.length ? scoreGrid(rows) : '';
 
-    return section('CLO ของรายวิชา <span class="text-primary">' + esc(subj.subject_name || st.eSubject) + '</span>',
-      table + form) + scores;
+    // แยกส่งเป็น 2 ส่วน ให้หน้าบันทึกข้อมูลวางเป็นขั้นที่ 3 (CLO) และขั้นที่ 4 (คะแนน)
+    return { clo: table + form, scores: scores };
   }
 
   window.ploAddClo = async function (wholeYear) {
@@ -1499,7 +1530,9 @@
     var orig = window.getPageContent;
     if (typeof orig !== 'function') return;
     window.getPageContent = function (page) {
-      if (page === 'ploAssess') return window.ploPage();
+      // เมนูย่อย: สรุปผลรวม / บันทึกข้อมูล — ploAssess คงไว้ให้ลิงก์เดิมยังเปิดได้ (= สรุปผลรวม)
+      if (page === 'ploSummary' || page === 'ploAssess') { state().tab = 'summary'; return window.ploPage(); }
+      if (page === 'ploEntry') { state().tab = canEdit() ? 'entry' : 'summary'; return window.ploPage(); }
       return orig.apply(this, arguments);
     };
   })();
@@ -1526,12 +1559,36 @@
       var perms = (APP.permissions && APP.permissions[APP.currentRole]) || {};
       if (!perms.ploAssess) return;
       var nav = document.getElementById('sidebarNav');
-      if (!nav || nav.querySelector('[data-page="ploAssess"]')) return;
-      var btn = document.createElement('button');
-      btn.setAttribute('onclick', "navigateTo('ploAssess')");
-      btn.setAttribute('data-page', 'ploAssess');
-      btn.className = 'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-700 hover:bg-surface hover:text-primary transition';
-      btn.innerHTML = '<i data-lucide="target" class="w-5 h-5 flex-shrink-0"></i>ประเมินผลหลักสูตร PLOs';
+      if (!nav || nav.querySelector('[data-plo-menu]')) return;
+      var subs = [['ploSummary', 'สรุปผลรวม']].concat(canEdit() ? [['ploEntry', 'บันทึกข้อมูล']] : []);
+      var here = APP.currentPage;
+      var btn;
+      if (subs.length === 1) {
+        // ดูได้อย่างเดียว (เช่น ผู้บริหาร) — ไม่ต้องทำเป็นกลุ่มพับให้กดสองครั้ง
+        btn = document.createElement('button');
+        btn.setAttribute('onclick', "navigateTo('ploAssess')");
+        btn.setAttribute('data-page', 'ploAssess');
+        btn.className = 'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-700 hover:bg-surface hover:text-primary transition';
+        btn.innerHTML = '<i data-lucide="target" class="w-5 h-5 flex-shrink-0"></i>ประเมินผลหลักสูตร PLOs';
+      } else {
+        var open = subs.some(function (x) { return x[0] === here; }) || here === 'ploAssess';
+        btn = document.createElement('div');
+        btn.className = 'dropdown-item' + (open ? ' dropdown-open' : '');
+        btn.innerHTML =
+          '<button onclick="toggleDropdown(this)" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm text-gray-700 hover:bg-surface transition">'
+          + '<span class="flex items-center gap-3"><i data-lucide="target" class="w-5 h-5 flex-shrink-0"></i>ประเมินผลหลักสูตร PLOs</span>'
+          + '<i data-lucide="chevron-down" class="w-4 h-4 transition-transform"' + (open ? ' style="transform:rotate(180deg)"' : '') + '></i></button>'
+          + '<div class="dropdown-menu ml-8 mt-1 space-y-1">'
+          + subs.map(function (x) {
+              var on = x[0] === here || (here === 'ploAssess' && x[0] === 'ploSummary');
+              return '<button onclick="navigateTo(\'' + x[0] + '\')" data-page="' + x[0] + '" class="nav-item w-full text-left px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-surface hover:text-primary transition'
+                + (on ? ' bg-primaryLight text-primary font-semibold' : '') + '">' + x[1] + '</button>';
+            }).join('')
+          + '</div>';
+      }
+      btn.setAttribute('data-plo-menu', '1');
+      // คงเครื่องหมายเดิมไว้ เมนูอื่นที่อ้างตำแหน่ง [data-page="ploAssess"] จะได้จัดลำดับถูกเหมือนเดิม
+      if (subs.length > 1) btn.setAttribute('data-page', 'ploAssess');
       // เกาะหน้ากลุ่มภาระงานนักศึกษาถ้ามี จะได้เป็น PLOs → ภาระงานนักศึกษา เสมอ
       insertNav(nav, btn, '[data-wl-menu], [data-page="teacherDirectory"], '
         + '[data-page="tracking"], [data-page="services"]');
