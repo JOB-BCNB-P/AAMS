@@ -11508,8 +11508,10 @@ function onLeaveTypeChange(type) {
   if (!extra) return;
   extra.innerHTML = '';
   if (type === 'ลาป่วย') {
-    extra.innerHTML = `<div class="bg-yellow-50 p-3 rounded-xl text-xs text-yellow-700"><i data-lucide="alert-triangle" class="w-4 h-4 inline"></i> ลาป่วยเกิน 2 วัน (ตั้งแต่ 3 วันขึ้นไป) ต้องแนบใบรับรองแพทย์ (.png .jpg .jpeg .pdf)</div>
-    <div id="sickCertUpload" class="hidden"><label class="block text-xs text-gray-600 mb-1">แนบใบรับรองแพทย์ <span class="text-red-500">*</span></label><input type="file" accept=".png,.jpg,.jpeg,.pdf" class="w-full text-sm" name="medical_cert"></div>`;
+    /* ช่องแนบใบรับรองแพทย์ขึ้นทันทีที่เลือกลาป่วย — ข้อความและดอกจันเปลี่ยนตามจำนวนวันใน validateLeaveDate
+       1 วัน = แนบได้ ไม่บังคับ · 2 วัน = เตือนให้แนบ (ยังส่งได้หลังยืนยัน) · 3 วันขึ้นไป = บังคับแนบ */
+    extra.innerHTML = `<div id="sickCertNote" class="bg-yellow-50 p-3 rounded-xl text-xs text-yellow-700"><i data-lucide="alert-triangle" class="w-4 h-4 inline"></i> <span id="sickCertMsg">กรอกวันที่ลาก่อน ระบบจะบอกว่าต้องแนบใบรับรองแพทย์หรือไม่ — ลาป่วยตั้งแต่ 3 วันขึ้นไปต้องแนบ</span></div>
+    <div id="sickCertUpload"><label class="block text-xs text-gray-600 mb-1">แนบใบรับรองแพทย์ <span id="sickCertStar" class="text-red-500 hidden">*</span> <span id="sickCertOpt" class="text-gray-400">(ไม่บังคับ)</span> <span class="text-gray-400">.png .jpg .jpeg .pdf</span></label><input type="file" accept=".png,.jpg,.jpeg,.pdf" class="w-full text-sm" name="medical_cert"></div>`;
   } else if (type === 'ลากิจ') {
     extra.innerHTML = `<div class="bg-blue-50 p-3 rounded-xl text-xs text-blue-700"><i data-lucide="info" class="w-4 h-4 inline"></i> ลากิจต้องส่งล่วงหน้า 1-2 วัน หากส่งช้าโปรดระบุเหตุผลในช่องเหตุผลการลาด้านบน</div>`;
   } else if (type === 'ลาพบแพทย์') {
@@ -11649,10 +11651,27 @@ function validateLeaveDate() {
   const dayCount = leaveDayCount(get('leave_from'), get('leave_to'), get('half_start'), get('half_end'));
   const certBox = document.getElementById('sickCertUpload');
   if (certBox) {
-    const need = (type === 'ลาป่วย' && dayCount > 2);
-    certBox.classList.toggle('hidden', !need);
+    const need = (type === 'ลาป่วย' && dayCount > 2);     // 3 วันขึ้นไป บังคับแนบ
+    const warn = (type === 'ลาป่วย' && dayCount === 2);   // 2 วัน เตือนให้แนบ
     const fileInput = certBox.querySelector('input[type="file"]');
     if (fileInput) fileInput.required = need;
+    const star = document.getElementById('sickCertStar');
+    const opt = document.getElementById('sickCertOpt');
+    if (star) star.classList.toggle('hidden', !need);
+    if (opt) {
+      opt.classList.toggle('hidden', need);
+      opt.textContent = warn ? '(ควรแนบ)' : '(ไม่บังคับ)';
+    }
+    const note = document.getElementById('sickCertNote');
+    const msg = document.getElementById('sickCertMsg');
+    if (note && msg) {
+      note.className = 'p-3 rounded-xl text-xs ' + (need ? 'bg-red-50 text-red-700' : warn ? 'bg-amber-50 text-amber-800' : 'bg-yellow-50 text-yellow-700');
+      msg.textContent = !dayCount
+        ? 'กรอกวันที่ลาก่อน ระบบจะบอกว่าต้องแนบใบรับรองแพทย์หรือไม่ — ลาป่วยตั้งแต่ 3 วันขึ้นไปต้องแนบ'
+        : need ? 'ลาป่วย ' + dayCount + ' วัน — ต้องแนบใบรับรองแพทย์ก่อนบันทึก'
+        : warn ? 'ลาป่วย 2 วัน — กรุณาแนบใบรับรองแพทย์ หากไม่แนบ ระบบจะให้ยืนยันก่อนส่ง'
+        : 'ลาป่วย ' + dayCount + ' วัน — แนบใบรับรองแพทย์ได้ถ้ามี (ไม่บังคับ)';
+    }
   }
   const hint = document.getElementById('leaveDayCount');
   if (hint) hint.textContent = dayCount ? 'รวม ' + dayCount + ' วัน' : '';
@@ -12200,6 +12219,14 @@ function initPageScripts(page) {
         const cert = fd.get('medical_cert');
         if (!cert || !cert.name) {
           if (valEl) { valEl.textContent = 'ลาป่วยเกิน 2 วัน (ลา ' + dayCount + ' วัน) ต้องแนบใบรับรองแพทย์'; valEl.classList.remove('hidden') }
+          return;
+        }
+      }
+      // ลาป่วย 2 วัน — ไม่บังคับ แต่เตือนให้แนบก่อนส่ง
+      if (type === 'ลาป่วย' && dayCount === 2) {
+        const cert2 = fd.get('medical_cert');
+        if ((!cert2 || !cert2.name) && !confirm('ลาป่วย 2 วัน แต่ยังไม่ได้แนบใบรับรองแพทย์\nกด "ตกลง" เพื่อส่งใบลาโดยไม่แนบ หรือ "ยกเลิก" เพื่อกลับไปแนบไฟล์')) {
+          if (valEl) { valEl.textContent = 'กรุณาแนบใบรับรองแพทย์ (ลาป่วย 2 วัน)'; valEl.classList.remove('hidden') }
           return;
         }
       }
