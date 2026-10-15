@@ -1336,6 +1336,24 @@ function renderNotifications() {
       </div>`;
     }
   }
+  // === ส่วน "ผลการเรียนยังไม่ครบ" (ผู้ดูแลระบบ / งานทะเบียน) ===
+  const gmGroups = gradeMissingGroups();
+  if (gmGroups.length) {
+    const totalSubj = gmGroups.reduce((n, g) => n + g.items.length, 0);
+    html += `<div class="mb-3"><p class="text-xs font-semibold text-red-700 mb-2 flex items-center gap-1">
+      <i data-lucide="file-warning" class="w-3 h-3"></i>รายวิชาที่ยังไม่มีผลการเรียน (${totalSubj} รายวิชา)</p>`
+      + gmGroups.slice(0, 8).map(g => {
+        const lv = {};
+        g.items.forEach(x => { const k = x.level || '-'; lv[k] = (lv[k] || 0) + 1; });
+        const lvTxt = Object.keys(lv).sort().map(k => (k === '-' ? 'ไม่ระบุชั้นปี' : 'ปี ' + k) + ': ' + lv[k]).join(' · ');
+        return `<div class="p-3 bg-red-50 border border-red-200 rounded-xl mb-2 cursor-pointer hover:bg-red-100 transition" onclick="closeNotifications();gradeMissingGoto('${htmlEsc(g.yr)}','${htmlEsc(g.sem)}')">
+          <p class="font-medium text-sm text-gray-800">ภาคการศึกษา ${htmlEsc(semLabel(g.sem))} ปีการศึกษา ${htmlEsc(g.yr || '-')}</p>
+          <p class="text-xs text-gray-700 mt-1">ยังไม่มีผลการเรียน ${g.items.length} รายวิชา</p>
+          <p class="text-[11px] text-gray-500 mt-0.5">${htmlEsc(lvTxt)}</p>
+          <p class="text-xs text-red-700 font-medium mt-1">คลิกเพื่อดูรายวิชา</p>
+        </div>`;
+      }).join('') + (gmGroups.length > 8 ? `<p class="text-[11px] text-gray-500">และอีก ${gmGroups.length - 8} ภาคการศึกษา</p>` : '') + `</div>`;
+  }
   // === ส่วน "ใบลาไม่อนุมัติ" (นักศึกษา) ===
   const rejectedLeaves = getRejectedLeavesForStudent();
   if (rejectedLeaves.length) {
@@ -1410,7 +1428,8 @@ function updateNotifBadge() {
   const pendingLeaves = getPendingLeavesForCurrentRole().length;
   const pendingTracks = getPendingTrackingsForCurrentRole().length;
   const rejectedLeaves = getRejectedLeavesForStudent().length;   // นักศึกษา: ค้างจนกว่าจะยื่นใหม่
-  const total = unseenAnn + pendingLeaves + pendingTracks + rejectedLeaves;
+  const gradeMissing = gradeMissingGroups().length;               // ผู้ดูแล/งานทะเบียน: นับ 1 ต่อภาคการศึกษาที่ยังค้างผล
+  const total = unseenAnn + pendingLeaves + pendingTracks + rejectedLeaves + gradeMissing;
   if (total > 0) { b.textContent = total > 99 ? '99+' : total; b.classList.remove('hidden'); } else b.classList.add('hidden');
 }
 
@@ -4049,6 +4068,114 @@ function gradeOverviewCardsHTML() {
   return gpaxByStudentCardHTML();
 }
 
+/* ================= รายวิชาที่ยังไม่มีผลการเรียน =================
+   แจ้งเตือน "ผู้ดูแลระบบ" และ "เจ้าหน้าที่งานทะเบียน"
+   เทียบ "รายวิชาที่เปิดสอน" (ตาราง subject) กับผลการเรียน (ตาราง grade) ด้วย รหัสวิชา/ชื่อวิชา + ภาค + ปีการศึกษา
+   ถือว่า "มีผลแล้ว" เมื่อมีอย่างน้อย 1 แถวที่กรอกเกรดแล้ว — แถวที่นำเข้ารายชื่อไว้แต่ยังไม่มีเกรดนับว่ายังไม่มีผล
+   ไม่นับปีการศึกษาที่ยังมาไม่ถึง (มากกว่าปีการศึกษาปัจจุบัน) */
+function gradeMissingCanSee() { return APP.currentRole === 'admin' || APP.currentRole === 'registrar'; }
+function gradeMissingSubjects() {
+  const grades = getDataByType('grade');
+  if (!grades.length) return [];          // ผลการเรียนยังโหลดไม่เสร็จ (โหลดเป็นเบื้องหลัง) — ยังไม่สรุป
+  const k = (id, sem, yr) => norm(id).toLowerCase() + '|' + normSem(sem) + '|' + norm(yr);
+  const done = new Set(), roster = {};
+  grades.forEach(g => {
+    const keys = [];
+    if (norm(g.subject_code)) keys.push(k('c:' + g.subject_code, g.semester, g.academic_year));
+    if (norm(g.subject_name)) keys.push(k('n:' + g.subject_name, g.semester, g.academic_year));
+    const graded = norm(g.grade) !== '';
+    keys.forEach(x => { if (graded) done.add(x); else roster[x] = (roster[x] || 0) + 1; });
+  });
+  const curY = parseInt(currentAcademicYearBE(), 10);
+  const seen = new Set();
+  const out = [];
+  getDataByType('subject').forEach(sj => {
+    if (!norm(sj.subject_name)) return;
+    const yr = norm(sj.academic_year), sem = normSem(sj.semester);
+    const y = parseInt(yr, 10);
+    if (!isNaN(y) && !isNaN(curY) && y > curY) return;
+    const kc = norm(sj.subject_code) ? k('c:' + sj.subject_code, sem, yr) : '';
+    const kn = k('n:' + sj.subject_name, sem, yr);
+    if ((kc && done.has(kc)) || done.has(kn)) return;
+    const dup = (kc || kn) + '|' + norm(sj.year_level);
+    if (seen.has(dup)) return; seen.add(dup);
+    out.push({ subj: sj, yr: yr, sem: sem, level: norm(sj.year_level), roster: (kc && roster[kc]) || roster[kn] || 0 });
+  });
+  out.sort((a, b) => (b.yr.localeCompare(a.yr, 'th', { numeric: true }))
+    || a.sem.localeCompare(b.sem) || a.level.localeCompare(b.level)
+    || norm(a.subj.subject_code).localeCompare(norm(b.subj.subject_code), 'th', { numeric: true }));
+  return out;
+}
+// จัดกลุ่มตาม ปีการศึกษา/ภาค — ใช้กับกระดิ่งแจ้งเตือน (นับ 1 ต่อภาคการศึกษา ป้ายตัวเลขจะได้ไม่พุ่ง)
+function gradeMissingGroups() {
+  if (!gradeMissingCanSee()) return [];
+  const map = {};
+  gradeMissingSubjects().forEach(x => {
+    const key = x.yr + '|' + x.sem;
+    (map[key] = map[key] || { yr: x.yr, sem: x.sem, items: [] }).items.push(x);
+  });
+  return Object.values(map).sort((a, b) => b.yr.localeCompare(a.yr, 'th', { numeric: true }) || a.sem.localeCompare(b.sem));
+}
+function gradeMissingGoto(yr, sem) {
+  APP.filters._gmYear = yr || ''; APP.filters._gmSem = sem || '';
+  if (!APP._openCards) APP._openCards = {};
+  APP._openCards.gradeMissingCard = true;
+  navigateTo('grades');
+}
+function gradeMissingSet(k, v) { APP.filters[k] = v; if (!APP._openCards) APP._openCards = {}; APP._openCards.gradeMissingCard = true; renderCurrentPage(); }
+function gradeMissingCardHTML() {
+  if (!gradeMissingCanSee()) return '';
+  if (!getDataByType('grade').length) {
+    return '<div class="bg-white rounded-2xl border border-blue-100 p-4 mb-4 text-sm text-gray-400">กำลังโหลดผลการเรียนเพื่อตรวจรายวิชาที่ยังไม่มีผล...</div>';
+  }
+  const all = gradeMissingSubjects();
+  const fy = APP.filters._gmYear || '', fs = APP.filters._gmSem || '', fl = APP.filters._gmLevel || '';
+  const years = [...new Set(all.map(x => x.yr).filter(Boolean))].sort((a, b) => b.localeCompare(a, 'th', { numeric: true }));
+  const list = all.filter(x => (!fy || x.yr === fy) && (!fs || x.sem === fs) && (!fl || x.level === fl));
+  const btn = (on) => 'px-3 py-1.5 rounded-xl text-xs font-medium ' + (on ? 'bg-primary text-white' : 'bg-surface text-gray-600 hover:bg-blue-50');
+  const rows = list.map((x, i) => `<tr class="border-t border-gray-50 hover:bg-gray-50">
+      <td class="px-3 py-2 text-gray-400">${i + 1}</td>
+      <td class="px-3 py-2 whitespace-nowrap">${htmlEsc(semLabel(x.sem))}/${htmlEsc(x.yr || '-')}</td>
+      <td class="px-3 py-2 font-mono text-primary">${htmlEsc(norm(x.subj.subject_code) || '-')}</td>
+      <td class="px-3 py-2">${htmlEsc(norm(x.subj.subject_name))}</td>
+      <td class="px-3 py-2 text-center">${htmlEsc(x.level || '-')}</td>
+      <td class="px-3 py-2 text-xs text-gray-600">${htmlEsc(norm(x.subj.coordinator) || '-')}</td>
+      <td class="px-3 py-2">${x.roster
+        ? `<span class="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">นำเข้ารายชื่อแล้ว ${x.roster} คน · ยังไม่กรอกเกรด</span>`
+        : '<span class="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700">ยังไม่มีผลการเรียน</span>'}</td>
+    </tr>`).join('');
+  return `<details id="gradeMissingCard"${detailsOpen('gradeMissingCard')} ontoggle="rememberDetails(this)" class="bg-white rounded-2xl border ${all.length ? 'border-red-200' : 'border-blue-100'} mb-4">
+    <summary class="cursor-pointer p-4 flex flex-wrap items-center gap-2">
+      <span class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="alert-triangle" class="w-5 h-5 ${all.length ? 'text-red-500' : 'text-green-500'}"></i>รายวิชาที่ยังไม่มีผลการเรียน</span>
+      <span class="px-2 py-0.5 rounded-full text-xs ${all.length ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}">${all.length ? all.length + ' รายวิชา' : 'ครบทุกรายวิชาแล้ว'}</span>
+      <span class="text-xs text-gray-400">— คลิกเพื่อดู</span>
+    </summary>
+    <div class="px-4 pb-4 space-y-3">
+      <div>
+        <p class="text-xs font-medium text-gray-600 mb-1">ชั้นปี</p>
+        <div class="flex flex-wrap gap-2">
+          <button data-no-loading onclick="gradeMissingSet('_gmLevel','')" class="${btn(fl === '')}">ทุกชั้นปี</button>
+          ${['1', '2', '3', '4'].map(y => `<button data-no-loading onclick="gradeMissingSet('_gmLevel','${y}')" class="${btn(fl === y)}">ชั้นปีที่ ${y} (${all.filter(x => x.level === y && (!fy || x.yr === fy) && (!fs || x.sem === fs)).length})</button>`).join('')}
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <select onchange="gradeMissingSet('_gmYear', this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm" data-nodraft="1">
+          <option value="">ทุกปีการศึกษา</option>
+          ${years.map(y => `<option value="${htmlEsc(y)}" ${fy === y ? 'selected' : ''}>ปีการศึกษา ${htmlEsc(y)}</option>`).join('')}
+        </select>
+        <select onchange="gradeMissingSet('_gmSem', this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm" data-nodraft="1">
+          <option value="">ทุกภาคการศึกษา</option>
+          ${['1', '2', '3'].map(v => `<option value="${v}" ${fs === v ? 'selected' : ''}>ภาคการศึกษา ${htmlEsc(semLabel(v))}</option>`).join('')}
+        </select>
+      </div>
+      <p class="text-xs text-gray-500">พบ <b class="text-red-600">${list.length}</b> รายวิชา — เทียบจากรายวิชาที่เปิดสอนกับผลการเรียนที่กรอกเกรดแล้ว (ไม่นับปีการศึกษาที่ยังมาไม่ถึง)</p>
+      ${list.length ? `<div class="overflow-x-auto max-h-96 overflow-y-auto border border-gray-100 rounded-xl"><table class="w-full text-sm">
+        <thead class="sticky top-0 bg-surface"><tr class="text-left"><th class="px-3 py-2">#</th><th class="px-3 py-2">ภาค/ปี</th><th class="px-3 py-2">รหัสวิชา</th><th class="px-3 py-2">รายวิชา</th><th class="px-3 py-2 text-center">ชั้นปี</th><th class="px-3 py-2">ผู้ประสานงาน</th><th class="px-3 py-2">สถานะ</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>` : '<p class="text-sm text-green-600 text-center py-4">ไม่มีรายวิชาที่ค้างผลการเรียนตามตัวกรองนี้</p>'}
+    </div>
+  </details>`;
+}
+
 function gradesPage() {
   const isAdmin = isAdminRole();
   const isExecutive = APP.currentRole === 'executive';
@@ -4199,6 +4326,7 @@ function gradesPage() {
   </div>
   ${/* การ์ด GPAx เดิมถูกยุบรวมเข้ากับการ์ดภาพรวมผลการเรียน (GPAx) ใบใหม่แล้ว */ ''}
   ${isStudent ? '' : gradeOverviewCardsHTML()}
+  ${gradeMissingCardHTML()}
   ${studentSelector}
   ${noSelectionMsg || `${filterBar({ yearData: yearScopeGrades })}
   ${gpaSection}
