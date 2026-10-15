@@ -1771,7 +1771,7 @@
         + '<td class="px-2 py-1 text-center tabular-nums bg-gray-50" data-cp="' + esc(key) + '">' + (calc.pct === null ? '' : f2(calc.pct) + '%') + '</td>'
         + '<td class="px-2 py-1 text-center" data-res="' + esc(key) + '">' + compBadge(cur, calc) + '</td></tr>';
     }).join('');
-    return '<div class="overflow-auto border border-gray-100 rounded-xl max-h-[65vh]"><table class="text-sm" style="min-width:100%">'
+    return '<div class="ems-tablewrap border border-gray-100 rounded-xl" style="overflow:auto;max-height:65vh"><table data-ems-cards="skip" class="text-sm" style="min-width:100%;width:max-content">'
       + '<thead class="sticky top-0 z-20"><tr>' + head1 + '</tr><tr>' + head2 + '</tr></thead><tbody>' + body + '</tbody></table></div>'
       + '<p class="text-[11px] text-gray-500 mt-1">กรอกคะแนนดิบ ระบบคิด "ที่ได้" (รวมกติกาสอบซ่อม) · คิดเป็น % · รวม CLO และร้อยละให้เอง · '
       + 'ผล CLO นับเมื่อกรอกครบทุกการประเมิน · บันทึกระหว่างทางได้</p>'
@@ -1974,7 +1974,7 @@
         + '<div class="flex gap-2 flex-shrink-0">' + nav(prev, '‹ CLO ก่อนหน้า') + nav(next, 'CLO ถัดไป ›') + '</div></div>';
       if (comps(cur).length) { table = chips + info + compGrid(cur, studs, hide); } else
       table = chips + info
-        + '<div class="overflow-auto border border-gray-100 rounded-xl max-h-[65vh]"><table class="w-full text-sm">'
+        + '<div class="ems-tablewrap border border-gray-100 rounded-xl" style="overflow:auto;max-height:65vh"><table data-ems-cards="skip" class="w-full text-sm" style="min-width:100%;width:max-content">'
         + '<thead class="sticky top-0 z-20"><tr class="bg-surface text-left">'
         + '<th class="px-3 py-2 font-semibold text-center w-12 bg-surface">#</th><th class="px-3 py-2 font-semibold bg-surface">รหัสนักศึกษา</th>'
         + '<th class="px-3 py-2 font-semibold bg-surface">ชื่อ-สกุล</th><th class="px-3 py-2 font-semibold text-center bg-surface">คะแนน</th>'
@@ -1989,7 +1989,7 @@
               + '<td class="px-3 py-1.5 text-center" data-res="' + esc(cur.__backendId + '|' + u.student_id) + '">' + resultBadge(cur, v) + '</td></tr>';
           }).join('') + '</tbody></table></div>';
     } else {
-      table = '<div class="overflow-auto border border-gray-100 rounded-xl max-h-[70vh]"><table class="text-sm" style="min-width:100%">'
+      table = '<div class="ems-tablewrap border border-gray-100 rounded-xl" style="overflow:auto;max-height:70vh"><table data-ems-cards="skip" class="text-sm" style="min-width:100%;width:max-content">'
         + '<thead class="sticky top-0 z-20"><tr class="bg-surface text-left">'
         + '<th class="px-3 py-2 font-semibold sticky left-0 bg-surface z-30 min-w-[14rem]">นักศึกษา</th>'
         + rows.map(function (r) {
