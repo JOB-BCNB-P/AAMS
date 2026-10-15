@@ -1496,7 +1496,9 @@
       + '<thead class="sticky top-0 z-20"><tr>' + head1 + '</tr><tr>' + head2 + '</tr></thead><tbody>' + body + '</tbody></table></div>'
       + '<p class="text-[11px] text-gray-500 mt-1">กรอกคะแนนดิบ ระบบคิด "ที่ได้" (รวมกติกาสอบซ่อม) · คิดเป็น % · รวม CLO และร้อยละให้เอง · '
       + 'ผล CLO นับเมื่อกรอกครบทุกการประเมิน · บันทึกระหว่างทางได้</p>'
-      + (st._partMissing ? '<p class="text-xs text-red-600 mt-1">ยังไม่ได้ติดตั้งตารางเก็บคะแนนรายองค์ประกอบ — ผู้ดูแลระบบต้องรัน supabase/security/94_plo_score_part.sql ก่อน</p>' : '');
+      + (st._partMissing ? '<p class="text-xs text-red-600 mt-1">อ่านตารางเก็บคะแนนรายองค์ประกอบไม่ได้ — ถ้ายังไม่ได้ติดตั้ง ให้รัน supabase/security/94_plo_score_part.sql'
+          + ' · ถ้าติดตั้งแล้ว กด <button type="button" onclick="ploLoadScores()" class="underline">โหลดคะแนนใหม่</button>'
+          + (st._partErr ? '<span class="block text-[11px] text-red-400">(' + esc(st._partErr) + ')</span>' : '') + '</p>' : '');
   }
   function compBadge(cur, calc) {
     if (calc.pct === null) {
@@ -1782,7 +1784,7 @@
       var cIds = rows.filter(function (r) { return comps(r).length; }).map(cloNum).filter(Boolean);
       for (var from = 0; cIds.length; from += 1000) {
         var pr = await sb().from('plo_score_part').select('clo_id,student_id,detail').in('clo_id', cIds).range(from, from + 999);
-        if (pr.error) { st._partMissing = true; console.warn('plo_score_part:', pr.error.message); break; }
+        if (pr.error) { st._partMissing = true; st._partErr = pr.error.message; console.warn('plo_score_part:', pr.error.message); break; }
         (pr.data || []).forEach(function (x) {
           var d = x.detail; if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = {}; } }
           st.detail[cloKey(x.clo_id) + '|' + x.student_id] = d || {};
@@ -1833,13 +1835,21 @@
 
     if (typeof showToast === 'function') showToast('กำลังบันทึก ' + Math.max(payload.length, parts.length) + ' รายการ...');
     if (parts.length) {
-      if (st._partMissing) { var t0 = document.getElementById('loadingToast'); if (t0) t0.remove();
-        showToast('ยังไม่ได้ติดตั้งตารางเก็บคะแนนรายองค์ประกอบ (94_plo_score_part.sql) — แจ้งผู้ดูแลระบบ', 'error'); return; }
+      // ลองบันทึกจริงทุกครั้ง ไม่เชื่อป้าย "ยังไม่ติดตั้ง" ที่ค้างจากตอนเปิดตาราง
+      // (ผู้ดูแลอาจเพิ่งรัน SQL ระหว่างที่หน้านี้เปิดค้างไว้)
       for (var b = 0; b < parts.length; b += 500) {
         var rp = await sb().from('plo_score_part').upsert(parts.slice(b, b + 500), { onConflict: 'clo_id,student_id' });
-        if (rp.error) { var t1 = document.getElementById('loadingToast'); if (t1) t1.remove();
-          showToast('บันทึกคะแนนรายองค์ประกอบไม่สำเร็จ: ' + rp.error.message, 'error'); return; }
+        if (rp.error) {
+          var t1 = document.getElementById('loadingToast'); if (t1) t1.remove();
+          var em = String(rp.error.message || '');
+          console.warn('plo_score_part:', rp.error);
+          showToast(/does not exist|schema cache|not find the table/i.test(em)
+            ? 'ฐานข้อมูลยังไม่รู้จักตาราง plo_score_part — รัน 94_plo_score_part.sql แล้วรอสักครู่ (หรือรัน NOTIFY pgrst, \'reload schema\';) · ' + em
+            : 'บันทึกคะแนนรายองค์ประกอบไม่สำเร็จ: ' + em, 'error');
+          return;
+        }
       }
+      st._partMissing = false;
     }
     var r = payload.length ? await sb().from('plo_score').upsert(payload, { onConflict: 'clo_id,student_id' }) : { error: null };
     var t = document.getElementById('loadingToast'); if (t) t.remove();

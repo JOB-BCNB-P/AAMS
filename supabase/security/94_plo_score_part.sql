@@ -57,3 +57,6 @@ create policy plo_delete on public.plo_score_part for delete to authenticated
 
 revoke all on public.plo_score_part from anon;
 grant select, insert, update, delete on public.plo_score_part to authenticated;
+
+-- ให้ API ของ Supabase รู้จักตารางใหม่ทันที (ไม่ต้องรอ)
+notify pgrst, 'reload schema';
