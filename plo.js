@@ -150,11 +150,39 @@
       return r === 'admin' || r === 'academic' || r === 'teacher' || r === 'classTeacher';
     });
   }
+  /* รายการ PLO สำหรับช่องเลือก — เรียง PLO หลักตามเลข แล้วตามด้วย Sub-PLO ของข้อนั้นทันที
+     (เดิมเรียงตาม sort_order ล้วน PLO หลักทั้ง 10 ข้อจึงขึ้นก่อน แล้ว Sub-PLO ทั้งหมดไปกองต่อท้าย
+      ดูไม่ออกว่า 1.1 อยู่ใต้ PLO ไหน) */
+  function ploNo(code) {
+    var m = s(code).match(/(\d+)(?:\.(\d+))?/);
+    return m ? [Number(m[1]), m[2] ? Number(m[2]) : 0] : [999, 0];
+  }
   function ploOptions() {
     var st = state();
-    return get('curriculum_plo')
-      .filter(function (p) { return s(p.curriculum_year) === s(st.curriculum); })
-      .sort(function (a, b) { return (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0); });
+    var all = get('curriculum_plo').filter(function (p) { return s(p.curriculum_year) === s(st.curriculum); });
+    var byNo = function (a, b) {
+      var x = ploNo(a.plo_code), y = ploNo(b.plo_code);
+      return (x[0] - y[0]) || (x[1] - y[1]) || ((Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
+    };
+    var mains = all.filter(function (p) { return !s(p.parent_code); }).sort(byNo);
+    var subs = all.filter(function (p) { return s(p.parent_code); });
+    var used = {}, out = [];
+    mains.forEach(function (m) {
+      out.push(m);
+      var mn = ploNo(m.plo_code)[0];
+      subs.filter(function (x) {
+        // ผูกด้วย parent_code ก่อน ถ้ารหัสเขียนต่างรูปแบบ (PLO1 กับ 1) เทียบด้วยเลข PLO แทน
+        return !used[x.__backendId] && (s(x.parent_code) === s(m.plo_code) || ploNo(x.parent_code)[0] === mn);
+      }).sort(byNo).forEach(function (x) { used[x.__backendId] = 1; out.push(x); });
+    });
+    subs.filter(function (x) { return !used[x.__backendId]; }).sort(byNo).forEach(function (x) { out.push(x); });
+    return out;
+  }
+  // ข้อความในช่องเลือก — Sub-PLO เยื้องเข้า (ใช้ช่องว่างแบบไม่ยุบ) และตัดข้อความยาวด้วย … ไม่ตัดกลางคำห้วน ๆ
+  function ploLabel(p) {
+    var t = s(p.statement_th);
+    if (t.length > 80) t = t.slice(0, 80).replace(/\s+\S*$/, '') + '…';
+    return (s(p.parent_code) ? '\u00a0\u00a0\u00a0\u00a0└ ' : '') + s(p.plo_code) + ' ' + t;
   }
 
   /* ================= หน้าหลัก ================= */
@@ -1206,8 +1234,8 @@
         + '<option value="">— เลือก PLO —</option>'
         + opts.map(function (p) {
             var isSub = !!s(p.parent_code);
-            var t = (isSub ? '   ' : '') + s(p.plo_code) + ' ' + s(p.statement_th).slice(0, 60);
-            return '<option value="' + esc(p.plo_code) + '"' + (s(val) === s(p.plo_code) ? ' selected' : '') + '>'
+            var t = ploLabel(p);
+            return '<option value="' + esc(p.plo_code) + '" title="' + esc(s(p.plo_code) + ' ' + s(p.statement_th)) + '"' + (s(val) === s(p.plo_code) ? ' selected' : '') + '>'
               + esc(t) + '</option>';
           }).join('') + '</select>';
     };
@@ -1323,8 +1351,8 @@
     var sel = '<select id="cloEPlo" class="w-full border rounded-lg px-2 py-1.5 text-sm">'
       + '<option value="">— เลือก PLO —</option>'
       + opts.map(function (p) {
-          var t = (s(p.parent_code) ? '   ' : '') + s(p.plo_code) + ' ' + s(p.statement_th).slice(0, 60);
-          return '<option value="' + esc(p.plo_code) + '"'
+          var t = ploLabel(p);
+          return '<option value="' + esc(p.plo_code) + '" title="' + esc(s(p.plo_code) + ' ' + s(p.statement_th)) + '"'
             + (s(rec.plo_code) === s(p.plo_code) ? ' selected' : '') + '>' + esc(t) + '</option>';
         }).join('') + '</select>';
 
