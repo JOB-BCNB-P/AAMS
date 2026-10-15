@@ -1131,6 +1131,7 @@ function getPendingLeavesForCurrentRole() {
       return isMyStudent && allCoordinatorsApproved(l) && (l.class_teacher_approval || 'รอ') === 'รอ';
     });
   } else if (role === 'executive') {
+    if (!leaveIsDeputyAcademic()) return [];
     leaves = leaves.filter(l =>
       l.coordinator_approval === 'อนุมัติ' &&
       l.class_teacher_approval === 'อนุมัติ' &&
@@ -1250,6 +1251,21 @@ function renderNotifications() {
       </div>`;
     }
   }
+  // === ส่วน "ใบลาไม่อนุมัติ" (นักศึกษา) ===
+  const rejectedLeaves = getRejectedLeavesForStudent();
+  if (rejectedLeaves.length) {
+    html += `<div class="mb-3"><p class="text-xs font-semibold text-red-700 mb-2 flex items-center gap-1">
+      <i data-lucide="x-circle" class="w-3 h-3"></i>ใบลาไม่อนุมัติ (${rejectedLeaves.length})</p>`
+      + rejectedLeaves.slice(0, 15).map(l => {
+        const info = leaveRejectInfo(l) || {};
+        return `<div class="p-3 bg-red-50 border border-red-200 rounded-xl mb-2 cursor-pointer hover:bg-red-100 transition" onclick="closeNotifications();navigateTo('leave')">
+          <p class="font-medium text-sm text-gray-800">${htmlEsc(l.subject_name || '')}</p>
+          <p class="text-xs text-gray-600 mt-1">${htmlEsc(toBuddhistDateList ? toBuddhistDateList(l.leave_date) : (l.leave_date || ''))} · ${htmlEsc(l.leave_type || '')}</p>
+          <p class="text-xs text-red-700 mt-1">ไม่อนุมัติโดย ${htmlEsc(info.who || '')}${info.reason ? ' — ' + htmlEsc(info.reason) : ''}</p>
+          <p class="text-xs text-red-700 font-medium mt-1">กรุณาติดต่อ ${htmlEsc(info.who || 'ผู้อนุมัติ')} แล้วยื่นใบลาอีกครั้ง</p>
+        </div>`;
+      }).join('') + `</div>`;
+  }
   // === ส่วน "ใบลารออนุมัติ" ===
   if (pendingLeaves.length) {
     html += `<div class="mb-3">
@@ -1308,7 +1324,8 @@ function updateNotifBadge() {
   // ใบลา + ติดตาม: นับค้างไว้จนกว่าจะอนุมัติจริง (รายการที่เสร็จ/ลงย้อนหลังถูกกรองออกแล้วใน getPending*)
   const pendingLeaves = getPendingLeavesForCurrentRole().length;
   const pendingTracks = getPendingTrackingsForCurrentRole().length;
-  const total = unseenAnn + pendingLeaves + pendingTracks;
+  const rejectedLeaves = getRejectedLeavesForStudent().length;   // นักศึกษา: ค้างจนกว่าจะยื่นใหม่
+  const total = unseenAnn + pendingLeaves + pendingTracks + rejectedLeaves;
   if (total > 0) { b.textContent = total > 99 ? '99+' : total; b.classList.remove('hidden'); } else b.classList.add('hidden');
 }
 
@@ -9764,6 +9781,133 @@ function showAddFileTrackingModal() {
 
 // ======================== LEAVE ========================
 // Helper: Check if all coordinator approvals for same student + same date are done
+/* ================= ผู้อนุมัติขั้นที่ 3 ของใบลานักศึกษา =================
+   จำกัดเฉพาะ "รองผู้อำนวยการด้านวิชาการ" (ผู้บริหารท่านอื่นเห็นใบลาได้ แต่กดอนุมัติ/ปฏิเสธไม่ได้)
+   ระบุตัวได้ 2 ทาง เรียงตามลำดับ
+     1) config.js → LEAVE_DEPUTY_ACADEMIC : อีเมลหรือชื่อ-สกุล (แนะนำ แน่นอนที่สุด)
+     2) ทะเบียนอาจารย์ → ช่อง "ตำแหน่ง" มีคำว่า รองผู้อำนวยการ และ วิชาการ
+   ถ้ายังไม่ได้ตั้งทั้งสองทาง ระบบยอมให้ผู้บริหารทุกท่านอนุมัติได้ตามเดิม (กันใบลาค้างไม่มีคนอนุมัติ) */
+function leaveNameKey(v) {
+  return norm(v).replace(/^(ผศ\.ดร\.|รศ\.ดร\.|ศ\.ดร\.|ผศ\.|รศ\.|ศ\.|ดร\.|อ\.|อาจารย์|นางสาว|นาง|นาย)\s*/, '').replace(/\s+/g, '');
+}
+function leaveDeputyIsPosition(pos) {
+  const p = norm(pos);
+  return /รองผู้อำนวยการ|รอง ผอ|รองผอ/.test(p) && /วิชาการ/.test(p);
+}
+function leaveDeputyAcademicConfigured() {
+  const cfg = (window.EMS_CONFIG && window.EMS_CONFIG.LEAVE_DEPUTY_ACADEMIC) || [];
+  const list = (Array.isArray(cfg) ? cfg : [cfg]).map(x => norm(x)).filter(Boolean);
+  const byPos = getDataByType('teacher').filter(t => leaveDeputyIsPosition(t.position));
+  return { list, byPos };
+}
+function leaveIsDeputyAcademic(user) {
+  user = user || APP.currentUser || {};
+  if (APP.currentRole !== 'executive') return false;
+  const myEmail = norm(user.email || (user.data && user.data.email)).toLowerCase();
+  const myKey = leaveNameKey(user.name);
+  const { list, byPos } = leaveDeputyAcademicConfigured();
+  if (list.length) {
+    return list.some(x => (x.indexOf('@') > -1)
+      ? x.toLowerCase() === myEmail
+      : (leaveNameKey(x) && leaveNameKey(x) === myKey));
+  }
+  if (byPos.length) {
+    return byPos.some(t => (myEmail && norm(t.email).toLowerCase() === myEmail)
+      || (myKey && leaveNameKey(t.name) === myKey));
+  }
+  return true;   // ยังไม่ได้ตั้งค่า — ผู้บริหารทุกท่านอนุมัติได้ตามเดิม
+}
+// ชื่อที่จะแสดงให้นักศึกษาเห็นว่า "ขั้นสุดท้ายรอใคร"
+function leaveDeputyDisplayName() {
+  const { list, byPos } = leaveDeputyAcademicConfigured();
+  const nm = list.find(x => x.indexOf('@') < 0);
+  if (nm) return nm;
+  if (byPos.length) return norm(byPos[0].name);
+  return 'รองผู้อำนวยการด้านวิชาการ';
+}
+
+/* ================= ใบลาที่ไม่อนุมัติ =================
+   ขั้นที่ปฏิเสธ = ช่องอนุมัติที่เป็น "ปฏิเสธ" — ชื่อผู้ปฏิเสธเก็บใน rejected_by (หรือ <ขั้น>_by)
+   นักศึกษายื่นใบเดิมอีกครั้งได้ โดยระบบรีเซ็ต "เฉพาะขั้นที่ปฏิเสธ" ขั้นที่อนุมัติไปแล้วไม่ต้องอนุมัติซ้ำ */
+const LEAVE_STAGES = [
+  { field: 'coordinator_approval', by: 'coordinator_by', note: 'coordinator_note', label: 'อาจารย์ผู้ประสานงานรายวิชา' },
+  { field: 'class_teacher_approval', by: 'class_teacher_by', note: 'class_teacher_note', label: 'อาจารย์ประจำชั้น' },
+  { field: 'deputy_approval', by: 'deputy_by', note: 'deputy_note', label: 'รองผู้อำนวยการด้านวิชาการ' }
+];
+function leaveRejectInfo(l) {
+  if (!l) return null;
+  const st = LEAVE_STAGES.find(x => norm(l[x.field]) === 'ปฏิเสธ');
+  if (!st && norm(l.leave_status) !== 'ปฏิเสธ') return null;
+  const stage = st || LEAVE_STAGES[0];
+  let who = norm(l.rejected_by) || norm(l[stage.by]);
+  if (!who) {
+    if (stage.field === 'coordinator_approval') who = norm(l.coordinator);
+    else if (stage.field === 'class_teacher_approval') who = norm(l.class_teacher);
+    else who = leaveDeputyDisplayName();
+  }
+  return { stage, who, reason: norm(l.rejected_reason) || norm(l[stage.note]), at: norm(l.rejected_at) };
+}
+function getRejectedLeavesForStudent() {
+  if (APP.currentRole !== 'student' || !APP.currentUser) return [];
+  const d = APP.currentUser.data || {};
+  const sid = norm(d.student_id), nm = norm(d.name || APP.currentUser.name);
+  return getDataByType('leave').filter(l => norm(l.leave_status) === 'ปฏิเสธ'
+    && ((sid && norm(l.student_id) === sid) || (nm && norm(l.name) === nm)));
+}
+
+// นักศึกษายื่นใบเดิมอีกครั้ง — ส่งกลับไปที่ขั้นที่ไม่อนุมัติเท่านั้น
+function showLeaveResubmitModal(id) {
+  const rec = APP.allData.find(d => d.__backendId === id); if (!rec) return;
+  const info = leaveRejectInfo(rec); if (!info) { showToast('ใบลานี้ไม่ได้อยู่ในสถานะไม่อนุมัติ', 'error'); return; }
+  showModal('ยื่นใบลาเดิมอีกครั้ง', `
+    <div class="space-y-3">
+      <div class="bg-red-50 border border-red-200 rounded-xl p-3 text-sm space-y-1">
+        <p><span class="text-gray-500">รายวิชา:</span> <strong>${htmlEsc(rec.subject_name || '-')}</strong> · ${htmlEsc(toBuddhistDateList(rec.leave_date) || '')}</p>
+        <p><span class="text-gray-500">ไม่อนุมัติโดย:</span> <strong>${htmlEsc(info.who)}</strong> (${htmlEsc(info.stage.label)})</p>
+        ${info.reason ? `<p><span class="text-gray-500">เหตุผล:</span> ${htmlEsc(info.reason)}</p>` : ''}
+      </div>
+      <p class="text-xs text-gray-600">ใบลาจะถูกส่งกลับไปที่ <b>${htmlEsc(info.who)}</b> เพียงขั้นเดียว ขั้นที่อนุมัติไปแล้วไม่ต้องอนุมัติซ้ำ
+        — ควรติดต่อ ${htmlEsc(info.who)} ให้เรียบร้อยก่อนยื่นอีกครั้ง</p>
+      <form id="leaveResubmitForm" class="space-y-3">
+        <div>
+          <label class="block text-xs text-gray-600 mb-1">ข้อความชี้แจงถึง ${htmlEsc(info.who)} <span class="text-red-500">*</span></label>
+          <textarea name="note" required rows="3" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น ได้ติดต่ออาจารย์แล้ว และแนบเอกสารเพิ่มเติม..."></textarea>
+        </div>
+        <button type="submit" class="w-full bg-primary hover:bg-primaryDark text-white py-2.5 rounded-xl flex items-center justify-center gap-2"><i data-lucide="send" class="w-4 h-4"></i>ยื่นใบลาอีกครั้ง</button>
+      </form>
+    </div>`);
+  setTimeout(() => { if (window.lucide) lucide.createIcons(); }, 30);
+  const f = document.getElementById('leaveResubmitForm');
+  if (f) f.onsubmit = async (ev) => {
+    ev.preventDefault();
+    const note = String(new FormData(f).get('note') || '').trim();
+    if (!note) return;
+    closeModal();
+    await leaveResubmit(id, note);
+  };
+}
+async function leaveResubmit(id, note) {
+  const rec = APP.allData.find(d => d.__backendId === id); if (!rec) return;
+  showToast('กำลังส่งใบลาอีกครั้ง...', 'loading');
+  let res;
+  try {
+    // นักศึกษาไม่มีสิทธิ์แก้แถวใบลาโดยตรง (RLS) จึงทำผ่านฟังก์ชันฝั่งฐานข้อมูลที่ตรวจความเป็นเจ้าของเอง
+    res = await GSheetDB.client().rpc('ems_leave_resubmit', { p_id: Number(rec.__rowIndex), p_note: note });
+  } catch (e) { res = { error: e }; }
+  hideLoadingToast && hideLoadingToast();
+  if (res.error || !res.data || res.data.ok === false) {
+    const msg = (res.data && res.data.error) || (res.error && res.error.message) || 'ส่งไม่สำเร็จ';
+    showToast(/ems_leave_resubmit|function/i.test(msg) ? 'ระบบยังไม่ได้ติดตั้งฟังก์ชันยื่นซ้ำ — แจ้งผู้ดูแลระบบ' : msg, 'error');
+    return;
+  }
+  try { if (GSheetDB.refreshTab) await GSheetDB.refreshTab('leave'); } catch (e) { }
+  if (typeof window.emsLeaveNotify === 'function') {
+    try { await window.emsLeaveNotify(rec.__rowIndex, 'submitted', { loud: false }); } catch (e) { }
+  }
+  showToast('ส่งใบลาอีกครั้งแล้ว — รอ' + (res.data.stage_label || 'ผู้อนุมัติ') + 'พิจารณา');
+  renderCurrentPage(); updateNotifBadge();
+}
+
 function allCoordinatorsApproved(leaveRec) {
   const allLeaves = getDataByType('leave');
   const sameBatch = allLeaves.filter(l =>
@@ -10134,7 +10278,9 @@ function leavePage() {
   const isTeacher = APP.currentRole === 'teacher';
   const isClassTeacher = APP.currentRole === 'classTeacher';
   const isExecutive = APP.currentRole === 'executive';
-  const canApprove = isTeacher || isClassTeacher || isExecutive;
+  // ขั้นที่ 3 อนุมัติได้เฉพาะรองผู้อำนวยการด้านวิชาการ — ผู้บริหารท่านอื่นดูได้อย่างเดียว
+  const isDeputyApprover = isExecutive && leaveIsDeputyAcademic();
+  const canApprove = isTeacher || isClassTeacher || isDeputyApprover;
   const canEdit = isAdmin || isTeacher || isClassTeacher;
 
   let data = getDataByType('leave');
@@ -10236,7 +10382,7 @@ function leavePage() {
   let pendingCount = 0;
   if (isTeacher) pendingCount = data.filter(l => (l.coordinator_approval || 'รอ') === 'รอ' && l.leave_status !== 'ปฏิเสธ').length;
   if (isClassTeacher) pendingCount = data.filter(l => allCoordinatorsApproved(l) && (l.class_teacher_approval || 'รอ') === 'รอ' && l.leave_status !== 'ปฏิเสธ').length;
-  if (isExecutive) pendingCount = data.filter(l => (l.coordinator_approval === 'อนุมัติ') && (l.class_teacher_approval === 'อนุมัติ') && (l.deputy_approval || 'รอ') === 'รอ' && l.leave_status !== 'ปฏิเสธ').length;
+  if (isDeputyApprover) pendingCount = data.filter(l => (l.coordinator_approval === 'อนุมัติ') && (l.class_teacher_approval === 'อนุมัติ') && (l.deputy_approval || 'รอ') === 'รอ' && l.leave_status !== 'ปฏิเสธ').length;
 
   let form = '';
   /* แบบฟอร์มเดียวกันทั้งนักศึกษาและเจ้าหน้าที่
@@ -10640,7 +10786,7 @@ function leavePage() {
   ${filterBar()}
   <div class="bg-white rounded-2xl border border-blue-100 overflow-hidden">
     <div class="overflow-x-auto"><table class="w-full text-sm">
-      <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold">รายวิชา</th><th class="px-4 py-3 font-semibold">ประเภท</th><th class="px-4 py-3 font-semibold">เหตุผลการลา</th><th class="px-4 py-3 font-semibold">ชม.</th><th class="px-4 py-3 font-semibold">%ลา</th><th class="px-4 py-3 font-semibold">วันที่</th><th class="px-4 py-3 font-semibold">ภาค/ปี</th><th class="px-4 py-3 font-semibold">สถานะ</th>${(canApprove || isStudent || isAdmin) ? '<th class="px-4 py-3 font-semibold">' + (canApprove ? 'การอนุมัติ' : 'ขั้นการอนุมัติ') + '</th>' : ''}${isAdmin ? '<th class="px-4 py-3"></th>' : ''}</tr></thead>
+      <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold">รายวิชา</th><th class="px-4 py-3 font-semibold">ประเภท</th><th class="px-4 py-3 font-semibold">เหตุผลการลา</th><th class="px-4 py-3 font-semibold">ชม.</th><th class="px-4 py-3 font-semibold">%ลา</th><th class="px-4 py-3 font-semibold">วันที่</th><th class="px-4 py-3 font-semibold">ภาค/ปี</th><th class="px-4 py-3 font-semibold">สถานะ</th>${(canApprove || isStudent || isAdmin || isExecutive) ? '<th class="px-4 py-3 font-semibold">' + (canApprove ? 'การอนุมัติ' : 'ขั้นการอนุมัติ') + '</th>' : ''}${isAdmin ? '<th class="px-4 py-3"></th>' : ''}</tr></thead>
       <tbody>${paged.length ? paged.map(l => {
     const getStatusBadge = (status) => {
       if (status === 'รออนุมัติ') return '<span class="px-2 py-1 rounded-full text-xs bg-yellow-100 text-yellow-700">⏳ รออนุมัติ</span>';
@@ -10664,7 +10810,7 @@ function leavePage() {
       <span class="text-gray-300 text-[10px]">→</span>
       <div class="flex items-center gap-1" title="อ.ประจำชั้น">${stepIcon(l.class_teacher_approval)}<span class="text-[10px] text-gray-500">ปจช.</span></div>
       <span class="text-gray-300 text-[10px]">→</span>
-      <div class="flex items-center gap-1" title="ผู้บริหาร">${stepIcon(l.deputy_approval)}<span class="text-[10px] text-gray-500">ผบห.</span></div>
+      <div class="flex items-center gap-1" title="รองผู้อำนวยการด้านวิชาการ">${stepIcon(l.deputy_approval)}<span class="text-[10px] text-gray-500">รอง ผอ.</span></div>
     </div>`;
 
     // Determine current approval stage label (used for student/admin view)
@@ -10673,7 +10819,7 @@ function leavePage() {
     else if (isRejected) currentStage = '<span class="px-2 py-1 rounded-full text-xs bg-red-100 text-red-700">✕ ใบลาถูกปฏิเสธ</span>';
     else if (!coordApproved) currentStage = '<span class="px-2 py-1 rounded-full text-xs bg-amber-50 text-amber-700 border border-amber-200">⏳ รออาจารย์ผู้ประสานรายวิชา</span>';
     else if (!classApproved) currentStage = '<span class="px-2 py-1 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-200">⏳ รออาจารย์ประจำชั้น</span>';
-    else if (!deputyApproved) currentStage = '<span class="px-2 py-1 rounded-full text-xs bg-purple-50 text-purple-700 border border-purple-200">⏳ รอผู้บริหาร</span>';
+    else if (!deputyApproved) currentStage = '<span class="px-2 py-1 rounded-full text-xs bg-purple-50 text-purple-700 border border-purple-200">⏳ รอรองผู้อำนวยการด้านวิชาการ</span>';
 
     // หมายเหตุจากแต่ละขั้นการอนุมัติ (แสดงใต้ workflow steps)
     const notesList = [];
@@ -10693,7 +10839,16 @@ function leavePage() {
     const renderApprovalCell = () => {
       // Student/admin view: show only the workflow + current stage + notes
       if (!canApprove) {
-        return `${workflowSteps}${currentStage || '<span class="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700">รอส่ง</span>'}${notesHTML}`;
+        const rj = isRejected ? leaveRejectInfo(l) : null;
+        const rjBox = rj ? `<div class="mt-1.5 p-2 rounded-lg bg-red-50 border border-red-200 text-[11px] text-red-800 max-w-[260px]">
+            <p>ไม่อนุมัติโดย <b>${htmlEsc(rj.who)}</b> (${htmlEsc(rj.stage.label)})</p>
+            ${rj.reason ? `<p class="mt-0.5">เหตุผล: ${htmlEsc(rj.reason)}</p>` : ''}
+            <p class="mt-0.5 font-medium">กรุณาติดต่อ ${htmlEsc(rj.who)} ก่อนยื่นใบลาอีกครั้ง</p>
+            ${(isStudent || isAdmin) ? `<button onclick="showLeaveResubmitModal('${l.__backendId}')" class="mt-1.5 px-2 py-1 bg-primary hover:bg-primaryDark text-white rounded-lg text-xs flex items-center gap-1"><i data-lucide="rotate-ccw" class="w-3 h-3"></i>ยื่นอีกครั้ง (ส่งถึง ${htmlEsc(rj.who)})</button>` : ''}
+          </div>` : '';
+        const resub = norm(l.resubmit_count) && !isRejected
+          ? `<div class="mt-1 text-[11px] text-blue-700">ยื่นอีกครั้ง (ครั้งที่ ${htmlEsc(norm(l.resubmit_count))})${norm(l.resubmit_note) ? ' — ' + htmlEsc(norm(l.resubmit_note)) : ''}</div>` : '';
+        return `${workflowSteps}${currentStage || '<span class="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700">รอส่ง</span>'}${rjBox}${resub}${notesHTML}`;
       }
       if (isRejected && myApprovalStatus !== 'ปฏิเสธ' && myApprovalStatus !== 'อนุมัติ') {
         return `${workflowSteps}<span class="px-2 py-1 rounded-full text-xs bg-red-100 text-red-700">ใบลาถูกปฏิเสธแล้ว</span>${notesHTML}`;
@@ -10703,6 +10858,8 @@ function leavePage() {
       if (cannotActYet) {
         return `${workflowSteps}<span class="px-2 py-1 rounded-full text-xs bg-amber-50 text-amber-700 border border-amber-200">⏳ ${waitingForLabel}</span>${notesHTML}`;
       }
+      const resubNote = norm(l.resubmit_count)
+        ? `<div class="mb-1 text-[11px] text-blue-700 bg-blue-50 rounded px-2 py-1">ยื่นอีกครั้ง (ครั้งที่ ${htmlEsc(norm(l.resubmit_count))})${norm(l.resubmit_note) ? ': ' + htmlEsc(norm(l.resubmit_note)) : ''}</div>` : '';
       // Coordinator (teacher) — percent modal; class teacher — note modal; executive — note modal
       const onclickApprove = isTeacher
         ? `showLeaveApprovalModal('${l.__backendId}','${l.leave_percent || ''}')`
@@ -10711,7 +10868,7 @@ function leavePage() {
           : isExecutive
             ? `showExecutiveApprovalModal('${l.__backendId}')`
             : `approveLeave('${l.__backendId}','${approvalField}')`;
-      return `${workflowSteps}<div class="flex gap-1">
+      return `${workflowSteps}${resubNote}<div class="flex gap-1">
           <button onclick="${onclickApprove}" class="px-2 py-1 bg-green-500 hover:bg-green-600 text-white rounded-lg text-xs flex items-center gap-1"><i data-lucide="check" class="w-3 h-3"></i>อนุมัติ</button>
           <button onclick="rejectLeave('${l.__backendId}','${approvalField}')" class="px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs flex items-center gap-1"><i data-lucide="x" class="w-3 h-3"></i>ปฏิเสธ</button>
         </div>${notesHTML}`;
@@ -10737,7 +10894,7 @@ function leavePage() {
         <td class="px-4 py-3">${getStatusBadge(l.leave_status)}
           <button onclick="leavePrintRecord('${l.__backendId}')" class="block mt-1 text-xs text-gray-400 hover:text-primary flex items-center gap-1" title="พิมพ์ใบลาฉบับนี้"><i data-lucide="printer" class="w-3.5 h-3.5"></i>พิมพ์ใบลา</button>
         </td>
-        ${(canApprove || isStudent || isAdmin) ? `<td class="px-4 py-3">${approvalButtons}</td>` : ''}
+        ${(canApprove || isStudent || isAdmin || isExecutive) ? `<td class="px-4 py-3">${approvalButtons}</td>` : ''}
         ${isAdmin ? `<td class="px-4 py-3"><div class="flex gap-1"><button onclick="showEditLeaveModal('${l.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${l.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>` : ''}</tr>`
   }).join('') : '<tr><td colspan="11" class="px-4 py-8 text-center text-gray-400">ไม่มีข้อมูล</td></tr>'}</tbody>
     </table></div>
@@ -12520,6 +12677,9 @@ function showCalendarDayModal(dateStr, idx) {
 // ======================== LEAVE APPROVAL ========================
 async function approveLeave(id, approvalField, extra) {
   const rec = APP.allData.find(d => d.__backendId === id); if (!rec) return;
+  if (approvalField === 'deputy_approval' && !leaveIsDeputyAcademic()) {
+    showToast('ขั้นนี้อนุมัติได้เฉพาะรองผู้อำนวยการด้านวิชาการ', 'error'); return;
+  }
   rec[approvalField] = 'อนุมัติ';
   // จำชื่อผู้กดอนุมัติไว้ ใบลาที่พิมพ์ออกมาจะได้ขึ้นชื่อและลายเซ็นของคนที่ลงนามจริง
   const _byField = String(approvalField).replace(/_approval$/, '_by');
@@ -12539,7 +12699,8 @@ async function approveLeave(id, approvalField, extra) {
     showToast('อนุมัติการลาสำเร็จ');
     // แจ้งเตือนผู้อนุมัติลำดับถัดไป (หรือแจ้งผลกลับนักศึกษาเมื่ออนุมัติครบแล้ว)
     if (typeof window.emsLeaveNotify === 'function') {
-      try { await window.emsLeaveNotify(id, 'approved', { loud: false }); } catch (e) { }
+      // ส่งเลขแถว (ตัวเลข) — เดิมส่ง __backendId ("leave_12") ทำให้ฝั่งเซิร์ฟเวอร์ได้ NaN
+      try { await window.emsLeaveNotify(rec.__rowIndex, 'approved', { loud: false }); } catch (e) { }
     }
     renderCurrentPage(); updateNotifBadge();
   } else showToast('เกิดข้อผิดพลาด: ' + (r.error || ''), 'error');
@@ -12547,9 +12708,22 @@ async function approveLeave(id, approvalField, extra) {
 
 async function rejectLeave(id, approvalField) {
   const rec = APP.allData.find(d => d.__backendId === id); if (!rec) return;
-  if (!confirm('ยืนยันการปฏิเสธใบลานี้?')) return;
+  if (approvalField === 'deputy_approval' && !leaveIsDeputyAcademic()) {
+    showToast('ขั้นนี้อนุมัติได้เฉพาะรองผู้อำนวยการด้านวิชาการ', 'error'); return;
+  }
+  // ไม่อนุมัติ = จบที่ขั้นนี้ ไม่ส่งต่อขั้นถัดไป และแจ้งกลับนักศึกษาพร้อมเหตุผล
+  const reason = prompt('ไม่อนุมัติใบลานี้ — ระบุเหตุผลให้นักศึกษาทราบ\n(นักศึกษาจะเห็นชื่อของคุณ และถูกแนะนำให้ติดต่อคุณก่อนยื่นอีกครั้ง)');
+  if (reason === null) return;
+  if (!String(reason).trim()) { showToast('กรุณาระบุเหตุผลที่ไม่อนุมัติ', 'error'); return; }
+  const stage = LEAVE_STAGES.find(x => x.field === approvalField);
+  const me = (APP.currentUser && APP.currentUser.name) || '';
   rec[approvalField] = 'ปฏิเสธ';
   rec.leave_status = 'ปฏิเสธ';
+  if (stage) { rec[stage.by] = me; rec[stage.note] = String(reason).trim(); }
+  rec.rejected_stage = approvalField;
+  rec.rejected_by = me;
+  rec.rejected_reason = String(reason).trim();
+  rec.rejected_at = new Date().toISOString();
 
   showToast('กำลังบันทึก...', 'loading');
   const r = await GSheetDB.update(rec);
@@ -12557,7 +12731,7 @@ async function rejectLeave(id, approvalField) {
   if (r.isOk) {
     showToast('ปฏิเสธการลาสำเร็จ');
     if (typeof window.emsLeaveNotify === 'function') {
-      try { await window.emsLeaveNotify(id, 'rejected', { loud: false }); } catch (e) { }
+      try { await window.emsLeaveNotify(rec.__rowIndex, 'rejected', { loud: false }); } catch (e) { }
     }
     renderCurrentPage(); updateNotifBadge();
   } else showToast('เกิดข้อผิดพลาด: ' + (r.error || ''), 'error');
