@@ -249,6 +249,91 @@ function bindSubjectAutofill(selectId, opts) {
   };
   sel.addEventListener('change', fill);
   if (sel.value) fill();
+  if (!o.noSearch) subjectSearchBox(sel);
+}
+
+/* ช่องค้นหารายวิชาด้วยการพิมพ์ — วางทับ <select> เดิม
+   พิมพ์รหัสหรือชื่อวิชาบางส่วน (เว้นวรรคได้หลายคำ) แล้วเลือกจากรายการที่กรองแล้ว
+   <select> เดิมยังเป็นตัวเก็บค่าและส่ง event 'change' ตามเดิม ระบบเติมข้อมูลรายวิชาจึงทำงานเหมือนเดิม */
+function subjectSearchBox(sel) {
+  if (!sel || sel.dataset.searchBound === '1') return;
+  sel.dataset.searchBound = '1';
+  const opts = [...sel.options].filter(x => x.value).map(x => ({
+    opt: x, label: norm(x.textContent),
+    group: x.parentElement && x.parentElement.tagName === 'OPTGROUP' ? x.parentElement.label : '',
+    key: (norm(x.textContent) + ' ' + norm(x.value)).toLowerCase()
+  }));
+  const wrap = document.createElement('div');
+  wrap.className = 'relative';
+  wrap.innerHTML = '<input type="search" autocomplete="off" data-nodraft="1" '
+    + 'class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="พิมพ์รหัสหรือชื่อรายวิชาเพื่อค้นหา...">'
+    + '<div class="subj-search-list hidden absolute z-50 left-0 right-0 mt-1 max-h-64 overflow-auto bg-white border border-gray-200 rounded-xl shadow-lg"></div>';
+  sel.parentNode.insertBefore(wrap, sel);
+  const inp = wrap.querySelector('input');
+  const list = wrap.querySelector('.subj-search-list');
+  // ซ่อน select เดิม แต่ยังอยู่ในฟอร์ม (ส่งค่า subject_name ตามเดิม)
+  sel.style.display = 'none';
+  if (sel.required) { sel.required = false; inp.required = true; }
+  let shown = [], active = -1;
+  const pick = o => {
+    sel.value = o.opt.value;
+    // option ชื่อซ้ำกันได้ (วิชาเดียวกันคนละปี) จึงชี้ตัวที่เลือกจริงด้วย selectedIndex
+    sel.selectedIndex = [...sel.options].indexOf(o.opt);
+    inp.value = o.label;
+    inp.setCustomValidity('');
+    list.classList.add('hidden');
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  const render = () => {
+    const words = norm(inp.value).toLowerCase().split(' ').filter(Boolean);
+    shown = opts.filter(o => words.every(w => o.key.indexOf(w) > -1)).slice(0, 60);
+    active = shown.length ? 0 : -1;
+    if (!shown.length) {
+      list.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">ไม่พบรายวิชาที่ตรงกับ "' + htmlEsc(inp.value) + '"</div>';
+    } else {
+      let g = null;
+      list.innerHTML = shown.map((o, i) => {
+        const head = (o.group && o.group !== g) ? '<div class="px-3 pt-2 pb-1 text-[11px] font-semibold text-gray-400 bg-gray-50">' + htmlEsc(o.group) + '</div>' : '';
+        g = o.group;
+        return head + '<div data-i="' + i + '" class="subj-opt px-3 py-2 text-sm cursor-pointer hover:bg-blue-50' + (i === active ? ' bg-blue-50' : '') + '">' + htmlEsc(o.label) + '</div>';
+      }).join('');
+    }
+    list.classList.remove('hidden');
+  };
+  const mark = () => list.querySelectorAll('.subj-opt').forEach(el => el.classList.toggle('bg-blue-50', Number(el.dataset.i) === active));
+  inp.addEventListener('input', () => {
+    // พิมพ์แก้หลังเลือกแล้ว = ยกเลิกค่าที่เลือกไว้ จนกว่าจะเลือกใหม่
+    if (sel.value) { sel.value = ''; }
+    inp.setCustomValidity('');
+    render();
+  });
+  inp.addEventListener('focus', render);
+  inp.addEventListener('keydown', e => {
+    if (list.classList.contains('hidden')) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (shown.length) { active = (active + 1) % shown.length; mark(); } }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (shown.length) { active = (active - 1 + shown.length) % shown.length; mark(); } }
+    else if (e.key === 'Enter') { if (active > -1 && shown[active]) { e.preventDefault(); pick(shown[active]); } }
+    else if (e.key === 'Escape') { list.classList.add('hidden'); }
+  });
+  // mousedown แทน click เพื่อให้เลือกได้ก่อนช่องค้นหาเสียโฟกัส
+  list.addEventListener('mousedown', e => {
+    const el = e.target.closest('.subj-opt'); if (!el) return;
+    e.preventDefault(); pick(shown[Number(el.dataset.i)]);
+  });
+  inp.addEventListener('blur', () => setTimeout(() => list.classList.add('hidden'), 120));
+  // มีค่าเลือกไว้แล้ว (เช่น เปิดฟอร์มแก้ไข) ให้แสดงชื่อในช่องค้นหา
+  if (sel.value && sel.selectedIndex > 0) inp.value = norm(sel.options[sel.selectedIndex].textContent);
+  // กันบันทึกเมื่อพิมพ์ค้างไว้แต่ยังไม่ได้เลือกจากรายการ
+  const form = sel.closest('form');
+  if (form) form.addEventListener('submit', e => {
+    if (sel.value) return;
+    const exact = opts.filter(o => o.label.toLowerCase() === norm(inp.value).toLowerCase() || norm(o.opt.value).toLowerCase() === norm(inp.value).toLowerCase());
+    if (exact.length === 1) { pick(exact[0]); return; }
+    e.preventDefault(); e.stopImmediatePropagation();
+    inp.setCustomValidity('กรุณาเลือกรายวิชาจากรายการ');
+    inp.reportValidity();
+    inp.focus(); render();
+  }, true);
 }
 
 // รายชื่ออาจารย์ (จากทะเบียนอาจารย์ + ผู้ประสานงานเดิมในรายวิชา)
