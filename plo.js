@@ -42,6 +42,20 @@
   function fx(v, d) { return n(v).toFixed(d == null ? 2 : d); }
   function get(t) { return (typeof getDataByType === 'function' ? getDataByType(t) : []) || []; }
   function sb() { return GSheetDB.client(); }
+  /* รหัสแถวจริง (ตัวเลข) ของ CLO
+     ในหน้าเว็บ __backendId เป็นข้อความ "plo_clo_20" — Number() ตรง ๆ ได้ NaN แล้วส่งไปเป็น null
+     ฐานข้อมูลจึงปฏิเสธ (clo_id ห้ามว่าง) ต้องใช้ __rowIndex หรือเลขท้ายสุดของ __backendId
+     รับได้ทั้งตัวระเบียน CLO และข้อความ __backendId */
+  function cloNum(x) {
+    if (x && typeof x === 'object') {
+      var ri = Number(x.__rowIndex);
+      if (ri) return ri;
+      x = x.__backendId;
+    }
+    var m = String(x == null ? '' : x).match(/(\d+)$/);
+    return m ? Number(m[1]) : null;
+  }
+  function cloKey(id) { return 'plo_clo_' + id; }   // กุญแจฝั่งหน้าเว็บ = __backendId
 
   function state() {
     if (!APP._plo) {
@@ -991,7 +1005,7 @@
         if (isFinite(max) && max > 0 && num > max) {
           bad.push('บรรทัด ' + line + ' : ' + sid + ' ' + c.clo.clo_code + ' คะแนน ' + num + ' เกินคะแนนเต็ม ' + max); return;
         }
-        payload.push({ clo_id: Number(c.clo.__backendId), student_id: sid, score: num, updated_by: who });
+        payload.push({ clo_id: cloNum(c.clo), student_id: sid, score: num, updated_by: who });
         nStu[sid] = 1;
       });
     });
@@ -1048,7 +1062,7 @@
         p.scores.forEach(function (x) {
           var c = mapA[s(x.subject_code) + '|' + s(x.clo_code)];
           if (!c) { missA++; return; }
-          payloadA.push({ clo_id: Number(c.__backendId), student_id: x.student_id, score: x.score, updated_by: whoA });
+          payloadA.push({ clo_id: cloNum(c), student_id: x.student_id, score: x.score, updated_by: whoA });
         });
       }
 
@@ -1469,13 +1483,14 @@
   window.ploLoadScores = async function () {
     var st = state();
     var rows = closOf(st.eYear, st.eSem, st.eSubject);
-    var ids = rows.map(function (r) { return Number(r.__backendId); }).filter(Boolean);
+    var ids = rows.map(function (r) { return cloNum(r); }).filter(Boolean);
     st.scores = {};
     if (ids.length) {
       try {
         var r = await sb().rpc('ems_plo_scores', { clo_ids: ids });
         if (r.error) { showToast('โหลดคะแนนไม่สำเร็จ: ' + r.error.message, 'error'); return; }
-        (r.data || []).forEach(function (x) { st.scores[x.clo_id + '|' + x.student_id] = x.score; });
+        // ฐานข้อมูลคืน clo_id เป็นตัวเลข — แปลงกลับเป็นกุญแจเดียวกับที่ตารางกรอกคะแนนใช้
+        (r.data || []).forEach(function (x) { st.scores[cloKey(x.clo_id) + '|' + x.student_id] = x.score; });
       } catch (e) { showToast('โหลดคะแนนไม่สำเร็จ: ' + e, 'error'); return; }
     }
     st._dirty = {};
@@ -1510,9 +1525,9 @@
     var who = (APP.currentUser && APP.currentUser.name) || '';
     var payload = dirty.map(function (k) {
       var p = k.split('|');
-      return { clo_id: Number(p[0]), student_id: p[1],
+      return { clo_id: cloNum(p[0]), student_id: p[1],
                score: s(st.scores[k]) === '' ? null : Number(st.scores[k]), updated_by: who };
-    }).filter(function (x) { return x.score !== null; });
+    }).filter(function (x) { return x.score !== null && x.clo_id; });
 
     if (typeof showToast === 'function') showToast('กำลังบันทึก ' + payload.length + ' รายการ...');
     var r = await sb().from('plo_score').upsert(payload, { onConflict: 'clo_id,student_id' });
