@@ -65,7 +65,8 @@
      อาจารย์กรอก "คะแนนดิบ" ระบบคิดคะแนนที่ได้ คิดเป็น % และรวม CLO ให้
      ผลรวมแปลงเป็นร้อยละของน้ำหนัก CLO (เช่น 21.5/30 = 71.67%) แล้วเทียบกับเกณฑ์ผ่านของ CLO
      ที่เก็บ  : นิยามองค์ประกอบ → plo_clo.components (JSON)
-               คะแนนดิบรายคน → ตาราง plo_score_part (94_plo_score_part.sql)
+               คะแนนดิบรายคน → plo_clo.extra คีย์ "sc:<รหัสนักศึกษา>" (ข้อความ JSON) — ไม่ต้องสร้างตารางใหม่
+                                 อ่าน/เขียนตรงจากฐานข้อมูลทุกครั้ง และรวมทีละนักศึกษา จึงไม่ทับคะแนนของคนอื่น
                ร้อยละรวม      → plo_score.score ตามเดิม (หน้าสรุปผลจึงคำนวณได้เหมือนเดิม) */
   function comps(clo) {
     var raw = clo && clo.components;
@@ -101,6 +102,13 @@
              pct: (complete && W > 0) ? Math.round(tot / W * 10000) / 100 : null };
   }
   function f2(v) { return v == null ? '' : (Math.round(v * 100) / 100).toString(); }
+  // ตัดคีย์คะแนนดิบ (sc:...) ออกก่อนส่งระเบียน CLO ไปแก้ไขแบบปกติ
+  // ไม่งั้นค่าเก่าที่ค้างในเบราว์เซอร์จะไปทับคะแนนที่อาจารย์อีกท่านเพิ่งบันทึก
+  function noScores(rec) {
+    var o = {};
+    Object.keys(rec || {}).forEach(function (k) { if (k.indexOf('sc:') !== 0) o[k] = rec[k]; });
+    return o;
+  }
 
   function state() {
     if (!APP._plo) {
@@ -1123,7 +1131,7 @@
           max_score: xa.max, pass_score: xa.pass, updated_by: whoA
         };
         var rA = xa.exist
-          ? await GSheetDB.update(Object.assign({}, xa.exist, baseA), { noRefresh: a < p.plan.length - 1 })
+          ? await GSheetDB.update(Object.assign(noScores(xa.exist), baseA), { noRefresh: a < p.plan.length - 1 })
           : await GSheetDB.create(Object.assign({ sort_order: a + 1 }, baseA), { noRefresh: a < p.plan.length - 1 });
         if (rA && rA.isOk) okA++; else errA = (rA && rA.error) || '';
       }
@@ -1187,7 +1195,7 @@
         };
         var opts = { noRefresh: i < p.plan.length - 1 };
         var r = x.exist
-          ? await GSheetDB.update(Object.assign({}, x.exist, base), opts)
+          ? await GSheetDB.update(Object.assign(noScores(x.exist), base), opts)
           : await GSheetDB.create(Object.assign({ sort_order: i + 1 }, base), opts);
         if (r && r.isOk) ok++; else err = (r && r.error) || '';
       }
@@ -1396,7 +1404,7 @@
     });
     if (dup) { showToast('รหัส ' + code + ' มีอยู่แล้วในรายวิชานี้', 'error'); return; }
 
-    var r = await GSheetDB.update(Object.assign({}, rec, {
+    var r = await GSheetDB.update(Object.assign(noScores(rec), {
       clo_code: code, statement_th: text, plo_code: plo,
       max_score: max, pass_score: pass,
       updated_by: (APP.currentUser && APP.currentUser.name) || ''
@@ -1496,8 +1504,8 @@
       + '<thead class="sticky top-0 z-20"><tr>' + head1 + '</tr><tr>' + head2 + '</tr></thead><tbody>' + body + '</tbody></table></div>'
       + '<p class="text-[11px] text-gray-500 mt-1">กรอกคะแนนดิบ ระบบคิด "ที่ได้" (รวมกติกาสอบซ่อม) · คิดเป็น % · รวม CLO และร้อยละให้เอง · '
       + 'ผล CLO นับเมื่อกรอกครบทุกการประเมิน · บันทึกระหว่างทางได้</p>'
-      + (st._partMissing ? '<p class="text-xs text-red-600 mt-1">อ่านตารางเก็บคะแนนรายองค์ประกอบไม่ได้ — ถ้ายังไม่ได้ติดตั้ง ให้รัน supabase/security/94_plo_score_part.sql'
-          + ' · ถ้าติดตั้งแล้ว กด <button type="button" onclick="ploLoadScores()" class="underline">โหลดคะแนนใหม่</button>'
+      + (st._partMissing ? '<p class="text-xs text-red-600 mt-1">โหลดคะแนนรายองค์ประกอบไม่สำเร็จ'
+          + ' · <button type="button" onclick="ploLoadScores()" class="underline">ลองโหลดใหม่</button>'
           + (st._partErr ? '<span class="block text-[11px] text-red-400">(' + esc(st._partErr) + ')</span>' : '') + '</p>' : '');
   }
   function compBadge(cur, calc) {
@@ -1599,7 +1607,7 @@
   async function compStore(id, list) {
     var rec = (APP.allData || []).filter(function (x) { return String(x.__backendId) === String(id); })[0];
     if (!rec) return false;
-    var r = await GSheetDB.update(Object.assign({}, rec, { components: list.length ? JSON.stringify(list) : '',
+    var r = await GSheetDB.update(Object.assign(noScores(rec), { components: list.length ? JSON.stringify(list) : '',
       updated_by: (APP.currentUser && APP.currentUser.name) || '' }));
     if (!r || !r.isOk) { showToast('บันทึกไม่สำเร็จ: ' + ((r && r.error) || ''), 'error'); return false; }
     return true;
@@ -1782,14 +1790,18 @@
       // คะแนนดิบรายองค์ประกอบ — เฉพาะ CLO ที่กำหนดองค์ประกอบไว้
       st.detail = {}; st._partMissing = false;
       var cIds = rows.filter(function (r) { return comps(r).length; }).map(cloNum).filter(Boolean);
-      for (var from = 0; cIds.length; from += 1000) {
-        var pr = await sb().from('plo_score_part').select('clo_id,student_id,detail').in('clo_id', cIds).range(from, from + 999);
-        if (pr.error) { st._partMissing = true; st._partErr = pr.error.message; console.warn('plo_score_part:', pr.error.message); break; }
-        (pr.data || []).forEach(function (x) {
-          var d = x.detail; if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = {}; } }
-          st.detail[cloKey(x.clo_id) + '|' + x.student_id] = d || {};
+      if (cIds.length) {
+        // อ่านสดจากฐานข้อมูล (ไม่ใช้สำเนาในเบราว์เซอร์ ซึ่งอาจเก่ากว่าที่อาจารย์ท่านอื่นเพิ่งบันทึก)
+        var pr = await sb().from('plo_clo').select('id,extra').in('id', cIds);
+        if (pr.error) { st._partMissing = true; st._partErr = pr.error.message; console.warn('plo_clo extra:', pr.error.message); }
+        (pr.data || []).forEach(function (row) {
+          var ex = row.extra || {};
+          Object.keys(ex).forEach(function (k) {
+            if (k.indexOf('sc:') !== 0) return;
+            var d = ex[k]; if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = {}; } }
+            st.detail[cloKey(row.id) + '|' + k.slice(3)] = d || {};
+          });
         });
-        if (!pr.data || pr.data.length < 1000) break;
       }
     }
     st._dirty = {};
@@ -1835,18 +1847,25 @@
 
     if (typeof showToast === 'function') showToast('กำลังบันทึก ' + Math.max(payload.length, parts.length) + ' รายการ...');
     if (parts.length) {
-      // ลองบันทึกจริงทุกครั้ง ไม่เชื่อป้าย "ยังไม่ติดตั้ง" ที่ค้างจากตอนเปิดตาราง
-      // (ผู้ดูแลอาจเพิ่งรัน SQL ระหว่างที่หน้านี้เปิดค้างไว้)
-      for (var b = 0; b < parts.length; b += 500) {
-        var rp = await sb().from('plo_score_part').upsert(parts.slice(b, b + 500), { onConflict: 'clo_id,student_id' });
-        if (rp.error) {
+      // รวมเป็นราย CLO แล้วผสานเข้า extra ของ CLO นั้น
+      // อ่าน extra ล่าสุดก่อนเขียนทุกครั้ง คะแนนของนักศึกษาคนอื่นที่อาจารย์ท่านอื่นเพิ่งบันทึกจึงไม่หาย
+      var byClo = {};
+      parts.forEach(function (x) { (byClo[x.clo_id] = byClo[x.clo_id] || []).push(x); });
+      var cloIds = Object.keys(byClo);
+      for (var b = 0; b < cloIds.length; b++) {
+        var cid = Number(cloIds[b]);
+        var cur = await sb().from('plo_clo').select('extra').eq('id', cid).maybeSingle();
+        if (cur && cur.error) {
+          var t0 = document.getElementById('loadingToast'); if (t0) t0.remove();
+          showToast('อ่านข้อมูล CLO ไม่สำเร็จ: ' + cur.error.message, 'error'); return;
+        }
+        var ex = (cur && cur.data && cur.data.extra) || {};
+        byClo[cid].forEach(function (x) { ex['sc:' + x.student_id] = JSON.stringify(x.detail || {}); });
+        var up = await sb().from('plo_clo').update({ extra: ex }).eq('id', cid);
+        if (up.error) {
           var t1 = document.getElementById('loadingToast'); if (t1) t1.remove();
-          var em = String(rp.error.message || '');
-          console.warn('plo_score_part:', rp.error);
-          showToast(/does not exist|schema cache|not find the table/i.test(em)
-            ? 'ฐานข้อมูลยังไม่รู้จักตาราง plo_score_part — รัน 94_plo_score_part.sql แล้วรอสักครู่ (หรือรัน NOTIFY pgrst, \'reload schema\';) · ' + em
-            : 'บันทึกคะแนนรายองค์ประกอบไม่สำเร็จ: ' + em, 'error');
-          return;
+          console.warn('plo_clo extra:', up.error);
+          showToast('บันทึกคะแนนรายองค์ประกอบไม่สำเร็จ: ' + up.error.message, 'error'); return;
         }
       }
       st._partMissing = false;
