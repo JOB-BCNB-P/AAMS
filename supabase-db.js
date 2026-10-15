@@ -255,6 +255,32 @@ const EMSDB = (() => {
     if (_onDataChanged) _onDataChanged(_allData);
   }
 
+  /* ดึงหลายตารางใหม่ในคำขอเดียว — ใช้กับการอัปเดตอัตโนมัติ (app-patch.js ส่วนที่ 13)
+     ถ้าข้อมูลไม่เปลี่ยนเลย จะไม่สั่งวาดหน้าจอใหม่ หน้าจอจึงไม่กระพริบ/ไม่เลื่อนตำแหน่งโดยไม่จำเป็น
+     คืน { changed: true/false } */
+  async function refreshTabs(list) {
+    const isStu = (_profile && _profile.role) === 'student';
+    const tabs = (list || []).filter(t => SHEET_TABS.indexOf(t) > -1 && !(isStu && STUDENT_SKIP.has(tbl(t))));
+    if (!tabs.length) return { changed: false };
+    const tables = tabs.map(tbl);
+    const sig = rows => rows.map(r => r.__rowIndex + ':' + (r.updated_at || '') + ':' + (r.leave_status || '')).sort().join('|');
+    const { data, error } = await client().rpc('ems_fetch', { tabs: tables });
+    if (error || !data || typeof data !== 'object') throw new Error((error && error.message) || 'ems_fetch ไม่สำเร็จ');
+    let changed = false;
+    tables.forEach(tn => {
+      if (!Array.isArray(data[tn])) return;          // ตารางที่อ่านไม่ได้ — คงข้อมูลเดิมไว้
+      const ty = type(tn);
+      const rows = data[tn].map(r => toRow(tn, r));
+      const before = _allData.filter(d => d.type === ty);
+      if (before.length === rows.length && sig(before) === sig(rows)) return;
+      changed = true;
+      _allData = _allData.filter(d => d.type !== ty);
+      _allData.push(...rows);
+    });
+    if (changed && _onDataChanged) _onDataChanged(_allData);
+    return { changed };
+  }
+
   /* ---------------- WRITE ---------------- */
   // เลขบัตรประชาชนนักศึกษาเก็บแยกตาราง student_private (เห็นได้เฉพาะ admin/academic/registrar)
   async function saveNationalId(studentRowId, nid) {
@@ -678,7 +704,7 @@ const EMSDB = (() => {
     // ---- ของใหม่ที่ Supabase มีเพิ่ม ----
     loginWithGoogle, logout, profile, currentSession, changePassword, whenFullyLoaded,
     uploadFile, fileUrl, deleteFile, isStoredFile, filePathOf, MAX_FILE_BYTES,
-    loadProfile, authBlockReason, loadSchema, refreshTab, client,
+    loadProfile, authBlockReason, loadSchema, refreshTab, refreshTabs, client,
     // ส่งประกาศเข้า LINE ด้วยตัวเอง (ใช้ตอนอยากส่งซ้ำ): EMSDB.sendLineNow(id)
     sendLineNow: (id) => notifyLine('announcement', id, { line_notify: '✓' })
   };

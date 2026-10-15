@@ -4166,6 +4166,11 @@ function gradesPage() {
     if (APP.currentRole === 'teacher' || APP.currentRole === 'classTeacher') {
       studentList = activeStudents(studentList);
     }
+    // อาจารย์ที่ปรึกษามีนักศึกษาหลายชั้นปี — กรองชั้นปีจากช่อง "เลือกนักศึกษา" ได้ด้วย
+    if (APP.currentRole === 'teacher') {
+      const ty = APP.filters._gradeYearLevel || '';
+      if (ty && ty !== '__grad') studentList = studentList.filter(s => norm(s.year_level) === ty);
+    }
 
     // Year level + Advisor filter for admin/academic/executive
     let advisorSelector = '';
@@ -4230,9 +4235,18 @@ function gradesPage() {
       const q = searchVal.toLowerCase();
       filteredList = studentList.filter(s => (s.name || '').toLowerCase().includes(q) || (s.student_id || '').toLowerCase().includes(q));
     }
+    /* กรองชั้นปีในช่อง "เลือกนักศึกษา" — ใช้ตัวกรองเดียวกับการ์ดภาพรวม GPAx (APP.filters._gradeYearLevel)
+       อาจารย์ประจำชั้นดูแลชั้นปีเดียวอยู่แล้ว จึงไม่แสดง */
+    const pickYear = APP.filters._gradeYearLevel || '';
+    const yearOpts = [['', 'ทุกชั้นปี']].concat(['1', '2', '3', '4'].map(v => [v, 'ชั้นปีที่ ' + v]))
+      .concat(canFilterByAdvisor ? [['__grad', 'ผู้สำเร็จการศึกษา']] : []);
+    const yearPick = (APP.currentRole === 'classTeacher') ? '' : `<select onchange="APP.filters._gradeYearLevel=this.value;APP.filters._gradeStudent='';APP.filters._gradeSearch='';APP.filters._gradeBatch='';APP.pagination.page=1;renderCurrentPage()" class="sm:w-48 border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" title="กรองตามชั้นปี" data-nodraft="1">
+        ${yearOpts.map(o => `<option value="${o[0]}"${pickYear === o[0] ? ' selected' : ''}>${o[1]}</option>`).join('')}
+      </select>`;
     studentSelector = `${advisorSelector}<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">
       <label class="block text-sm font-medium text-gray-700 mb-2"><i data-lucide="search" class="w-4 h-4 inline mr-1"></i>เลือกนักศึกษา</label>
-      <div class="flex gap-2 mb-2">
+      <div class="flex flex-col sm:flex-row gap-2 mb-2">
+        ${yearPick}
         <div class="flex-1 relative"><i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-400"></i><input type="text" placeholder="พิมพ์ค้นหาชื่อหรือรหัส..." value="${searchVal}" class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm" oninput="clearTimeout(window._gradeSearchTimer);window._gradeSearchTimer=setTimeout(()=>{APP.filters._gradeSearch=this.value;APP.filters._gradeStudent='';APP.pagination.page=1;renderCurrentPage()},300)"></div>
       </div>
       <select onchange="APP.filters._gradeStudent=this.value;APP.pagination.page=1;renderCurrentPage()" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm">

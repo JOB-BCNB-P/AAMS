@@ -1581,3 +1581,97 @@
     return out;
   };
 })();
+
+/* ============================================================
+   13) อัปเดตข้อมูลอัตโนมัติ (ไม่ต้องกดรีเฟรชเอง)
+   ------------------------------------------------------------
+   แบบ 1  กลับมาที่แท็บหลังหายไปเกิน 5 นาที → ดึงข้อมูลชุดหลักใหม่
+   แบบ 2  ระหว่างเปิดแท็บอยู่ ดึงตารางที่เปลี่ยนบ่อยทุก 3 นาที
+          (ใบลา · ติดตามการส่งทั้ง 4 แบบ · ประกาศ)
+   ไม่ดึงตารางใหญ่ (ผลการเรียน ผลสอบภาษาอังกฤษ) — ยังใช้ปุ่มรีเฟรชข้อมูลตามเดิม
+
+   กันข้อมูลที่กำลังกรอกหาย: ข้ามรอบนี้ไปก่อน แล้วลองใหม่ใน 30 วินาที ถ้า
+     • มีหน้าต่าง (โมดัล) เปิดอยู่
+     • เคอร์เซอร์อยู่ในช่องกรอกข้อมูล
+     • มีฟอร์มบนหน้าที่พิมพ์ค้างไว้แต่ยังไม่บันทึก
+   ข้อมูลไม่เปลี่ยน = ไม่วาดหน้าจอใหม่ · เปลี่ยน = วาดใหม่และคงตำแหน่งเลื่อนหน้าไว้
+   ปรับค่าได้ใน config.js : AUTO_REFRESH_MINUTES (0 = ปิดแบบ 2), AUTO_REFRESH_IDLE_MINUTES
+   ============================================================ */
+(function () {
+  'use strict';
+  var CFG = window.EMS_CONFIG || {};
+  var POLL_MIN = (CFG.AUTO_REFRESH_MINUTES === undefined) ? 3 : Number(CFG.AUTO_REFRESH_MINUTES) || 0;
+  var IDLE_MIN = (CFG.AUTO_REFRESH_IDLE_MINUTES === undefined) ? 5 : Number(CFG.AUTO_REFRESH_IDLE_MINUTES) || 5;
+  var POLL_TABS = ['leave', 'tracking', 'result_tracking', 'grade_tracking', 'file_tracking', 'announcement'];
+  var FOCUS_TABS = POLL_TABS.concat(['schedule', 'subject', 'student', 'doc_request', 'support_ticket']);
+  var RETRY_MS = 30 * 1000;
+
+  var lastSync = Date.now();
+  var hiddenAt = 0;
+  var running = false;
+  var retryTimer = null;
+
+  // ฟอร์มที่พิมพ์ค้างไว้ — ติดป้ายไว้ที่ตัวฟอร์ม ถูกล้างเมื่อบันทึก/ล้างฟอร์ม หรือหน้าถูกวาดใหม่
+  document.addEventListener('input', function (e) {
+    var f = e.target && e.target.closest && e.target.closest('form');
+    if (f) f.dataset.emsDirty = '1';
+  }, true);
+  ['submit', 'reset'].forEach(function (ev) {
+    document.addEventListener(ev, function (e) { if (e.target && e.target.dataset) delete e.target.dataset.emsDirty; }, true);
+  });
+
+  function loggedIn() { return !!(window.APP && APP.currentUser && window.GSheetDB && GSheetDB.refreshTabs); }
+  function busy() {
+    var mc = document.getElementById('modalContainer');
+    if (mc && !mc.classList.contains('hidden') && mc.innerHTML.trim()) return true;
+    var a = document.activeElement;
+    if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'button' && a.type !== 'submit') return true;
+    var main = document.getElementById('mainContent');
+    if (main && main.querySelector('form[data-ems-dirty="1"]')) return true;
+    return false;
+  }
+
+  async function sync(tabs, why) {
+    if (!loggedIn() || running) return;
+    if (document.visibilityState !== 'visible') return;
+    if (busy()) {
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(function () { sync(tabs, why); }, RETRY_MS);
+      return;
+    }
+    running = true;
+    var y = window.scrollY, main = document.getElementById('mainContent'), my = main ? main.scrollTop : 0;
+    try {
+      var r = await GSheetDB.refreshTabs(tabs);
+      lastSync = Date.now();
+      if (r && r.changed) {
+        // onDataChanged วาดหน้าจอใหม่ไปแล้ว — คืนตำแหน่งเลื่อนหน้า
+        requestAnimationFrame(function () {
+          try { window.scrollTo(0, y); if (main) main.scrollTop = my; } catch (e) { }
+        });
+        console.log('[อัปเดตอัตโนมัติ] ' + why + ' — มีข้อมูลใหม่');
+      }
+    } catch (err) {
+      console.warn('[อัปเดตอัตโนมัติ] ไม่สำเร็จ:', err && err.message);
+    } finally { running = false; }
+  }
+
+  // แบบ 2 — ทุก ๆ POLL_MIN นาที ขณะเปิดแท็บอยู่
+  if (POLL_MIN > 0) {
+    setInterval(function () {
+      if (Date.now() - lastSync >= POLL_MIN * 60 * 1000 - 2000) sync(POLL_TABS, 'ตามรอบ ' + POLL_MIN + ' นาที');
+    }, 30 * 1000);
+  }
+
+  // แบบ 1 — กลับมาที่แท็บหลังหายไปนาน
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+    var away = hiddenAt ? Date.now() - hiddenAt : 0;
+    if (away >= IDLE_MIN * 60 * 1000 || Date.now() - lastSync >= IDLE_MIN * 60 * 1000) {
+      sync(FOCUS_TABS, 'กลับมาที่แท็บหลัง ' + Math.round(away / 60000) + ' นาที');
+    }
+  });
+
+  // เรียกจาก Console เพื่อทดสอบ: emsAutoRefreshNow()
+  window.emsAutoRefreshNow = function () { lastSync = 0; return sync(FOCUS_TABS, 'สั่งเอง'); };
+})();
