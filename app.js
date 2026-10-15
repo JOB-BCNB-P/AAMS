@@ -3064,28 +3064,30 @@ async function runImportGradesFromSubject(subjectId) {
 
   showLoading(`กำลังนำเข้า 0/${selected.length}...`);
 
+  /* เพิ่มทุกคนในคำขอเดียว (createMany แบ่งชุดละ 500 แถว) แล้วโหลดตารางผลการเรียนใหม่ครั้งเดียว
+     เดิมเพิ่มทีละคนด้วย create() ซึ่งโหลดตารางผลการเรียนทั้งตาราง (หลายพันแถว) ใหม่ทุกครั้ง
+     170 คน = โหลดทั้งตาราง 170 รอบ จึงช้ามาก */
+  const now = new Date().toISOString();
+  const objs = selected.map(sid => ({
+    type: 'grade',
+    student_id: sid,
+    subject_code: subj.subject_code || '',
+    subject_name: subj.subject_name || '',
+    grade: '',
+    credits: Number(subj.credits) || 3,
+    semester: normSem(subj.semester) || '1',
+    academic_year: norm(subj.academic_year) || '',
+    created_at: now
+  }));
+  const lblEl = document.getElementById('loadingMsg');
+  if (lblEl) lblEl.textContent = `กำลังบันทึก ${objs.length} รายการ...`;
   let success = 0, failed = 0;
-  for (let i = 0; i < selected.length; i++) {
-    const sid = selected[i];
-    const lblEl = document.getElementById('loadingMsg');
-    if (lblEl) lblEl.textContent = `กำลังนำเข้า ${i + 1}/${selected.length}...`;
-    const obj = {
-      type: 'grade',
-      student_id: sid,
-      subject_code: subj.subject_code || '',
-      subject_name: subj.subject_name || '',
-      grade: '',
-      credits: Number(subj.credits) || 3,
-      semester: normSem(subj.semester) || '1',
-      academic_year: norm(subj.academic_year) || '',
-      created_at: new Date().toISOString()
-    };
-    try {
-      const r = await GSheetDB.create(obj);
-      if (r && r.isOk) success++; else failed++;
-    } catch (e) {
-      failed++;
-    }
+  try {
+    const r = await GSheetDB.createMany(objs);
+    success = (r && r.ok) || 0;
+    failed = (r && r.fail) || (r && r.isOk ? 0 : objs.length - success);
+  } catch (e) {
+    failed = objs.length;
   }
 
   hideLoading();
