@@ -389,8 +389,9 @@
             + '<td class="px-3 py-2.5">' + esc(r['CLO']) + '</td>'
             + '<td class="px-3 py-2.5">' + esc(r['PLO']) + '</td>'
             + '<td class="px-3 py-2.5 text-center whitespace-nowrap">' + esc(r['ภาคเรียน']) + '/' + esc(r['ปีการศึกษา']) + '</td>'
-            + '<td class="px-3 py-2.5 text-right">' + esc(r['คะแนน']) + ' / ' + esc(r['คะแนนเต็ม'])
-            + ' <span class="text-xs text-gray-400">(ผ่าน ' + esc(r['เกณฑ์ผ่าน']) + ')</span></td>'
+            + '<td class="px-3 py-2.5 text-right">' + (n(r['คะแนนเต็ม']) === 100
+                ? esc(r['คะแนน']) + '%' + ' <span class="text-xs text-gray-400">(ผ่าน ' + esc(r['เกณฑ์ผ่าน']) + '%)</span>'
+                : esc(r['คะแนน']) + ' / ' + esc(r['คะแนนเต็ม']) + ' <span class="text-xs text-gray-400">(ผ่าน ' + esc(r['เกณฑ์ผ่าน']) + ')</span>') + '</td>'
             + '<td class="px-3 py-2.5 text-center">' + (r['ผ่าน']
                 ? '<span class="px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs">ผ่าน</span>'
                 : '<span class="px-2 py-0.5 rounded-lg bg-red-50 text-red-700 text-xs">ไม่ผ่าน</span>') + '</td></tr>';
@@ -587,7 +588,7 @@
       + '<div class="flex items-start gap-3 mb-2">' + no('ก', nClo > 0)
       + '<div><p class="text-sm font-semibold text-gray-800">นำเข้า CLO ที่ผูกกับ PLO</p>'
       + '<p class="text-[11px] text-gray-500">' + (subj ? 'รายวิชา ' + esc(subj.subject_name) : 'ทุกรายวิชาของชั้นปีนี้ (' + subs.length + ' วิชา)')
-      + ' · คอลัมน์: รหัสวิชา · รหัส CLO · คำอธิบาย · PLO ที่ผูก · คะแนนเต็ม · เกณฑ์ผ่าน</p></div></div>'
+      + ' · คอลัมน์: รหัสวิชา · รหัส CLO · คำอธิบาย · PLO ที่ผูก · คะแนนเต็ม (100) · เกณฑ์ผ่าน (%)</p></div></div>'
       + '<div class="flex flex-wrap gap-2 ml-10">'
       + btn("ploCsvTemplate('clo')", 'download', 'ดาวน์โหลดแม่แบบ CLO', 'border-emerald-600 text-emerald-700 bg-white hover:bg-emerald-50')
       + btn("ploCsvPick('clo')", 'upload', 'อัปโหลดไฟล์ CLO', 'border-primary text-white bg-primary hover:bg-primaryDark')
@@ -794,8 +795,10 @@
       var pass = iPass >= 0 ? s(r[iPass]) : '';
       if (pass === '' || !isFinite(Number(pass))) { bad.push('บรรทัด ' + line + ' : ' + code + ' เกณฑ์ผ่านต้องเป็นตัวเลข'); return; }
       var max = iMax >= 0 ? s(r[iMax]) : '';
-      if (max !== '' && !isFinite(Number(max))) { bad.push('บรรทัด ' + line + ' : ' + code + ' คะแนนเต็มต้องเป็นตัวเลข'); return; }
-      if (max !== '' && Number(pass) > Number(max)) { bad.push('บรรทัด ' + line + ' : ' + code + ' เกณฑ์ผ่านมากกว่าคะแนนเต็ม'); return; }
+      // คะแนนเต็มเป็นร้อยละเสมอ (100) — เว้นว่างได้ ระบบใส่ 100 ให้
+      if (max !== '' && Number(max) !== 100) { bad.push('บรรทัด ' + line + ' : ' + code + ' คะแนนเต็มต้องเป็น 100 (คะแนนคิดเป็นร้อยละ)'); return; }
+      max = '100';
+      if (Number(pass) < 0 || Number(pass) > 100) { bad.push('บรรทัด ' + line + ' : ' + code + ' เกณฑ์ผ่านต้องอยู่ระหว่าง 0–100 (%)'); return; }
       var exist = closOf(st.eYear, st.eSem, scode).filter(function (c) { return s(c.clo_code) === code; })[0] || null;
       cloPlan.push({
         subj: subj, code: code, text: iText >= 0 ? s(r[iText]) : '',
@@ -938,8 +941,10 @@
       var pass = iPass >= 0 ? s(r[iPass]) : '';
       if (pass === '' || !isFinite(Number(pass))) { bad.push('บรรทัด ' + line + ' : ' + code + ' เกณฑ์ผ่านต้องเป็นตัวเลข'); return; }
       var max = iMax >= 0 ? s(r[iMax]) : '';
-      if (max !== '' && !isFinite(Number(max))) { bad.push('บรรทัด ' + line + ' : ' + code + ' คะแนนเต็มต้องเป็นตัวเลข'); return; }
-      if (max !== '' && Number(pass) > Number(max)) { bad.push('บรรทัด ' + line + ' : ' + code + ' เกณฑ์ผ่านมากกว่าคะแนนเต็ม'); return; }
+      // คะแนนเต็มเป็นร้อยละเสมอ (100) — เว้นว่างได้ ระบบใส่ 100 ให้
+      if (max !== '' && Number(max) !== 100) { bad.push('บรรทัด ' + line + ' : ' + code + ' คะแนนเต็มต้องเป็น 100 (คะแนนคิดเป็นร้อยละ)'); return; }
+      max = '100';
+      if (Number(pass) < 0 || Number(pass) > 100) { bad.push('บรรทัด ' + line + ' : ' + code + ' เกณฑ์ผ่านต้องอยู่ระหว่าง 0–100 (%)'); return; }
       var exist = closOf(st.eYear, st.eSem, scode).filter(function (c) { return s(c.clo_code) === code; })[0] || null;
       plan.push({ subj: subj, code: code, text: iText >= 0 ? s(r[iText]) : '',
         plo: plo, max: max === '' ? '100' : max, pass: pass, exist: exist });
@@ -1170,7 +1175,7 @@
         + '<th class="px-3 py-2 font-semibold">คำอธิบาย</th>'
         + '<th class="px-3 py-2 font-semibold w-44">PLO ที่ผูก</th>'
         + '<th class="px-3 py-2 font-semibold text-center w-24">คะแนนเต็ม</th>'
-        + '<th class="px-3 py-2 font-semibold text-center w-24">เกณฑ์ผ่าน</th>'
+        + '<th class="px-3 py-2 font-semibold text-center w-24">เกณฑ์ผ่าน (%)</th>'
         + '<th class="px-3 py-2 w-20"></th></tr></thead><tbody>'
         + rows.map(function (r) {
             return '<tr class="border-t border-gray-50">'
@@ -1178,8 +1183,9 @@
               + '<td class="px-3 py-2">' + esc(r.statement_th) + '</td>'
               + '<td class="px-3 py-2"><span class="px-2 py-0.5 rounded-lg bg-blue-50 text-primary text-xs">'
               + esc(r.plo_code || '—') + '</span></td>'
-              + '<td class="px-3 py-2 text-center">' + esc(r.max_score) + '</td>'
-              + '<td class="px-3 py-2 text-center">' + esc(r.pass_score) + '</td>'
+              + '<td class="px-3 py-2 text-center">' + (s(r.max_score) && n(r.max_score) !== 100
+                  ? '<span class="text-amber-700" title="CLO เดิม — กดแก้ไขแล้วบันทึกเพื่อเปลี่ยนเป็น 100%">' + esc(r.max_score) + ' ⚠</span>' : '100%') + '</td>'
+              + '<td class="px-3 py-2 text-center">' + esc(r.pass_score) + '%</td>'
               + '<td class="px-3 py-2 text-right whitespace-nowrap">'
               // รหัสแถวเป็นข้อความ (เช่น plo_clo_20) ต้องครอบเครื่องหมายคำพูด
               // ไม่งั้นเบราว์เซอร์อ่านเป็นชื่อตัวแปรแล้วฟ้องว่าไม่รู้จัก
@@ -1199,9 +1205,9 @@
       + '<input id="cloText" class="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="ผู้เรียนสามารถ..."></div>'
       + '<div class="md:col-span-3"><label class="block text-[11px] text-gray-500 mb-1">ผูกกับ PLO</label>' + ploSelect('cloPlo', '') + '</div>'
       + '<div class="md:col-span-1"><label class="block text-[11px] text-gray-500 mb-1">เต็ม</label>'
-      + '<input id="cloMax" type="number" value="100" class="w-full border rounded-lg px-2 py-1.5 text-sm"></div>'
-      + '<div class="md:col-span-1"><label class="block text-[11px] text-gray-500 mb-1">ผ่าน</label>'
-      + '<input id="cloPass" type="number" value="60" class="w-full border rounded-lg px-2 py-1.5 text-sm"></div>'
+      + '<input id="cloMax" type="hidden" value="100"><div class="w-full border border-gray-100 bg-gray-50 rounded-lg px-2 py-1.5 text-sm text-gray-500 text-center" title="คะแนนคิดเป็นร้อยละ">100%</div></div>'
+      + '<div class="md:col-span-1"><label class="block text-[11px] text-gray-500 mb-1">ผ่าน (%)</label>'
+      + '<input id="cloPass" type="number" min="0" max="100" step="0.01" value="60" class="w-full border rounded-lg px-2 py-1.5 text-sm"></div>'
       + '<div class="md:col-span-1"><button onclick="ploAddClo(false)" class="w-full px-3 py-1.5 bg-primary text-white rounded-lg text-sm">เพิ่ม</button></div>'
       + '</div>'
       + '<div class="mt-2 flex items-center gap-2">'
@@ -1221,8 +1227,9 @@
     var code = s((document.getElementById('cloCode') || {}).value);
     var text = s((document.getElementById('cloText') || {}).value);
     var plo = s((document.getElementById('cloPlo') || {}).value);
-    var max = s((document.getElementById('cloMax') || {}).value);
+    var max = '100';   // คะแนนเต็มเป็นร้อยละเสมอ
     var pass = s((document.getElementById('cloPass') || {}).value);
+    if (pass !== '' && (!isFinite(Number(pass)) || Number(pass) < 0 || Number(pass) > 100)) { showToast('เกณฑ์ผ่านต้องอยู่ระหว่าง 0–100 (%)', 'error'); return; }
     if (!code) { showToast('กรุณากรอกรหัส CLO', 'error'); return; }
     if (!plo) { showToast('กรุณาเลือก PLO ที่ CLO นี้ผูกอยู่', 'error'); return; }
     if (!pass) { showToast('กรุณากรอกเกณฑ์ผ่าน', 'error'); return; }
@@ -1281,9 +1288,10 @@
       + '<div><label class="block text-[11px] text-gray-500 mb-1">ผูกกับ PLO</label>' + sel + '</div>'
       + '<div class="grid grid-cols-2 gap-3">'
       + '<div><label class="block text-[11px] text-gray-500 mb-1">คะแนนเต็ม</label>'
-      + '<input id="cloEMax" type="number" value="' + esc(rec.max_score) + '" class="w-full border rounded-lg px-2 py-1.5 text-sm"></div>'
-      + '<div><label class="block text-[11px] text-gray-500 mb-1">เกณฑ์ผ่าน</label>'
-      + '<input id="cloEPass" type="number" value="' + esc(rec.pass_score) + '" class="w-full border rounded-lg px-2 py-1.5 text-sm"></div>'
+      + '<input id="cloEMax" type="hidden" value="100"><div class="w-full border border-gray-100 bg-gray-50 rounded-lg px-2 py-1.5 text-sm text-gray-500">100% <span class="text-[11px]">(คะแนนคิดเป็นร้อยละ)</span>'
+      + (s(rec.max_score) && n(rec.max_score) !== 100 ? '<span class="block text-[11px] text-amber-700">เดิมตั้งไว้ ' + esc(rec.max_score) + ' — บันทึกแล้วจะเปลี่ยนเป็น 100%</span>' : '') + '</div></div>'
+      + '<div><label class="block text-[11px] text-gray-500 mb-1">เกณฑ์ผ่าน (%)</label>'
+      + '<input id="cloEPass" type="number" min="0" max="100" step="0.01" value="' + esc(rec.pass_score) + '" class="w-full border rounded-lg px-2 py-1.5 text-sm"></div>'
       + '</div>'
       + '<p class="text-[11px] text-gray-400">คะแนนนักศึกษาที่กรอกไว้จะไม่ถูกลบ '
       + 'ถ้าแก้คะแนนเต็มหรือเกณฑ์ผ่าน ผลการบรรลุจะคำนวณใหม่จากคะแนนเดิม</p>'
@@ -1298,7 +1306,8 @@
     if (!rec) return;
     var v = function (el) { return s(((typeof document !== 'undefined' && document.getElementById(el)) || {}).value); };
     var code = v('cloECode'), text = v('cloEText'), plo = v('cloEPlo'),
-        max = v('cloEMax'), pass = v('cloEPass');
+        max = '100', pass = v('cloEPass');   // คะแนนเต็มเป็นร้อยละเสมอ
+    if (pass !== '' && (!isFinite(Number(pass)) || Number(pass) < 0 || Number(pass) > 100)) { showToast('เกณฑ์ผ่านต้องอยู่ระหว่าง 0–100 (%)', 'error'); return; }
     if (!code) { showToast('กรุณากรอกรหัส CLO', 'error'); return; }
     if (!plo) { showToast('กรุณาเลือก PLO ที่ CLO นี้ผูกอยู่', 'error'); return; }
     if (!pass) { showToast('กรุณากรอกเกณฑ์ผ่าน', 'error'); return; }
@@ -1348,7 +1357,7 @@
     var v = st.scores[r.__backendId + '|' + u.student_id];
     var has = v != null && s(v) !== '';
     var cls = !has ? '' : (n(v) >= n(r.pass_score) ? 'bg-emerald-50' : 'bg-red-50');
-    return '<input type="number" step="0.01" min="0"' + (s(r.max_score) ? ' max="' + esc(r.max_score) + '"' : '')
+    return '<input type="number" step="0.01" min="0" max="' + esc(s(r.max_score) || '100') + '" title="คะแนนร้อยละ (0–' + esc(s(r.max_score) || '100') + ')"'
       + ' value="' + esc(has ? v : '') + '" data-clo="' + esc(r.__backendId) + '" data-stu="' + esc(u.student_id) + '"'
       + ' oninput="ploScoreInput(this)" onkeydown="ploScoreKey(event,this)" data-nodraft="1"'
       + ' class="' + (wide ? 'w-28' : 'w-16') + ' border rounded-lg px-2 py-1 text-sm text-center tabular-nums ' + cls + '">';
@@ -1412,7 +1421,7 @@
         + '<div class="min-w-0"><p class="text-sm font-semibold text-gray-800">' + esc(cur.clo_code)
         + ' <span class="ml-1 px-2 py-0.5 rounded-lg bg-blue-50 text-primary text-xs font-normal">' + esc(cur.plo_code || '—') + '</span></p>'
         + '<p class="text-xs text-gray-600 mt-0.5">' + esc(cur.statement_th || '') + '</p>'
-        + '<p class="text-[11px] text-gray-400 mt-0.5">คะแนนเต็ม ' + esc(cur.max_score) + ' · เกณฑ์ผ่าน ' + esc(cur.pass_score) + '</p></div>'
+        + '<p class="text-[11px] text-gray-400 mt-0.5">กรอกเป็นร้อยละ (เต็ม ' + esc(s(cur.max_score) || '100') + '%) · เกณฑ์ผ่าน ' + esc(cur.pass_score) + '%</p></div>'
         + '<div class="flex gap-2 flex-shrink-0">' + nav(prev, '‹ CLO ก่อนหน้า') + nav(next, 'CLO ถัดไป ›') + '</div></div>';
       table = chips + info
         + '<div class="overflow-auto border border-gray-100 rounded-xl max-h-[65vh]"><table class="w-full text-sm">'
@@ -1435,7 +1444,7 @@
         + '<th class="px-3 py-2 font-semibold sticky left-0 bg-surface z-30 min-w-[14rem]">นักศึกษา</th>'
         + rows.map(function (r) {
             return '<th class="px-1 py-2 font-semibold text-center whitespace-nowrap bg-surface" title="' + esc(r.clo_code + ' · ' + (r.plo_code || '') + ' — ' + (r.statement_th || '')) + '">'
-              + esc(r.clo_code) + '<div class="text-[10px] font-normal text-gray-400">' + esc(r.plo_code || '') + ' · ผ่าน ' + esc(r.pass_score) + '/' + esc(r.max_score) + '</div></th>';
+              + esc(r.clo_code) + '<div class="text-[10px] font-normal text-gray-400">' + esc(r.plo_code || '') + ' · ผ่าน ' + esc(r.pass_score) + '%</div></th>';
           }).join('')
         + '<th class="px-2 py-2 font-semibold text-center whitespace-nowrap bg-surface">ผ่าน</th></tr></thead><tbody>'
         + studs.map(function (u) {
