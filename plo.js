@@ -84,7 +84,7 @@
     var rt = (c.retake && s(d.r) !== '') ? n(d.r) : null;
     if (sc === null && rt === null) return null;
     if (rt === null) return sc;
-    var pass = s(c.pass) === '' ? null : n(c.pass);
+    var pass = s(c.pass) !== '' ? n(c.pass) : (s(defPass(c.full)) !== '' ? n(defPass(c.full)) : null);
     if (c.rule === 'actual' || pass === null) return Math.max(sc || 0, rt);
     // สอบซ่อมผ่าน = ได้เท่าเกณฑ์ผ่าน · ไม่ผ่าน = ใช้คะแนนที่มากกว่า
     return rt >= pass ? Math.max(sc || 0, pass) : Math.max(sc || 0, rt);
@@ -106,7 +106,7 @@
   // ไม่งั้นค่าเก่าที่ค้างในเบราว์เซอร์จะไปทับคะแนนที่อาจารย์อีกท่านเพิ่งบันทึก
   function noScores(rec) {
     var o = {};
-    Object.keys(rec || {}).forEach(function (k) { if (k.indexOf('sc:') !== 0) o[k] = rec[k]; });
+    Object.keys(rec || {}).forEach(function (k) { if (k.indexOf('sc:') !== 0 && k !== 'course_cfg') o[k] = rec[k]; });
     return o;
   }
 
@@ -667,11 +667,14 @@
       + step(2, 'เลือกรายวิชา', 'รายวิชาที่เปิดสอน ' + subs.length + ' วิชา' + (subj ? ' · เลือกแล้ว: ' + s(subj.subject_name) : ''),
           list, subj ? 'done' : 'active')
       + step(3, 'กำหนด CLO และผูกกับ PLO', subj ? 'รายวิชา ' + s(subj.subject_name) + ' · มี ' + nClo + ' CLO' : 'ทำหลังเลือกรายวิชา',
-          ed ? ed.clo : waitMsg('เลือกรายวิชาในขั้นที่ 2 ก่อน'), !subj ? 'wait' : (nClo ? 'done' : 'active'))
+          ed ? ed.clo + courseOverview(subj) : waitMsg('เลือกรายวิชาในขั้นที่ 2 ก่อน'), !subj ? 'wait' : (nClo ? 'done' : 'active'))
       + step(4, 'กรอกคะแนนนักศึกษารายคน', nClo ? 'คะแนนแต่ละ CLO · กดบันทึกเมื่อกรอกเสร็จ' : 'ทำหลังกำหนด CLO แล้ว',
           (ed && ed.scores) ? ed.scores : waitMsg(!subj ? 'เลือกรายวิชาในขั้นที่ 2 ก่อน' : 'เพิ่ม CLO ในขั้นที่ 3 ก่อน'),
           (subj && nClo) ? 'active' : 'wait')
-      + step(5, 'นำเข้าผ่านไฟล์ CSV', 'ไม่บังคับ · ทางลัดแทนขั้นที่ 3–4 เมื่อมีข้อมูลหลายรายวิชา', csvPanel(), 'opt')
+      + step(5, 'สรุปคะแนนรายวิชาและเกรด', nClo ? 'รวมคะแนนทุก CLO ตามสัดส่วน · ตัดเกรดตามช่วงคะแนนของรายวิชา' : 'ทำหลังกำหนด CLO แล้ว',
+          (subj && nClo) ? courseGradeTable(subj) : waitMsg(!subj ? 'เลือกรายวิชาในขั้นที่ 2 ก่อน' : 'เพิ่ม CLO ในขั้นที่ 3 ก่อน'),
+          (subj && nClo) ? 'active' : 'wait')
+      + step(6, 'นำเข้าผ่านไฟล์ CSV', 'ไม่บังคับ · ทางลัดแทนขั้นที่ 3–4 เมื่อมีข้อมูลหลายรายวิชา', csvPanel(), 'opt')
       + '</div>';
   }
 
@@ -1264,6 +1267,7 @@
       if (pass !== '' && (!isFinite(Number(pass)) || Number(pass) < 0 || Number(pass) > Number(full))) {
         bad.push('บรรทัด ' + line + ' : ' + name + ' เกณฑ์ผ่านต้องอยู่ระหว่าง 0–' + full); return;
       }
+      if (pass === '') pass = defPass(full, courseCfg(closOf(st.eYear, st.eSem, scode)));   // เว้นว่าง = เกณฑ์ผ่านเริ่มต้นของรายวิชา
       if (rt && pass === '') { bad.push('บรรทัด ' + line + ' : ' + name + ' มีสอบซ่อมต้องระบุเกณฑ์ผ่าน'); return; }
       var key = clo.__backendId;
       if (!groups[key]) { groups[key] = { clo: clo, subj: subj, list: [], old: comps(clo) }; order.push(key); }
@@ -1437,6 +1441,247 @@
       ok === p.groups.length ? 'success' : 'error');
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
   }
+
+
+  /* ================================================================
+     ภาพรวมรายวิชา · เกณฑ์ผ่านอัตโนมัติ · ตัดเกรด
+     ----------------------------------------------------------------
+     ค่าตั้งของรายวิชา (เกณฑ์ผ่านเริ่มต้น และช่วงคะแนนเกรด) เก็บใน extra ของ CLO ทุกข้อในรายวิชานั้น
+     คีย์ "course_cfg" — อาจารย์ผู้สอนแก้ได้ (สิทธิ์เดียวกับ CLO) ไม่ต้องสร้างตารางใหม่
+     อ่านจาก CLO ข้อใดก็ได้ที่มีค่า (ทุกข้อถูกเขียนพร้อมกันเสมอ)
+     ================================================================ */
+  var DEF_GRADES = [['A', 80], ['B+', 75], ['B', 70], ['C+', 65], ['C', 60], ['D+', 55], ['D', 50], ['F', 0]];
+  var DEF_CFG = { passPct: '60', grades: [['A', 80], ['B+', 75], ['B', 70], ['C+', 65], ['C', 60], ['F', 0]] };
+
+  function courseCfg(clos) {
+    var raw = null;
+    (clos || []).some(function (c) { if (s(c.course_cfg)) { raw = c.course_cfg; return true; } return false; });
+    var cfg = null;
+    try { cfg = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : null; } catch (e) { cfg = null; }
+    cfg = cfg || {};
+    var g = Array.isArray(cfg.grades) && cfg.grades.length ? cfg.grades : DEF_CFG.grades;
+    g = g.map(function (x) { return [s(x[0]), n(x[1])]; }).filter(function (x) { return x[0]; })
+         .sort(function (a, b) { return b[1] - a[1]; });
+    return { passPct: cfg.passPct == null ? DEF_CFG.passPct : s(cfg.passPct), grades: g, saved: !!raw };
+  }
+  function curCourseCfg() { var st = state(); return courseCfg(closOf(st.eYear, st.eSem, st.eSubject)); }
+  // เกณฑ์ผ่านเริ่มต้นของการประเมินหนึ่งรายการ = ร้อยละที่ตั้งไว้ × คะแนนเต็ม
+  function defPass(full, cfg) {
+    cfg = cfg || curCourseCfg();
+    if (s(cfg.passPct) === '' || !(n(full) > 0)) return '';
+    return String(Math.round(n(full) * n(cfg.passPct)) / 100);
+  }
+  function gradeOf(pct, cfg) {
+    if (pct == null) return '';
+    var g = (cfg || curCourseCfg()).grades;
+    for (var i = 0; i < g.length; i++) if (pct >= g[i][1] - 1e-9) return g[i][0];
+    return g.length ? g[g.length - 1][0] : '';
+  }
+
+  /* ---------- ภาพรวมน้ำหนักรายวิชา (ขั้นที่ 3) ---------- */
+  function courseOverview(subj) {
+    var st = state();
+    var clos = closOf(st.eYear, st.eSem, st.eSubject);
+    if (!clos.length) return '';
+    var cfg = courseCfg(clos);
+    var secs = sectionsOf(subj);
+    var groups = (secs.length ? secs : ['']).map(function (x) { return { sec: x, clos: [] }; });
+    clos.forEach(function (c) {
+      var g = groups.filter(function (x) { return x.sec === secOf(c); })[0];
+      if (!g) { g = { sec: secOf(c), clos: [] }; groups.push(g); }
+      g.clos.push(c);
+    });
+    var total = 0, noComp = 0;
+    var rowsHtml = groups.filter(function (g) { return g.clos.length; }).map(function (g) {
+      var sub = 0;
+      var lines = g.clos.map(function (c) {
+        var w = compWeight(comps(c));
+        if (!comps(c).length) noComp++;
+        sub += w;
+        return '<div class="flex items-center justify-between gap-2 text-xs py-0.5">'
+          + '<span class="text-gray-700">' + esc(c.clo_code) + ' <span class="text-gray-400">· ' + esc(c.plo_code || '') + '</span></span>'
+          + (comps(c).length ? '<span class="tabular-nums font-semibold text-primary">' + f2(w) + '%</span>'
+                             : '<span class="text-amber-600">ยังไม่กำหนดองค์ประกอบ</span>') + '</div>';
+      }).join('');
+      total += sub;
+      return '<div class="border border-gray-100 rounded-xl p-3 bg-white">'
+        + '<div class="flex items-center justify-between mb-1"><p class="text-sm font-semibold text-gray-800">' + esc(g.sec || 'ทั้งรายวิชา') + '</p>'
+        + '<span class="text-sm font-bold tabular-nums">' + f2(sub) + '%</span></div>' + lines + '</div>';
+    }).join('');
+    var ok = Math.abs(total - 100) < 0.01;
+    var warn = !ok
+      ? '<p class="text-xs mt-2 ' + (total > 100 ? 'text-red-600' : 'text-amber-700') + '">น้ำหนักรวมทั้งรายวิชาได้ <b>' + f2(total) + '%</b> '
+        + (total > 100 ? 'เกิน 100% — ตรวจองค์ประกอบคะแนนอีกครั้ง' : 'ยังไม่ครบ 100%') + ' · การตัดเกรดจะคิดจากน้ำหนักที่มีอยู่จริง</p>'
+      : '<p class="text-xs mt-2 text-emerald-700">น้ำหนักรวมครบ 100% พร้อมตัดเกรด</p>';
+    return '<div class="border border-blue-100 bg-blue-50/40 rounded-2xl p-4 mt-4">'
+      + '<div class="flex flex-wrap items-center justify-between gap-2 mb-3">'
+      + '<p class="text-sm font-semibold text-gray-800"><i data-lucide="pie-chart" class="w-4 h-4 inline mr-1 text-primary"></i>ภาพรวมน้ำหนักคะแนนรายวิชา</p>'
+      + '<div class="flex items-center gap-2"><span class="text-sm">รวม <b class="tabular-nums ' + (ok ? 'text-emerald-700' : 'text-amber-700') + '">' + f2(total) + '%</b></span>'
+      + '<button type="button" onclick="ploCourseCfgEdit()" class="px-3 py-1.5 border border-primary text-primary rounded-lg text-xs bg-white hover:bg-blue-50">'
+      + '<i data-lucide="settings-2" class="w-3.5 h-3.5 inline"></i> ตั้งค่ารายวิชา</button></div></div>'
+      + '<div class="grid md:grid-cols-' + Math.min(groups.filter(function (g) { return g.clos.length; }).length, 3) + ' gap-3">' + rowsHtml + '</div>'
+      + warn
+      + (noComp ? '<p class="text-[11px] text-gray-500 mt-1">CLO ที่ยังไม่กำหนดองค์ประกอบคะแนน ' + noComp + ' ข้อ จะไม่ถูกนับในคะแนนรายวิชาและการตัดเกรด</p>' : '')
+      + '<p class="text-[11px] text-gray-500 mt-1">เกณฑ์ผ่านเริ่มต้นของแต่ละการประเมิน: <b>' + (s(cfg.passPct) === '' ? 'ไม่ตั้ง' : esc(cfg.passPct) + '% ของคะแนนเต็ม') + '</b>'
+      + ' · เกรด: ' + cfg.grades.map(function (g) { return esc(g[0]) + (g[1] > 0 ? ' ≥' + g[1] : ''); }).join(' · ') + '</p>'
+      + '</div>';
+  }
+
+  /* ---------- หน้าต่างตั้งค่ารายวิชา ---------- */
+  window.ploCourseCfgEdit = function () {
+    var cfg = curCourseCfg();
+    var st = state();
+    st._cfgDraft = { passPct: cfg.passPct, grades: cfg.grades.map(function (g) { return [g[0], g[1]]; }) };
+    showModal('ตั้งค่ารายวิชา ' + esc(st.eSubject), '<div id="ploCfgBox"></div>', null, 'max-w-lg');
+    cfgDraw();
+  };
+  function cfgDraw() {
+    var d = state()._cfgDraft, box = document.getElementById('ploCfgBox');
+    if (!d || !box) return;
+    box.innerHTML = '<div class="space-y-4">'
+      + '<div><label class="block text-sm font-semibold text-gray-800 mb-1">เกณฑ์ผ่านเริ่มต้นของแต่ละการประเมิน</label>'
+      + '<div class="flex items-center gap-2"><input type="number" min="0" max="100" step="0.01" value="' + esc(d.passPct) + '" oninput="ploCfgSet(\'passPct\',this.value)" data-nodraft="1" class="w-24 border rounded-lg px-2 py-1.5 text-sm">'
+      + '<span class="text-sm text-gray-600">% ของคะแนนเต็ม</span></div>'
+      + '<p class="text-[11px] text-gray-500 mt-1">เช่น 60% → สอบกลางภาคเต็ม 40 ผ่าน 24 · Role play เต็ม 24 ผ่าน 14.4 — ระบบเติมให้เองเมื่อช่องเกณฑ์ผ่านเว้นว่าง (แก้รายการได้) · เว้นว่าง = ไม่ตั้งเกณฑ์อัตโนมัติ</p></div>'
+      + '<div><label class="block text-sm font-semibold text-gray-800 mb-1">ช่วงคะแนนเกรด (คะแนนรวมรายวิชา %)</label>'
+      + '<table class="w-full text-sm"><thead><tr class="text-left text-xs text-gray-500"><th class="py-1">เกรด</th><th class="py-1">ตั้งแต่ (%)</th><th></th></tr></thead><tbody>'
+      + d.grades.map(function (g, i) {
+          return '<tr><td class="py-1 pr-2"><input value="' + esc(g[0]) + '" oninput="ploCfgGrade(' + i + ',0,this.value)" data-nodraft="1" class="w-20 border rounded-lg px-2 py-1 text-sm"></td>'
+            + '<td class="py-1 pr-2"><input type="number" step="0.01" value="' + esc(g[1]) + '" oninput="ploCfgGrade(' + i + ',1,this.value)" data-nodraft="1" class="w-24 border rounded-lg px-2 py-1 text-sm"></td>'
+            + '<td class="py-1 text-right"><button type="button" onclick="ploCfgGradeDel(' + i + ')" class="text-gray-300 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td></tr>';
+        }).join('') + '</tbody></table>'
+      + '<div class="flex flex-wrap gap-2 mt-2">'
+      + '<button type="button" onclick="ploCfgGradeAdd()" class="px-2.5 py-1 border rounded-lg text-xs">+ เพิ่มเกรด</button>'
+      + '<button type="button" onclick="ploCfgPreset(\'std\')" class="px-2.5 py-1 border rounded-lg text-xs">A–F (A≥80 … C≥60)</button>'
+      + '<button type="button" onclick="ploCfgPreset(\'full\')" class="px-2.5 py-1 border rounded-lg text-xs">มี D+/D (≥55/≥50)</button></div>'
+      + '<p class="text-[11px] text-gray-500 mt-1">เรียงจากมากไปน้อยให้อัตโนมัติ · เกรดสุดท้ายควรตั้ง 0 (เช่น F)</p></div>'
+      + '<div class="flex justify-end gap-2 pt-2 border-t">'
+      + '<button type="button" onclick="closeModal()" class="px-4 py-1.5 border rounded-lg text-sm">ยกเลิก</button>'
+      + '<button type="button" onclick="ploCfgSave()" class="px-4 py-1.5 bg-primary text-white rounded-lg text-sm">บันทึก</button></div>'
+      + '<p class="text-[11px] text-gray-400">ใช้กับรายวิชา ' + esc(state().eSubject) + ' ปีการศึกษา ' + esc(state().eYear) + ' ภาค ' + esc(state().eSem) + ' เท่านั้น</p>'
+      + '</div>';
+    if (window.lucide) lucide.createIcons();
+  }
+  window.ploCfgSet = function (k, v) { var d = state()._cfgDraft; if (d) d[k] = v; };
+  window.ploCfgGrade = function (i, k, v) { var d = state()._cfgDraft; if (d && d.grades[i]) d.grades[i][k] = k ? v : s(v); };
+  window.ploCfgGradeDel = function (i) { var d = state()._cfgDraft; if (!d) return; d.grades.splice(i, 1); cfgDraw(); };
+  window.ploCfgGradeAdd = function () { var d = state()._cfgDraft; if (!d) return; d.grades.push(['', 0]); cfgDraw(); };
+  window.ploCfgPreset = function (k) {
+    var d = state()._cfgDraft; if (!d) return;
+    d.grades = (k === 'full' ? DEF_GRADES : DEF_CFG.grades).map(function (g) { return [g[0], g[1]]; });
+    cfgDraw();
+  };
+  window.ploCfgSave = async function () {
+    var st = state(), d = st._cfgDraft; if (!d) return;
+    if (s(d.passPct) !== '' && (!isFinite(Number(d.passPct)) || Number(d.passPct) < 0 || Number(d.passPct) > 100)) {
+      showToast('เกณฑ์ผ่านเริ่มต้นต้องอยู่ระหว่าง 0–100', 'error'); return;
+    }
+    var grades = d.grades.filter(function (g) { return s(g[0]); }).map(function (g) { return [s(g[0]), n(g[1])]; })
+      .sort(function (a, b) { return b[1] - a[1]; });
+    if (!grades.length) { showToast('ต้องมีเกรดอย่างน้อย 1 ระดับ', 'error'); return; }
+    var cfg = JSON.stringify({ passPct: s(d.passPct), grades: grades });
+    var clos = closOf(st.eYear, st.eSem, st.eSubject);
+    if (!clos.length) { showToast('รายวิชานี้ยังไม่มี CLO — เพิ่ม CLO ก่อน', 'error'); return; }
+    showToast('กำลังบันทึกค่าตั้งรายวิชา...');
+    for (var i = 0; i < clos.length; i++) {
+      var cid = cloNum(clos[i]);
+      var cur = await sb().from('plo_clo').select('extra').eq('id', cid).maybeSingle();
+      if (cur && cur.error) { showToast('อ่านข้อมูล CLO ไม่สำเร็จ: ' + cur.error.message, 'error'); return; }
+      var ex = (cur && cur.data && cur.data.extra) || {};
+      ex.course_cfg = cfg;
+      var up = await sb().from('plo_clo').update({ extra: ex }).eq('id', cid);
+      if (up.error) { showToast('บันทึกไม่สำเร็จ: ' + up.error.message, 'error'); return; }
+      clos[i].course_cfg = cfg;   // ให้หน้าจอเห็นค่าใหม่ทันที
+    }
+    var t = document.getElementById('loadingToast'); if (t) t.remove();
+    st._cfgDraft = null;
+    closeModal();
+    showToast('บันทึกค่าตั้งรายวิชาแล้ว');
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  };
+
+  /* ---------- สรุปคะแนนรายวิชาและเกรด (ขั้นที่ 5) ---------- */
+  function courseGradeTable(subj) {
+    var st = state();
+    var clos = closOf(st.eYear, st.eSem, st.eSubject).filter(function (c) { return comps(c).length; });
+    if (!clos.length) return '<p class="text-sm text-gray-400">ยังไม่มี CLO ที่กำหนดองค์ประกอบคะแนน — กำหนดในขั้นที่ 3 ก่อน ระบบจึงจะรวมคะแนนรายวิชาและตัดเกรดได้</p>';
+    var studs = entryStudents();
+    if (!studs.length) return '<p class="text-sm text-gray-400">ไม่พบนักศึกษาในรุ่นนี้</p>';
+    if (!st.scores) {
+      return '<button onclick="ploLoadScores()" class="px-4 py-2 bg-primary text-white rounded-xl text-sm flex items-center gap-2">'
+        + '<i data-lucide="calculator" class="w-4 h-4"></i>โหลดคะแนนเพื่อสรุปเกรด (' + studs.length + ' คน)</button>';
+    }
+    var cfg = courseCfg(closOf(st.eYear, st.eSem, st.eSubject));
+    var secs = [];
+    clos.forEach(function (c) { if (secs.indexOf(secOf(c)) < 0) secs.push(secOf(c)); });
+    var secW = {}, W = 0;
+    secs.forEach(function (x) { secW[x] = 0; });
+    clos.forEach(function (c) { var w = compWeight(comps(c)); secW[secOf(c)] += w; W += w; });
+    var dist = {}, incomplete = 0;
+    cfg.grades.forEach(function (g) { dist[g[0]] = 0; });
+    var res = studs.map(function (u) {
+      var bySec = {}, tot = 0, complete = true;
+      secs.forEach(function (x) { bySec[x] = 0; });
+      clos.forEach(function (c) {
+        var calc = compCalc(c, (st.detail || {})[c.__backendId + '|' + u.student_id] || {});
+        if (!calc.complete) complete = false;
+        bySec[secOf(c)] += calc.total; tot += calc.total;
+      });
+      var pct = W > 0 ? Math.round(tot / W * 10000) / 100 : null;
+      var g = complete ? gradeOf(pct, cfg) : '';
+      if (complete) dist[g] = (dist[g] || 0) + 1; else incomplete++;
+      return { u: u, bySec: bySec, tot: tot, pct: pct, g: g, complete: complete };
+    });
+    st._gradeRes = { secs: secs, secW: secW, W: W, res: res, cfg: cfg };
+    var nDone = studs.length - incomplete;
+    var gCls = function (g) { return g === 'F' ? 'bg-red-50 text-red-700' : /^A/.test(g) ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-primary'; };
+    var summary = '<div class="overflow-x-auto mb-3"><table class="text-sm border border-gray-100 rounded-xl"><thead><tr class="bg-surface">'
+      + '<th class="px-3 py-1.5 text-left">เกรด</th><th class="px-3 py-1.5 text-left">ช่วงคะแนน</th><th class="px-3 py-1.5">จำนวน (คน)</th><th class="px-3 py-1.5">ร้อยละ</th></tr></thead><tbody>'
+      + cfg.grades.map(function (g, i) {
+          var hi = i === 0 ? null : cfg.grades[i - 1][1];
+          var range = i === 0 ? '≥ ' + g[1] + '%' : (g[1] > 0 ? g[1] + ' – ' + f2(hi - 0.01) + '%' : '< ' + hi + '%');
+          var c = dist[g[0]] || 0;
+          return '<tr class="border-t"><td class="px-3 py-1 font-semibold">' + esc(g[0]) + '</td><td class="px-3 py-1 text-gray-600">' + esc(range) + '</td>'
+            + '<td class="px-3 py-1 text-center tabular-nums">' + c + '</td><td class="px-3 py-1 text-center tabular-nums">' + (nDone ? f2(c * 100 / nDone) : '0') + '</td></tr>';
+        }).join('')
+      + '<tr class="border-t bg-gray-50 font-semibold"><td class="px-3 py-1" colspan="2">รวม (คิดเกรดแล้ว)</td><td class="px-3 py-1 text-center">' + nDone + '</td><td class="px-3 py-1 text-center">100</td></tr>'
+      + '</tbody></table></div>'
+      + (incomplete ? '<p class="text-xs text-amber-700 mb-2">ยังกรอกคะแนนไม่ครบทุกการประเมิน ' + incomplete + ' คน — ยังไม่ตัดเกรดให้</p>' : '')
+      + (Math.abs(W - 100) >= 0.01 ? '<p class="text-xs text-amber-700 mb-2">น้ำหนักรวมของ CLO ที่มีองค์ประกอบ = ' + f2(W) + '% (ไม่ใช่ 100%) — คะแนนรวมแปลงเป็นร้อยละของ ' + f2(W) + ' ก่อนตัดเกรด</p>' : '');
+    var qk = s(st.gridQ).toLowerCase();
+    var table = '<div class="ems-tablewrap border border-gray-100 rounded-xl" style="overflow:auto;max-height:60vh"><table data-ems-cards="skip" class="text-sm" style="min-width:100%;width:max-content">'
+      + '<thead class="sticky top-0 z-20"><tr class="bg-surface text-left">'
+      + '<th class="px-2 py-2 text-center w-10 bg-surface">#</th><th class="px-2 py-2 bg-surface sticky left-0 z-30 min-w-[13rem]">นักศึกษา</th>'
+      + secs.map(function (x) { return '<th class="px-3 py-2 text-center bg-surface whitespace-nowrap">' + esc(x || 'คะแนน') + '<div class="text-[10px] font-normal text-gray-400">(' + f2(secW[x]) + '%)</div></th>'; }).join('')
+      + '<th class="px-3 py-2 text-center bg-gray-100 whitespace-nowrap">รวม<div class="text-[10px] font-normal text-gray-400">(' + f2(W) + '%)</div></th>'
+      + '<th class="px-3 py-2 text-center bg-gray-100">ร้อยละ</th><th class="px-3 py-2 text-center bg-gray-100">เกรด</th></tr></thead><tbody>'
+      + res.map(function (r, i) {
+          var hid = qk && (r.u.student_id + ' ' + r.u.name).toLowerCase().indexOf(qk) < 0 ? ' style="display:none"' : '';
+          return '<tr class="border-t border-gray-50" data-q="' + esc((r.u.student_id + ' ' + r.u.name).toLowerCase()) + '"' + hid + '>'
+            + '<td class="px-2 py-1 text-center text-xs text-gray-400">' + (i + 1) + '</td>'
+            + '<td class="px-2 py-1 sticky left-0 bg-white z-10 whitespace-nowrap"><span class="font-mono text-xs text-gray-400">' + esc(r.u.student_id) + '</span> ' + esc(r.u.name) + '</td>'
+            + secs.map(function (x) { return '<td class="px-3 py-1 text-center tabular-nums">' + f2(r.bySec[x]) + '</td>'; }).join('')
+            + '<td class="px-3 py-1 text-center tabular-nums font-semibold bg-gray-50">' + f2(r.tot) + '</td>'
+            + '<td class="px-3 py-1 text-center tabular-nums bg-gray-50">' + (r.complete ? f2(r.pct) + '%' : '<span class="text-[11px] text-amber-600">ยังไม่ครบ</span>') + '</td>'
+            + '<td class="px-3 py-1 text-center bg-gray-50">' + (r.g ? '<span class="px-2 py-0.5 rounded-full text-xs font-bold ' + gCls(r.g) + '">' + esc(r.g) + '</span>' : '') + '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+    return summary + table
+      + '<div class="flex flex-wrap items-center gap-2 mt-3">'
+      + '<button type="button" onclick="ploGradeCsv()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-600 text-emerald-700 text-sm bg-white hover:bg-emerald-50"><i data-lucide="download" class="w-4 h-4"></i>ดาวน์โหลดสรุปคะแนนและเกรด (CSV)</button>'
+      + '<button type="button" onclick="ploCourseCfgEdit()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm bg-white hover:bg-gray-50"><i data-lucide="settings-2" class="w-4 h-4"></i>แก้ช่วงคะแนนเกรด</button>'
+      + '<span class="text-[11px] text-gray-500">คิดจากคะแนนที่บันทึกแล้วและที่กำลังกรอกในขั้นที่ 4 · กดบันทึกคะแนนในขั้นที่ 4 ก่อนปิดหน้า</span></div>';
+  }
+  window.ploGradeCsv = function () {
+    var st = state(), g = st._gradeRes;
+    if (!g) { showToast('ยังไม่มีข้อมูลสรุป', 'error'); return; }
+    var head = ['student_id', 'name'].concat(g.secs.map(function (x) { return (x || 'คะแนน') + ' (' + f2(g.secW[x]) + '%)'; }))
+      .concat(['รวม (' + f2(g.W) + '%)', 'ร้อยละ', 'เกรด']);
+    var rows = [head].concat(g.res.map(function (r) {
+      return [r.u.student_id, r.u.name].concat(g.secs.map(function (x) { return f2(r.bySec[x]); }))
+        .concat([f2(r.tot), r.complete ? f2(r.pct) : '', r.g]);
+    }));
+    csvDownload('เกรด_' + s(st.eSubject) + '_' + s(st.eYear) + '_' + s(st.eSem) + '.csv', rows);
+  };
 
   window.ploCsvApply = async function () {
     var p = APP._ploCsv;
@@ -1928,7 +2173,7 @@
             + '<td class="px-2 py-1.5">' + cell(i, 'full', c.full, 'number', '40') + '</td>'
             + '<td class="px-2 py-1.5">' + cell(i, 'weight', c.weight, 'number', '20') + '</td>'
             + '<td class="px-2 py-1.5 text-center"><input type="checkbox" ' + (c.retake ? 'checked ' : '') + 'onchange="ploCompSet(' + i + ',\'retake\',this.checked,true)" class="w-4 h-4"></td>'
-            + '<td class="px-2 py-1.5">' + cell(i, 'pass', c.pass, 'number', c.retake ? 'เช่น 24' : 'ไม่บังคับ') + '</td>'
+            + '<td class="px-2 py-1.5">' + cell(i, 'pass', c.pass, 'number', defPass(c.full) !== '' ? defPass(c.full) + ' (อัตโนมัติ)' : (c.retake ? 'เช่น 24' : 'ไม่บังคับ'), 'w-28') + '</td>'
             + '<td class="px-2 py-1.5">' + (c.retake
                 ? '<select onchange="ploCompSet(' + i + ',\'rule\',this.value)" class="border rounded-lg px-2 py-1.5 text-xs">'
                   + '<option value="cap"' + (c.rule !== 'actual' ? ' selected' : '') + '>เท่าเกณฑ์ผ่าน</option>'
@@ -1950,6 +2195,10 @@
     var d = state()._compDraft; if (!d || !d.list[i]) return;
     d.list[i][k] = v;
     if (redraw) { compDraw(); return; }
+    if (k === 'full') {
+      var pi = document.querySelectorAll('#ploCompBox input[oninput*="\'pass\'"]')[i];
+      if (pi) pi.placeholder = defPass(v) !== '' ? defPass(v) + ' (อัตโนมัติ)' : (d.list[i].retake ? 'เช่น 24' : 'ไม่บังคับ');
+    }
     if (k === 'weight') { var w = document.getElementById('ploCompW'); if (w) w.textContent = f2(d.list.reduce(function (t, c) { return t + n(c.weight); }, 0)) + '%'; }
   };
   window.ploCompAdd = function () {
@@ -1975,7 +2224,8 @@
       if (!s(c.name)) { showToast('รายการที่ ' + (i + 1) + ' ยังไม่มีชื่อการประเมิน', 'error'); return; }
       if (!(n(c.full) > 0)) { showToast(c.name + ': คะแนนเต็มต้องมากกว่า 0', 'error'); return; }
       if (!(n(c.weight) > 0)) { showToast(c.name + ': ต้องระบุว่าคิดเป็นกี่ %', 'error'); return; }
-      if (c.retake && s(c.pass) === '') { showToast(c.name + ': มีสอบซ่อมต้องระบุเกณฑ์ผ่าน', 'error'); return; }
+      if (s(c.pass) === '') c.pass = defPass(c.full);   // เว้นว่าง = ใช้เกณฑ์ผ่านเริ่มต้นของรายวิชา
+      if (c.retake && s(c.pass) === '') { showToast(c.name + ': มีสอบซ่อมต้องระบุเกณฑ์ผ่าน (หรือตั้งเกณฑ์ผ่านเริ่มต้นที่ "ตั้งค่ารายวิชา")', 'error'); return; }
       if (s(c.pass) !== '' && n(c.pass) > n(c.full)) { showToast(c.name + ': เกณฑ์ผ่านมากกว่าคะแนนเต็ม', 'error'); return; }
       list[i] = { id: c.id, name: s(c.name), full: s(c.full), weight: s(c.weight), pass: s(c.pass), retake: !!c.retake, rule: c.rule === 'actual' ? 'actual' : 'cap' };
     }
