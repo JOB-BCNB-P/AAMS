@@ -477,61 +477,166 @@
   function studentBox() {
     var st = state();
     var res = st.stuResult;
-    var box = '<div class="flex flex-wrap items-end gap-3 mb-3">'
-      + '<div class="flex-1 min-w-[240px] relative">'
+    if (st.stuYear === undefined) st.stuYear = st.year;
+    if (st.stuSem === undefined) st.stuSem = st.sem;
+    var sel = function (label, key, opts, blank, dis) {
+      return '<div><label class="block text-xs text-gray-600 mb-1">' + esc(label) + '</label>'
+        + '<select ' + (dis ? 'disabled title="เลือกปีการศึกษาและภาคการศึกษาก่อน" ' : '') + 'onchange="ploStuSet(\'' + key + '\',this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm max-w-[16rem]' + (dis ? ' bg-gray-50 text-gray-400' : '') + '">'
+        + '<option value="">' + esc(blank) + '</option>'
+        + opts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (s(st[key]) === s(o[0]) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('')
+        + '</select></div>';
+    };
+    var ready = s(st.stuYear) && s(st.stuSem);
+    var subjOpts = [];
+    if (ready) {
+      var seen = {}, allow = viewSubjectFilter();
+      ((res && res['ราย CLO']) || []).forEach(function (r) {
+        if (s(r['ปีการศึกษา']) !== s(st.stuYear) || s(r['ภาคเรียน']) !== s(st.stuSem)) return;
+        var k = s(r['รหัสวิชา']) || s(r['รายวิชา']);
+        if (!k || seen[k]) return;
+        if (allow && !allow(r)) return;
+        seen[k] = 1; subjOpts.push([k, (s(r['รหัสวิชา']) ? s(r['รหัสวิชา']) + ' ' : '') + s(r['รายวิชา'])]);
+      });
+    }
+    var box = '<div class="flex flex-wrap items-end gap-3 mb-4">'
+      + '<div class="flex-1 min-w-[240px]"><label class="block text-xs text-gray-600 mb-1">นักศึกษา</label><div class="relative">'
       + '<i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-400"></i>'
       + '<input id="ploStuSearch" type="text" value="' + esc(st.stuQuery) + '" list="ploStuList" '
       + 'placeholder="พิมพ์รหัสนักศึกษาหรือชื่อ แล้วกด Enter..." '
       + 'class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm" '
       + 'onchange="ploFindStudent(this.value)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();ploFindStudent(this.value)}">'
-      + studentDatalist() + '</div>'
+      + studentDatalist() + '</div></div>'
+      + sel('ปีการศึกษา', 'stuYear', yearsList().map(function (y) { return [y, y]; }), 'ทุกปี')
+      + sel('ภาคการศึกษา', 'stuSem', SEMS.map(function (x) { return [x, x === '3' ? 'ฤดูร้อน' : x]; }), 'ทุกภาค')
+      + sel('รายวิชา', 'stuSubj', subjOpts, ready ? (res ? 'ทุกรายวิชา' : 'ค้นหานักศึกษาก่อน') : 'เลือกปี/ภาคก่อน', !ready)
       + '<button onclick="ploFindStudent(document.getElementById(\'ploStuSearch\').value)" '
       + 'class="px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-surface">ค้นหา</button>'
       + (res ? '<button onclick="ploSet(\'stuResult\',null)" class="px-3 py-2 rounded-xl text-sm text-gray-400 hover:text-gray-600">ล้าง</button>' : '')
       + '</div>';
 
-    if (!res) return section('ผลการบรรลุรายบุคคล', box + '<p class="text-xs text-gray-400">ค้นหาเพื่อดูผลราย CLO ของนักศึกษาแต่ละคน</p>');
+    if (!res) return section('ผลการบรรลุรายบุคคล', box + '<p class="text-xs text-gray-400">ค้นหาเพื่อดูผลการบรรลุของนักศึกษาแต่ละคน · เลือกปี/ภาค/รายวิชาเพื่อจำกัดช่วงข้อมูลได้</p>');
 
-    var ov = res['ภาพรวม'] || {};
-    var b = bandOf(ov['ระดับ']);
-    var head = '<div class="rounded-xl border ' + b.ring + ' ' + b.bg + ' p-4 mb-3">'
-      + '<p class="font-semibold text-gray-800">' + esc(res['ชื่อ'] || '-') + ' <span class="font-mono text-xs text-gray-500">' + esc(res['รหัสนักศึกษา']) + '</span></p>'
-      + (ov['ผลการประเมิน']
-          ? '<p class="text-sm mt-1 ' + b.text + '">ผ่าน ' + esc(ov['ผ่าน']) + ' จาก ' + esc(ov['ผลการประเมิน'])
-            + ' ผลการประเมิน · <b>' + fx(ov['ร้อยละผ่าน']) + '%</b> · ระดับ ' + esc((ov['ระดับ'] || {}).label || '-') + '</p>'
-          : '<p class="text-sm text-gray-500 mt-1">ยังไม่มีคะแนนที่บันทึกไว้</p>')
+    // กรองรายวิชา (ฝั่งเครื่อง) แล้วคำนวณภาพรวม / ราย PLO ใหม่จากแถว CLO ที่เหลือ
+    var all = res['ราย CLO'] || [];
+    var rows = all.filter(function (r) {
+      if (!s(st.stuSubj) || !ready) return true;
+      return (s(r['รหัสวิชา']) || s(r['รายวิชา'])) === s(st.stuSubj);
+    });
+    var pass = rows.filter(function (r) { return r['ผ่าน']; }).length;
+    var pct = rows.length ? Math.round(pass / rows.length * 10000) / 100 : 0;
+    var lv = bandFor(pct, []), b = bandOf(lv);
+    var subjSet = {};
+    rows.forEach(function (r) { subjSet[s(r['รหัสวิชา']) || s(r['รายวิชา'])] = 1; });
+    var have = {};
+    (res['ราย PLO'] || []).forEach(function (r) { have[s(r['PLO'])] = 1; });
+    var pg = {}, porder = [];
+    rows.forEach(function (r) {
+      var c = s(r['PLO']), k = (!Object.keys(have).length || have[c]) ? c : ploMainOf(c);
+      if (!k) return;
+      if (!pg[k]) { pg[k] = { k: k, pass: 0, tot: 0 }; porder.push(k); }
+      pg[k].tot++; if (r['ผ่าน']) pg[k].pass++;
+    });
+    porder.sort(function (a, c) { var x = ploNo(a), y = ploNo(c); return (x[0] - y[0]) || (x[1] - y[1]); });
+
+    var card = function (label, value, sub, cls) {
+      return '<div class="rounded-2xl border p-4 ' + (cls || 'border-gray-100 bg-surface') + '">'
+        + '<p class="text-xs text-gray-500">' + esc(label) + '</p>'
+        + '<p class="text-2xl font-bold mt-1">' + value + '</p>'
+        + (sub ? '<p class="text-xs text-gray-500 mt-0.5">' + sub + '</p>' : '') + '</div>';
+    };
+    var scope = (s(st.stuYear) ? 'ปีการศึกษา ' + esc(st.stuYear) : 'ทุกปีการศึกษา') + ' · ' + (s(st.stuSem) ? 'ภาค ' + esc(st.stuSem === '3' ? 'ฤดูร้อน' : st.stuSem) : 'ทุกภาค')
+      + (s(st.stuSubj) && ready ? ' · ' + esc((subjOpts.filter(function (o) { return o[0] === st.stuSubj; })[0] || [0, st.stuSubj])[1]) : '');
+    var head = '<div class="flex flex-wrap items-baseline gap-x-3 mb-3"><p class="font-semibold text-gray-800">' + esc(res['ชื่อ'] || '-')
+      + ' <span class="font-mono text-xs text-gray-500">' + esc(res['รหัสนักศึกษา']) + '</span></p>'
+      + '<p class="text-xs text-gray-500">' + scope + '</p></div>';
+    if (!rows.length) return section('ผลการบรรลุรายบุคคล', box + head + hint('ไม่มีผลการประเมินในช่วงที่เลือก'));
+    var cards = '<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">'
+      + card('ร้อยละผ่านภาพรวม', '<span class="' + b.text + '">' + fx(pct) + '%</span>', '<span class="' + b.text + ' font-medium">ระดับ ' + esc(lv.label || '-') + '</span>', b.bg + ' ' + b.ring)
+      + card('ผลการประเมินทั้งหมด', rows.length, 'ผ่าน ' + pass + ' · ไม่ผ่าน ' + (rows.length - pass))
+      + card('จำนวนรายวิชา', Object.keys(subjSet).length, 'ที่มีผลการประเมิน')
+      + card('PLO ที่เกี่ยวข้อง', porder.length, porder.filter(function (k) { return pg[k].pass < pg[k].tot; }).length + ' PLO มี CLO ไม่ผ่าน')
       + '</div>';
 
-    var plos = (res['ราย PLO'] || []).map(function (r) {
-      return '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-surface text-xs text-gray-600 mr-1.5 mb-1.5">'
-        + '<b>' + esc(s(r['PLO']).replace('PLO', 'PLO ')) + '</b> ' + fx(r['ร้อยละผ่าน'], 0) + '%</span>';
-    }).join('');
-
-    var clos = (res['ราย CLO'] || []);
-    var tbl = !clos.length ? '' : '<div class="overflow-x-auto mt-3"><table class="w-full text-sm">'
-      + '<thead><tr class="bg-surface text-left">'
-      + '<th class="px-3 py-2 font-semibold">รายวิชา</th><th class="px-3 py-2 font-semibold">CLO</th>'
-      + '<th class="px-3 py-2 font-semibold">PLO</th>'
-      + '<th class="px-3 py-2 font-semibold text-center">ภาค/ปี</th>'
-      + '<th class="px-3 py-2 font-semibold text-right">คะแนน</th>'
-      + '<th class="px-3 py-2 font-semibold text-center">ผล</th></tr></thead><tbody>'
-      + clos.map(function (r) {
-          return '<tr class="border-t border-gray-50">'
-            + '<td class="px-3 py-2.5">' + esc(r['รายวิชา']) + '</td>'
-            + '<td class="px-3 py-2.5 whitespace-nowrap">' + esc(r['CLO']) + secChip(r.__sec) + '</td>'
-            + '<td class="px-3 py-2.5">' + esc(r['PLO']) + '</td>'
-            + '<td class="px-3 py-2.5 text-center whitespace-nowrap">' + esc(r['ภาคเรียน']) + '/' + esc(r['ปีการศึกษา']) + '</td>'
-            + '<td class="px-3 py-2.5 text-right">' + (n(r['คะแนนเต็ม']) === 100
-                ? esc(r['คะแนน']) + '%' + ' <span class="text-xs text-gray-400">(ผ่าน ' + esc(r['เกณฑ์ผ่าน']) + '%)</span>'
-                : esc(r['คะแนน']) + ' / ' + esc(r['คะแนนเต็ม']) + ' <span class="text-xs text-gray-400">(ผ่าน ' + esc(r['เกณฑ์ผ่าน']) + ')</span>') + '</td>'
-            + '<td class="px-3 py-2.5 text-center">' + (r['ผ่าน']
-                ? '<span class="px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs">ผ่าน</span>'
-                : '<span class="px-2 py-0.5 rounded-lg bg-red-50 text-red-700 text-xs">ไม่ผ่าน</span>') + '</td></tr>';
-        }).join('')
-      + '</tbody></table></div>';
-
-    return section('ผลการบรรลุรายบุคคล', box + head + plos + tbl);
+    var view = st.stuView || 'plo';
+    var tg = '<div class="flex flex-wrap items-center gap-2 mb-3">'
+      + [['plo', 'ราย PLO'], ['clo', 'ราย CLO']].map(function (v) {
+          return '<button onclick="ploSet(\'stuView\',\'' + v[0] + '\')" class="px-3 py-1.5 rounded-lg text-xs transition '
+            + (view === v[0] ? 'bg-primary text-white' : 'border border-gray-200 text-gray-600 hover:bg-surface') + '">' + v[1] + '</button>';
+        }).join('') + '</div>';
+    var bar = function (p, crit, bb, w) {
+      return '<div class="relative h-2 rounded-full bg-gray-100 ' + (w || 'w-full') + '">'
+        + '<div class="h-2 rounded-full" style="width:' + Math.max(0, Math.min(100, p)) + '%;background:' + bb.bar + '"></div>'
+        + (crit != null ? '<div class="absolute border-l-2 border-gray-500" style="top:-3px;height:14px;left:' + Math.min(100, crit) + '%" title="เกณฑ์ผ่าน ' + fx(crit, 0) + '%"></div>' : '')
+        + '</div>';
+    };
+    var body;
+    if (view === 'plo') {
+      body = porder.map(function (k) {
+        var g = pg[k], p = g.tot ? Math.round(g.pass / g.tot * 10000) / 100 : 0, l = bandFor(p, []), bb = bandOf(l);
+        return '<div class="mb-3"><div class="flex items-baseline gap-2 mb-1">'
+          + '<span class="text-xs text-gray-700 flex-1">' + esc(k.replace('PLO', 'PLO ')) + '</span>'
+          + '<span class="text-xs font-semibold text-gray-800 tabular-nums">' + fx(p) + '%</span>'
+          + '<span class="text-[11px] ' + bb.text + '">' + esc(l.label || '') + '</span></div>'
+          + bar(p, null, bb) + '<p class="text-[11px] text-gray-400 mt-0.5">ผ่าน ' + g.pass + ' จาก ' + g.tot + ' CLO</p></div>';
+      }).join('');
+    } else {
+      var groups = {}, order = [];
+      rows.forEach(function (r) {
+        var k = s(r['รหัสวิชา']) || s(r['รายวิชา']) || '-';
+        if (!groups[k]) { groups[k] = { name: s(r['รายวิชา']), code: s(r['รหัสวิชา']), term: s(r['ภาคเรียน']) + '/' + s(r['ปีการศึกษา']), rows: [] }; order.push(k); }
+        groups[k].rows.push(r);
+      });
+      var single = order.length === 1;
+      body = order.map(function (k) {
+        var g = groups[k], ok = g.rows.filter(function (r) { return r['ผ่าน']; }).length;
+        var p = Math.round(ok / g.rows.length * 10000) / 100, l = bandFor(p, []), bb = bandOf(l);
+        g.rows.sort(function (a, c) {
+          return (SEC_ORDER[a.__sec || ''] || 0) - (SEC_ORDER[c.__sec || ''] || 0) || s(a['CLO']).localeCompare(s(c['CLO']), undefined, { numeric: true });
+        });
+        var tbl = '<div class="overflow-x-auto border-t border-gray-100"><table class="w-full text-sm" data-ems-cards="skip"><thead><tr class="text-left text-[11px] text-gray-500 border-b">'
+          + '<th class="px-3 py-1.5 font-medium">CLO</th><th class="px-3 py-1.5 font-medium">PLO</th>'
+          + '<th class="px-3 py-1.5 font-medium" style="width:38%">คะแนน (เส้นดำ = เกณฑ์ผ่าน)</th><th class="px-3 py-1.5 font-medium text-center">ผล</th></tr></thead><tbody>'
+          + g.rows.map(function (r) {
+              var full = n(r['คะแนนเต็ม']) || 100, sc = n(r['คะแนน']), ps = n(r['เกณฑ์ผ่าน']);
+              var p2 = sc / full * 100, c2 = ps / full * 100;
+              var bb2 = r['ผ่าน'] ? BAND.emerald : BAND.red;
+              return '<tr class="border-t border-gray-50">'
+                + '<td class="px-3 py-1.5 whitespace-nowrap">' + esc(r['CLO']) + secChip(r.__sec) + '</td>'
+                + '<td class="px-3 py-1.5 text-xs text-gray-500">' + esc(r['PLO'] || '') + '</td>'
+                + '<td class="px-3 py-1.5"><div class="flex items-center gap-2">' + bar(p2, c2, bb2, 'flex-1" style="min-width:6rem')
+                + '<span class="text-xs tabular-nums text-gray-800 whitespace-nowrap" style="min-width:5.5rem;text-align:right">'
+                + (full === 100 ? fx(sc) + '%' : esc(r['คะแนน']) + ' / ' + esc(r['คะแนนเต็ม'])) + ' <span class="text-gray-400">(' + esc(r['เกณฑ์ผ่าน']) + ')</span></span></div></td>'
+                + '<td class="px-3 py-1.5 text-center">' + (r['ผ่าน']
+                    ? '<span class="px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs"><i data-lucide="check" class="w-3 h-3 inline"></i> ผ่าน</span>'
+                    : '<span class="px-2 py-0.5 rounded-lg bg-red-50 text-red-700 text-xs"><i data-lucide="x" class="w-3 h-3 inline"></i> ไม่ผ่าน</span>') + '</td></tr>';
+            }).join('') + '</tbody></table></div>';
+        return '<details class="border border-gray-100 rounded-xl mb-2 bg-white"' + (single || st.stuOpenAll ? ' open' : '') + '>'
+          + '<summary class="list-none cursor-pointer px-3 py-2.5 flex flex-wrap items-center gap-y-1" style="column-gap:1rem">'
+          + '<i data-lucide="chevron-right" class="w-4 h-4 text-gray-400 ems-chev"></i>'
+          + '<span class="text-sm font-medium text-gray-800 flex-1" style="min-width:12rem">' + (g.code ? '<span class="font-mono text-xs text-gray-400 mr-1">' + esc(g.code) + '</span>' : '') + esc(g.name)
+          + ' <span class="text-[11px] text-gray-400">ภาค ' + esc(g.term) + '</span></span>'
+          + '<span class="text-[11px] text-gray-500">' + g.rows.length + ' CLO</span>'
+          + '<span class="flex items-center gap-2 w-44">' + bar(p, null, bb, 'flex-1') + '<span class="text-xs font-semibold tabular-nums text-gray-800">' + fx(p) + '%</span></span>'
+          + (ok < g.rows.length ? '<span class="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-700 whitespace-nowrap"><i data-lucide="alert-triangle" class="w-3 h-3 inline"></i> ไม่ผ่าน ' + (g.rows.length - ok) + ' CLO</span>'
+                                : '<span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 whitespace-nowrap"><i data-lucide="check" class="w-3 h-3 inline"></i> ผ่านทุก CLO</span>')
+          + '</summary>' + tbl + '</details>';
+      }).join('');
+      body = (single ? '' : '<div class="flex justify-end gap-3 mb-2 text-[11px]"><button type="button" onclick="ploSet(\'stuOpenAll\',true)" class="text-primary hover:underline">เปิดทั้งหมด</button>'
+          + '<button type="button" onclick="ploSet(\'stuOpenAll\',false)" class="text-primary hover:underline">ปิดทั้งหมด</button></div>')
+        + '<style>details[open] > summary .ems-chev{transform:rotate(90deg)} details > summary::-webkit-details-marker{display:none}</style>' + body;
+    }
+    return section('ผลการบรรลุรายบุคคล', box + head + cards + tg + body);
   }
+  // เปลี่ยนปี/ภาค = ดึงผลใหม่จากเซิร์ฟเวอร์ · เปลี่ยนรายวิชา = กรองในเครื่อง
+  window.ploStuSet = function (k, v) {
+    var st = state();
+    st[k] = v;
+    if (k === 'stuYear' || k === 'stuSem') {
+      st.stuSubj = '';
+      if (st.stuResult && s(st.stuQuery)) { window.ploFindStudent(st.stuQuery); return; }
+    }
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  };
 
   function studentDatalist() {
     var st = state();
@@ -560,7 +665,8 @@
     try {
       var r = await sb().rpc('ems_plo_student', {
         p_student_id: sid, p_curriculum: st.curriculum,
-        p_year: st.year || null, p_semester: st.sem || null
+        p_year: (st.stuYear === undefined ? st.year : st.stuYear) || null,
+        p_semester: (st.stuSem === undefined ? st.sem : st.stuSem) || null
       });
       if (r.error) { showToast('ค้นหาไม่สำเร็จ: ' + r.error.message, 'error'); return; }
       st.stuResult = r.data || null;
