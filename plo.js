@@ -114,7 +114,7 @@
     if (!APP._plo) {
       APP._plo = {
         tab: 'summary', view: 'plo',
-        curriculum: '', batch: '', year: '', sem: '',
+        curriculum: '', batch: '', year: '', sem: '', subj: '',
         summary: null, loading: false,
         // แท็บบันทึกข้อมูล
         eYear: '', eSem: '1', eLevel: '1', eSubject: '', clos: null, scores: null,
@@ -228,7 +228,7 @@
       return;
     }
     st[k] = v;
-    if (['curriculum', 'batch', 'year', 'sem'].indexOf(k) >= 0) st.summary = null;
+    if (['curriculum', 'batch', 'year', 'sem'].indexOf(k) >= 0) { st.summary = null; st.subj = ''; }
     if (['eYear', 'eSem', 'eLevel'].indexOf(k) >= 0) { st.eSubject = ''; st.scores = null; }
     if (k === 'eSubject') { st.scores = null; st.gridClo = ''; }
     if (['eYear', 'eSem', 'eLevel', 'eSubject'].indexOf(k) >= 0) st._dirty = {};
@@ -254,6 +254,7 @@
       + sel('รุ่นนักศึกษา', 'batch', batchList().map(function (b) { return [b, 'รหัส ' + b]; }), 'ทุกรุ่น')
       + sel('ปีการศึกษา', 'year', yearsList().map(function (y) { return [y, y]; }), 'ทุกปี')
       + sel('ภาคการศึกษา', 'sem', SEMS.map(function (x) { return [x, x === '3' ? 'ฤดูร้อน' : x]; }), 'ทุกภาค')
+      + summarySubjSelect()
       + '<button onclick="ploLoad()" class="px-4 py-2 bg-primary text-white rounded-xl text-sm flex items-center gap-2 hover:bg-primaryDark">'
       + '<i data-lucide="refresh-cw" class="w-4 h-4"></i>โหลดข้อมูล</button>'
       + '<button onclick="ploExportPDF()" class="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm flex items-center gap-2 hover:bg-surface">'
@@ -274,7 +275,8 @@
       });
       var t = document.getElementById('loadingToast'); if (t) t.remove();
       if (r.error) { showToast('โหลดไม่สำเร็จ: ' + r.error.message, 'error'); st.loading = false; return; }
-      st.summary = r.data || {};
+      st.summary = r.data || {}; st._aggMode = null;
+      try { await tagSections([].concat(st.summary['ราย CLO'] || [], st.summary['รายวิชาที่ต้องติดตาม'] || [])); } catch (e2) { }
       st.loading = false;
       if (typeof showToast === 'function') showToast('คำนวณเสร็จแล้ว');
     } catch (e) {
@@ -290,11 +292,17 @@
     if (!st.summary) {
       body = hint('เลือกตัวกรองด้านบนแล้วกด "โหลดข้อมูล" เพื่อคำนวณผลการบรรลุ');
     } else {
-      var ov = st.summary['ภาพรวม'] || {};
+      var full = st.summary, view = filteredSummary();
+      var ov = view['ภาพรวม'] || {};
       if (!ov['ผลการประเมินทั้งหมด']) {
-        body = hint('ยังไม่มีคะแนนที่บันทึกไว้ในเงื่อนไขที่เลือก — ไปที่แท็บ "บันทึกข้อมูล" เพื่อกำหนด CLO และกรอกคะแนน');
+        body = hint(s(st.subj) ? 'รายวิชานี้ยังไม่มีคะแนนที่บันทึกไว้ในเงื่อนไขที่เลือก' : 'ยังไม่มีคะแนนที่บันทึกไว้ในเงื่อนไขที่เลือก — ไปที่แท็บ "บันทึกข้อมูล" เพื่อกำหนด CLO และกรอกคะแนน');
       } else {
-        body = cards(ov) + chartBlock() + watchTable() + studentBox();
+        st.summary = view;   // ส่วนแสดงผลทุกส่วนอ่านจาก st.summary — สลับชั่วคราวระหว่างวาด
+        try {
+          body = (s(st.subj) ? '<p class="text-xs text-primary mb-3"><i data-lucide="filter" class="w-3.5 h-3.5 inline"></i> แสดงเฉพาะรายวิชา ' + esc(st.subj)
+                  + ' · ผลรวมคำนวณจาก CLO ของรายวิชานี้ · ค้นหารายบุคคลยังแสดงทุกรายวิชา</p>' : '')
+            + cards(ov) + chartBlock() + watchTable() + studentBox();
+        } finally { st.summary = full; }
       }
     }
     return filterBar() + body;
@@ -359,7 +367,7 @@
         : r['บรรลุ'] === false ? '<i data-lucide="x" class="w-3.5 h-3.5 inline text-red-600"></i>' : '';
       return '<div class="mb-3">'
         + '<div class="flex items-baseline gap-2 mb-1">'
-        + '<span class="text-xs text-gray-700 flex-1 truncate" title="' + esc(label(r)) + '">' + esc(label(r)) + '</span>'
+        + '<span class="text-xs text-gray-700 flex-1 truncate" title="' + esc(label(r) + (st.view === 'clo' && r.__sec ? ' [' + r.__sec + ']' : '')) + '">' + esc(label(r)) + (st.view === 'clo' ? secChip(r.__sec) : '') + '</span>'
         + '<span class="text-xs font-semibold ' + b.text + ' whitespace-nowrap">' + okMark + ' ' + fx(pct) + '%</span>'
         + '<span class="text-[11px] ' + b.text + ' whitespace-nowrap">' + esc((r['ระดับ'] || {}).label || '') + '</span>'
         + '</div>'
@@ -410,7 +418,7 @@
         + rows.map(function (r) {
             return '<tr class="border-t border-gray-50">'
               + '<td class="px-3 py-2.5"><span class="font-mono text-xs text-gray-400">' + esc(r['รหัสวิชา']) + '</span> ' + esc(r['รายวิชา']) + '</td>'
-              + '<td class="px-3 py-2.5">' + esc(r['CLO']) + '</td>'
+              + '<td class="px-3 py-2.5 whitespace-nowrap">' + esc(r['CLO']) + secChip(r.__sec) + '</td>'
               + '<td class="px-3 py-2.5">' + esc(r['PLO']) + '</td>'
               + '<td class="px-3 py-2.5 text-center">' + esc(r['ชั้นปี']) + '</td>'
               + '<td class="px-3 py-2.5 text-center whitespace-nowrap">' + esc(r['ภาคเรียน']) + '/' + esc(r['ปีการศึกษา']) + '</td>'
@@ -467,7 +475,7 @@
       + clos.map(function (r) {
           return '<tr class="border-t border-gray-50">'
             + '<td class="px-3 py-2.5">' + esc(r['รายวิชา']) + '</td>'
-            + '<td class="px-3 py-2.5">' + esc(r['CLO']) + '</td>'
+            + '<td class="px-3 py-2.5 whitespace-nowrap">' + esc(r['CLO']) + secChip(r.__sec) + '</td>'
             + '<td class="px-3 py-2.5">' + esc(r['PLO']) + '</td>'
             + '<td class="px-3 py-2.5 text-center whitespace-nowrap">' + esc(r['ภาคเรียน']) + '/' + esc(r['ปีการศึกษา']) + '</td>'
             + '<td class="px-3 py-2.5 text-right">' + (n(r['คะแนนเต็ม']) === 100
@@ -513,9 +521,219 @@
       });
       if (r.error) { showToast('ค้นหาไม่สำเร็จ: ' + r.error.message, 'error'); return; }
       st.stuResult = r.data || null;
+      try { if (st.stuResult) await tagStudentSections(st.stuResult['ราย CLO'], sid); } catch (e2) { }
     } catch (e) { showToast('ค้นหาไม่สำเร็จ: ' + e, 'error'); return; }
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
   };
+
+
+  /* ================= ป้ายส่วน (ทฤษฎี/ทดลอง/ปฏิบัติ) ในหน้าสรุปผล =================
+     ฟังก์ชันสรุปบนเซิร์ฟเวอร์ส่งมาแค่ "รายวิชา + รหัส CLO" ไม่มีส่วน
+     จึงจับคู่กับ CLO ในเครื่อง (plo_clo) เอง
+       • รหัสนั้นมีส่วนเดียว → ใช้ส่วนนั้น
+       • รหัสเดียวกันอยู่หลายส่วน (เช่น CLO 1.1.2 ทฤษฎี + ทดลอง) → นับผลของแต่ละ CLO จากตารางคะแนน
+         แล้วจับคู่ด้วยจำนวน "ผ่าน / ทั้งหมด" (รายบุคคลจับคู่ด้วยคะแนน)
+         ถ้าตัวเลขเท่ากันทุกประการ แถวเหล่านั้นแสดงผลเหมือนกัน จึงสลับป้ายกันได้โดยไม่ผิดความหมาย */
+  function secChip(x) {
+    if (!x) return '';
+    var cls = x === 'ทฤษฎี' ? 'bg-sky-50 text-sky-700 border-sky-100' : x === 'ทดลอง' ? 'bg-violet-50 text-violet-700 border-violet-100' : 'bg-amber-50 text-amber-700 border-amber-100';
+    return '<span class="inline-block px-1.5 py-0 rounded-md border text-[10px] font-medium align-middle ml-1 ' + cls + '">' + esc(x) + '</span>';
+  }
+  function rowCands(r) {
+    var st = state(), code = s(r['CLO']), scode = s(r['รหัสวิชา']), sname = s(r['รายวิชา']);
+    var yr = s(r['ปีการศึกษา']), sm = s(r['ภาคเรียน']);
+    return get('plo_clo').filter(function (c) {
+      if (s(c.curriculum_year) !== s(st.curriculum) || s(c.clo_code) !== code) return false;
+      if (scode ? s(c.subject_code) !== scode : s(c.subject_name) !== sname) return false;
+      if (yr && s(c.academic_year) !== yr) return false;
+      if (sm && s(c.semester) !== sm) return false;
+      if (!yr && st.year && s(c.academic_year) !== s(st.year)) return false;
+      if (!sm && st.sem && s(c.semester) !== s(st.sem)) return false;
+      return true;
+    });
+  }
+  async function cloStats(ids) {
+    var out = {};
+    await Promise.all(ids.map(async function (id) {
+      var c = get('plo_clo').filter(function (x) { return cloNum(x) === id; })[0] || {};
+      var a = await sb().from('plo_score').select('clo_id', { count: 'exact', head: true }).eq('clo_id', id);
+      var b = await sb().from('plo_score').select('clo_id', { count: 'exact', head: true }).eq('clo_id', id).gte('score', n(c.pass_score));
+      out[id] = { total: a.count || 0, pass: b.count || 0 };
+    }));
+    return out;
+  }
+  // ใส่ r.__sec ให้แถวสรุป (ราย CLO / รายวิชาที่ต้องติดตาม)
+  async function tagSections(rows) {
+    rows = (rows || []).filter(function (r) { return r && r['CLO'] != null; });
+    var groups = {};
+    rows.forEach(function (r) {
+      var cands = rowCands(r);
+      var secs = cands.map(secOf).filter(function (x, i, a) { return a.indexOf(x) === i; });
+      if (secs.length <= 1) { r.__sec = secs[0] || ''; return; }
+      var k = s(r['รหัสวิชา'] || r['รายวิชา']) + '|' + s(r['CLO']) + '|' + s(r['ปีการศึกษา']) + '|' + s(r['ภาคเรียน']);
+      (groups[k] = groups[k] || { rows: [], cands: cands }).rows.push(r);
+    });
+    var keys = Object.keys(groups);
+    if (!keys.length) return;
+    var ids = [];
+    keys.forEach(function (k) { groups[k].cands.forEach(function (c) { if (ids.indexOf(cloNum(c)) < 0) ids.push(cloNum(c)); }); });
+    var stat = {};
+    try { stat = await cloStats(ids); } catch (e) { stat = {}; }
+    keys.forEach(function (k) {
+      var g = groups[k], left = g.cands.slice();
+      g.rows.forEach(function (r) {
+        var tot = n(r['ผลการประเมิน'] != null ? r['ผลการประเมิน'] : r['นักศึกษา']), ps = n(r['ผ่าน']);
+        var i = left.findIndex(function (c) { var x = stat[cloNum(c)]; return x && x.total === tot && x.pass === ps; });
+        if (i < 0) i = 0;
+        r.__sec = left.length ? secOf(left[i]) : '';
+        if (left.length > 1) left.splice(i, 1);
+      });
+    });
+  }
+  // รายบุคคล : จับคู่ด้วยคะแนนของนักศึกษาคนนั้น
+  async function tagStudentSections(rows, sid) {
+    rows = rows || [];
+    var amb = [];
+    rows.forEach(function (r) {
+      var cands = rowCands(r);
+      var secs = cands.map(secOf).filter(function (x, i, a) { return a.indexOf(x) === i; });
+      if (secs.length <= 1) r.__sec = secs[0] || ''; else amb.push({ r: r, cands: cands });
+    });
+    if (!amb.length) return;
+    var ids = [];
+    amb.forEach(function (a) { a.cands.forEach(function (c) { if (ids.indexOf(cloNum(c)) < 0) ids.push(cloNum(c)); }); });
+    var q = await sb().from('plo_score').select('clo_id,score').eq('student_id', sid).in('clo_id', ids);
+    var sc = {};
+    ((q && q.data) || []).forEach(function (x) { sc[x.clo_id] = n(x.score); });
+    var used = {};
+    amb.forEach(function (a) {
+      var v = n(a.r['คะแนน']);
+      var c = a.cands.filter(function (c) { return !used[cloNum(c)] && sc[cloNum(c)] != null && Math.abs(sc[cloNum(c)] - v) < 0.01; })[0]
+        || a.cands.filter(function (c) { return !used[cloNum(c)]; })[0] || a.cands[0];
+      used[cloNum(c)] = 1;
+      a.r.__sec = secOf(c);
+    });
+  }
+
+
+  /* ================= เลือกดูทีละรายวิชา (หน้าสรุปผลรวม) =================
+     ต้องเลือกปีการศึกษาและภาคก่อน · ไม่เลือก = ทุกรายวิชาเหมือนเดิม
+     ฟังก์ชันสรุปบนเซิร์ฟเวอร์ไม่มีตัวกรองรายวิชา จึงกรองแถว "ราย CLO" ในเครื่อง
+     แล้วรวมเป็นภาพรวม / ราย PLO / ราย YLO ใหม่ด้วยวิธีเดียวกับเซิร์ฟเวอร์ (ตรวจวิธีจากผลรวมทั้งหมดอัตโนมัติ) */
+  function summarySubjects() {
+    var st = state(), seen = {}, out = [];
+    get('plo_clo').forEach(function (c) {
+      if (s(c.curriculum_year) !== s(st.curriculum) || s(c.academic_year) !== s(st.year) || s(c.semester) !== s(st.sem)) return;
+      var k = s(c.subject_code);
+      if (!k || seen[k]) return;
+      seen[k] = 1; out.push({ code: k, name: s(c.subject_name) });
+    });
+    return out.sort(function (a, b) { return a.code.localeCompare(b.code); });
+  }
+  function summarySubjSelect() {
+    var st = state(), ready = s(st.year) && s(st.sem);
+    var list = ready ? summarySubjects() : [];
+    return '<div><label class="block text-xs text-gray-600 mb-1">รายวิชา</label>'
+      + '<select ' + (ready ? '' : 'disabled title="เลือกปีการศึกษาและภาคการศึกษาก่อน" ')
+      + 'onchange="ploSetSubj(this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm max-w-[18rem]' + (ready ? '' : ' bg-gray-50 text-gray-400') + '">'
+      + '<option value="">' + (ready ? 'ทุกรายวิชา' : 'เลือกปี/ภาคก่อน') + '</option>'
+      + list.map(function (x) {
+          return '<option value="' + esc(x.code) + '"' + (s(st.subj) === x.code ? ' selected' : '') + '>' + esc(x.code + ' ' + x.name) + '</option>';
+        }).join('') + '</select></div>';
+  }
+  // เปลี่ยนรายวิชาไม่ต้องโหลดใหม่ — กรองจากผลที่โหลดไว้แล้ว
+  window.ploSetSubj = function (v) { state().subj = v; if (typeof renderCurrentPage === 'function') renderCurrentPage(); };
+
+  function rowSubjMatch(r, code) {
+    var x = summarySubjects().filter(function (y) { return y.code === code; })[0] || { code: code, name: '' };
+    return s(r['รหัสวิชา']) ? s(r['รหัสวิชา']) === code : (s(r['รายวิชา']) === x.name || s(r['รายวิชา']) === code);
+  }
+  var LEGEND_BANDS = [[80, 'emerald', 'มากที่สุด'], [70, 'sky', 'มาก'], [60, 'amber', 'พอใช้'], [0, 'red', 'ต้องปรับปรุง']];
+  function bandFor(pct, sample) {
+    var b = LEGEND_BANDS.filter(function (x) { return pct >= x[0] - 1e-9; })[0] || LEGEND_BANDS[3];
+    // ใช้ชื่อระดับแบบที่เซิร์ฟเวอร์ส่งมา (ถ้ามีสีเดียวกัน)
+    var hit = (sample || []).filter(function (o) { return o && o.color === b[1] && o.label; })[0];
+    return hit ? hit : { color: b[1], label: b[2] };
+  }
+  function ploMainOf(code) {
+    var st = state();
+    var p = get('curriculum_plo').filter(function (x) { return s(x.curriculum_year) === s(st.curriculum) && s(x.plo_code) === s(code); })[0];
+    return p && s(p.parent_code) ? s(p.parent_code) : s(code);
+  }
+  function cloTot(r) { return n(r['ผลการประเมิน'] != null ? r['ผลการประเมิน'] : r['นักศึกษา']); }
+  function cloPloOf(r) {
+    if (s(r['PLO'])) return s(r['PLO']);
+    var c = rowCands(r)[0];
+    return c ? s(c.plo_code) : '';
+  }
+  // รวมแถว CLO เป็นกลุ่ม · mode 'pool' = ผ่านรวม ÷ ทั้งหมดรวม · 'mean' = เฉลี่ยร้อยละของ CLO
+  function aggRows(rows, keyFn, mode) {
+    var g = {}, order = [];
+    rows.forEach(function (r) {
+      var k = keyFn(r); if (!k) return;
+      if (!g[k]) { g[k] = { k: k, pass: 0, tot: 0, pcts: [] }; order.push(k); }
+      g[k].pass += n(r['ผ่าน']); g[k].tot += cloTot(r); g[k].pcts.push(n(r['ร้อยละบรรลุ']));
+    });
+    return order.map(function (k) {
+      var x = g[k];
+      x.pct = mode === 'mean' ? (x.pcts.reduce(function (a, b) { return a + b; }, 0) / (x.pcts.length || 1)) : (x.tot ? x.pass / x.tot * 100 : 0);
+      x.pct = Math.round(x.pct * 100) / 100;
+      return x;
+    });
+  }
+  function ploKeyFn(serverPlo) {
+    var have = {};
+    serverPlo.forEach(function (r) { have[s(r['PLO'])] = 1; });
+    return function (r) { var c = cloPloOf(r); return have[c] ? c : ploMainOf(c); };
+  }
+  // เลือกวิธีรวมที่ตรงกับผลของเซิร์ฟเวอร์มากที่สุด (เทียบจากข้อมูลทุกรายวิชา)
+  function aggMode(sum) {
+    var clo = sum['ราย CLO'] || [], plo = sum['ราย PLO'] || [];
+    if (!clo.length || !plo.length) return 'pool';
+    var kf = ploKeyFn(plo), err = {};
+    ['pool', 'mean'].forEach(function (m) {
+      var mine = {}; aggRows(clo, kf, m).forEach(function (x) { mine[x.k] = x.pct; });
+      err[m] = plo.reduce(function (t, r) { var v = mine[s(r['PLO'])]; return t + (v == null ? 100 : Math.abs(v - n(r['ร้อยละบรรลุ']))); }, 0);
+    });
+    return err.mean < err.pool ? 'mean' : 'pool';
+  }
+  function filteredSummary() {
+    var st = state(), sum = st.summary || {};
+    if (!s(st.subj) || !s(st.year) || !s(st.sem)) return sum;
+    var mode = st._aggMode || (st._aggMode = aggMode(sum));
+    var clo = (sum['ราย CLO'] || []).filter(function (r) { return rowSubjMatch(r, st.subj); });
+    var watch = (sum['รายวิชาที่ต้องติดตาม'] || []).filter(function (r) { return rowSubjMatch(r, st.subj); });
+    var samples = [];
+    ['ราย PLO', 'ราย CLO', 'ราย YLO (ชั้นปี)'].forEach(function (k) { (sum[k] || []).forEach(function (r) { samples.push(r['ระดับ']); }); });
+    samples.push((sum['ภาพรวม'] || {})['ระดับ']);
+    var mk = function (tpl, x) {
+      var o = Object.assign({}, tpl || {});
+      o['ผ่าน'] = x.pass; o['ผลการประเมิน'] = x.tot; delete o['นักศึกษา'];
+      o['ร้อยละบรรลุ'] = x.pct; o['ระดับ'] = bandFor(x.pct, samples);
+      if (o['เกณฑ์'] != null) o['บรรลุ'] = x.pct >= n(o['เกณฑ์']);
+      return o;
+    };
+    var sPlo = sum['ราย PLO'] || [];
+    var plo = aggRows(clo, ploKeyFn(sPlo), mode).map(function (x) {
+      var tpl = sPlo.filter(function (r) { return s(r['PLO']) === x.k; })[0] || { PLO: x.k };
+      return mk(tpl, x);
+    });
+    var sY = sum['ราย YLO (ชั้นปี)'] || [];
+    var lvl = (get('subject').filter(function (x) { return s(x.subject_code) === s(st.subj) && s(x.academic_year) === s(st.year); })[0] || {}).year_level;
+    var ylo = aggRows(clo, function (r) { return s(r['ชั้นปี']) || s(lvl) || '-'; }, mode).map(function (x) {
+      var tpl = sY.filter(function (r) { return s(r['ชั้นปี']) === x.k; })[0] || { 'ชั้นปี': x.k };
+      return mk(tpl, x);
+    });
+    var all = aggRows(clo, function () { return 'all'; }, mode)[0] || { pass: 0, tot: 0, pct: 0 };
+    var ov = Object.assign({}, sum['ภาพรวม'] || {});
+    ov['ผลการประเมินทั้งหมด'] = all.tot; ov['ผ่าน'] = all.pass; ov['ไม่ผ่าน'] = all.tot - all.pass;
+    ov['ร้อยละบรรลุ'] = all.pct; ov['ระดับ'] = bandFor(all.pct, samples);
+    ov['จำนวนนักศึกษา'] = clo.reduce(function (m, r) { return Math.max(m, cloTot(r)); }, 0);
+    ov['จำนวนรายวิชา'] = clo.length ? 1 : 0;
+    var out = Object.assign({}, sum);
+    out['ภาพรวม'] = ov; out['ราย CLO'] = clo; out['ราย PLO'] = plo; out['ราย YLO (ชั้นปี)'] = ylo; out['รายวิชาที่ต้องติดตาม'] = watch;
+    return out;
+  }
 
   function section(title, inner) {
     return '<div class="mb-6"><h3 class="font-semibold text-gray-700 mb-3">' + title + '</h3>' + inner + '</div>';
