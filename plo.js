@@ -154,9 +154,11 @@
   }
   function canEdit() {
     var roles = (APP._roles && APP._roles.length) ? APP._roles : [APP.currentRole];
-    return roles.some(function (r) {
-      return r === 'admin' || r === 'academic' || r === 'teacher' || r === 'classTeacher';
-    });
+    var has = function (x) { return roles.indexOf(x) >= 0; };
+    if (has('admin') || has('academic')) return true;
+    // ผู้บริหารดูได้อย่างเดียว — ไม่เห็นหน้าบันทึกข้อมูล แม้มีบทบาทอาจารย์ร่วมด้วย
+    if (has('executive')) return false;
+    return has('teacher') || has('classTeacher');
   }
 
   /* ================= สิทธิ์ตามบทบาท =================
@@ -189,11 +191,14 @@
   function lockMsg(c) { return cloRef(c) + ' กรอกโดย ' + (cloOwner(c) || 'ผู้อื่น') + ' — แก้ไข/ลบได้เฉพาะผู้กรอก'; }
   // ประธานสาขา (ที่ไม่ได้มีบทบาทดูทั้งหมด) เห็นเฉพาะสาขาตน · null = ไม่จำกัด
   function viewSubjectFilter() {
-    if (isAllView() || !hasRole(['deptHead'])) return null;
+    if (isAllView()) return null;
+    var isHead = hasRole(['deptHead']), isTeacher = hasRole(['teacher', 'classTeacher']);
+    if (!isHead && !isTeacher) return null;
     var dept = typeof currentDept === 'function' ? currentDept() : s(APP.currentUser && APP.currentUser.department);
     var codes = {}, names = {};
     get('subject').forEach(function (x) {
-      var ok = (typeof subjectHasDept === 'function' && subjectHasDept(x, dept)) || (hasRole(['teacher', 'classTeacher']) && isCoord(x));
+      // ประธานสาขา = วิชาในสาขา · อาจารย์ = วิชาที่ตนเป็นผู้ประสานงาน (มีทั้งสองบทบาท = รวมกัน)
+      var ok = (isHead && typeof subjectHasDept === 'function' && subjectHasDept(x, dept)) || (isTeacher && isCoord(x));
       if (ok) { codes[s(x.subject_code)] = 1; names[s(x.subject_name)] = 1; }
     });
     return function (r) { return s(r['รหัสวิชา']) ? !!codes[s(r['รหัสวิชา'])] : !!names[s(r['รายวิชา'])]; };
@@ -340,8 +345,10 @@
         st.summary = view;   // ส่วนแสดงผลทุกส่วนอ่านจาก st.summary — สลับชั่วคราวระหว่างวาด
         try {
           var allowB = viewSubjectFilter();
-          body = (allowB && !s(st.subj) ? '<p class="text-xs text-primary mb-3"><i data-lucide="filter" class="w-3.5 h-3.5 inline"></i> แสดงเฉพาะรายวิชาในสาขา '
-                  + esc(typeof currentDept === 'function' ? currentDept() : '') + ' · ผลรวมคำนวณจาก CLO ของรายวิชาเหล่านี้</p>' : '')
+          body = (allowB && !s(st.subj) ? '<p class="text-xs text-primary mb-3"><i data-lucide="filter" class="w-3.5 h-3.5 inline"></i> ' + (hasRole(['deptHead'])
+                    ? 'แสดงเฉพาะรายวิชาในสาขา ' + esc(typeof currentDept === 'function' ? currentDept() : '') + (hasRole(['teacher', 'classTeacher']) ? ' และรายวิชาที่ท่านเป็นผู้ประสานงาน' : '')
+                    : 'แสดงเฉพาะรายวิชาที่ท่านเป็นผู้ประสานงาน')
+                  + ' · ผลรวมคำนวณจาก CLO ของรายวิชาเหล่านี้</p>' : '')
             + (s(st.subj) ? '<p class="text-xs text-primary mb-3"><i data-lucide="filter" class="w-3.5 h-3.5 inline"></i> แสดงเฉพาะรายวิชา ' + esc(st.subj)
                   + ' · ผลรวมคำนวณจาก CLO ของรายวิชานี้ · ค้นหารายบุคคลยังแสดงทุกรายวิชา</p>' : '')
             + cards(ov) + chartBlock() + watchTable() + studentBox();
