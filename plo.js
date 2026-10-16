@@ -674,7 +674,7 @@
       + step(5, 'สรุปคะแนนรายวิชาและเกรด', nClo ? 'รวมคะแนนทุก CLO ตามสัดส่วน · ตัดเกรดตามช่วงคะแนนของรายวิชา' : 'ทำหลังกำหนด CLO แล้ว',
           (subj && nClo) ? courseGradeTable(subj) : waitMsg(!subj ? 'เลือกรายวิชาในขั้นที่ 2 ก่อน' : 'เพิ่ม CLO ในขั้นที่ 3 ก่อน'),
           (subj && nClo) ? 'active' : 'wait')
-      + step(6, 'นำเข้าผ่านไฟล์ CSV', 'ไม่บังคับ · ทางลัดแทนขั้นที่ 3–4 เมื่อมีข้อมูลหลายรายวิชา', csvPanel(), 'opt')
+      + step(6, 'นำเข้าผ่านไฟล์ CSV / Excel', 'ไม่บังคับ · ทางลัดแทนขั้นที่ 3–4 เมื่อมีข้อมูลหลายรายวิชา', csvPanel(), 'opt')
       + '</div>';
   }
 
@@ -745,17 +745,18 @@
             ? 'คะแนนดิบของ CLO ที่แบ่งองค์ประกอบ (' + nComp + ' CLO) — กรอกคะแนนแต่ละการประเมินและสอบซ่อม ระบบคิดร้อยละให้'
             : 'คะแนนดิบรายองค์ประกอบ — ใช้ได้เมื่อมี CLO ที่แบ่งองค์ประกอบคะแนนแล้ว') + '</span>'
         + btn("ploCsvTemplateRaw()", 'download', 'แม่แบบคะแนนดิบ', 'border-emerald-600 text-emerald-700 bg-white hover:bg-emerald-50', !nComp)
-        + btn("ploCsvPick('raw')", 'upload', 'อัปโหลดคะแนนดิบ', 'border-primary text-primary bg-white hover:bg-blue-50', !nComp)
+        + btn("ploXlsxTemplate()", 'file-spreadsheet', 'แบบบันทึกคะแนน Excel (หัว 3 ชั้น)', 'border-emerald-600 text-white bg-emerald-600 hover:bg-emerald-700', !nComp)
+        + btn("ploCsvPick('raw')", 'upload', 'อัปโหลดคะแนนดิบ (.xlsx / .csv)', 'border-primary text-primary bg-white hover:bg-blue-50', !nComp)
         + '</div>')
       + (why ? '' : '<p class="text-[11px] text-gray-400 mt-2 ml-10">ช่องที่เว้นว่างจะไม่ถูกแตะ (ไม่ใช่ให้ 0) · กด "เปิดตารางกรอกคะแนน" ก่อนดาวน์โหลด คะแนนเดิมจะติดมาในแม่แบบ</p>')
       + '</div>';
 
     return '<div class="border border-emerald-100 bg-emerald-50/40 rounded-2xl p-4">'
       + '<div class="flex flex-wrap items-center justify-between gap-2 mb-3">'
-      + '<p class="text-sm font-semibold text-gray-700"><i data-lucide="file-spreadsheet" class="w-4 h-4 inline mr-1 text-emerald-600"></i>นำเข้าข้อมูลผ่านไฟล์ CSV</p>'
+      + '<p class="text-sm font-semibold text-gray-700"><i data-lucide="file-spreadsheet" class="w-4 h-4 inline mr-1 text-emerald-600"></i>นำเข้าข้อมูลผ่านไฟล์ CSV / Excel</p>'
       + '<span class="text-[11px] text-gray-500">' + scope + '</span></div>'
       + '<div class="grid lg:grid-cols-2 gap-3">' + step1 + step2 + '</div>'
-      + '<input type="file" id="ploCsvInput" accept=".csv,text/csv" class="hidden" onchange="ploCsvFile(event)">'
+      + '<input type="file" id="ploCsvInput" accept=".csv,.xlsx,text/csv" class="hidden" onchange="ploCsvFile(event)">'
       + '<p class="text-[11px] text-gray-500 mt-2">ทุกครั้งที่อัปโหลด ระบบจะสรุปให้ดูก่อนว่าจะเพิ่มหรือแก้อะไรบ้าง แล้วจึงกดยืนยัน</p>'
       + '</div>';
   }
@@ -1028,6 +1029,16 @@
   window.ploCsvFile = async function (ev) {
     var f = ev && ev.target && ev.target.files && ev.target.files[0];
     if (!f) return;
+    try { ev.target.value = ''; } catch (e0) { }   // เลือกไฟล์เดิมซ้ำได้
+    if (/\.xls$/i.test(f.name)) { showToast('ไฟล์ .xls รุ่นเก่า — เปิดใน Excel แล้วบันทึกเป็น .xlsx ก่อน', 'error'); return; }
+    if (/\.xlsx$/i.test(f.name)) {
+      var wantX = state().csvKind || '';
+      if (wantX && wantX !== 'raw') { showToast('ไฟล์ Excel ใช้ได้กับปุ่ม "อัปโหลดคะแนนดิบ" เท่านั้น', 'error'); return; }
+      var xr = null;
+      try { xr = await xlsxRawRows(f); } catch (e1) { showToast('อ่านไฟล์ Excel ไม่สำเร็จ: ' + (e1.message || e1), 'error'); return; }
+      if (!xr) { showToast('ไม่พบหัวตารางของแบบบันทึกคะแนน — ใช้ไฟล์ที่ดาวน์โหลดจากปุ่ม "แบบบันทึกคะแนน Excel" (ห้ามลบแถวที่ 6 ที่ซ่อนไว้)', 'error'); return; }
+      ploCsvPlanRaw(xr, f.name); return;
+    }
     var text = '';
     try { text = await f.text(); } catch (e) { showToast('อ่านไฟล์ไม่สำเร็จ: ' + e, 'error'); return; }
     var rows = parseCsv(text);
@@ -1667,6 +1678,8 @@
         }).join('') + '</tbody></table></div>';
     return summary + table
       + '<div class="flex flex-wrap items-center gap-2 mt-3">'
+      + (canEdit() ? '<button type="button" onclick="ploGradePush()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-white text-sm hover:bg-primaryDark"><i data-lucide="send" class="w-4 h-4"></i>ส่งเกรดเข้าหน้าผลการเรียน (' + nDone + ' คน)</button>' : '')
+      + '<button type="button" onclick="ploXlsxTemplate()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-600 text-emerald-700 text-sm bg-white hover:bg-emerald-50"><i data-lucide="file-spreadsheet" class="w-4 h-4"></i>แบบบันทึกคะแนน Excel</button>'
       + '<button type="button" onclick="ploGradeCsv()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-600 text-emerald-700 text-sm bg-white hover:bg-emerald-50"><i data-lucide="download" class="w-4 h-4"></i>ดาวน์โหลดสรุปคะแนนและเกรด (CSV)</button>'
       + '<button type="button" onclick="ploCourseCfgEdit()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm bg-white hover:bg-gray-50"><i data-lucide="settings-2" class="w-4 h-4"></i>แก้ช่วงคะแนนเกรด</button>'
       + '<span class="text-[11px] text-gray-500">คิดจากคะแนนที่บันทึกแล้วและที่กำลังกรอกในขั้นที่ 4 · กดบันทึกคะแนนในขั้นที่ 4 ก่อนปิดหน้า</span></div>';
@@ -1682,6 +1695,485 @@
     }));
     csvDownload('เกรด_' + s(st.eSubject) + '_' + s(st.eYear) + '_' + s(st.eSem) + '.csv', rows);
   };
+
+
+  /* ================================================================
+     ส่งเกรดเข้าหน้าผลการเรียน (ตาราง grade)
+     ----------------------------------------------------------------
+     จับคู่ด้วย รหัสนักศึกษา + รหัสวิชา + ปีการศึกษา + ภาคการศึกษา
+       • ยังไม่มีแถว             → เพิ่มใหม่
+       • มีแถวแต่เกรดว่าง         → เติมเกรด
+       • มีเกรดอยู่แล้วและต่างกัน  → เปลี่ยนเฉพาะเมื่อติ๊ก "เขียนทับ"
+     อ่านแถวเดิมสดจากฐานข้อมูลทุกครั้ง ไม่พึ่งข้อมูลที่ค้างในเบราว์เซอร์
+     ================================================================ */
+  function semKey(v) { var x = s(v); return (x.indexOf('ร้อน') >= 0 || x === '3') ? '3' : x.replace(/\D/g, '') || x; }
+  function creditsOf(subj) { var m = s(subj && subj.credits).match(/\d+(\.\d+)?/); return m ? Number(m[0]) : 3; }
+
+  window.ploGradePush = async function () {
+    var st = state(), g = st._gradeRes;
+    if (!canEdit()) { showToast('ไม่มีสิทธิ์ส่งเกรด', 'error'); return; }
+    if (!g) { showToast('ยังไม่มีผลสรุปเกรด — โหลดคะแนนในขั้นที่ 5 ก่อน', 'error'); return; }
+    var ready = g.res.filter(function (r) { return r.complete && r.g; });
+    if (!ready.length) { showToast('ยังไม่มีนักศึกษาที่คะแนนครบและตัดเกรดได้', 'error'); return; }
+    var subj = subjectsOf(st.eYear, st.eSem, st.eLevel).filter(function (x) { return s(x.subject_code) === s(st.eSubject); })[0] || {};
+    showToast('กำลังตรวจผลการเรียนเดิม...');
+    var q = await sb().from('grade').select('*').eq('subject_code', s(st.eSubject));
+    var t = document.getElementById('loadingToast'); if (t) t.remove();
+    if (q.error) { showToast('อ่านผลการเรียนเดิมไม่สำเร็จ: ' + q.error.message, 'error'); return; }
+    var have = {};
+    (q.data || []).forEach(function (row) {
+      var ex = row.extra || {};
+      var yr = s(row.academic_year != null ? row.academic_year : ex.academic_year);
+      var sm = row.semester != null ? row.semester : ex.semester;
+      if (yr !== s(st.eYear) || semKey(sm) !== semKey(st.eSem)) return;
+      var sid = s(row.student_id);
+      (have[sid] = have[sid] || []).push({ id: row.id, grade: s(row.grade != null ? row.grade : ex.grade) });
+    });
+    var plan = { create: [], fill: [], change: [], same: 0, dup: 0, notReady: g.res.length - ready.length, subj: subj };
+    ready.forEach(function (r) {
+      var sid = s(r.u.student_id), rows = have[sid] || [];
+      if (rows.length > 1) plan.dup++;
+      if (!rows.length) { plan.create.push({ r: r }); return; }
+      var cur = rows.filter(function (x) { return x.grade === ''; })[0] || rows[0];
+      if (cur.grade === '') plan.fill.push({ r: r, id: cur.id });
+      else if (cur.grade === r.g) plan.same++;
+      else plan.change.push({ r: r, id: cur.id, old: cur.grade });
+    });
+    st._gradePush = plan;
+    var box = function (num, label, cls) {
+      return '<div class="rounded-xl border p-3 text-center ' + cls + '"><p class="text-2xl font-bold">' + num + '</p><p class="text-xs text-gray-600">' + label + '</p></div>';
+    };
+    var changeList = plan.change.length
+      ? '<div class="border border-amber-200 rounded-xl overflow-auto" style="max-height:30vh"><table class="w-full text-sm"><thead><tr class="bg-amber-50 text-left text-xs">'
+        + '<th class="px-2 py-1.5">นักศึกษา</th><th class="px-2 py-1.5 text-center">เกรดเดิม</th><th class="px-2 py-1.5 text-center">เกรดจากระบบ PLO</th></tr></thead><tbody>'
+        + plan.change.map(function (x) {
+            return '<tr class="border-t"><td class="px-2 py-1"><span class="font-mono text-xs text-gray-400">' + esc(x.r.u.student_id) + '</span> ' + esc(x.r.u.name) + '</td>'
+              + '<td class="px-2 py-1 text-center">' + esc(x.old) + '</td><td class="px-2 py-1 text-center font-semibold">' + esc(x.r.g) + '</td></tr>';
+          }).join('') + '</tbody></table></div>'
+        + '<label class="flex items-center gap-2 text-sm mt-2"><input type="checkbox" id="ploGpOver" class="w-4 h-4"> เขียนทับเกรดเดิม ' + plan.change.length + ' คนนี้ด้วย</label>'
+      : '';
+    var nGo = plan.create.length + plan.fill.length;
+    showModal('ส่งเกรดเข้าหน้าผลการเรียน',
+      '<div class="space-y-3">'
+      + '<p class="text-sm text-gray-700">รายวิชา <b>' + esc(st.eSubject) + ' ' + esc(subj.subject_name || '') + '</b> · ปีการศึกษา ' + esc(st.eYear)
+      + ' · ภาค ' + esc(st.eSem === '3' ? 'ฤดูร้อน' : st.eSem) + '</p>'
+      + '<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">'
+      + box(plan.create.length, 'เพิ่มใหม่', 'bg-emerald-50 border-emerald-100 text-emerald-700')
+      + box(plan.fill.length, 'เติมเกรดในแถวที่ว่าง', 'bg-blue-50 border-blue-100 text-primary')
+      + box(plan.change.length, 'เกรดเดิมไม่ตรง', 'bg-amber-50 border-amber-100 text-amber-700')
+      + box(plan.same, 'ตรงกันแล้ว (ข้าม)', 'bg-gray-50 border-gray-100 text-gray-500') + '</div>'
+      + (Math.abs(g.W - 100) >= 0.01 ? '<p class="text-xs text-red-600">น้ำหนักรวมของรายวิชา = ' + f2(g.W) + '% (ไม่ใช่ 100%) — ตรวจองค์ประกอบคะแนนก่อนส่งเกรด</p>' : '')
+      + (plan.notReady ? '<p class="text-xs text-amber-700">ยังไม่ส่ง ' + plan.notReady + ' คน เพราะคะแนนยังไม่ครบทุกการประเมิน</p>' : '')
+      + (plan.dup ? '<p class="text-xs text-amber-700">มีนักศึกษา ' + plan.dup + ' คนที่มีแถวผลการเรียนวิชานี้ซ้ำกันหลายแถว — ระบบแก้เฉพาะแถวแรก ตรวจที่หน้าผลการเรียนอีกครั้ง</p>' : '')
+      + changeList
+      + '<p class="text-[11px] text-gray-500">ส่งซ้ำได้ทุกเมื่อ (เช่น หลังแก้คะแนนสอบซ่อม) · ระบบเพิ่ม/แก้เฉพาะช่องเกรด ไม่ลบแถวใด ๆ</p>'
+      + '<div class="flex justify-end gap-2 pt-2 border-t">'
+      + '<button type="button" onclick="closeModal()" class="px-4 py-2 border rounded-xl text-sm">ยกเลิก</button>'
+      + '<button type="button" id="ploGpBtn" onclick="ploGradePushRun()" class="px-4 py-2 bg-primary text-white rounded-xl text-sm"' + (nGo || plan.change.length ? '' : ' disabled') + '>'
+      + '<i data-lucide="send" class="w-4 h-4 inline"></i> ส่งเกรด</button></div></div>', null, 'max-w-2xl');
+    if (window.lucide) lucide.createIcons();
+  };
+
+  window.ploGradePushRun = async function () {
+    var st = state(), p = st._gradePush; if (!p) return;
+    var over = !!(document.getElementById('ploGpOver') || {}).checked;
+    var ups = p.fill.concat(over ? p.change : []);
+    if (!p.create.length && !ups.length) { showToast('ไม่มีรายการที่ต้องส่ง — ติ๊ก "เขียนทับ" ถ้าต้องการเปลี่ยนเกรดเดิม', 'error'); return; }
+    var btn = document.getElementById('ploGpBtn'); if (btn) { btn.disabled = true; btn.textContent = 'กำลังส่ง...'; }
+    var now = new Date().toISOString(), subj = p.subj || {}, ok = 0, fail = 0, err = '';
+    if (p.create.length) {
+      var r1 = await GSheetDB.createMany(p.create.map(function (x) {
+        return { type: 'grade', student_id: s(x.r.u.student_id), subject_code: s(st.eSubject), subject_name: s(subj.subject_name),
+                 grade: x.r.g, credits: creditsOf(subj), semester: st.eSem, academic_year: s(st.eYear), created_at: now };
+      }));
+      ok += (r1 && r1.ok) || 0; fail += (r1 && r1.fail) || 0; if (r1 && r1.error) err = r1.error;
+    }
+    if (ups.length) {
+      var r2 = await GSheetDB.updateMany(ups.map(function (x) { return { type: 'grade', __rowIndex: x.id, grade: x.r.g, updated_at: now }; }));
+      ok += (r2 && r2.ok) || 0; fail += (r2 && r2.fail) || 0; if (r2 && r2.error) err = r2.error;
+    }
+    st._gradePush = null;
+    closeModal();
+    if (fail) showToast('ส่งเกรดสำเร็จ ' + ok + ' รายการ · ไม่สำเร็จ ' + fail + (err ? ' (' + err + ')' : ''), 'error');
+    else showToast('ส่งเกรดเข้าหน้าผลการเรียนแล้ว ' + ok + ' รายการ');
+  };
+
+  /* ================================================================
+     ไฟล์ Excel (.xlsx) — แบบบันทึกคะแนนหัวตาราง 3 ชั้น (ส่วน → CLO → การประเมิน)
+     ----------------------------------------------------------------
+     เขียนและอ่าน .xlsx เอง (ไม่โหลดไลบรารีจากภายนอก)
+       • เขียน: SpreadsheetML + zip แบบไม่บีบอัด
+       • อ่าน : zip (store/deflate ผ่าน DecompressionStream) แล้วแยก XML ด้วย regex
+     แถวที่ 6 (ซ่อน) เก็บ "รหัสคอลัมน์" รูปแบบเดียวกับแม่แบบ CSV คะแนนดิบ
+     ตอนอัปโหลดจึงส่งต่อให้ ploCsvPlanRaw ตรวจและสรุปก่อนบันทึกเหมือน CSV ทุกประการ
+     ================================================================ */
+  var XL = (function () {
+    var CRC = (function () {
+      var t = new Uint32Array(256);
+      for (var i = 0; i < 256; i++) { var c = i; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[i] = c >>> 0; }
+      return t;
+    })();
+    function crc32(u) { var c = 0xFFFFFFFF; for (var i = 0; i < u.length; i++) c = CRC[(c ^ u[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+    var enc = function (x) { return new TextEncoder().encode(x); };
+    function zip(files) {
+      var parts = [], central = [], off = 0;
+      files.forEach(function (f) {
+        var name = enc(f.name), data = typeof f.data === 'string' ? enc(f.data) : f.data, crc = crc32(data);
+        var h = new DataView(new ArrayBuffer(30));
+        h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
+        h.setUint16(10, 0, true); h.setUint16(12, 0x21, true); h.setUint32(14, crc, true);
+        h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, name.length, true); h.setUint16(28, 0, true);
+        parts.push(new Uint8Array(h.buffer), name, data);
+        var c = new DataView(new ArrayBuffer(46));
+        c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true);
+        c.setUint16(10, 0, true); c.setUint16(12, 0, true); c.setUint16(14, 0x21, true); c.setUint32(16, crc, true);
+        c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, name.length, true);
+        c.setUint32(42, off, true);
+        central.push(new Uint8Array(c.buffer), name);
+        off += 30 + name.length + data.length;
+      });
+      var cdSize = central.reduce(function (t, x) { return t + x.length; }, 0);
+      var e = new DataView(new ArrayBuffer(22));
+      e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
+      e.setUint32(12, cdSize, true); e.setUint32(16, off, true);
+      var all = parts.concat(central, [new Uint8Array(e.buffer)]);
+      var out = new Uint8Array(all.reduce(function (t, x) { return t + x.length; }, 0)), p = 0;
+      all.forEach(function (x) { out.set(x, p); p += x.length; });
+      return out;
+    }
+    async function inflate(u8) {
+      if (typeof DecompressionStream === 'undefined') throw new Error('เบราว์เซอร์นี้อ่านไฟล์ .xlsx ไม่ได้ — บันทึกเป็น CSV แล้วอัปโหลดแทน');
+      var ds = new DecompressionStream('deflate-raw');
+      var buf = await new Response(new Blob([u8]).stream().pipeThrough(ds)).arrayBuffer();
+      return new Uint8Array(buf);
+    }
+    async function unzip(buf) {
+      var u = new Uint8Array(buf), v = new DataView(u.buffer, u.byteOffset, u.byteLength), eo = -1;
+      for (var i = u.length - 22; i >= Math.max(0, u.length - 65557); i--) if (v.getUint32(i, true) === 0x06054b50) { eo = i; break; }
+      if (eo < 0) throw new Error('ไม่ใช่ไฟล์ .xlsx');
+      var n = v.getUint16(eo + 10, true), p = v.getUint32(eo + 16, true), out = {};
+      var dec = new TextDecoder();
+      for (var k = 0; k < n; k++) {
+        if (v.getUint32(p, true) !== 0x02014b50) break;
+        var method = v.getUint16(p + 10, true), csize = v.getUint32(p + 20, true);
+        var nl = v.getUint16(p + 28, true), xl = v.getUint16(p + 30, true), cl = v.getUint16(p + 32, true), lo = v.getUint32(p + 42, true);
+        var name = dec.decode(u.subarray(p + 46, p + 46 + nl));
+        var ds = lo + 30 + v.getUint16(lo + 26, true) + v.getUint16(lo + 28, true);
+        var raw = u.subarray(ds, ds + csize);
+        if (/^xl\/(worksheets\/sheet\d+\.xml|sharedStrings\.xml|workbook\.xml|_rels\/workbook\.xml\.rels)$/.test(name)) {
+          out[name] = dec.decode(method === 8 ? await inflate(raw) : raw);
+        }
+        p += 46 + nl + xl + cl;
+      }
+      return out;
+    }
+    function unx(x) {
+      return String(x).replace(/&(#x?[0-9a-f]+|lt|gt|amp|quot|apos);/gi, function (m, e) {
+        var l = e.toLowerCase();
+        if (l === 'lt') return '<'; if (l === 'gt') return '>'; if (l === 'amp') return '&'; if (l === 'quot') return '"'; if (l === 'apos') return "'";
+        return String.fromCodePoint(l[1] === 'x' ? parseInt(l.slice(2), 16) : parseInt(l.slice(1), 10));
+      });
+    }
+    function texts(xml) { var o = '', m, re = /<t\b[^>]*>([\s\S]*?)<\/t>/g; while ((m = re.exec(xml))) o += unx(m[1]); return o; }
+    function colNo(ref) { var m = String(ref).match(/^([A-Z]+)/), c = 0; if (!m) return 0; for (var i = 0; i < m[1].length; i++) c = c * 26 + m[1].charCodeAt(i) - 64; return c; }
+    function colName(c) { var x = ''; while (c > 0) { var r = (c - 1) % 26; x = String.fromCharCode(65 + r) + x; c = Math.floor((c - 1) / 26); } return x; }
+    // คืน [{name, rows:[[ข้อความ]]}] ของทุกแผ่นงาน
+    async function read(buf) {
+      var f = await unzip(buf), ss = [];
+      if (f['xl/sharedStrings.xml']) {
+        var m, re = /<si\b[^>]*>([\s\S]*?)<\/si>/g;
+        while ((m = re.exec(f['xl/sharedStrings.xml']))) ss.push(texts(m[1]));
+      }
+      var names = {};
+      var rels = f['xl/_rels/workbook.xml.rels'] || '', wb = f['xl/workbook.xml'] || '', rm, sm, rid = {};
+      var rre = /<Relationship\b[^>]*?Id="([^"]+)"[^>]*?Target="([^"]+)"/g;
+      while ((rm = rre.exec(rels))) rid[rm[1]] = rm[2].replace(/^\/?(xl\/)?/, 'xl/');
+      var sre = /<sheet\b[^>]*?name="([^"]*)"[^>]*?r:id="([^"]+)"/g;
+      while ((sm = sre.exec(wb))) if (rid[sm[2]]) names[rid[sm[2]]] = unx(sm[1]);
+      return Object.keys(f).filter(function (k) { return /worksheets\/sheet\d+\.xml$/.test(k); }).sort(function (a, b) {
+        return Number(a.match(/(\d+)\.xml$/)[1]) - Number(b.match(/(\d+)\.xml$/)[1]);
+      }).map(function (k) {
+        var rows = [], m, re = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g;
+        while ((m = re.exec(f[k]))) {
+          var at = m[1], body = m[2] || '';
+          var r = (at.match(/\br="([A-Z]+)(\d+)"/) || []), t = (at.match(/\bt="([^"]+)"/) || [])[1] || '';
+          if (!r[1]) continue;
+          var vv = (body.match(/<v>([\s\S]*?)<\/v>/) || [])[1], val = '';
+          if (t === 's') val = ss[Number(vv)] || '';
+          else if (t === 'inlineStr') val = texts(body);
+          else if (vv != null) val = unx(vv);
+          if (t === '' && val !== '' && isFinite(Number(val))) val = String(Math.round(Number(val) * 1e6) / 1e6);
+          var ri = Number(r[2]) - 1, ci = colNo(r[1]) - 1;
+          while (rows.length <= ri) rows.push([]);
+          while (rows[ri].length < ci) rows[ri].push('');
+          rows[ri][ci] = val;
+        }
+        return { name: names[k] || k, rows: rows };
+      });
+    }
+    function x(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+    /* sheets: [{name, rows:[{h, hidden, cells:[{v,f,s}|null]}], merges:['A1:C1'], widths:[..], freeze:{x,y}, dv:[{ref,max}]}] */
+    function build(sheets) {
+      var STY = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        + '<numFmts count="1"><numFmt numFmtId="164" formatCode="0.00"/></numFmts>'
+        + '<fonts count="5">'
+        + '<font><sz val="14"/><name val="TH SarabunPSK"/></font>'
+        + '<font><b/><sz val="18"/><name val="TH SarabunPSK"/></font>'
+        + '<font><b/><sz val="14"/><name val="TH SarabunPSK"/></font>'
+        + '<font><sz val="9"/><color rgb="FF9CA3AF"/><name val="Calibri"/></font>'
+        + '<font><sz val="12"/><color rgb="FF6B7280"/><name val="TH SarabunPSK"/></font></fonts>'
+        + '<fills count="8"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>'
+        + ['FFDBEAFE', 'FFE0E7FF', 'FFFEF3C7', 'FFF3F4F6', 'FFDCFCE7', 'FFFFFBEB'].map(function (c) {
+            return '<fill><patternFill patternType="solid"><fgColor rgb="' + c + '"/><bgColor indexed="64"/></patternFill></fill>';
+          }).join('') + '</fills>'
+        + '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>'
+        + '<border><left style="thin"><color rgb="FFBFC5CD"/></left><right style="thin"><color rgb="FFBFC5CD"/></right><top style="thin"><color rgb="FFBFC5CD"/></top><bottom style="thin"><color rgb="FFBFC5CD"/></bottom><diagonal/></border></borders>'
+        + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+        + '<cellXfs count="13">'
+        + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'                                                          // 0 ปกติ
+        + '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'                                             // 1 ชื่อเรื่อง
+        + '<xf numFmtId="0" fontId="2" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' // 2 หัว ฟ้า
+        + '<xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' // 3 หัว ม่วงอ่อน
+        + '<xf numFmtId="0" fontId="2" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' // 4 หัว สอบซ่อม
+        + '<xf numFmtId="0" fontId="2" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' // 5 หัว สรุป
+        + '<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>'                                             // 6 แถวรหัส
+        + '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' // 7 ช่องกรอก
+        + '<xf numFmtId="49" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>' // 8 ข้อความ
+        + '<xf numFmtId="164" fontId="2" fillId="5" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' // 9 สูตร
+        + '<xf numFmtId="0" fontId="0" fillId="7" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' // 10 ช่องสอบซ่อม
+        + '<xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf>' // 11 คำอธิบาย
+        + '<xf numFmtId="0" fontId="2" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' // 12 สูตรข้อความ
+        + '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+      var files = [], ws = [];
+      sheets.forEach(function (sh, si) {
+        var xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+          + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+          + '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0"' + (si === 0 ? ' tabSelected="1"' : '') + '>'
+          + (sh.freeze ? '<pane xSplit="' + sh.freeze.x + '" ySplit="' + sh.freeze.y + '" topLeftCell="' + colName(sh.freeze.x + 1) + (sh.freeze.y + 1) + '" activePane="bottomRight" state="frozen"/>' : '')
+          + '</sheetView></sheetViews><sheetFormatPr defaultRowHeight="21"/>'
+          + (sh.widths && sh.widths.length ? '<cols>' + sh.widths.map(function (w, i) { return '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>'; }).join('') + '</cols>' : '')
+          + '<sheetData>'
+          + sh.rows.map(function (row, ri) {
+              if (!row) return '';
+              var rn = ri + 1;
+              return '<row r="' + rn + '"' + (row.h ? ' ht="' + row.h + '" customHeight="1"' : '') + (row.hidden ? ' hidden="1"' : '') + '>'
+                + (row.cells || []).map(function (c, ci) {
+                    if (!c) return '';
+                    var ref = colName(ci + 1) + rn, st = c.s ? ' s="' + c.s + '"' : '';
+                    if (c.f) return '<c r="' + ref + '"' + st + (c.str ? ' t="str"' : '') + '><f>' + x(c.f) + '</f></c>';
+                    if (c.v === '' || c.v == null) return '<c r="' + ref + '"' + st + '/>';
+                    if (typeof c.v === 'number') return '<c r="' + ref + '"' + st + '><v>' + c.v + '</v></c>';
+                    return '<c r="' + ref + '"' + st + ' t="inlineStr"><is><t xml:space="preserve">' + x(c.v) + '</t></is></c>';
+                  }).join('') + '</row>';
+            }).join('')
+          + '</sheetData>'
+          + (sh.merges && sh.merges.length ? '<mergeCells count="' + sh.merges.length + '">' + sh.merges.map(function (m) { return '<mergeCell ref="' + m + '"/>'; }).join('') + '</mergeCells>' : '')
+          + (sh.dv && sh.dv.length ? '<dataValidations count="' + sh.dv.length + '">' + sh.dv.map(function (d) {
+              return '<dataValidation type="decimal" operator="between" allowBlank="1" showErrorMessage="1" errorTitle="คะแนนไม่ถูกต้อง" error="' + x('กรอกได้ 0 – ' + d.max) + '" sqref="' + d.ref + '">'
+                + '<formula1>0</formula1><formula2>' + d.max + '</formula2></dataValidation>';
+            }).join('') + '</dataValidations>' : '')
+          + '<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/>'
+          + '<pageSetup paperSize="9" orientation="landscape" fitToHeight="0"/>'
+          + '</worksheet>';
+        files.push({ name: 'xl/worksheets/sheet' + (si + 1) + '.xml', data: xml });
+        ws.push(sh.name);
+      });
+      files.unshift(
+        { name: '[Content_Types].xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+          + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>'
+          + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+          + '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+          + ws.map(function (w, i) { return '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'; }).join('')
+          + '</Types>' },
+        { name: '_rels/.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+          + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
+        { name: 'xl/workbook.xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+          + '<bookViews><workbookView/></bookViews><sheets>' + ws.map(function (w, i) { return '<sheet name="' + x(w) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>'; }).join('') + '</sheets>'
+          + '<calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>' },
+        { name: 'xl/_rels/workbook.xml.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+          + ws.map(function (w, i) { return '<Relationship Id="rId' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>'; }).join('')
+          + '<Relationship Id="rId' + (ws.length + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>' },
+        { name: 'xl/styles.xml', data: STY }
+      );
+      return zip(files);
+    }
+    return { build: build, read: read, colName: colName };
+  })();
+  window.__ploXL = XL;   // ใช้ทดสอบ
+
+  /* แผ่นงานแบบบันทึกคะแนน — m = { subj, year, sem, level, clos, studs, det, cfg } */
+  function gradeBook(m) {
+    var C = XL.colName, cfg = m.cfg, R0 = 7, RN = R0 + Math.max(m.studs.length, 1) - 1;
+    var groups = [];
+    m.clos.forEach(function (c) {
+      var g = groups.filter(function (x) { return x.sec === secOf(c); })[0];
+      if (!g) { g = { sec: secOf(c), clos: [] }; groups.push(g); }
+      g.clos.push(c);
+    });
+    var rows = [];
+    for (var i = 0; i < 6; i++) rows.push({ cells: [] });
+    var put = function (r, c, cell) { rows[r - 1].cells[c - 1] = cell; };
+    var merges = [], dv = [], widths = [6, 14, 30];
+    var head = function (r1, c1, r2, c2, v, sty) {
+      for (var r = r1; r <= r2; r++) for (var c = c1; c <= c2; c++) put(r, c, { v: (r === r1 && c === c1) ? v : '', s: sty });
+      if (r1 !== r2 || c1 !== c2) merges.push(C(c1) + r1 + ':' + C(c2) + r2);
+    };
+    head(3, 1, 5, 1, 'ลำดับ', 2); head(3, 2, 5, 2, 'รหัสนักศึกษา', 2); head(3, 3, 5, 3, 'ชื่อ - สกุล', 2);
+    put(6, 1, { v: 'no', s: 6 }); put(6, 2, { v: 'student_id', s: 6 }); put(6, 3, { v: 'name', s: 6 });
+    var col = 4, inputs = [], secCols = [];
+    groups.forEach(function (g, gi) {
+      var hs = gi % 2 ? 3 : 2, gStart = col, secW = 0, terms = [];
+      g.clos.forEach(function (c) {
+        var cStart = col, list = comps(c), cw = compWeight(list);
+        secW += cw;
+        list.forEach(function (k) {
+          var full = n(k.full), w = n(k.weight), pass = s(k.pass) !== '' ? s(k.pass) : defPass(k.full, cfg);
+          var sc = col++;
+          put(5, sc, { v: s(k.name) + '\nเต็ม ' + f2(full) + ' · ' + f2(w) + '%', s: hs });
+          put(6, sc, { v: cloRef(c) + ' | ' + k.id, s: 6 });
+          widths[sc - 1] = 12;
+          dv.push({ ref: C(sc) + R0 + ':' + C(sc) + RN, max: full });
+          inputs.push({ c: sc, req: true, clo: c, k: k, part: 's' });
+          var S = C(sc) + '{r}', used;
+          if (k.retake) {
+            var rc = col++;
+            put(5, rc, { v: 'ซ่อม\n' + (pass !== '' ? 'ผ่าน ' + pass : ''), s: 4 });
+            put(6, rc, { v: cloRef(c) + ' | ' + k.id + ' ซ่อม', s: 6 });
+            widths[rc - 1] = 9;
+            dv.push({ ref: C(rc) + R0 + ':' + C(rc) + RN, max: full });
+            inputs.push({ c: rc, req: false, clo: c, k: k, part: 'r' });
+            var Rr = C(rc) + '{r}';
+            used = (k.rule !== 'actual' && pass !== '')
+              ? 'IF(' + Rr + '="",N(' + S + '),IF(' + Rr + '>=' + pass + ',MAX(N(' + S + '),' + pass + '),MAX(N(' + S + '),' + Rr + ')))'
+              : 'MAX(N(' + S + '),N(' + Rr + '))';
+          } else used = 'N(' + S + ')';
+          terms.push('MIN(' + used + ',' + full + ')/' + full + '*' + w);
+        });
+        head(4, cStart, 4, col - 1, s(c.clo_code) + (s(c.plo_code) ? ' · ' + s(c.plo_code) : '') + ' (' + f2(cw) + '%)', hs);
+      });
+      head(3, gStart, 3, col - 1, (g.sec ? 'ภาค' + g.sec : 'คะแนน') + ' (' + f2(secW) + '%)', hs);
+      secCols.push({ sec: g.sec, w: secW, terms: terms });
+    });
+    // คอลัมน์สรุป (สูตร)
+    var sumStart = col, W = secCols.reduce(function (t, x) { return t + x.w; }, 0);
+    secCols.forEach(function (x) { x.c = col++; head(4, x.c, 5, x.c, (x.sec || 'คะแนน') + '\n(' + f2(x.w) + '%)', 5); put(6, x.c, { v: 'sum', s: 6 }); widths[x.c - 1] = 11; });
+    var cT = col++, cP = col++, cOk = col++, cG = col++;
+    head(4, cT, 5, cT, 'รวม\n(' + f2(W) + '%)', 5); head(4, cP, 5, cP, 'ร้อยละ', 5);
+    head(4, cOk, 5, cOk, 'กรอกครบ', 5); head(4, cG, 5, cG, 'เกรด', 5);
+    [cT, cP, cOk, cG].forEach(function (c) { put(6, c, { v: 'sum', s: 6 }); widths[c - 1] = 10; });
+    head(3, sumStart, 3, cG, 'สรุปคะแนน (คำนวณอัตโนมัติ)', 5);
+    var gradeF = function (P) {
+      var g = cfg.grades, f = '"' + (g.length ? g[g.length - 1][0] : '') + '"';
+      for (var i = g.length - 2; i >= 0; i--) f = 'IF(' + P + '>=' + g[i][1] + ',"' + g[i][0] + '",' + f + ')';
+      return f;
+    };
+    var title = 'แบบบันทึกคะแนน รายวิชา ' + s(m.subj.subject_code) + ' ' + s(m.subj.subject_name);
+    head(1, 1, 1, cG, title, 1);
+    head(2, 1, 2, cG, 'ปีการศึกษา ' + m.year + ' · ภาคการศึกษา ' + (m.sem === '3' ? 'ฤดูร้อน' : m.sem) + ' · ชั้นปีที่ ' + m.level
+      + ' · เกณฑ์ผ่านเริ่มต้น ' + (s(cfg.passPct) === '' ? '-' : cfg.passPct + '% ของคะแนนเต็ม')
+      + ' · กรอกเฉพาะช่องคะแนน ห้ามแทรก/ลบคอลัมน์หรือแก้หัวตาราง', 11);
+    rows[0].h = 30; rows[1].h = 24; rows[2].h = 26; rows[3].h = 30; rows[4].h = 46; rows[5].hidden = true;
+    var req = inputs.filter(function (x) { return x.req; });
+    (m.studs.length ? m.studs : [{ student_id: '', name: '' }]).forEach(function (u, i) {
+      var r = R0 + i, cells = [];
+      rows.push({ cells: cells });
+      cells[0] = { v: i + 1, s: 7 }; cells[1] = { v: s(u.student_id), s: 8 }; cells[2] = { v: s(u.name), s: 8 };
+      inputs.forEach(function (x) {
+        var d = ((m.det[x.clo.__backendId + '|' + u.student_id] || {})[x.k.id] || {})[x.part];
+        var v = d == null || s(d) === '' ? '' : (isFinite(Number(d)) ? Number(d) : s(d));
+        cells[x.c - 1] = { v: v, s: x.part === 'r' ? 10 : 7 };
+      });
+      secCols.forEach(function (x) {
+        cells[x.c - 1] = { f: x.terms.length ? 'ROUND(' + x.terms.join('+').replace(/\{r\}/g, r) + ',2)' : '0', s: 9 };
+      });
+      cells[cT - 1] = { f: 'ROUND(' + secCols.map(function (x) { return C(x.c) + r; }).join('+') + ',2)', s: 9 };
+      cells[cP - 1] = { f: W > 0 ? 'ROUND(' + C(cT) + r + '/' + W + '*100,2)' : '0', s: 9 };
+      var blanks = req.map(function (x) { return '(' + C(x.c) + r + '="")'; }).join('+') || '0';
+      cells[cOk - 1] = { f: 'IF(' + blanks + '=0,"ครบ","ขาด "&(' + blanks + '))', s: 12, str: true };
+      cells[cG - 1] = { f: 'IF(' + C(cOk) + r + '<>"ครบ","",' + gradeF(C(cP) + r) + ')', s: 12, str: true };
+    });
+    var main = { name: 'คะแนน', rows: rows, merges: merges, widths: widths, freeze: { x: 3, y: 6 }, dv: dv };
+
+    // แผ่นที่ 2 : สรุปการกระจายเกรด
+    var GR = "'คะแนน'!" + C(cG) + R0 + ':' + C(cG) + RN;
+    var srows = [{ cells: [{ v: 'สรุปผลการตัดเกรด ' + s(m.subj.subject_code) + ' ' + s(m.subj.subject_name), s: 1 }], h: 30 }, { cells: [] },
+      { cells: [{ v: 'เกรด', s: 2 }, { v: 'ช่วงคะแนน (ร้อยละ)', s: 2 }, { v: 'จำนวน (คน)', s: 2 }, { v: 'ร้อยละ', s: 2 }], h: 26 }];
+    var gs = cfg.grades, firstR = 4;
+    gs.forEach(function (g, i) {
+      var hi = i === 0 ? null : gs[i - 1][1];
+      var range = i === 0 ? '≥ ' + g[1] : (g[1] > 0 ? g[1] + ' – ' + f2(hi - 0.01) : '< ' + hi);
+      var r = firstR + i;
+      srows.push({ cells: [{ v: g[0], s: 7 }, { v: range, s: 7 }, { f: 'COUNTIF(' + GR + ',"' + g[0] + '")', s: 9 },
+        { f: 'IF(C' + (firstR + gs.length) + '=0,0,ROUND(C' + r + '/C' + (firstR + gs.length) + '*100,2))', s: 9 }] });
+    });
+    var lastR = firstR + gs.length - 1;
+    srows.push({ cells: [{ v: 'รวม (ตัดเกรดแล้ว)', s: 5 }, { v: '', s: 5 }, { f: 'SUM(C' + firstR + ':C' + lastR + ')', s: 9 }, { f: 'IF(C' + (lastR + 1) + '=0,0,100)', s: 9 }] });
+    srows.push({ cells: [{ v: 'ยังกรอกไม่ครบ', s: 7 }, { v: '', s: 7 }, { f: 'COUNTIF(' + "'คะแนน'!" + C(cOk) + R0 + ':' + C(cOk) + RN + ',"ขาด*")', s: 9 }, { v: '', s: 7 }] });
+    var sum = { name: 'สรุปเกรด', rows: srows, merges: ['A1:D1', 'A' + (lastR + 1) + ':B' + (lastR + 1), 'A' + (lastR + 2) + ':B' + (lastR + 2)], widths: [16, 22, 14, 12] };
+
+    // แผ่นที่ 3 : คำอธิบาย
+    var notes = [
+      'วิธีใช้แบบบันทึกคะแนน',
+      '1) กรอกคะแนนดิบในแผ่นงาน "คะแนน" เฉพาะช่องสีขาว (คะแนนปกติ) และช่องสีเหลืองอ่อน (สอบซ่อม — กรอกเฉพาะคนที่สอบซ่อม)',
+      '2) ช่องที่เว้นว่างจะไม่ถูกแตะเมื่ออัปโหลดกลับ (ไม่ใช่ให้ 0) — ถ้าได้ 0 คะแนน ให้พิมพ์ 0',
+      '3) คอลัมน์ "สรุปคะแนน" คำนวณให้อัตโนมัติ: คะแนนแต่ละการประเมิน ÷ คะแนนเต็ม × ร้อยละที่กำหนด',
+      '4) สอบซ่อม "เท่าเกณฑ์ผ่าน": ซ่อมผ่านได้คะแนนเท่าเกณฑ์ผ่าน · ซ่อมไม่ผ่านใช้คะแนนที่มากกว่า',
+      '5) เกรดแสดงเมื่อกรอกคะแนนครบทุกการประเมิน · ช่วงคะแนน: ' + cfg.grades.map(function (g) { return g[0] + (g[1] > 0 ? ' ≥ ' + g[1] : ''); }).join(', '),
+      '6) อัปโหลดกลับที่ หน้า PLOs → บันทึกข้อมูล → ขั้นที่ 6 → "อัปโหลดคะแนนดิบ" (รับทั้ง .xlsx และ .csv) ระบบจะสรุปให้ตรวจก่อนบันทึก',
+      '7) ห้ามแทรก ลบ หรือสลับคอลัมน์ และห้ามลบแถวที่ 6 (ซ่อนไว้ เป็นรหัสคอลัมน์ที่ระบบใช้อ่านไฟล์) — เพิ่มหรือแก้การประเมินให้ทำในระบบแล้วดาวน์โหลดแม่แบบใหม่',
+      '8) ระบบใช้ผลการคำนวณของระบบเป็นหลัก สูตรในไฟล์มีไว้ให้ตรวจทานระหว่างกรอก'
+    ];
+    var info = { name: 'คำอธิบาย', rows: notes.map(function (t, i) { return { cells: [{ v: t, s: i ? 11 : 1 }], h: i ? 40 : 30 }; }), widths: [120] };
+    return XL.build([main, sum, info]);
+  }
+
+  window.ploXlsxTemplate = async function () {
+    var st = state();
+    if (!st.eSubject) { showToast('เลือกรายวิชาก่อน', 'error'); return; }
+    var clos = closOf(st.eYear, st.eSem, st.eSubject).filter(function (c) { return comps(c).length; });
+    if (!clos.length) { showToast('รายวิชานี้ยังไม่มี CLO ที่แบ่งองค์ประกอบคะแนน', 'error'); return; }
+    var studs = entryStudents();
+    if (!studs.length) { showToast('ไม่พบนักศึกษารหัส ' + cohortPrefix(st.eYear, st.eLevel), 'error'); return; }
+    var det = {};
+    var pr = await sb().from('plo_clo').select('id,extra').in('id', clos.map(cloNum));
+    if (pr.error) { showToast('อ่านคะแนนเดิมไม่สำเร็จ: ' + pr.error.message, 'error'); return; }
+    (pr.data || []).forEach(function (row) {
+      var ex = row.extra || {};
+      Object.keys(ex).forEach(function (k) {
+        if (k.indexOf('sc:') !== 0) return;
+        var d = ex[k]; if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = {}; } }
+        det[cloKey(row.id) + '|' + k.slice(3)] = d || {};
+      });
+    });
+    // คะแนนที่กำลังกรอกในขั้นที่ 4 แต่ยังไม่กดบันทึก — ใช้ค่าบนหน้าจอแทน
+    Object.keys(st.detail || {}).forEach(function (k) { det[k] = st.detail[k]; });
+    var subj = subjectsOf(st.eYear, st.eSem, st.eLevel).filter(function (x) { return s(x.subject_code) === s(st.eSubject); })[0] || { subject_code: st.eSubject };
+    var bytes = gradeBook({ subj: subj, year: s(st.eYear), sem: s(st.eSem), level: s(st.eLevel), clos: clos, studs: studs, det: det,
+                            cfg: courseCfg(closOf(st.eYear, st.eSem, st.eSubject)) });
+    var blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'แบบบันทึกคะแนน_' + s(st.eSubject) + '_' + s(st.eYear) + '_' + s(st.eSem) + '.xlsx';
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    showToast('ดาวน์โหลดแบบบันทึกคะแนน Excel แล้ว (' + studs.length + ' คน)');
+  };
+
+  // อ่าน .xlsx → แถวสำหรับ ploCsvPlanRaw (หัว = แถวรหัสคอลัมน์ที่ซ่อนไว้)
+  async function xlsxRawRows(file) {
+    var sheets = await XL.read(await file.arrayBuffer());
+    for (var i = 0; i < sheets.length; i++) {
+      var rows = sheets[i].rows;
+      for (var r = 0; r < Math.min(rows.length, 30); r++) {
+        var row = (rows[r] || []).map(s);
+        if (row.map(function (x) { return x.toLowerCase(); }).indexOf('student_id') >= 0 && isRawHead(row)) {
+          return [row].concat(rows.slice(r + 1).map(function (x) { return (x || []).map(s); }));
+        }
+      }
+    }
+    return null;
+  }
 
   window.ploCsvApply = async function () {
     var p = APP._ploCsv;
