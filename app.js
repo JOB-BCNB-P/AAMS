@@ -4341,7 +4341,7 @@ function gradesPage() {
       <tbody>${paged.length ? paged.map(g => `<tr class="border-t hover:bg-gray-50">
         <td class="px-4 py-3 font-mono text-primary">${g.subject_code || ''}</td><td class="px-4 py-3">${g.subject_name || ''}</td>
         <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs font-bold ${g.grade === 'F' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}">${g.grade || ''}</span></td>
-        <td class="px-4 py-3">${_gradeCredits(g) || ''}</td><td class="px-4 py-3">${semLabel(g.semester)}/${g.academic_year || ''}</td>
+        <td class="px-4 py-3 font-mono whitespace-nowrap">${_gradeCreditCode(g) || ''}</td><td class="px-4 py-3">${semLabel(g.semester)}/${g.academic_year || ''}</td>
         ${isAdmin ? `<td class="px-4 py-3"><div class="flex gap-1"><button onclick="showEditGradeModal('${g.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${g.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>` : ''}</tr>`).join('') : '<tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">ไม่มีข้อมูล</td></tr>'}</tbody>
     </table></div>
   </div>
@@ -4362,12 +4362,37 @@ function _gradeSubjectOf(g) {
   return same.find(s => norm(s.academic_year) === y && normSem(s.semester) === sm)
     || same.find(s => norm(s.academic_year) === y) || same[0] || null;
 }
-// รายวิชาในข้อมูลหลักสูตรที่รหัสตรงกัน (ใช้เมื่อไม่พบรายวิชาที่เปิดสอน)
+/* หลักสูตรฉบับที่นักศึกษาเรียน/จบ
+   1) ข้อมูลนักศึกษา (curriculum_year)  2) รายวิชาที่เปิดสอนของรุ่นเดียวกันที่ระบุหลักสูตรไว้ (ฉบับที่พบมากที่สุด)
+   เก็บผลไว้ต่อรหัสนักศึกษา จะได้ไม่ค้นซ้ำทุกแถว (ล้างเมื่อข้อมูลโหลดใหม่) */
+var _stuCurCache = { n: -1, m: {} };
+function _stuCurYear(sid) {
+  sid = norm(sid);
+  if (!sid) return '';
+  const all = APP.allData || [];
+  if (_stuCurCache.n !== all.length) _stuCurCache = { n: all.length, m: {} };
+  if (sid in _stuCurCache.m) return _stuCurCache.m[sid];
+  const stu = getDataByType('student').find(x => norm(x.student_id) === sid) || {};
+  let y = norm(stu.curriculum_year);
+  if (!y && norm(stu.batch)) {
+    const cnt = {};
+    getDataByType('subject').forEach(x => {
+      if (norm(x.batch) === norm(stu.batch) && norm(x.curriculum_year)) cnt[norm(x.curriculum_year)] = (cnt[norm(x.curriculum_year)] || 0) + 1;
+    });
+    y = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0] || '';
+  }
+  _stuCurCache.m[sid] = y;
+  return y;
+}
+// รายวิชาในข้อมูลหลักสูตรที่รหัสตรงกัน — เลือกฉบับหลักสูตรของนักศึกษาก่อน
 function _gradeCourseOf(g) {
   const code = norm(g && g.subject_code).replace(/\s+/g, '').toLowerCase();
   if (!code) return null;
   const list = getDataByType('curriculum_course').filter(c => norm(c.course_code).replace(/\s+/g, '').toLowerCase() === code);
-  return list.find(c => norm(c.curriculum_year) === '2565') || list[0] || null;
+  if (!list.length) return null;
+  const cy = _stuCurYear(g && g.student_id);
+  return (cy && list.find(c => norm(c.curriculum_year) === cy))
+    || list.slice().sort((a, b) => norm(b.curriculum_year).localeCompare(norm(a.curriculum_year)))[0];
 }
 function _gradeCredits(g) {
   var c = norm(g && g.credits);
@@ -4379,12 +4404,25 @@ function _gradeCredits(g) {
 }
 
 // รหัสหน่วยกิตของแถวเกรด แสดงแบบ น(ท-ป-อ) เหมือนหน้ารายวิชา — ดึงชั่วโมง ท/ป/อ จากแท็บ subject ตามรหัสวิชา
+/* แสดงแบบเต็ม น(ท-ป-อ) เช่น 3(2-2-5)
+   ลำดับ: ข้อมูลหลักสูตรฉบับที่นักศึกษาเรียน → รายวิชาที่เปิดสอน (ถ้ามีชั่วโมงครบ) → ตัวเลขหน่วยกิตในแถวเกรด
+   หน่วยกิตรวมใช้ตัวเลขในแถวเกรดเป็นหลักเสมอ (เป็นค่าที่ใช้คิด GPA) — ชั่วโมงตามหลักสูตรต่อท้ายเมื่อหน่วยกิตตรงกัน */
 function _gradeCreditCode(g) {
-  var sub = _gradeSubjectOf(g);
-  if (sub) { var cc = creditCode(sub); if (cc) return cc; }
+  var own = norm(g && g.credits);
+  var hasH = function (x) { return x && (norm(x.t) !== '' || norm(x.l) !== '' || norm(x.s) !== ''); };
+  var fmt = function (cr, x) { return cr + '(' + (norm(x.t) || '0') + '-' + (norm(x.l) || '0') + '-' + (norm(x.s) || '0') + ')'; };
+  var same = function (a, b) { return !a || !b || Number(a) === Number(b); };
   var cur = _gradeCourseOf(g);
-  if (cur) { var c2 = creditCode({ credits: cur.credits, hours_theory: cur.h_theory, hours_lab: cur.h_lab, hours_self: cur.h_self }); if (c2) return c2; }
-  return norm(g && g.credits) || '';
+  if (cur) {
+    var h = { t: cur.h_theory, l: cur.h_lab, s: cur.h_self };
+    if (hasH(h) && same(own, cur.credits)) return fmt(own || norm(cur.credits), h);
+  }
+  var sub = _gradeSubjectOf(g);
+  if (sub) {
+    var h2 = { t: sub.hours_theory, l: sub.hours_lab, s: sub.hours_self };
+    if (hasH(h2) && same(own, sub.credits)) return fmt(own || norm(sub.credits), h2);
+  }
+  return own || (cur && norm(cur.credits)) || (sub && norm(sub.credits)) || '';
 }
 
 function _gradeSubjectsFor(studentId, academicYear) {
@@ -4663,7 +4701,7 @@ function buildOfficialTranscript(stu, logoSrc) {
      ไม่มีเส้นคั่นระหว่างรายวิชา เหมือนใบระเบียนฉบับจริง */
   const B = '1px solid #000';
   const cell = (extra) => 'border-left:' + B + ';border-right:' + B + ';padding:1px 4px;' + (extra || '');
-  const W = ['19%', '', '12%', '9%'];
+  const W = ['17%', '', '15%', '8%'];   // หน่วยกิตแสดงแบบ 3(2-2-5) จึงกว้างขึ้น
 
   const tableHead = `<tr>
     <th style="${cell('border-top:' + B + ';border-bottom:' + B + ';text-align:center;font-weight:600;width:' + W[0] + '')}">รหัสรายวิชา</th>
@@ -4683,7 +4721,7 @@ function buildOfficialTranscript(stu, logoSrc) {
       rows += `<tr>
         <td style="${cell('text-align:center;white-space:nowrap')}">${htmlEsc(norm(g.subject_code))}</td>
         <td style="${cell()}">${htmlEsc(norm(g.subject_name))}</td>
-        <td style="${cell('text-align:center')}">${htmlEsc(String(Number(_gradeCredits(g)) || ''))}</td>
+        <td style="${cell('text-align:center;white-space:nowrap')}">${htmlEsc(String(_gradeCreditCode(g) || ''))}</td>
         <td style="${cell('text-align:center')}">${htmlEsc(norm(g.grade))}</td></tr>`;
     });
     rows += `<tr>
