@@ -438,7 +438,7 @@
       + '<span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-gray-200 text-gray-500">'
       + '<span style="width:2px;height:11px;background:#6b7280;display:inline-block"></span>เส้นเกณฑ์บรรลุ</span></div>';
 
-    return section('อัตราการบรรลุ', toggle + legend + '<div class="mt-1">' + bars + '</div>');
+    return section('อัตราการบรรลุ', toggle + legend + (st.view === 'clo' ? cloGrouped(rows) : '<div class="mt-1">' + bars + '</div>'));
   }
 
   function watchTable() {
@@ -791,6 +791,109 @@
     out['ภาพรวม'] = ov; out['ราย CLO'] = clo; out['ราย PLO'] = plo; out['ราย YLO (ชั้นปี)'] = ylo; out['รายวิชาที่ต้องติดตาม'] = watch;
     return out;
   }
+
+
+  /* ---------- ราย CLO แบบจัดกลุ่มตามรายวิชา ----------
+     หลายรายวิชา = การ์ดละวิชา (พับไว้) หัวการ์ดบอกภาพรวมของวิชา · กดเปิดดูตาราง CLO แบบกะทัดรัด
+     เรียงวิชาที่น่าห่วงขึ้นก่อน และกรองเฉพาะ CLO ที่ต่ำกว่า 100% / ไม่บรรลุเกณฑ์ได้ */
+  function cloGrouped(rows) {
+    var st = state();
+    var flt = st.cloFlt || 'all', sort = st.cloSort || 'low';
+    if (!st._cloOpen) st._cloOpen = {};
+    var tot = function (r) { return n(r['ผลการประเมิน'] != null ? r['ผลการประเมิน'] : r['นักศึกษา']); };
+    var bad = function (r) { return r['บรรลุ'] === false || (r['เกณฑ์'] != null && n(r['ร้อยละบรรลุ']) < n(r['เกณฑ์'])); };
+    var groups = {}, order = [];
+    rows.forEach(function (r) {
+      var k = s(r['รหัสวิชา']) || s(r['รายวิชา']);
+      if (!groups[k]) { groups[k] = { k: k, name: s(r['รายวิชา']), code: s(r['รหัสวิชา']), rows: [] }; order.push(k); }
+      groups[k].rows.push(r);
+    });
+    var list = order.map(function (k) {
+      var g = groups[k], pass = 0, all = 0, min = 101, nBad = 0, nLow = 0;
+      g.rows.forEach(function (r) {
+        pass += n(r['ผ่าน']); all += tot(r);
+        min = Math.min(min, n(r['ร้อยละบรรลุ']));
+        if (bad(r)) nBad++;
+        if (n(r['ร้อยละบรรลุ']) < 100) nLow++;
+      });
+      g.pct = all ? Math.round(pass / all * 10000) / 100 : 0; g.min = min > 100 ? 0 : min; g.nBad = nBad; g.nLow = nLow;
+      g.show = g.rows.filter(function (r) { return flt === 'all' || (flt === 'low' ? n(r['ร้อยละบรรลุ']) < 100 : bad(r)); });
+      g.show.sort(function (a, b) {
+        return (SEC_ORDER[a.__sec || ''] || 0) - (SEC_ORDER[b.__sec || ''] || 0)
+          || s(a['CLO']).localeCompare(s(b['CLO']), undefined, { numeric: true });
+      });
+      return g;
+    }).filter(function (g) { return g.show.length; });
+    list.sort(sort === 'code'
+      ? function (a, b) { return (a.code || a.name).localeCompare(b.code || b.name, 'th'); }
+      : function (a, b) { return (b.nBad - a.nBad) || (a.min - b.min) || (a.pct - b.pct) || a.name.localeCompare(b.name, 'th'); });
+    var single = list.length === 1;
+    var btn = function (key, val, label) {
+      var on = (st[key] || (key === 'cloFlt' ? 'all' : 'low')) === val;
+      return '<button type="button" data-no-loading onclick="ploSet(\'' + key + '\',\'' + val + '\')" class="px-2.5 py-1 rounded-lg text-[11px] '
+        + (on ? 'bg-gray-800 text-white' : 'border border-gray-200 text-gray-600 hover:bg-surface') + '">' + esc(label) + '</button>';
+    };
+    var tools = '<div class="flex flex-wrap items-center gap-2 mb-3 text-[11px] text-gray-500">'
+      + '<span>แสดง</span>' + btn('cloFlt', 'all', 'ทุก CLO') + btn('cloFlt', 'low', 'ต่ำกว่า 100%') + btn('cloFlt', 'bad', 'ไม่บรรลุเกณฑ์')
+      + '<span class="ml-2">เรียงวิชา</span>' + btn('cloSort', 'low', 'น่าห่วงก่อน') + btn('cloSort', 'code', 'ตามรหัสวิชา')
+      + (single ? '' : '<span class="ml-auto flex gap-2"><button type="button" onclick="ploCloOpenAll(true)" class="text-primary hover:underline">เปิดทั้งหมด</button>'
+        + '<button type="button" onclick="ploCloOpenAll(false)" class="text-primary hover:underline">ปิดทั้งหมด</button></span>')
+      + '</div>';
+    if (!list.length) return tools + '<div class="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 text-sm text-emerald-700">'
+      + '<i data-lucide="check-circle-2" class="w-4 h-4 inline"></i> ไม่มี CLO ที่ตรงกับเงื่อนไขนี้</div>';
+    var bar = function (pct, crit, b, w) {
+      return '<div class="relative h-2 rounded-full bg-gray-100 ' + (w || 'w-full') + '">'
+        + '<div class="h-2 rounded-full" style="width:' + Math.max(0, Math.min(100, pct)) + '%;background:' + b.bar + '"></div>'
+        + (crit != null ? '<div class="absolute border-l-2 border-gray-500" style="top:-3px;height:14px;left:' + Math.min(100, crit) + '%" title="เกณฑ์บรรลุ ' + fx(crit, 0) + '%"></div>' : '')
+        + '</div>';
+    };
+    window._ploCloKeys = list.map(function (g) { return g.k; });
+    var cards = list.map(function (g, gi) {
+      var crit = g.rows[0]['เกณฑ์'] != null ? n(g.rows[0]['เกณฑ์']) : null;
+      var lv = bandFor(g.pct, g.rows.map(function (r) { return r['ระดับ']; }));
+      var b = bandOf(lv), bMin = bandOf(bandFor(g.min, g.rows.map(function (r) { return r['ระดับ']; })));
+      var open = single || st._cloOpen[g.k] === true;
+      var table = '<div class="overflow-x-auto"><table class="w-full text-sm" data-ems-cards="skip"><thead><tr class="text-left text-[11px] text-gray-500 border-b">'
+        + '<th class="px-3 py-1.5 font-medium">CLO</th><th class="px-3 py-1.5 font-medium">PLO</th>'
+        + '<th class="px-3 py-1.5 font-medium text-right whitespace-nowrap">ผ่าน / ทั้งหมด</th>'
+        + '<th class="px-3 py-1.5 font-medium" style="width:34%">ร้อยละการบรรลุ</th><th class="px-3 py-1.5 font-medium">ระดับ</th></tr></thead><tbody>'
+        + g.show.map(function (r) {
+            var rb = bandOf(r['ระดับ']), pct = n(r['ร้อยละบรรลุ']);
+            var c2 = r['เกณฑ์'] != null ? n(r['เกณฑ์']) : null;
+            var mark = r['บรรลุ'] === true ? '<i data-lucide="check" class="w-3.5 h-3.5 inline text-emerald-600"></i> '
+              : r['บรรลุ'] === false ? '<i data-lucide="x" class="w-3.5 h-3.5 inline text-red-600"></i> ' : '';
+            return '<tr class="border-t border-gray-50 hover:bg-surface/60" title="' + esc(s(r['CLO']) + (r.__sec ? ' [' + r.__sec + ']' : '') + ' · ผ่าน ' + r['ผ่าน'] + ' จาก ' + tot(r) + (c2 != null ? ' · เกณฑ์ ' + fx(c2, 0) + '%' : '')) + '">'
+              + '<td class="px-3 py-1.5 whitespace-nowrap">' + esc(r['CLO']) + secChip(r.__sec) + '</td>'
+              + '<td class="px-3 py-1.5 text-xs text-gray-500">' + esc(r['PLO'] || '') + '</td>'
+              + '<td class="px-3 py-1.5 text-right tabular-nums text-xs text-gray-600 whitespace-nowrap">' + esc(r['ผ่าน']) + ' / ' + tot(r) + '</td>'
+              + '<td class="px-3 py-1.5"><div class="flex items-center gap-2">' + bar(pct, c2, rb, 'flex-1" style="min-width:6rem')
+              + '<span class="text-xs font-semibold tabular-nums text-gray-800 w-16 text-right">' + mark + fx(pct) + '%</span></div></td>'
+              + '<td class="px-3 py-1.5 text-[11px] whitespace-nowrap ' + rb.text + '">' + esc((r['ระดับ'] || {}).label || '') + '</td></tr>';
+          }).join('') + '</tbody></table></div>';
+      return '<details class="border border-gray-100 rounded-xl mb-2 bg-white"' + (open ? ' open' : '')
+        + ' ontoggle="ploCloToggle(this,' + gi + ')">'
+        + '<summary class="list-none cursor-pointer px-3 py-2.5 flex flex-wrap items-center gap-y-1" style="column-gap:1rem">'
+        + '<i data-lucide="chevron-right" class="w-4 h-4 text-gray-400 ems-chev"></i>'
+        + '<span class="text-sm font-medium text-gray-800 flex-1" style="min-width:12rem">' + (g.code ? '<span class="font-mono text-xs text-gray-400 mr-1">' + esc(g.code) + '</span>' : '') + esc(g.name) + '</span>'
+        + '<span class="text-[11px] text-gray-500">' + g.rows.length + ' CLO</span>'
+        + '<span class="flex items-center gap-2 w-44">' + bar(g.pct, crit, b, 'flex-1')
+        + '<span class="text-xs font-semibold tabular-nums text-gray-800">' + fx(g.pct) + '%</span></span>'
+        + '<span class="text-[11px] ' + b.text + ' w-16">' + esc(lv.label || '') + '</span>'
+        + '<span class="text-[11px] text-gray-500 whitespace-nowrap">ต่ำสุด <b class="tabular-nums text-gray-800">' + fx(g.min) + '%</b><span class="' + bMin.text + '"> ●</span></span>'
+        + (g.nBad ? '<span class="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-700 whitespace-nowrap"><i data-lucide="alert-triangle" class="w-3 h-3 inline"></i> ไม่บรรลุ ' + g.nBad + ' CLO</span>'
+                  : '<span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 whitespace-nowrap"><i data-lucide="check" class="w-3 h-3 inline"></i> บรรลุทุก CLO</span>')
+        + '</summary><div class="border-t border-gray-100">' + table + '</div></details>';
+    }).join('');
+    var note = '<p class="text-[11px] text-gray-400 mb-2">' + list.length + ' รายวิชา · ร้อยละรวมของวิชา = ผ่านรวม ÷ ผลการประเมินรวมของทุก CLO · '
+      + 'เส้นดำ = เกณฑ์บรรลุ · ' + (single ? '' : 'กดที่ชื่อวิชาเพื่อดูราย CLO') + '</p>';
+    return tools + note + '<style>details[open] > summary .ems-chev{transform:rotate(90deg)} details > summary::-webkit-details-marker{display:none}</style>' + cards;
+  }
+  window.ploCloToggle = function (el, i) { var st = state(), k = (window._ploCloKeys || [])[i]; if (k == null) return; if (!st._cloOpen) st._cloOpen = {}; st._cloOpen[k] = el.open; };
+  window.ploCloOpenAll = function (v) {
+    var st = state(); st._cloOpen = {};
+    (window._ploCloKeys || []).forEach(function (k) { st._cloOpen[k] = v; });
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  };
 
   function section(title, inner) {
     return '<div class="mb-6"><h3 class="font-semibold text-gray-700 mb-3">' + title + '</h3>' + inner + '</div>';
