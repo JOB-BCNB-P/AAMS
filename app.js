@@ -4352,17 +4352,38 @@ function gradesPage() {
 // คืนรายวิชาที่ไม่ซ้ำรหัส กรองตาม "ปีการศึกษาที่เลือก" และ/หรือ "ชั้นปีของนักศึกษาที่เลือก"
 // ถ้ากรองแล้วไม่เหลือรายการ → fallback ใช้ทั้งหมด (กันกรณีข้อมูล subject กรอกปี/ชั้นปีไม่ครบ)
 // หน่วยกิตของแถวเกรด: ใช้ค่าที่บันทึกในเกรด ถ้าว่างให้ดึงจากแท็บ subject ตามรหัสวิชา
+/* รายวิชาที่เปิดสอนที่ตรงกับแถวเกรดมากที่สุด : รหัสวิชา + ปีการศึกษา + ภาค → รหัสวิชา + ปีการศึกษา → รหัสวิชาอย่างเดียว
+   เดิมหยิบรายวิชาแรกที่รหัสตรง ซึ่งอาจเป็นของรุ่นเก่าที่หน่วยกิตยังไม่ถูกแก้ */
+function _gradeSubjectOf(g) {
+  const code = norm(g && g.subject_code).replace(/\s+/g, '').toLowerCase();
+  if (!code) return null;
+  const same = getDataByType('subject').filter(s => norm(s.subject_code).replace(/\s+/g, '').toLowerCase() === code);
+  const y = norm(g.academic_year), sm = normSem(g.semester);
+  return same.find(s => norm(s.academic_year) === y && normSem(s.semester) === sm)
+    || same.find(s => norm(s.academic_year) === y) || same[0] || null;
+}
+// รายวิชาในข้อมูลหลักสูตรที่รหัสตรงกัน (ใช้เมื่อไม่พบรายวิชาที่เปิดสอน)
+function _gradeCourseOf(g) {
+  const code = norm(g && g.subject_code).replace(/\s+/g, '').toLowerCase();
+  if (!code) return null;
+  const list = getDataByType('curriculum_course').filter(c => norm(c.course_code).replace(/\s+/g, '').toLowerCase() === code);
+  return list.find(c => norm(c.curriculum_year) === '2565') || list[0] || null;
+}
 function _gradeCredits(g) {
   var c = norm(g && g.credits);
   if (c) return c;
-  var sub = getDataByType('subject').find(s => norm(s.subject_code) === norm(g && g.subject_code));
-  return sub ? norm(sub.credits) : '';
+  var sub = _gradeSubjectOf(g);
+  if (sub && norm(sub.credits)) return norm(sub.credits);
+  var cc = _gradeCourseOf(g);
+  return cc ? norm(cc.credits) : '';
 }
 
 // รหัสหน่วยกิตของแถวเกรด แสดงแบบ น(ท-ป-อ) เหมือนหน้ารายวิชา — ดึงชั่วโมง ท/ป/อ จากแท็บ subject ตามรหัสวิชา
 function _gradeCreditCode(g) {
-  var sub = getDataByType('subject').find(s => norm(s.subject_code) === norm(g && g.subject_code));
+  var sub = _gradeSubjectOf(g);
   if (sub) { var cc = creditCode(sub); if (cc) return cc; }
+  var cur = _gradeCourseOf(g);
+  if (cur) { var c2 = creditCode({ credits: cur.credits, hours_theory: cur.h_theory, hours_lab: cur.h_lab, hours_self: cur.h_self }); if (c2) return c2; }
   return norm(g && g.credits) || '';
 }
 
