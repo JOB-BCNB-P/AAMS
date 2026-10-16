@@ -15,8 +15,9 @@
 do $$
 declare
   r record;
-  v_cols text;
   v_name text;
+  v_def text;
+  v_pos int; v_open int; v_close int; v_depth int; v_i int;
 begin
   -- 1) คอลัมน์ section
   if not exists (select 1 from information_schema.columns
@@ -30,33 +31,39 @@ begin
    where extra ? 'section';
   update public.plo_clo set section = '' where section is null;
 
-  -- 2) unique ที่มี clo_code แต่ไม่มี section
+  -- 2) unique ที่กันรหัส CLO ซ้ำแต่ยังไม่นับ section (รวมถึง plo_clo_key ที่ระบบแจ้ง)
+  --    รองรับทั้งแบบคอลัมน์และแบบนิพจน์ — เอานิยามเดิมมาเติม section ต่อท้ายรายการคอลัมน์
   for r in
-    select i.indexrelid, c.relname as idx, con.conname,
-           array_agg(a.attname order by k.ord) as cols,
-           bool_or(k.attnum = 0) as has_expr
+    select i.indexrelid, c.relname as idx, con.conname, pg_get_indexdef(i.indexrelid) as def
       from pg_index i
       join pg_class c on c.oid = i.indexrelid
       left join pg_constraint con on con.conindid = i.indexrelid and con.conrelid = i.indrelid
-      cross join lateral unnest(i.indkey::int2[]) with ordinality as k(attnum, ord)
-      left join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum
      where i.indrelid = 'public.plo_clo'::regclass and i.indisunique and not i.indisprimary
-     group by i.indexrelid, c.relname, con.conname
   loop
-    if not ('clo_code' = any (r.cols)) or ('section' = any (r.cols)) then continue; end if;
-    if r.has_expr then
-      raise notice 'ข้าม % — เป็น unique แบบนิพจน์ ต้องแก้เอง: %', r.idx, pg_get_indexdef(r.indexrelid);
-      continue;
-    end if;
-    select string_agg(format('%I', x), ', ') into v_cols from unnest(r.cols || array['section']::name[]) x;
+    raise notice 'พบ unique: % = %', coalesce(r.conname, r.idx), r.def;
+    if r.def ~* '\msection\M' then continue; end if;
+    if not (r.def ~* 'clo_code' or r.idx = 'plo_clo_key' or r.conname = 'plo_clo_key') then continue; end if;
+    -- หาวงเล็บรายการคอลัมน์หลัง USING xxx (
+    v_pos := position(' USING ' in r.def);
+    v_open := v_pos + position('(' in substr(r.def, v_pos)) - 1;
+    v_depth := 0;
+    for v_i in v_open .. length(r.def) loop
+      if substr(r.def, v_i, 1) = '(' then v_depth := v_depth + 1;
+      elsif substr(r.def, v_i, 1) = ')' then
+        v_depth := v_depth - 1;
+        if v_depth = 0 then v_close := v_i; exit; end if;
+      end if;
+    end loop;
     v_name := left(r.idx, 50) || '_sec';
-    execute format('create unique index if not exists %I on public.plo_clo (%s)', v_name, v_cols);
+    v_def := 'CREATE UNIQUE INDEX IF NOT EXISTS ' || quote_ident(v_name) || ' ON public.plo_clo '
+             || substr(r.def, v_pos + 1, v_close - v_pos - 1) || ', section)' || substr(r.def, v_close + 1);
+    execute v_def;
     if r.conname is not null then
       execute format('alter table public.plo_clo drop constraint %I', r.conname);
     else
       execute format('drop index public.%I', r.idx);
     end if;
-    raise notice 'แก้ % → % (%)', r.idx, v_name, v_cols;
+    raise notice 'แก้ % → %', coalesce(r.conname, r.idx), v_def;
   end loop;
 end $$;
 
