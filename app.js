@@ -4277,7 +4277,7 @@ function gradesPage() {
       </div>
       <select onchange="APP.filters._gradeStudent=this.value;APP.pagination.page=1;renderCurrentPage()" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
         <option value="">-- กรุณาเลือกนักศึกษา (${filteredList.length} คน) --</option>
-        ${filteredList.map(s => `<option value="${s.student_id || s.name}" ${selectedStudentName === (s.student_id || s.name) ? 'selected' : ''}>${s.student_id || ''} — ${s.name || ''}</option>`).join('')}
+        ${filteredList.slice().sort((a, b) => String(a.student_id || '').localeCompare(String(b.student_id || ''), undefined, { numeric: true }) || String(a.name || '').localeCompare(String(b.name || ''), 'th')).map(s => `<option value="${s.student_id || s.name}" ${selectedStudentName === (s.student_id || s.name) ? 'selected' : ''}>${s.student_id || ''} — ${s.name || ''}</option>`).join('')}
       </select>
     </div>`;
   }
@@ -5663,7 +5663,7 @@ function engResultsPage() {
       </div>
       <select onchange="APP.filters._engStudent=this.value;APP.pagination.page=1;renderCurrentPage()" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
         <option value="">-- กรุณาเลือกนักศึกษา (${filteredList.length} คน) --</option>
-        ${filteredList.map(s => `<option value="${s.student_id || s.name}" ${selectedStudentName === (s.student_id || s.name) ? 'selected' : ''}>${s.student_id || ''} — ${s.name || ''}</option>`).join('')}
+        ${filteredList.slice().sort((a, b) => String(a.student_id || '').localeCompare(String(b.student_id || ''), undefined, { numeric: true }) || String(a.name || '').localeCompare(String(b.name || ''), 'th')).map(s => `<option value="${s.student_id || s.name}" ${selectedStudentName === (s.student_id || s.name) ? 'selected' : ''}>${s.student_id || ''} — ${s.name || ''}</option>`).join('')}
       </select>
     </div>`;
   }
