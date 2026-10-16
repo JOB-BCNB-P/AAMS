@@ -2404,11 +2404,12 @@
 
     var batch = cohortPrefix(st.eYear, st.eLevel);
     var who = (APP.currentUser && APP.currentUser.name) || '';
-    var made = 0, skipped = 0;
+    var made = 0, skipped = 0, failed = 0, lastErr = '', noSec = 0;
     for (var i = 0; i < targets.length; i++) {
       var t = targets[i];
       // วิชาปลายทางไม่มีส่วนที่เลือก (เช่น เป็นวิชาทฤษฎีล้วน) → เพิ่มเป็น CLO ไม่แยกส่วน
       var tSec = sectionsOf(t).indexOf(sec) >= 0 ? sec : '';
+      if (sec && !tSec) noSec++;
       var dup = closOf(st.eYear, st.eSem, t.subject_code).some(function (c) { return sameClo(c, code, tSec); });
       if (dup) { skipped++; continue; }
       var r = await GSheetDB.create({
@@ -2420,9 +2421,18 @@
         sort_order: closOf(st.eYear, st.eSem, t.subject_code).length + 1,
         updated_by: who
       }, { noRefresh: i < targets.length - 1 });
-      if (r && r.isOk) made++;
+      if (r && r.isOk) made++; else { failed++; lastErr = (r && r.error) || 'ไม่ทราบสาเหตุ'; }
     }
-    showToast('เพิ่ม CLO แล้ว ' + made + ' รายวิชา' + (skipped ? ' · ข้าม ' + skipped + ' วิชาที่มีอยู่แล้ว' : ''));
+    // แจ้งให้ชัดว่าทำไมไม่เพิ่ม — เดิมบอกแค่ "เพิ่มแล้ว 0 รายวิชา" ผู้ใช้จึงไม่รู้ว่าบันทึกไม่สำเร็จ
+    if (failed) {
+      showToast('เพิ่ม ' + refOf(code, sec) + ' ไม่สำเร็จ ' + failed + ' รายวิชา: ' + lastErr
+        + (/duplicate|unique|23505/i.test(lastErr) ? ' — ฐานข้อมูลยังห้ามรหัส CLO ซ้ำในรายวิชาเดียวกัน ต้องรัน 97_plo_clo_section_unique.sql' : ''), 'error');
+    } else if (!made && skipped) {
+      showToast(refOf(code, sec) + ' มีอยู่แล้วในรายวิชานี้ — ไม่ได้เพิ่มซ้ำ', 'error');
+    } else {
+      showToast('เพิ่ม CLO แล้ว ' + made + ' รายวิชา' + (skipped ? ' · ข้าม ' + skipped + ' วิชาที่มีอยู่แล้ว' : '')
+        + (noSec ? ' · ' + noSec + ' วิชาไม่มีส่วน' + sec + ' จึงเพิ่มเป็น CLO ไม่แยกส่วน' : ''));
+    }
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
   };
 
