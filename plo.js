@@ -563,13 +563,54 @@
     }).sort(function (a, b) { return s(a.student_id).localeCompare(s(b.student_id)); });
   }
 
+  /* ================= ส่วนของรายวิชา (ทฤษฎี / ทดลอง / ปฏิบัติ) =================
+     รายวิชาแบบ "ทฤษฎีและทดลอง" หรือ "ทฤษฎีและปฏิบัติ" แยก CLO เป็นรายส่วนได้
+     CLO รหัสเดียวกันอยู่ได้ทั้งสองส่วน (เช่น CLO 1.1.3 ทฤษฎี และ CLO 1.1.3 ทดลอง)
+     แต่ละส่วนมีองค์ประกอบคะแนน เกณฑ์ผ่าน และผลการบรรลุ "แยกกัน" — ผลสรุป PLO นับทั้งสองรายการ
+     เก็บใน plo_clo.section (ว่าง = ไม่แยกส่วน) */
+  var SEC_ORDER = { '': 0, 'ทฤษฎี': 1, 'ทดลอง': 2, 'ปฏิบัติ': 3 };
+  function normSec(v) {
+    var x = s(v).toLowerCase();
+    if (!x || x === '-' || x === 'ไม่แยก') return '';
+    if (x.indexOf('ทดลอง') >= 0 || x === 'lab' || x === 'laboratory') return 'ทดลอง';
+    if (x.indexOf('ปฏิบัติ') >= 0 || x === 'practice' || x === 'practicum') return 'ปฏิบัติ';
+    if (x.indexOf('ทฤษฎี') >= 0 || x === 'theory' || x === 'lecture') return 'ทฤษฎี';
+    return '';
+  }
+  function secOf(c) { return normSec(c && c.section); }
+  // รหัสที่ใช้อ้าง CLO ในไฟล์ CSV และบนหน้าจอ — CLO1.1.3 [ทดลอง]
+  function cloRef(c) { var x = secOf(c); return s(c && c.clo_code) + (x ? ' [' + x + ']' : ''); }
+  function refOf(code, sec) { return s(code) + (sec ? ' [' + sec + ']' : ''); }
+  // แยก "CLO1.1.3 [ทดลอง]" → { code, sec } · ถ้าไม่มีวงเล็บ ใช้ค่าจากคอลัมน์ section แทน
+  function parseRef(str, secCol) {
+    var m = s(str).match(/^(.*?)\s*\[(.+)\]\s*$/);
+    return m ? { code: s(m[1]), sec: normSec(m[2]) } : { code: s(str), sec: normSec(secCol) };
+  }
+  function sameClo(c, code, sec) { return s(c.clo_code) === s(code) && secOf(c) === (sec || ''); }
+  function secBadge(c) {
+    var x = secOf(c);
+    if (!x) return '';
+    var cls = x === 'ทฤษฎี' ? 'bg-sky-50 text-sky-700' : x === 'ทดลอง' ? 'bg-violet-50 text-violet-700' : 'bg-amber-50 text-amber-700';
+    return ' <span class="px-1.5 py-0.5 rounded-md text-[10px] font-normal align-middle ' + cls + '">' + esc(x) + '</span>';
+  }
+  // ส่วนที่รายวิชานี้มี — อ่านจากประเภทรายวิชา (theory_practice) ของรายวิชาที่เปิดสอน
+  function sectionsOf(subj) {
+    var t = s(subj && subj.theory_practice);
+    var out = [];
+    if (t.indexOf('ทดลอง') >= 0) out = ['ทฤษฎี', 'ทดลอง'];
+    else if (t.indexOf('ทฤษฎี') >= 0 && t.indexOf('ปฏิบัติ') >= 0) out = ['ทฤษฎี', 'ปฏิบัติ'];
+    return out;
+  }
   function closOf(year, sem, code) {
     var st = state();
     return get('plo_clo').filter(function (x) {
       return s(x.curriculum_year) === s(st.curriculum)
         && s(x.academic_year) === s(year) && s(x.semester) === s(sem)
         && s(x.subject_code) === s(code);
-    }).sort(function (a, b) { return (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0); });
+    }).sort(function (a, b) {
+      return ((SEC_ORDER[secOf(a)] || 0) - (SEC_ORDER[secOf(b)] || 0))
+        || ((Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
+    });
   }
 
   function entryTab() {
@@ -755,18 +796,21 @@
     if (!subs.length) { showToast('ไม่มีรายวิชาในภาค/ปี/ชั้นปีที่เลือก', 'error'); return; }
 
     if (kind === 'clo') {
-      var rows = [['subject_code', 'subject_name', 'clo_code', 'statement_th', 'plo_code', 'max_score', 'pass_score']];
+      var rows = [['subject_code', 'subject_name', 'section', 'clo_code', 'statement_th', 'plo_code', 'max_score', 'pass_score']];
       var target = st.eSubject ? subs.filter(function (x) { return s(x.subject_code) === s(st.eSubject); }) : subs;
       if (!target.length) target = subs;
       target.forEach(function (x) {
         var cs = closOf(st.eYear, st.eSem, x.subject_code);
         if (cs.length) {
           cs.forEach(function (c) {
-            rows.push([x.subject_code, x.subject_name, c.clo_code, c.statement_th, c.plo_code, c.max_score, c.pass_score]);
+            rows.push([x.subject_code, x.subject_name, secOf(c), c.clo_code, c.statement_th, c.plo_code, c.max_score, c.pass_score]);
           });
         } else {
           // ยังไม่มี CLO — ใส่แถวเปล่าไว้ให้กรอก (เว้นรหัส CLO ไว้ ระบบจะข้ามแถวที่ไม่ได้กรอก)
-          rows.push([x.subject_code, x.subject_name, '', '', '', '100', '60']);
+          // รายวิชาที่แยกส่วน — ใส่แถวเปล่าให้ส่วนละ 1 แถว
+          (sectionsOf(x).length ? sectionsOf(x) : ['']).forEach(function (sx) {
+            rows.push([x.subject_code, x.subject_name, sx, '', '', '', '100', '60']);
+          });
         }
       });
       csvDownload('plo_clo_' + s(st.eYear) + '_' + s(st.eSem) + '_ชั้นปี' + s(st.eLevel) + '.csv', rows);
@@ -780,7 +824,7 @@
     var studs = entryStudents();
     if (!studs.length) { showToast('ไม่พบนักศึกษารหัส ' + cohortPrefix(st.eYear, st.eLevel), 'error'); return; }
 
-    var head = ['student_id', 'name'].concat(clos.map(function (c) { return s(c.clo_code); }));
+    var head = ['student_id', 'name'].concat(clos.map(function (c) { return cloRef(c); }));
     var rows2 = [head];
     studs.forEach(function (u) {
       rows2.push([u.student_id, u.name].concat(clos.map(function (c) {
@@ -800,7 +844,7 @@
        คะแนน  = คะแนนของนักศึกษาหนึ่งคนใน CLO หนึ่งข้อ
      นำเข้าทีเดียวจบ ระบบสร้าง CLO ให้ก่อนแล้วค่อยผูกคะแนนตามรหัส CLO
      ================================================================ */
-  var ALL_HEAD = ['ประเภท', 'subject_code', 'subject_name', 'clo_code', 'statement_th',
+  var ALL_HEAD = ['ประเภท', 'subject_code', 'subject_name', 'section', 'clo_code', 'statement_th',
     'plo_code', 'max_score', 'pass_score', 'student_id', 'name', 'score'];
 
   function rowKind(v) {
@@ -825,13 +869,15 @@
       var cs = closOf(st.eYear, st.eSem, x.subject_code);
       if (cs.length) {
         cs.forEach(function (c) {
-          rows.push(['CLO', x.subject_code, x.subject_name, c.clo_code, c.statement_th,
+          rows.push(['CLO', x.subject_code, x.subject_name, secOf(c), c.clo_code, c.statement_th,
             c.plo_code, c.max_score, c.pass_score, '', '', '']);
           nClo++;
         });
       } else {
         // ยังไม่มี CLO — เว้นรหัสไว้ให้กรอก ระบบจะข้ามแถวที่ยังไม่ได้กรอก
-        rows.push(['CLO', x.subject_code, x.subject_name, '', '', '', '100', '60', '', '', '']);
+        (sectionsOf(x).length ? sectionsOf(x) : ['']).forEach(function (sx) {
+          rows.push(['CLO', x.subject_code, x.subject_name, sx, '', '', '', '100', '60', '', '', '']);
+        });
       }
     });
 
@@ -842,7 +888,7 @@
       clos.forEach(function (c) {
         studs.forEach(function (u) {
           var v = st.scores ? st.scores[c.__backendId + '|' + u.student_id] : '';
-          rows.push(['คะแนน', s(subj.subject_code), '', s(c.clo_code), '', '', '', '',
+          rows.push(['คะแนน', s(subj.subject_code), '', secOf(c), s(c.clo_code), '', '', '', '',
             s(u.student_id), s(u.name), (v == null ? '' : v)]);
           nScore++;
         });
@@ -859,6 +905,7 @@
     var st = state();
     var idx = function (k) { return head.indexOf(k); };
     var iKind = idx('ประเภท') >= 0 ? idx('ประเภท') : idx('type');
+    var iSec = idx('section');
     var iSub = idx('subject_code'), iCode = idx('clo_code'), iText = idx('statement_th'),
       iPlo = idx('plo_code'), iMax = idx('max_score'), iPass = idx('pass_score'),
       iSid = idx('student_id'), iScore = idx('score');
@@ -876,13 +923,15 @@
     rows.slice(1).forEach(function (r, i) {
       if (rowKind(r[iKind]) !== 'clo') return;
       var line = i + 2;
-      var code = s(r[iCode]);
+      var pr0 = parseRef(r[iCode], iSec >= 0 ? r[iSec] : '');
+      var code = pr0.code, sec = pr0.sec;
       if (!code) return;                       // แถวเปล่าของแม่แบบ ข้ามเงียบ ๆ
       var scode = iSub >= 0 ? s(r[iSub]) : s(st.eSubject);
       var subj = subs.filter(function (x) { return s(x.subject_code) === scode; })[0];
       if (!subj) { bad.push('บรรทัด ' + line + ' : ไม่พบรายวิชา ' + (scode || '(ไม่ได้ระบุ)') + ' ในภาค/ปี/ชั้นปีที่เลือก'); return; }
-      var key = scode + '|' + code;
-      if (seen[key]) { bad.push('บรรทัด ' + line + ' : ' + code + ' ของวิชา ' + scode + ' ซ้ำกับบรรทัด ' + seen[key]); return; }
+      if (sec && sectionsOf(subj).indexOf(sec) < 0) { bad.push('บรรทัด ' + line + ' : วิชา ' + scode + ' ไม่มีส่วน' + sec); return; }
+      var key = scode + '|' + refOf(code, sec);
+      if (seen[key]) { bad.push('บรรทัด ' + line + ' : ' + refOf(code, sec) + ' ของวิชา ' + scode + ' ซ้ำกับบรรทัด ' + seen[key]); return; }
       seen[key] = line;
       var plo = s(r[iPlo]);
       if (!plo) { bad.push('บรรทัด ' + line + ' : ' + code + ' ไม่ได้ระบุ PLO'); return; }
@@ -894,9 +943,9 @@
       if (max !== '' && Number(max) !== 100) { bad.push('บรรทัด ' + line + ' : ' + code + ' คะแนนเต็มต้องเป็น 100 (คะแนนคิดเป็นร้อยละ)'); return; }
       max = '100';
       if (Number(pass) < 0 || Number(pass) > 100) { bad.push('บรรทัด ' + line + ' : ' + code + ' เกณฑ์ผ่านต้องอยู่ระหว่าง 0–100 (%)'); return; }
-      var exist = closOf(st.eYear, st.eSem, scode).filter(function (c) { return s(c.clo_code) === code; })[0] || null;
+      var exist = closOf(st.eYear, st.eSem, scode).filter(function (c) { return sameClo(c, code, sec); })[0] || null;
       cloPlan.push({
-        subj: subj, code: code, text: iText >= 0 ? s(r[iText]) : '',
+        subj: subj, code: code, sec: sec, text: iText >= 0 ? s(r[iText]) : '',
         plo: plo, max: max === '' ? '100' : max, pass: pass, exist: exist
       });
       willHave[key] = { max: max === '' ? '100' : max };
@@ -905,7 +954,7 @@
     // CLO ที่มีอยู่แล้วในระบบ ก็ผูกคะแนนได้ แม้ไฟล์นี้จะไม่ได้นิยามซ้ำ
     subs.forEach(function (x) {
       closOf(st.eYear, st.eSem, x.subject_code).forEach(function (c) {
-        var k = s(x.subject_code) + '|' + s(c.clo_code);
+        var k = s(x.subject_code) + '|' + cloRef(c);
         if (!willHave[k]) willHave[k] = { max: s(c.max_score) };
       });
     });
@@ -915,16 +964,17 @@
       if (rowKind(r[iKind]) !== 'score') return;
       var line = i + 2;
       var sid = s(r[iSid]);
-      var code = s(r[iCode]);
+      var pr1 = parseRef(r[iCode], iSec >= 0 ? r[iSec] : '');
+      var code = pr1.code, sec = pr1.sec;
       var scode = iSub >= 0 ? s(r[iSub]) : s(st.eSubject);
       if (!sid && !code) return;
       if (!sid) { bad.push('บรรทัด ' + line + ' : แถวคะแนนไม่ได้ระบุรหัสนักศึกษา'); return; }
       if (!code) { bad.push('บรรทัด ' + line + ' : ' + sid + ' ไม่ได้ระบุรหัส CLO'); return; }
       if (!stuOk[sid]) { bad.push('บรรทัด ' + line + ' : ไม่พบรหัสนักศึกษา ' + sid + ' ในรุ่นนี้'); return; }
-      var k = scode + '|' + code;
+      var k = scode + '|' + refOf(code, sec);
       var info = willHave[k];
       if (!info) { bad.push('บรรทัด ' + line + ' : ไม่พบ ' + code + ' ของวิชา ' + (scode || '(ไม่ได้ระบุ)') + ' ทั้งในไฟล์และในระบบ'); return; }
-      var exC = closOf(st.eYear, st.eSem, scode).filter(function (c) { return s(c.clo_code) === code; })[0];
+      var exC = closOf(st.eYear, st.eSem, scode).filter(function (c) { return sameClo(c, code, sec); })[0];
       if (exC && comps(exC).length) { bad.push('บรรทัด ' + line + ' : ' + code + ' แบ่งเป็นหลายการประเมินแล้ว — ใช้แม่แบบคะแนนดิบแทน'); return; }
       var v = iScore >= 0 ? s(r[iScore]) : '';
       if (v === '') { blank++; return; }        // เว้นว่าง = ยังไม่ให้คะแนน ไม่ใช่ศูนย์
@@ -935,7 +985,7 @@
       if (isFinite(max) && max > 0 && num > max) {
         bad.push('บรรทัด ' + line + ' : ' + sid + ' ' + code + ' คะแนน ' + num + ' เกินคะแนนเต็ม ' + max); return;
       }
-      scorePlan.push({ subject_code: scode, clo_code: code, student_id: sid, score: num });
+      scorePlan.push({ subject_code: scode, clo_code: code, sec: sec, student_id: sid, score: num });
       nStu[sid] = 1;
     });
 
@@ -1030,6 +1080,7 @@
   function ploCsvPlanClo(rows, head, fname) {
     var st = state();
     var idx = function (k) { return head.indexOf(k); };
+    var iSec = idx('section');
     var iSub = idx('subject_code'), iCode = idx('clo_code'), iText = idx('statement_th'),
         iPlo = idx('plo_code'), iMax = idx('max_score'), iPass = idx('pass_score');
     var subs = subjectsOf(st.eYear, st.eSem, st.eLevel);
@@ -1039,13 +1090,15 @@
     var plan = [], bad = [], seen = {};
     rows.slice(1).forEach(function (r, i) {
       var line = i + 2;
-      var code = s(r[iCode]);
+      var pr0 = parseRef(r[iCode], iSec >= 0 ? r[iSec] : '');
+      var code = pr0.code, sec = pr0.sec;
       if (!code) return;   // แถวเปล่าของแม่แบบ — ข้ามเงียบ ๆ ไม่ถือว่าผิด
       var scode = iSub >= 0 ? s(r[iSub]) : s(st.eSubject);
       var subj = subs.filter(function (x) { return s(x.subject_code) === scode; })[0];
       if (!subj) { bad.push('บรรทัด ' + line + ' : ไม่พบรายวิชา ' + (scode || '(ไม่ได้ระบุ)') + ' ในภาค/ปี/ชั้นปีที่เลือก'); return; }
-      var key = scode + '|' + code;
-      if (seen[key]) { bad.push('บรรทัด ' + line + ' : ' + code + ' ของวิชา ' + scode + ' ซ้ำกับบรรทัด ' + seen[key]); return; }
+      if (sec && sectionsOf(subj).indexOf(sec) < 0) { bad.push('บรรทัด ' + line + ' : วิชา ' + scode + ' ไม่มีส่วน' + sec); return; }
+      var key = scode + '|' + refOf(code, sec);
+      if (seen[key]) { bad.push('บรรทัด ' + line + ' : ' + refOf(code, sec) + ' ของวิชา ' + scode + ' ซ้ำกับบรรทัด ' + seen[key]); return; }
       seen[key] = line;
       var plo = s(r[iPlo]);
       if (!plo) { bad.push('บรรทัด ' + line + ' : ' + code + ' ไม่ได้ระบุ PLO'); return; }
@@ -1057,8 +1110,8 @@
       if (max !== '' && Number(max) !== 100) { bad.push('บรรทัด ' + line + ' : ' + code + ' คะแนนเต็มต้องเป็น 100 (คะแนนคิดเป็นร้อยละ)'); return; }
       max = '100';
       if (Number(pass) < 0 || Number(pass) > 100) { bad.push('บรรทัด ' + line + ' : ' + code + ' เกณฑ์ผ่านต้องอยู่ระหว่าง 0–100 (%)'); return; }
-      var exist = closOf(st.eYear, st.eSem, scode).filter(function (c) { return s(c.clo_code) === code; })[0] || null;
-      plan.push({ subj: subj, code: code, text: iText >= 0 ? s(r[iText]) : '',
+      var exist = closOf(st.eYear, st.eSem, scode).filter(function (c) { return sameClo(c, code, sec); })[0] || null;
+      plan.push({ subj: subj, code: code, sec: sec, text: iText >= 0 ? s(r[iText]) : '',
         plo: plo, max: max === '' ? '100' : max, pass: pass, exist: exist });
     });
 
@@ -1083,7 +1136,13 @@
     if (!clos.length) { showToast('รายวิชานี้ยังไม่ได้กำหนด CLO — นำเข้า CLO ก่อน', 'error'); return; }
 
     var byCode = {};
-    clos.forEach(function (c) { byCode[s(c.clo_code).toLowerCase()] = c; });
+    // หัวคอลัมน์ = รหัส CLO (มี [ส่วน] ต่อท้ายถ้ารายวิชาแยกส่วน) · ยอมรับรหัสล้วนถ้ารหัสนั้นมีส่วนเดียว
+    var cnt0 = {};
+    clos.forEach(function (c) { var k0 = s(c.clo_code).toLowerCase(); cnt0[k0] = (cnt0[k0] || 0) + 1; });
+    clos.forEach(function (c) {
+      byCode[cloRef(c).toLowerCase()] = c;
+      if (cnt0[s(c.clo_code).toLowerCase()] === 1) byCode[s(c.clo_code).toLowerCase()] = c;
+    });
     var iSid = head.indexOf('student_id');
     var cols = [], unknown = [], bad = [];
     head.forEach(function (h, i) {
@@ -1099,7 +1158,7 @@
       APP._ploCsv = null;
       csvReview('นำเข้าคะแนนจากไฟล์ ' + fname,
         '<p class="text-sm text-gray-600">หัวตารางไม่มีคอลัมน์ที่ตรงกับรหัส CLO ของรายวิชานี้</p>'
-        + '<p class="text-xs text-gray-500 mt-1">CLO ที่มี: ' + esc(clos.map(function (c) { return c.clo_code; }).join(', ')) + '</p>',
+        + '<p class="text-xs text-gray-500 mt-1">CLO ที่มี: ' + esc(clos.map(cloRef).join(', ')) + '</p>',
         bad, 0);
       return;
     }
@@ -1149,7 +1208,7 @@
           และ "<รหัส CLO> | c1 ซ่อม" สำหรับการประเมินที่มีสอบซ่อม
           ช่องว่าง = ไม่แตะคะแนนเดิม · ระบบคิดที่ได้/คิดเป็น %/ร้อยละรวม ด้วยกติกาเดียวกับตารางบนหน้าเว็บ
      ================================================================ */
-  var COMP_HEAD = ['subject_code', 'subject_name', 'clo_code', 'item_name', 'full_score', 'weight_pct', 'pass_score', 'retake', 'retake_rule'];
+  var COMP_HEAD = ['subject_code', 'subject_name', 'section', 'clo_code', 'item_name', 'full_score', 'weight_pct', 'pass_score', 'retake', 'retake_rule'];
   function yes(v) { var x = s(v).toLowerCase(); return x === 'y' || x === 'yes' || x === '1' || x === 'true' || x === 'มี' || x === 'ใช่' || x === '✓'; }
   function ruleOf(v) { var x = s(v).toLowerCase(); return (x === 'actual' || x.indexOf('จริง') >= 0 || x.indexOf('ได้') >= 0) ? 'actual' : 'cap'; }
 
@@ -1164,12 +1223,12 @@
         var list = comps(c);
         if (list.length) {
           list.forEach(function (k) {
-            rows.push([x.subject_code, x.subject_name, c.clo_code, k.name, k.full, k.weight, k.pass,
+            rows.push([x.subject_code, x.subject_name, secOf(c), c.clo_code, k.name, k.full, k.weight, k.pass,
               k.retake ? 'มี' : 'ไม่มี', k.retake ? (k.rule === 'actual' ? 'ตามคะแนนที่สอบได้' : 'เท่าเกณฑ์ผ่าน') : '']);
           });
         } else {
           // ยังไม่มีองค์ประกอบ — ใส่แถวตัวอย่างให้แก้ (ลบแถวทิ้งได้ถ้า CLO นี้กรอกร้อยละตรง)
-          rows.push([x.subject_code, x.subject_name, c.clo_code, '', '', '', '', 'ไม่มี', '']);
+          rows.push([x.subject_code, x.subject_name, secOf(c), c.clo_code, '', '', '', '', 'ไม่มี', '']);
         }
         n0++;
       });
@@ -1183,6 +1242,7 @@
   function ploCsvPlanComp(rows, head, fname) {
     var st = state();
     var ix = function (k) { return head.indexOf(k); };
+    var iSecC = ix('section');
     var iSub = ix('subject_code'), iClo = ix('clo_code'), iName = ix('item_name'), iFull = ix('full_score'),
         iW = ix('weight_pct'), iPass = ix('pass_score'), iRt = ix('retake'), iRule = ix('retake_rule');
     var subs = subjectsOf(st.eYear, st.eSem, st.eLevel);
@@ -1192,11 +1252,12 @@
       var name = s(r[iName]);
       if (!name) return;                                    // แถวว่างของแม่แบบ
       var scode = iSub >= 0 ? s(r[iSub]) : s(st.eSubject);
-      var code = s(r[iClo]);
+      var prC = parseRef(r[iClo], iSecC >= 0 ? r[iSecC] : '');
+      var code = prC.code, secC = prC.sec;
       var subj = subs.filter(function (x) { return s(x.subject_code) === scode; })[0];
       if (!subj) { bad.push('บรรทัด ' + line + ' : ไม่พบรายวิชา ' + (scode || '(ไม่ได้ระบุ)')); return; }
-      var clo = closOf(st.eYear, st.eSem, scode).filter(function (c) { return s(c.clo_code) === code; })[0];
-      if (!clo) { bad.push('บรรทัด ' + line + ' : ไม่พบ ' + (code || 'CLO') + ' ในวิชา ' + scode + ' — เพิ่ม CLO ก่อน'); return; }
+      var clo = closOf(st.eYear, st.eSem, scode).filter(function (c) { return sameClo(c, code, secC); })[0];
+      if (!clo) { bad.push('บรรทัด ' + line + ' : ไม่พบ ' + (refOf(code, secC) || 'CLO') + ' ในวิชา ' + scode + ' — เพิ่ม CLO ก่อน (ตรวจช่อง section ด้วย)'); return; }
       var full = s(r[iFull]), w = s(r[iW]), pass = iPass >= 0 ? s(r[iPass]) : '', rt = iRt >= 0 && yes(r[iRt]);
       if (!(Number(full) > 0)) { bad.push('บรรทัด ' + line + ' : ' + name + ' คะแนนเต็มต้องมากกว่า 0'); return; }
       if (!(Number(w) > 0)) { bad.push('บรรทัด ' + line + ' : ' + name + ' ต้องระบุว่าคิดเป็นกี่ %'); return; }
@@ -1226,7 +1287,7 @@
       + '<thead class="bg-surface"><tr><th class="px-2 py-1 text-left">CLO</th><th class="px-2 py-1 text-left">การประเมิน</th><th class="px-2 py-1">รวม</th></tr></thead><tbody>'
       + order.map(function (k) {
           var g = groups[k];
-          return '<tr class="border-t"><td class="px-2 py-1 whitespace-nowrap">' + esc(g.subj.subject_code) + ' · ' + esc(g.clo.clo_code) + '</td>'
+          return '<tr class="border-t"><td class="px-2 py-1 whitespace-nowrap">' + esc(g.subj.subject_code) + ' · ' + esc(cloRef(g.clo)) + '</td>'
             + '<td class="px-2 py-1">' + g.list.map(function (c) { return esc(c.name) + ' ' + esc(c.full) + '→' + esc(c.weight) + '%' + (c.retake ? ' (ซ่อม)' : ''); }).join(' · ') + '</td>'
             + '<td class="px-2 py-1 text-center">' + f2(compWeight(g.list)) + '%</td></tr>';
         }).join('') + '</tbody></table></div>'
@@ -1256,8 +1317,8 @@
     var head = ['student_id', 'name'], cols = [];
     clos.forEach(function (c) {
       comps(c).forEach(function (k) {
-        head.push(s(c.clo_code) + ' | ' + k.id + ' ' + k.name + ' (เต็ม ' + k.full + ')'); cols.push([c, k, 's']);
-        if (k.retake) { head.push(s(c.clo_code) + ' | ' + k.id + ' ซ่อม (ผ่าน ' + k.pass + ')'); cols.push([c, k, 'r']); }
+        head.push(cloRef(c) + ' | ' + k.id + ' ' + k.name + ' (เต็ม ' + k.full + ')'); cols.push([c, k, 's']);
+        if (k.retake) { head.push(cloRef(c) + ' | ' + k.id + ' ซ่อม (ผ่าน ' + k.pass + ')'); cols.push([c, k, 'r']); }
       });
     });
     var rows = [head];
@@ -1279,7 +1340,7 @@
     if (!st.eSubject) { showToast('เลือกรายวิชาก่อน จึงจะนำเข้าคะแนนได้', 'error'); return; }
     var clos = closOf(st.eYear, st.eSem, st.eSubject);
     var byCode = {};
-    clos.forEach(function (c) { byCode[s(c.clo_code).toLowerCase()] = c; });
+    clos.forEach(function (c) { byCode[cloRef(c).toLowerCase()] = c; });
     var rawHead = rows[0].map(s);
     var iSid = rawHead.map(function (h) { return h.toLowerCase(); }).indexOf('student_id');
     var cols = [], bad = [];
@@ -1398,7 +1459,7 @@
           type: 'plo_clo', curriculum_year: st.curriculum,
           academic_year: st.eYear, semester: st.eSem, year_level: st.eLevel, batch: batchA,
           subject_code: xa.subj.subject_code, subject_name: xa.subj.subject_name,
-          clo_code: xa.code, statement_th: xa.text, plo_code: xa.plo,
+          clo_code: xa.code, section: xa.sec || '', statement_th: xa.text, plo_code: xa.plo,
           max_score: xa.max, pass_score: xa.pass, updated_by: whoA
         };
         var rA = xa.exist
@@ -1413,11 +1474,11 @@
         var mapA = {};
         subjectsOf(st.eYear, st.eSem, st.eLevel).forEach(function (sb2) {
           closOf(st.eYear, st.eSem, sb2.subject_code).forEach(function (c) {
-            mapA[s(sb2.subject_code) + '|' + s(c.clo_code)] = c;
+            mapA[s(sb2.subject_code) + '|' + cloRef(c)] = c;
           });
         });
         p.scores.forEach(function (x) {
-          var c = mapA[s(x.subject_code) + '|' + s(x.clo_code)];
+          var c = mapA[s(x.subject_code) + '|' + refOf(x.clo_code, x.sec)];
           if (!c) { missA++; return; }
           payloadA.push({ clo_id: cloNum(c), student_id: x.student_id, score: x.score, updated_by: whoA });
         });
@@ -1461,7 +1522,7 @@
           type: 'plo_clo', curriculum_year: st.curriculum,
           academic_year: st.eYear, semester: st.eSem, year_level: st.eLevel, batch: batch,
           subject_code: x.subj.subject_code, subject_name: x.subj.subject_name,
-          clo_code: x.code, statement_th: x.text, plo_code: x.plo,
+          clo_code: x.code, section: x.sec || '', statement_th: x.text, plo_code: x.plo,
           max_score: x.max, pass_score: x.pass, updated_by: who
         };
         var opts = { noRefresh: i < p.plan.length - 1 };
@@ -1523,7 +1584,7 @@
       ? '<p class="text-sm text-gray-400 mb-3">ยังไม่มี CLO ในรายวิชานี้</p>'
       : '<div class="overflow-x-auto mb-3"><table class="w-full text-sm">'
         + '<thead><tr class="bg-surface text-left">'
-        + '<th class="px-3 py-2 font-semibold w-20">CLO</th>'
+        + '<th class="px-3 py-2 font-semibold w-28">CLO</th>'
         + '<th class="px-3 py-2 font-semibold">คำอธิบาย</th>'
         + '<th class="px-3 py-2 font-semibold w-44">PLO ที่ผูก</th>'
         + '<th class="px-3 py-2 font-semibold text-center w-24">คะแนนเต็ม</th>'
@@ -1531,7 +1592,7 @@
         + '<th class="px-3 py-2 w-20"></th></tr></thead><tbody>'
         + rows.map(function (r) {
             return '<tr class="border-t border-gray-50">'
-              + '<td class="px-3 py-2 font-semibold">' + esc(r.clo_code) + '</td>'
+              + '<td class="px-3 py-2 font-semibold whitespace-nowrap">' + esc(r.clo_code) + secBadge(r) + '</td>'
               + '<td class="px-3 py-2">' + esc(r.statement_th) + '</td>'
               + '<td class="px-3 py-2"><span class="px-2 py-0.5 rounded-lg bg-blue-50 text-primary text-xs">'
               + esc(r.plo_code || '—') + '</span>'
@@ -1553,12 +1614,19 @@
           }).join('')
         + '</tbody></table></div>';
 
+    var secs = sectionsOf(subj);
     var form = '<div class="border border-gray-100 rounded-xl p-4 bg-surface/50 mb-4">'
-      + '<p class="text-xs font-semibold text-gray-600 mb-2">เพิ่ม CLO</p>'
+      + '<p class="text-xs font-semibold text-gray-600 mb-2">เพิ่ม CLO'
+      + (secs.length ? ' <span class="font-normal text-gray-500">— รายวิชานี้เป็น' + esc(s(subj.theory_practice)) + ' เลือกส่วนของ CLO ได้ (รหัสเดียวกันอยู่ได้ทั้งสองส่วน)</span>' : '') + '</p>'
       + '<div class="grid md:grid-cols-12 gap-2 items-end">'
+      + (secs.length
+          ? '<div class="md:col-span-2"><label class="block text-[11px] text-gray-500 mb-1">ส่วน</label>'
+            + '<select id="cloSec" class="w-full border rounded-lg px-2 py-1.5 text-sm">'
+            + secs.map(function (x) { return '<option value="' + esc(x) + '">' + esc(x) + '</option>'; }).join('') + '</select></div>'
+          : '')
       + '<div class="md:col-span-2"><label class="block text-[11px] text-gray-500 mb-1">รหัส CLO</label>'
       + '<input id="cloCode" value="CLO' + (rows.length + 1) + '" class="w-full border rounded-lg px-2 py-1.5 text-sm"></div>'
-      + '<div class="md:col-span-4"><label class="block text-[11px] text-gray-500 mb-1">คำอธิบาย</label>'
+      + '<div class="md:col-span-' + (secs.length ? '2' : '4') + '"><label class="block text-[11px] text-gray-500 mb-1">คำอธิบาย</label>'
       + '<input id="cloText" class="w-full border rounded-lg px-2 py-1.5 text-sm" placeholder="ผู้เรียนสามารถ..."></div>'
       + '<div class="md:col-span-3"><label class="block text-[11px] text-gray-500 mb-1">ผูกกับ PLO</label>' + ploSelect('cloPlo', '') + '</div>'
       + '<div class="md:col-span-1"><label class="block text-[11px] text-gray-500 mb-1">เต็ม</label>'
@@ -1582,6 +1650,7 @@
   window.ploAddClo = async function (wholeYear) {
     var st = state();
     var code = s((document.getElementById('cloCode') || {}).value);
+    var sec = normSec((document.getElementById('cloSec') || {}).value);
     var text = s((document.getElementById('cloText') || {}).value);
     var plo = s((document.getElementById('cloPlo') || {}).value);
     var max = '100';   // คะแนนเต็มเป็นร้อยละเสมอ
@@ -1601,13 +1670,15 @@
     var made = 0, skipped = 0;
     for (var i = 0; i < targets.length; i++) {
       var t = targets[i];
-      var dup = closOf(st.eYear, st.eSem, t.subject_code).some(function (c) { return s(c.clo_code) === code; });
+      // วิชาปลายทางไม่มีส่วนที่เลือก (เช่น เป็นวิชาทฤษฎีล้วน) → เพิ่มเป็น CLO ไม่แยกส่วน
+      var tSec = sectionsOf(t).indexOf(sec) >= 0 ? sec : '';
+      var dup = closOf(st.eYear, st.eSem, t.subject_code).some(function (c) { return sameClo(c, code, tSec); });
       if (dup) { skipped++; continue; }
       var r = await GSheetDB.create({
         type: 'plo_clo', curriculum_year: st.curriculum,
         academic_year: st.eYear, semester: st.eSem, year_level: st.eLevel, batch: batch,
         subject_code: t.subject_code, subject_name: t.subject_name,
-        clo_code: code, statement_th: text, plo_code: plo,
+        clo_code: code, section: tSec, statement_th: text, plo_code: plo,
         max_score: max, pass_score: pass,
         sort_order: closOf(st.eYear, st.eSem, t.subject_code).length + 1,
         updated_by: who
@@ -1638,6 +1709,17 @@
     var html = '<div class="space-y-3">'
       + '<p class="text-xs text-gray-500">รายวิชา ' + esc(rec.subject_code) + ' ' + esc(rec.subject_name)
       + ' · ปีการศึกษา ' + esc(rec.academic_year) + ' ภาคการศึกษาที่ ' + esc(rec.semester) + '</p>'
+      + (function () {
+          var subjR = subjectsOf(rec.academic_year, rec.semester, rec.year_level).filter(function (x) { return s(x.subject_code) === s(rec.subject_code); })[0];
+          var ss = sectionsOf(subjR);
+          if (secOf(rec) && ss.indexOf(secOf(rec)) < 0) ss = ss.concat([secOf(rec)]);
+          if (!ss.length) return '';
+          return '<div><label class="block text-[11px] text-gray-500 mb-1">ส่วน</label>'
+            + '<select id="cloESec" class="w-full border rounded-lg px-2 py-1.5 text-sm">'
+            + '<option value=""' + (secOf(rec) ? '' : ' selected') + '>ไม่แยกส่วน</option>'
+            + ss.map(function (x) { return '<option value="' + esc(x) + '"' + (secOf(rec) === x ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('')
+            + '</select></div>';
+        })()
       + '<div><label class="block text-[11px] text-gray-500 mb-1">รหัส CLO</label>'
       + '<input id="cloECode" value="' + esc(rec.clo_code) + '" class="w-full border rounded-lg px-2 py-1.5 text-sm"></div>'
       + '<div><label class="block text-[11px] text-gray-500 mb-1">คำอธิบาย</label>'
@@ -1655,7 +1737,7 @@
       + '</div>';
 
     // คืน Promise ออกไปด้วย เพื่อให้ผู้เรียกรอจนบันทึกเสร็จจริงได้
-    showModal('แก้ไข ' + esc(rec.clo_code), html, function () { return window.ploSaveClo(id); }, 'max-w-xl');
+    showModal('แก้ไข ' + esc(cloRef(rec)), html, function () { return window.ploSaveClo(id); }, 'max-w-xl');
   };
 
   window.ploSaveClo = async function (id) {
@@ -1664,6 +1746,8 @@
     var v = function (el) { return s(((typeof document !== 'undefined' && document.getElementById(el)) || {}).value); };
     var code = v('cloECode'), text = v('cloEText'), plo = v('cloEPlo'),
         max = '100', pass = v('cloEPass');   // คะแนนเต็มเป็นร้อยละเสมอ
+    var secEl = (typeof document !== 'undefined') && document.getElementById('cloESec');
+    var sec = secEl ? normSec(secEl.value) : secOf(rec);
     if (pass !== '' && (!isFinite(Number(pass)) || Number(pass) < 0 || Number(pass) > 100)) { showToast('เกณฑ์ผ่านต้องอยู่ระหว่าง 0–100 (%)', 'error'); return; }
     if (!code) { showToast('กรุณากรอกรหัส CLO', 'error'); return; }
     if (!plo) { showToast('กรุณาเลือก PLO ที่ CLO นี้ผูกอยู่', 'error'); return; }
@@ -1671,12 +1755,12 @@
 
     // กันรหัสซ้ำกับ CLO ข้ออื่นในรายวิชาเดียวกัน
     var dup = closOf(rec.academic_year, rec.semester, rec.subject_code).some(function (c) {
-      return String(c.__backendId) !== String(id) && s(c.clo_code) === code;
+      return String(c.__backendId) !== String(id) && sameClo(c, code, sec);
     });
-    if (dup) { showToast('รหัส ' + code + ' มีอยู่แล้วในรายวิชานี้', 'error'); return; }
+    if (dup) { showToast(refOf(code, sec) + ' มีอยู่แล้วในรายวิชานี้', 'error'); return; }
 
     var r = await GSheetDB.update(Object.assign(noScores(rec), {
-      clo_code: code, statement_th: text, plo_code: plo,
+      clo_code: code, section: sec, statement_th: text, plo_code: plo,
       max_score: max, pass_score: pass,
       updated_by: (APP.currentUser && APP.currentUser.name) || ''
     }));
@@ -1819,7 +1903,7 @@
     var st = state();
     st._compDraft = { id: id, list: comps(rec).map(function (c) { return Object.assign({}, c); }) };
     if (!st._compDraft.list.length) st._compDraft.list = [{ id: 'c1', name: '', full: '', weight: '', pass: '', retake: false, rule: 'cap' }];
-    showModal('องค์ประกอบคะแนน ' + esc(rec.clo_code), '<div id="ploCompBox"></div>', null, 'max-w-4xl');
+    showModal('องค์ประกอบคะแนน ' + esc(cloRef(rec)), '<div id="ploCompBox"></div>', null, 'max-w-4xl');
     compDraw();
   };
   function compDraw() {
@@ -1953,7 +2037,7 @@
             return '<button type="button" data-no-loading onclick="ploSet(\'gridClo\',\'' + esc(r.__backendId) + '\')" title="' + esc(r.statement_th) + '" '
               + 'class="flex-shrink-0 text-left rounded-xl border px-3 py-1.5 transition '
               + (on ? 'border-primary bg-blue-50' : 'border-gray-100 bg-white hover:bg-surface') + '">'
-              + '<span class="block text-sm font-semibold ' + (on ? 'text-primary' : 'text-gray-700') + '">' + esc(r.clo_code) + '</span>'
+              + '<span class="block text-sm font-semibold whitespace-nowrap ' + (on ? 'text-primary' : 'text-gray-700') + '">' + esc(r.clo_code) + secBadge(r) + '</span>'
               + '<span class="block text-[10px] ' + (f === studs.length ? 'text-emerald-600' : 'text-gray-400') + '">'
               + '<span id="ploChip_' + esc(r.__backendId) + '">' + f + '</span>/' + studs.length + ' คน</span></button>';
           }).join('') + '</div>';
@@ -1963,7 +2047,7 @@
           + ' class="px-3 py-1.5 rounded-lg border bg-white text-sm ' + (r ? 'hover:bg-gray-50' : 'opacity-40') + '">' + label + '</button>';
       };
       var info = '<div class="flex flex-wrap items-start justify-between gap-3 bg-surface/60 border border-blue-50 rounded-xl px-4 py-3 mb-3">'
-        + '<div class="min-w-0"><p class="text-sm font-semibold text-gray-800">' + esc(cur.clo_code)
+        + '<div class="min-w-0"><p class="text-sm font-semibold text-gray-800">' + esc(cur.clo_code) + secBadge(cur)
         + ' <span class="ml-1 px-2 py-0.5 rounded-lg bg-blue-50 text-primary text-xs font-normal">' + esc(cur.plo_code || '—') + '</span></p>'
         + '<p class="text-xs text-gray-600 mt-0.5">' + esc(cur.statement_th || '') + '</p>'
         + '<p class="text-[11px] text-gray-400 mt-0.5">' + (comps(cur).length
@@ -1993,8 +2077,8 @@
         + '<thead class="sticky top-0 z-20"><tr class="bg-surface text-left">'
         + '<th class="px-3 py-2 font-semibold sticky left-0 bg-surface z-30 min-w-[14rem]">นักศึกษา</th>'
         + rows.map(function (r) {
-            return '<th class="px-1 py-2 font-semibold text-center whitespace-nowrap bg-surface" title="' + esc(r.clo_code + ' · ' + (r.plo_code || '') + ' — ' + (r.statement_th || '')) + '">'
-              + esc(r.clo_code) + '<div class="text-[10px] font-normal text-gray-400">' + esc(r.plo_code || '') + ' · ผ่าน ' + esc(r.pass_score) + '%</div></th>';
+            return '<th class="px-1 py-2 font-semibold text-center whitespace-nowrap bg-surface" title="' + esc(cloRef(r) + ' · ' + (r.plo_code || '') + ' — ' + (r.statement_th || '')) + '">'
+              + esc(r.clo_code) + secBadge(r) + '<div class="text-[10px] font-normal text-gray-400">' + esc(r.plo_code || '') + ' · ผ่าน ' + esc(r.pass_score) + '%</div></th>';
           }).join('')
         + '<th class="px-2 py-2 font-semibold text-center whitespace-nowrap bg-surface">ผ่าน</th></tr></thead><tbody>'
         + studs.map(function (u) {
