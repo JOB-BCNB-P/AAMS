@@ -7276,6 +7276,39 @@ function showEditPracticumSiteModal(id) {
   };
 }
 
+/* รายวิชาที่อาจารย์พิเศษสอน — รวมจาก 2 แหล่ง
+   1) ทำเนียบอาจารย์ (ประเภทอาจารย์พิเศษ) ชื่อเดียวกัน ปีการศึกษาเดียวกัน → subjects_taught (คั่นด้วย ||)
+   2) ช่อง subjects เดิมของระเบียนในระบบทะเบียน (ข้อมูลรุ่นแรก)
+   จับคู่ชื่อแบบไม่สนช่องว่างและคำนำหน้า/ตำแหน่ง */
+const _SP_PREFIX = /^(ศาสตราจารย์|รองศาสตราจารย์|ผู้ช่วยศาสตราจารย์|ศ\.|รศ\.|ผศ\.|ดร\.|นพ\.|พญ\.|นาย|นางสาว|นาง|น\.ส\.|ว่าที่ร้อยตรี|พ\.ต\.ต\.|\s)+/;
+function _spNameKey(v) {
+  let x = norm(v).replace(/\s+/g, ' ');
+  for (let i = 0; i < 4; i++) x = x.replace(_SP_PREFIX, '');
+  return x.replace(/\s+/g, '').toLowerCase();
+}
+function specialTaughtOf(t) {
+  const key = _spNameKey(t.name), y = norm(t.academic_year);
+  const out = [];
+  getDataByType('teacher_directory').forEach(d => {
+    if (!isSpecialTeacher(d) || _spNameKey(d.name) !== key) return;
+    if (y && norm(d.academic_year) && norm(d.academic_year) !== y) return;
+    String(d.subjects_taught || '').split(/\s*\|\|\s*|\n/).forEach(x => { if (norm(x)) out.push(norm(x)); });
+  });
+  String(t.subjects || '').split(',').forEach(x => { if (norm(x)) out.push(norm(x)); });
+  const seen = new Set();
+  return out.map(x => splitSubjectEntry(x, y)).filter(it => {
+    const k = (it.code + '|' + it.name).toLowerCase();
+    if (seen.has(k)) return false; seen.add(k); return true;
+  });
+}
+function specialTaughtCell(t) {
+  const items = specialTaughtOf(t);
+  if (!items.length) return '<td class="px-4 py-3 align-top text-xs text-gray-400">ยังไม่ระบุ<span class="block text-[10px]">(กรอกได้ที่ทำเนียบอาจารย์ → อาจารย์พิเศษ)</span></td>';
+  return '<td class="px-4 py-3 align-top">' + items.map(it =>
+    '<div class="py-0.5 text-sm">' + (it.code ? '<span class="font-mono text-xs text-gray-500 mr-1">' + htmlEsc(it.code) + '</span>' : '') + htmlEsc(it.name) + '</div>').join('')
+    + '<span class="text-[10px] text-gray-400">' + items.length + ' รายวิชา</span></td>';
+}
+
 function specialTeachersPage() {
   const isAdmin = isAdminOnlyRole();
   const all = getDataByType('special_teacher');
@@ -7283,7 +7316,8 @@ function specialTeachersPage() {
   const selYear = APP.filters._specialTeacherYear || '';
   const kw = norm(APP.filters._specialTeacherSearch || '').toLowerCase();
   let data = selYear ? all.filter(t => norm(t.academic_year) === selYear) : all.slice();
-  if (kw) data = data.filter(t => [t.name, t.academic_position, t.agency, t.subjects, t.edu_level].map(v => norm(v).toLowerCase()).join(' ').includes(kw));
+  if (kw) data = data.filter(t => [t.name, t.academic_position, t.agency, t.subjects, t.edu_level]
+    .concat(specialTaughtOf(t).map(it => it.code + ' ' + it.name)).map(v => norm(v).toLowerCase()).join(' ').includes(kw));
   data.sort((a, b) => norm(b.academic_year).localeCompare(norm(a.academic_year)) || (a.name || '').localeCompare(b.name || ''));
   const total = data.length;
   const paged = paginate(data);
@@ -7309,13 +7343,14 @@ function specialTeachersPage() {
   </div>
   <div class="bg-white rounded-2xl border border-blue-100 overflow-hidden">
     <div class="overflow-x-auto"><table class="w-full text-sm">
-      <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">ปีการศึกษา</th><th class="px-4 py-3 font-semibold">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold">ตำแหน่ง</th><th class="px-4 py-3 font-semibold">หน่วยงาน</th>${isAdmin ? '<th class="px-4 py-3"></th>' : ''}</tr></thead>
+      <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">ปีการศึกษา</th><th class="px-4 py-3 font-semibold">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold">ตำแหน่ง</th><th class="px-4 py-3 font-semibold">หน่วยงาน</th><th class="px-4 py-3 font-semibold">รายวิชาที่สอน</th>${isAdmin ? '<th class="px-4 py-3"></th>' : ''}</tr></thead>
       <tbody>${paged.length ? paged.map(t => `<tr class="border-t hover:bg-gray-50">
         <td class="px-4 py-3 align-top">${t.academic_year || ''}</td>
         <td class="px-4 py-3 font-medium align-top">${t.name || ''}</td>
         <td class="px-4 py-3 align-top">${t.academic_position || ''}</td>
         <td class="px-4 py-3 align-top">${t.agency || ''}</td>
-        ${isAdmin ? `<td class="px-4 py-3 align-top"><div class="flex gap-1"><button onclick="showEditSpecialTeacherRegModal('${t.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${t.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>` : ''}</tr>`).join('') : `<tr><td colspan="${isAdmin ? 5 : 4}" class="px-4 py-8 text-center text-gray-400">ไม่มีข้อมูล</td></tr>`}</tbody>
+        ${specialTaughtCell(t)}
+        ${isAdmin ? `<td class="px-4 py-3 align-top"><div class="flex gap-1"><button onclick="showEditSpecialTeacherRegModal('${t.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${t.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>` : ''}</tr>`).join('') : `<tr><td colspan="${isAdmin ? 6 : 5}" class="px-4 py-8 text-center text-gray-400">ไม่มีข้อมูล</td></tr>`}</tbody>
     </table></div>
   </div>
   ${paginationHTML(total, APP.pagination.perPage, APP.pagination.page, 'changePage')}`;
