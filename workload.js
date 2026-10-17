@@ -1243,7 +1243,7 @@
   /* ---------------- ตัวเลือกชั้นปี/ภาคเรียน ---------------- */
   /* ขั้นที่ 1-2 ของหน้ากรอกภาระงาน : เลือกชั้นปี (มีเลขรุ่นกำกับ) และภาคการศึกษา
      ทำเป็นช่องเลื่อนลงเรียงในแถวเดียวกัน ประหยัดพื้นที่และเห็นค่าที่เลือกอยู่ทันที */
-  function cohortPicker() {
+  function cohortPicker(bare) {
     var st = state();
     var sel = function (label, icon, key, opts, cur) {
       return '<div class="min-w-[13rem]">'
@@ -1261,11 +1261,12 @@
       var tag = (b ? 'รุ่น ' + b : '') + (p ? (b ? ' · ' : '') + 'รหัส ' + p : '');
       return [l, 'ชั้นปีที่ ' + l + (tag ? ' (' + tag + ')' : '')];
     });
-    return '<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">'
-      + '<div class="flex flex-wrap items-end gap-3">'
+    var inner = '<div class="flex flex-wrap items-end gap-3">'
       + sel('เลือกชั้นปี', 'layers', 'level', levelOpts, st.level)
       + sel('ภาคการศึกษา', 'calendar', 'sem', SEMS.map(function (x) { return [x, semLabel(x)]; }), st.sem)
-      + '</div></div>';
+      + '</div>';
+    if (bare) return inner;
+    return '<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">' + inner + '</div>';
   }
 
   function groupSel() {
@@ -1537,21 +1538,29 @@
 
   // บรรทัดบอกว่ากิจกรรมนี้นับให้ใครบ้าง พร้อมปุ่มเลือก
   function partLine(mkey, i, r, readonly) {
-    // โหมดกรอกเป็นกลุ่มระบุผู้เข้าร่วมไว้ที่ตัวกลุ่มแล้ว ไม่ต้องถามซ้ำในแต่ละแถว
+    // โหมดกรอกรายบุคคลระบุผู้เข้าร่วมไว้ที่ตัวกลุ่มแล้ว ไม่ต้องถามซ้ำในแต่ละแถว
     if (state().mode === 'group') return '';
     var list = partOf(r);
     var total = cohortStudents(state().level).length;
-    var txt = list.length
-      ? '<span class="text-amber-700">เฉพาะ ' + list.length + ' คน</span>'
-      : '<span class="text-gray-500">นักศึกษาทุกคนในชั้น' + (total ? ' (' + total + ' คน)' : '') + '</span>';
-    return '<div class="flex items-center gap-2 text-[11px] pl-1">'
-      + '<i data-lucide="users" class="w-3.5 h-3.5 text-gray-400"></i>'
-      + '<span>ผู้เข้าร่วม: ' + txt + '</span>'
-      + (readonly ? '' :
-          '<button type="button" onclick="wlPickStudents(\'' + mkey + '\',' + i + ')" '
-          + 'class="text-primary hover:underline">เลือกนักศึกษา</button>'
-          + (list.length ? ' <button type="button" onclick="wlClearStudents(\'' + mkey + '\',' + i + ')" '
-              + 'class="text-gray-400 hover:text-gray-600">ล้าง (ให้นับทุกคน)</button>' : ''))
+    if (readonly) {
+      return '<div class="flex items-center gap-2 text-[11px] pl-1"><i data-lucide="users" class="w-3.5 h-3.5 text-gray-400"></i>'
+        + '<span>ผู้เข้าร่วม: ' + (list.length ? '<span class="text-amber-700">เฉพาะ ' + list.length + ' คน</span>'
+          : '<span class="text-gray-500">ทุกคนในชั้น' + (total ? ' (' + total + ' คน)' : '') + '</span>') + '</span></div>';
+    }
+    /* ถามตรง ๆ ว่า "ใครเข้าร่วม" เป็นตัวเลือก 2 ปุ่ม แทนลิงก์เล็ก ๆ ที่ผู้ใช้มักมองข้าม
+       ทุกคนในชั้น = ค่าเริ่มต้น · เฉพาะบางคน = เปิดรายชื่อให้ติ๊ก */
+    var seg = function (on, label, onclick, tone) {
+      return '<button type="button" onclick="' + onclick + '" class="px-2.5 py-1 text-[11px] border transition '
+        + (on ? (tone === 'amber' ? 'bg-amber-500 border-amber-500 text-white' : 'bg-primary border-primary text-white')
+              : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50') + '">' + label + '</button>';
+    };
+    return '<div class="flex flex-wrap items-center gap-2 text-[11px] pl-1">'
+      + '<span class="text-gray-600 font-medium"><i data-lucide="users" class="w-3.5 h-3.5 inline text-gray-400"></i> ใครเข้าร่วม:</span>'
+      + '<span class="inline-flex rounded-lg overflow-hidden">'
+      + seg(!list.length, 'ทุกคนในชั้น' + (total ? ' (' + total + ' คน)' : ''), 'wlClearStudents(\'' + mkey + '\',' + i + ')')
+      + seg(!!list.length, 'เฉพาะบางคน' + (list.length ? ' · ' + list.length + ' คน' : ''), 'wlPickStudents(\'' + mkey + '\',' + i + ')', 'amber')
+      + '</span>'
+      + (list.length ? '<button type="button" onclick="wlPickStudents(\'' + mkey + '\',' + i + ')" class="text-primary hover:underline">แก้รายชื่อ</button>' : '')
       + '</div>';
   }
 
@@ -1614,7 +1623,7 @@
       + '</div>'
       + '<p class="text-[11px] text-gray-400">' + (p.kind === 'group'
           ? 'ค่าที่กรอกจะถูกบันทึกเป็นค่าเฉพาะรายของนักศึกษาทุกคนที่เลือก'
-          : 'ถ้าไม่เลือกใครเลย ระบบจะนับกิจกรรมนี้ให้นักศึกษาทุกคนในชั้น') + '</p>'
+          : 'ติ๊กเฉพาะคนที่เข้าร่วมกิจกรรมนี้ · ระบบนับชั่วโมงกิจกรรมนี้ให้เฉพาะคนที่ติ๊ก · ไม่ติ๊กใครเลยหรือติ๊กครบทุกคน = นับให้ทุกคนในชั้น') + '</p>'
       + '</div>';
   }
 
@@ -2206,25 +2215,80 @@
     }).join('');
   }
 
+  /* ---------------- หน้ากรอกภาระงาน : ขั้นตอนมีหมายเลข ----------------
+     1 เลือกชั้นปี/ภาค → 2 เลือกพันธกิจ → 3 เพิ่มกิจกรรม + ระบุผู้เข้าร่วม → 4 ตรวจสรุปและบันทึก
+     กรณีหลัก : กรอกทั้งชั้นครั้งเดียว กิจกรรมที่บางคนเข้า ให้เลือก "เฉพาะบางคน" ที่แถวนั้น
+     กรณีพิเศษ : กรอกรายบุคคล (ทั้งชุดของคนนั้นต่างจากชั้น) แยกไว้ท้ายหน้า ไม่ปนกับขั้นตอนหลัก */
+  function wlStep(no, title, sub, inner, stt, final) {
+    var cls = 'ems-step' + (stt === 'done' ? ' is-done' : '') + (stt === 'active' ? ' is-active' : '') + (final ? ' ems-step-final' : '');
+    return '<section class="' + cls + '"' + (stt === 'wait' ? ' style="opacity:.6"' : '') + '>'
+      + '<div class="ems-step-head"><span class="ems-step-no" aria-hidden="true">' + no + '</span>'
+      + '<div class="min-w-0"><p class="ems-step-title">' + esc(title) + '</p>'
+      + (sub ? '<p class="ems-step-sub">' + sub + '</p>' : '') + '</div></div>'
+      + '<div class="ems-step-body space-y-3">' + inner + '</div></section>';
+  }
+  function howToBox() {
+    return '<div class="grid sm:grid-cols-2 gap-2 text-xs">'
+      + '<div class="rounded-xl border border-blue-100 bg-blue-50/60 p-3"><p class="font-semibold text-primary mb-1"><i data-lucide="users" class="w-3.5 h-3.5 inline"></i> กิจกรรมที่ทั้งชั้นเข้าร่วม</p>'
+      + '<p class="text-gray-600">กด <b>+ เพิ่มแถว</b> กรอกชื่อกิจกรรม วันที่และเวลา (ระบบคิดชั่วโมงให้) · "ใครเข้าร่วม" เป็น <b>ทุกคนในชั้น</b> อยู่แล้ว ไม่ต้องทำอะไรเพิ่ม</p></div>'
+      + '<div class="rounded-xl border border-amber-100 bg-amber-50/60 p-3"><p class="font-semibold text-amber-700 mb-1"><i data-lucide="user-check" class="w-3.5 h-3.5 inline"></i> กิจกรรมที่บางคนเข้าร่วม</p>'
+      + '<p class="text-gray-600">เพิ่มแถวเหมือนกัน แล้วกด <b>เฉพาะบางคน</b> ติ๊กรายชื่อคนที่เข้า · ระบบนับชั่วโมงกิจกรรมนั้นให้เฉพาะคนที่ติ๊ก คนอื่นในชั้นไม่ได้ชั่วโมงนี้</p></div>'
+      + '</div>';
+  }
+  // สรุปก่อนบันทึก : กิจกรรมทั้งชั้นกี่รายการ · เฉพาะบางคนกี่รายการ (ใครบ้าง)
+  function partSummary() {
+    var st = state(), d = draft();
+    if (st.mode === 'group') return '';
+    var all = 0, some = [];
+    shownMissions().forEach(function (m) {
+      if (m.subject) return;
+      (d[m.key] || []).forEach(function (r) {
+        var c = partOf(r).length;
+        if (c) some.push({ m: m, r: r, c: c }); else all++;
+      });
+    });
+    if (!all && !some.length) return '';
+    return '<div class="rounded-xl border border-gray-100 bg-white p-3 text-xs">'
+      + '<p class="text-gray-700 mb-1"><i data-lucide="list-checks" class="w-3.5 h-3.5 inline text-primary"></i> กิจกรรม (ไม่รวมรายวิชา): '
+      + '<b class="text-primary">ทั้งชั้น ' + all + ' รายการ</b> · <b class="text-amber-700">เฉพาะบางคน ' + some.length + ' รายการ</b></p>'
+      + (some.length ? '<ul class="text-gray-600 space-y-0.5 pl-5 list-disc">' + some.map(function (x) {
+          return '<li>' + esc(norm(x.r.activity) || '(ยังไม่ได้ตั้งชื่อ)') + ' <span class="text-gray-400">· ' + esc(x.m.short) + '</span> — <span class="text-amber-700">' + x.c + ' คน</span></li>';
+        }).join('') + '</ul>' : '')
+      + '</div>';
+  }
   function planTab() {
     var st = state();
     if (!canEdit()) return cohortPicker() + readonlyPlan();
+    var group = st.mode === 'group';
     var sel = groupSel();
-    var badge = function (txt, cls) {
-      return '<span class="text-[11px] px-2 py-1 rounded-lg ' + cls + '">' + esc(txt) + '</span>';
-    };
-    return cohortPicker()
-      + missionScopeNote()
-      + sectionBox('cohort', 'users', 'กรอกข้อมูลทั้งชั้นปี',
-          'ค่ามาตรฐานที่ใช้กับนักศึกษาทุกคนใน' + esc(levelLabel(st.year, st.level)) + ' ' + esc(semLabel(st.sem)),
-          badge(cohortStudents(st.level).length + ' คน', 'bg-blue-50 text-blue-700'),
-          function () { return missionPicker() + wlCsvPanel('cohort') + grandCard(false) + foldBar() + missionEditors(false); })
-      + sectionBox('group', 'user-check', 'กรอกรายบุคคล (เลือกได้หลายคน)',
-          'ติ๊กเลือกนักศึกษาแล้วบันทึกค่าเดียวกันให้ทุกคนที่เลือก',
-          badge(sel.length ? 'เลือกแล้ว ' + sel.length + ' คน' : 'ยังไม่ได้เลือก',
-            sel.length ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'),
-          function () { return missionPicker() + groupPicker() + wlCsvPanel('group') + grandCard(true) + foldBar() + missionEditors(true); })
-      + ovrPanel();
+    var nStu = cohortStudents(st.level).length;
+    var mLabel = st.mission ? ((missionOf(st.mission) || {}).label || '') : 'ทุกพันธกิจ';
+    var scope = esc(levelLabel(st.year, st.level)) + ' · ' + esc(semLabel(st.sem)) + ' · ปีการศึกษา ' + esc(st.year);
+    var modeBar = group
+      ? '<div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 mb-3 text-sm">'
+        + '<span class="text-amber-800"><i data-lucide="user-check" class="w-4 h-4 inline"></i> <b>กำลังกรอกรายบุคคล (กรณีพิเศษ)</b> — ค่าที่บันทึกจะใช้แทนค่าของชั้นทั้งชุด สำหรับคนที่เลือกเท่านั้น</span>'
+        + '<button type="button" onclick="wlSet(\'mode\',\'cohort\')" class="px-3 py-1.5 rounded-lg bg-white border border-amber-300 text-amber-800 text-xs hover:bg-amber-100">'
+        + '<i data-lucide="arrow-left" class="w-3.5 h-3.5 inline"></i> กลับไปกรอกทั้งชั้น</button></div>'
+      : '';
+    var steps = '<div class="ems-stepped bg-white rounded-2xl border border-blue-100 p-5 mb-4">'
+      + wlStep(1, 'เลือกชั้นปีและภาคการศึกษา', scope + ' · นักศึกษา ' + nStu + ' คน', cohortPicker(true), 'done')
+      + wlStep(2, 'เลือกพันธกิจที่จะกรอก', 'แนะนำให้กรอกทีละพันธกิจ · เลือกแล้ว: <b>' + esc(mLabel) + '</b>',
+          missionPicker().replace(/<p class="text-xs font-semibold text-gray-600 mb-2">[\s\S]*?<\/p>/, '') + missionScopeNote(), st.mission ? 'done' : 'active')
+      + wlStep(3, group ? 'เลือกนักศึกษา แล้วกรอกกิจกรรม' : 'เพิ่มกิจกรรม และเลือกว่าใครเข้าร่วม',
+          group ? 'ติ๊กนักศึกษาที่ต้องการ แล้วกรอกรายการที่จะใช้กับคนกลุ่มนี้'
+                : 'แต่ละแถว = 1 กิจกรรม · กำหนด "ใครเข้าร่วม" ได้ทีละแถว',
+          (group ? groupPicker() : howToBox()) + wlCsvPanel(group ? 'group' : 'cohort') + foldBar() + missionEditors(group), 'active')
+      + wlStep(4, 'ตรวจสรุปแล้วบันทึก', group
+          ? (sel.length ? 'จะบันทึกให้นักศึกษาที่เลือก ' + sel.length + ' คน' : '<span class="text-amber-700">ยังไม่ได้เลือกนักศึกษาในขั้นที่ 3</span>')
+          : 'บันทึกครั้งเดียวใช้กับทั้งชั้น · กิจกรรม "เฉพาะบางคน" นับให้เฉพาะคนที่ติ๊ก',
+          partSummary() + grandCard(group), 'active', true)
+      + '</div>';
+    var special = group ? '' : '<div class="bg-white rounded-2xl border border-gray-100 p-4 mb-4 flex flex-wrap items-center justify-between gap-3">'
+      + '<div class="min-w-0"><p class="text-sm font-semibold text-gray-700"><i data-lucide="user-cog" class="w-4 h-4 inline text-gray-400"></i> กรณีพิเศษ: กรอกรายบุคคล</p>'
+      + '<p class="text-[11px] text-gray-500">ใช้เมื่อภาระงาน<b>ทั้งชุด</b>ของนักศึกษาบางคนต่างจากเพื่อนในชั้น (เช่น ลาพัก ย้ายเข้ากลางภาค) · '
+      + 'ถ้าแค่บางกิจกรรมที่เข้าไม่เหมือนกัน ใช้ <b>"เฉพาะบางคน"</b> ในขั้นที่ 3 ก็พอ</p></div>'
+      + '<button type="button" onclick="wlSet(\'mode\',\'group\')" class="px-3 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 flex-shrink-0">เปิดการกรอกรายบุคคล</button></div>';
+    return modeBar + steps + special + ovrPanel();
   }
 
   function readonlyPlan() {
