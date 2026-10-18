@@ -567,6 +567,84 @@
   /* ================================================================
      เมนู 2 — ตั้งค่าแบบประเมินรายวิชา
      ================================================================ */
+
+  /* ================= ขั้นตอนมีหมายเลข + แจ้งรายวิชาที่ยังไม่สร้างแบบประเมิน ================= */
+  function evStep(no, title, sub, inner, stt, final) {
+    var cls = 'ems-step' + (stt === 'done' ? ' is-done' : '') + (stt === 'active' ? ' is-active' : '') + (final ? ' ems-step-final' : '');
+    return '<section class="' + cls + '"' + (stt === 'wait' ? ' style="opacity:.6"' : '') + '>'
+      + '<div class="ems-step-head"><span class="ems-step-no" aria-hidden="true">' + no + '</span>'
+      + '<div class="min-w-0"><p class="ems-step-title">' + esc(title) + '</p>'
+      + (sub ? '<p class="ems-step-sub">' + sub + '</p>' : '') + '</div></div>'
+      + '<div class="ems-step-body">' + inner + '</div></section>';
+  }
+  function semKey(v) { return typeof normSem === 'function' ? normSem(v) : s(v); }
+  function semText(v) { return s(v) === '3' ? 'ฤดูร้อน' : s(v); }
+  // รายวิชาที่เปิดสอนแต่ยังไม่มีแบบประเมิน (เทียบรหัสวิชา + ชั้นปี ในปี/ภาคเดียวกัน)
+  function missingSubjects(year, sem, lvl) {
+    var have = {};
+    forms().forEach(function (f) {
+      if (s(f.academic_year) === s(year) && semKey(f.semester) === semKey(sem)) have[s(f.subject_code) + '|' + s(f.year_level)] = 1;
+    });
+    return get('subject').filter(function (x) {
+      return s(x.subject_name) && s(x.academic_year) === s(year) && semKey(x.semester) === semKey(sem)
+        && (!lvl || s(x.year_level) === s(lvl))
+        && !have[s(x.subject_code) + '|' + s(x.year_level)];
+    }).sort(function (a, b) {
+      return (num(a.year_level) - num(b.year_level)) || s(a.subject_code).localeCompare(s(b.subject_code));
+    });
+  }
+  /* แจ้งเตือนเฉพาะในหน้านี้ (ไม่ขึ้นที่กระดิ่ง) สำหรับผู้ดูแลระบบ งานวิชาการ งานทะเบียน
+     ไล่ทุกปี/ภาคที่ใช้ระบบประเมินแล้ว (มีแบบประเมินอย่างน้อย 1 ชุด) รวมปีที่กำลังดู
+     ปีเก่าก่อนเริ่มใช้ระบบจึงไม่ขึ้นมาท่วมรายการ */
+  function canSeeMissing() {
+    var roles = (APP._roles && APP._roles.length) ? APP._roles : [APP.currentRole];
+    return roles.some(function (r) { return r === 'admin' || r === 'academic' || r === 'registrar'; });
+  }
+  function missingAlert() {
+    if (!canSeeMissing()) return '';
+    var st = state();
+    var years = {};
+    forms().forEach(function (f) { if (s(f.academic_year)) years[s(f.academic_year)] = 1; });
+    years[st.year] = 1;
+    var minY = Object.keys(years).sort()[0];
+    var groups = [];
+    Object.keys(years).sort().reverse().forEach(function (y) {
+      ['1', '2', '3'].forEach(function (sm) {
+        var miss = missingSubjects(y, sm, '');
+        if (!miss.length) return;
+        // ภาคที่ยังไม่มีแบบประเมินเลยสักวิชา และเป็นปีเก่ากว่าปีที่เริ่มใช้ระบบ ไม่นับ
+        if (s(y) < s(minY)) return;
+        groups.push({ y: y, sm: sm, list: miss });
+      });
+    });
+    if (!groups.length) return '<div class="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 mb-4 text-sm text-emerald-700">'
+      + '<i data-lucide="check-circle-2" class="w-4 h-4 inline"></i> ทุกรายวิชาที่เปิดสอนมีแบบประเมินครบแล้ว</div>';
+    var total = groups.reduce(function (t, g) { return t + g.list.length; }, 0);
+    return '<details class="rounded-2xl border border-amber-200 bg-amber-50 mb-4"' + (st.missOpen ? ' open' : '') + ' ontoggle="APP._eval.missOpen=this.open">'
+      + '<summary class="cursor-pointer px-4 py-3 flex flex-wrap items-center gap-2 text-sm text-amber-800">'
+      + '<i data-lucide="alert-triangle" class="w-4 h-4"></i><b>รายวิชาที่ยังไม่ได้สร้างแบบประเมิน ' + total + ' วิชา</b>'
+      + '<span class="text-xs text-amber-700">— กดเพื่อดูรายละเอียด · แจ้งเฉพาะผู้ดูแลระบบ งานวิชาการ และงานทะเบียน</span></summary>'
+      + '<div class="px-4 pb-4 space-y-2">'
+      + groups.map(function (g) {
+          var on = g.y === st.year && semKey(g.sm) === semKey(st.sem);
+          var lv = {};
+          g.list.forEach(function (x) { var k = s(x.year_level) || '-'; lv[k] = (lv[k] || 0) + 1; });
+          return '<div class="bg-white rounded-xl border ' + (on ? 'border-amber-300' : 'border-amber-100') + ' p-3">'
+            + '<div class="flex flex-wrap items-center justify-between gap-2">'
+            + '<p class="text-sm font-semibold text-gray-800">ปีการศึกษา ' + esc(g.y) + ' · ภาค ' + esc(semText(g.sm))
+            + ' <span class="text-amber-700">· ' + g.list.length + ' วิชา</span>'
+            + ' <span class="text-xs font-normal text-gray-500">(' + Object.keys(lv).sort().map(function (k) { return 'ปี ' + k + ': ' + lv[k]; }).join(' · ') + ')</span></p>'
+            + (on ? '<span class="text-xs text-amber-700">กำลังดูภาคนี้อยู่</span>'
+                  : '<button type="button" onclick="evalJump(\'' + esc(g.y) + '\',\'' + esc(g.sm) + '\')" class="text-xs px-3 py-1 rounded-lg border border-amber-300 text-amber-800 hover:bg-amber-100">ไปที่ภาคนี้</button>')
+            + '</div>'
+            + '<p class="text-xs text-gray-600 mt-1 leading-relaxed">' + g.list.map(function (x) {
+                return '<span class="whitespace-nowrap">' + esc(s(x.subject_code)) + ' ' + esc(s(x.subject_name)) + ' (ปี ' + esc(s(x.year_level) || '-') + ')</span>';
+              }).join(' · ') + '</p></div>';
+        }).join('')
+      + '</div></details>';
+  }
+  window.evalJump = function (y, sm) { var st = state(); st.year = s(y); st.sem = s(sm); st.lvl = ''; renderCurrentPage(); };
+
   function setupPage() {
     if (!canManage()) return noPerm();
     var st = state();
@@ -575,7 +653,8 @@
 
     var ys = yearsList();
     var list = forms().filter(function (f) {
-      return s(f.academic_year) === st.year && s(f.semester) === st.sem;
+      return s(f.academic_year) === st.year && semKey(f.semester) === semKey(st.sem)
+        && (!st.lvl || s(f.year_level) === s(st.lvl));
     }).sort(function (a, b) {
       return (num(a.year_level) - num(b.year_level)) || s(a.subject_code).localeCompare(s(b.subject_code));
     });
@@ -587,9 +666,9 @@
         options: ys.length ? ys.map(function (y) { return [y, y]; }) : [[st.year, st.year || '-']]
       })
       + selectHTML({ label: 'ภาคการศึกษา', icon: 'layers', value: st.sem, on: "evalSetState('sem',this.value)", options: SEMS })
-      + '<div class="ml-auto">'
-      + btn('evalNewForms()', 'plus', 'สร้างแบบประเมินจากรายวิชา', 'bg-primary text-white hover:bg-primaryDark')
-      + '</div></div></div>';
+      + selectHTML({ label: 'ชั้นปี', icon: 'users', value: st.lvl || '', on: "evalSetState('lvl',this.value)",
+          options: [['', 'ทุกชั้นปี'], ['1', 'ชั้นปีที่ 1'], ['2', 'ชั้นปีที่ 2'], ['3', 'ชั้นปีที่ 3'], ['4', 'ชั้นปีที่ 4']] })
+      + '</div></div>';
 
     var rows = list.map(function (f) {
       var dims = DIMS.filter(function (d) { return s(f[SET_FIELD[d[0]]]); });
@@ -660,9 +739,38 @@
       + '</tr></thead><tbody>' + rows + '</tbody></table></div></div>'
       : emptyBox('ยังไม่มีแบบประเมินของภาคเรียนนี้', 'กดปุ่ม "สร้างแบบประเมินจากรายวิชา" เพื่อสร้างจากรายวิชาที่เปิดสอน');
 
+    var miss = missingSubjects(st.year, st.sem, st.lvl);
+    var scope = 'ปีการศึกษา ' + esc(st.year) + ' · ภาค ' + esc(semText(st.sem)) + (st.lvl ? ' · ชั้นปีที่ ' + esc(st.lvl) : ' · ทุกชั้นปี');
+    var nWarn = 0, cnt = { 'ร่าง': 0, 'เปิด': 0, 'ปิด': 0 }, nRel = 0;
+    list.forEach(function (f) {
+      if ((s(f.set_teacher) && !targetsOf(f.form_code, 'teacher').length) || (s(f.set_site) && !targetsOf(f.form_code, 'site').length)) nWarn++;
+      cnt[s(f.status) || 'ร่าง'] = (cnt[s(f.status) || 'ร่าง'] || 0) + 1;
+      if (s(f.released)) nRel++;
+    });
+    var step2 = miss.length
+      ? '<div class="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">'
+        + '<p class="text-sm text-amber-800 flex-1"><b>' + miss.length + ' รายวิชา</b> ใน' + scope + ' ยังไม่มีแบบประเมิน</p>'
+        + btn('evalNewForms()', 'plus', 'สร้างแบบประเมินจากรายวิชา (' + miss.length + ')', 'bg-primary text-white hover:bg-primaryDark') + '</div>'
+      : '<p class="text-sm text-emerald-700"><i data-lucide="check-circle-2" class="w-4 h-4 inline"></i> ทุกรายวิชาใน' + scope + ' มีแบบประเมินแล้ว</p>';
+    var step4 = '<div class="flex flex-wrap gap-2 text-xs mb-2">'
+      + badge('ร่าง ' + (cnt['ร่าง'] || 0), 'bg-gray-100 text-gray-600') + badge('เปิดให้ประเมิน ' + (cnt['เปิด'] || 0), 'bg-emerald-100 text-emerald-700')
+      + badge('ปิดแล้ว ' + (cnt['ปิด'] || 0), 'bg-amber-100 text-amber-700') + badge('ส่งผลให้ผู้สอนแล้ว ' + nRel, 'bg-sky-100 text-sky-700') + '</div>'
+      + '<ol class="text-xs text-gray-600 list-decimal pl-5 space-y-0.5">'
+      + '<li>ในหน้าตั้งค่าของแต่ละวิชา เปลี่ยน <b>สถานะ</b> เป็น "เปิด" เมื่อพร้อมให้นักศึกษาประเมิน</li>'
+      + '<li>ติดตามจำนวนผู้ตอบด้วยปุ่ม <i data-lucide="users" class="w-3 h-3 inline"></i> ในตาราง</li>'
+      + '<li>ครบกำหนดแล้วเปลี่ยนเป็น "ปิด" แล้วกดปุ่ม <i data-lucide="send" class="w-3 h-3 inline"></i> เพื่อส่งผลประเมินให้ผู้สอน</li></ol>';
     return header('ตั้งค่าแบบประเมินรายวิชา', 'clipboard-list',
       'สร้างแบบประเมินของแต่ละรายวิชา เลือกชุดข้อคำถาม ระบุอาจารย์ผู้สอนและแหล่งฝึก')
-      + bar + table;
+      + missingAlert()
+      + '<div class="ems-stepped">'
+      + evStep(1, 'เลือกปีการศึกษา ภาคการศึกษา และชั้นปี', scope, bar, 'done')
+      + evStep(2, 'สร้างแบบประเมินจากรายวิชาที่เปิดสอน', 'ระบบใส่ชุดข้อคำถามตั้งต้นและผู้ประสานงานรายวิชาให้อัตโนมัติ', step2, miss.length ? 'active' : 'done')
+      + evStep(3, 'ตั้งค่าแบบประเมินทีละรายวิชา', list.length
+          ? list.length + ' แบบประเมิน · กดปุ่ม <i data-lucide="settings" class="w-3 h-3 inline"></i> เพื่อเลือกชุดข้อคำถาม ระบุอาจารย์ผู้สอน/แหล่งฝึก'
+            + (nWarn ? ' · <span class="text-amber-700">ยังตั้งค่าไม่ครบ ' + nWarn + ' วิชา</span>' : '')
+          : 'สร้างแบบประเมินในขั้นที่ 2 ก่อน', table, !list.length ? 'wait' : (nWarn ? 'active' : 'done'))
+      + evStep(4, 'เปิดให้นักศึกษาประเมิน แล้วส่งผลให้ผู้สอน', '', step4, list.length ? 'active' : 'wait', true)
+      + '</div>';
   }
 
   window.evalSetState = function (k, v) { state()[k] = s(v); renderCurrentPage(); };
@@ -676,17 +784,12 @@
     forms().forEach(function (f) {
       if (s(f.academic_year) === st.year && s(f.semester) === st.sem) have[s(f.subject_code) + '|' + s(f.year_level)] = 1;
     });
-    var subs = get('subject').filter(function (x) {
-      return s(x.academic_year) === st.year && (typeof normSem === 'function' ? normSem(x.semester) : s(x.semester)) === st.sem
-        && !have[s(x.subject_code) + '|' + s(x.year_level)];
-    }).sort(function (a, b) {
-      return (num(a.year_level) - num(b.year_level)) || s(a.subject_code).localeCompare(s(b.subject_code));
-    });
+    var subs = missingSubjects(st.year, st.sem, st.lvl);
 
     if (!subs.length) {
       showModal('สร้างแบบประเมินจากรายวิชา',
-        '<p class="text-sm text-gray-600">รายวิชาที่เปิดสอนใน ' + esc(st.year) + ' ภาค ' + esc(st.sem)
-        + ' มีแบบประเมินครบทุกวิชาแล้ว</p>', null, 'max-w-xl');
+        '<p class="text-sm text-gray-600">รายวิชาที่เปิดสอนใน ' + esc(st.year) + ' ภาค ' + esc(semText(st.sem))
+        + (st.lvl ? ' ชั้นปีที่ ' + esc(st.lvl) : '') + ' มีแบบประเมินครบทุกวิชาแล้ว</p>', null, 'max-w-xl');
       return;
     }
 
@@ -703,8 +806,8 @@
 
     APP._evalNew = subs;
     showModal('สร้างแบบประเมินจากรายวิชา',
-      '<p class="text-sm text-gray-600 mb-2">รายวิชาที่เปิดสอนใน ' + esc(st.year) + ' ภาค ' + esc(st.sem)
-      + ' และยังไม่มีแบบประเมิน (' + subs.length + ' วิชา)</p>'
+      '<p class="text-sm text-gray-600 mb-2">รายวิชาที่เปิดสอนใน ' + esc(st.year) + ' ภาค ' + esc(semText(st.sem))
+      + (st.lvl ? ' ชั้นปีที่ ' + esc(st.lvl) : '') + ' และยังไม่มีแบบประเมิน (' + subs.length + ' วิชา) — ติ๊กวิชาที่ต้องการแล้วกดยืนยัน</p>'
       + '<p class="text-xs text-gray-500 mb-3">ระบบจะใส่ชุดข้อคำถามตั้งต้นให้ก่อน — ด้านแหล่งฝึกใส่ให้เฉพาะวิชาปฏิบัติ '
       + 'และดึงชื่อผู้ประสานงานรายวิชามาเป็นอาจารย์ผู้สอนคนแรก แก้ไขเพิ่มเติมได้ในหน้าตั้งค่า</p>'
       + '<div class="flex gap-2 mb-2">'
@@ -1542,24 +1645,33 @@
       + btn('evalSaveForm()', 'save', 'บันทึกการตั้งค่า', 'bg-primary text-white hover:bg-primaryDark')
       + '</div></div>'
 
-      // ก. ส่วนหัวของแบบประเมิน
-      + headerCard(f, d)
+      + '<div class="ems-stepped">'
+      // 1 ส่วนหัวของแบบประเมิน
+      + evStep(1, 'ส่วนหัวของแบบประเมิน', 'ไม่บังคับ · ข้อความชี้แจงที่นักศึกษาจะเห็นก่อนตอบ', headerCard(f, d), 'done')
 
-      // ข. ด้านที่ประเมินและชุดข้อคำถาม
-      + '<div class="bg-white rounded-2xl border border-blue-100 overflow-hidden mb-4">'
+      // 2 ด้านที่ประเมินและชุดข้อคำถาม
+      + evStep(2, 'เลือกด้านที่ประเมินและชุดข้อคำถาม', 'ระบบใส่ชุดตั้งต้นให้แล้ว เปลี่ยนชุดหรือปรับข้อคำถามได้ · นักศึกษาหนึ่งคนตอบ ' + totalItems + ' ข้อ',
+          '<div class="bg-white rounded-2xl border border-blue-100 overflow-hidden mb-4">'
       + '<div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">'
       + '<p class="font-semibold text-gray-800 text-sm">ด้านที่ประเมินและชุดข้อคำถาม</p>'
       + '<p class="text-xs text-gray-500">นักศึกษาหนึ่งคนตอบทั้งหมด <b class="text-primary">' + totalItems + '</b> ข้อ</p></div>'
-      + dimRows + '</div>'
+      + dimRows + '</div>', 'active')
 
-      + (teacherBox || siteBox
-        ? '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">' + teacherBox + siteBox + '</div>' : '')
+      // 3 ผู้ถูกประเมิน
+      + evStep(3, 'ระบุอาจารย์ผู้สอนและแหล่งฝึกที่ถูกประเมิน',
+          (s(d.set_teacher) && !d.teachers.length) || (s(d.set_site) && !d.sites.length)
+            ? '<span class="text-amber-700">ยังระบุไม่ครบ — นักศึกษาจะไม่เห็นอาจารย์/แหล่งฝึกที่ไม่ได้ใส่</span>'
+            : 'เพิ่มชื่อให้ครบทุกคน/ทุกแห่ง · วิชาปฏิบัติแบ่งกลุ่มนักศึกษาตามอาจารย์นิเทศได้',
+          (teacherBox || siteBox
+            ? '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">' + teacherBox + siteBox + '</div>'
+            : '<p class="text-sm text-gray-500 mb-4">แบบประเมินนี้ไม่มีด้านอาจารย์ผู้สอนหรือแหล่งฝึก — ข้ามขั้นนี้ได้</p>')
+          // กลุ่มย่อย — เฉพาะวิชาที่มีภาคปฏิบัติและมีการประเมินอาจารย์
+          + (s(d.set_teacher) && hasPracticum(d.course_type || f.course_type) ? groupBox(f, d) : ''),
+          (s(d.set_teacher) && !d.teachers.length) || (s(d.set_site) && !d.sites.length) ? 'active' : 'done')
 
-      // ข.2 กลุ่มย่อย — เฉพาะวิชาที่มีภาคปฏิบัติและมีการประเมินอาจารย์
-      + (s(d.set_teacher) && hasPracticum(d.course_type || f.course_type) ? groupBox(f, d) : '')
-
-      // ข. ช่วงเวลาและสถานะ
-      + '<div class="bg-white rounded-2xl border border-blue-100 p-4 mb-4">'
+      // 4 ช่วงเวลาและสถานะ
+      + evStep(4, 'กำหนดช่วงเวลาและเปิดให้ประเมิน', 'ตั้งสถานะเป็น "เปิด" เมื่อพร้อมให้นักศึกษาเห็นแบบประเมิน',
+          '<div class="bg-white rounded-2xl border border-blue-100 p-4 mb-4">'
       + '<p class="font-semibold text-gray-800 text-sm mb-3">ช่วงเวลาเปิดให้ประเมิน</p>'
       + '<div class="flex flex-wrap items-end gap-3">'
       + selectHTML({
@@ -1573,10 +1685,11 @@
       + '<input type="date" value="' + esc(d.close_date) + '" onchange="evalDraft(\'close_date\',this.value)" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"></div>'
       + '</div>'
       + '<p class="text-xs text-gray-500 mt-2">เว้นวันที่ไว้ก็ได้ — ระบบยึด "สถานะ" เป็นหลักเสมอ</p>'
-      + '</div>'
+      + '</div>', d.status === 'เปิด' || d.status === 'ปิด' ? 'done' : 'active')
 
-      // ค. การคำนวณและการเปิดเผยผล
-      + '<div class="bg-white rounded-2xl border border-blue-100 p-4 mb-4">'
+      // 5 การคำนวณและการเปิดเผยผล
+      + evStep(5, 'การคำนวณและการเปิดเผยผล', 'ไม่บังคับ · ค่าตั้งต้นใช้ได้เลย', 
+          '<div class="bg-white rounded-2xl border border-blue-100 p-4 mb-4">'
       + '<p class="font-semibold text-gray-800 text-sm mb-1">การคำนวณและการเปิดเผยผล</p>'
       + '<p class="text-xs text-gray-500 mb-3">ค่าเหล่านี้ใช้ตอนออกรายงาน — ตั้งต่างกันรายวิชาได้ ถ้าต้องการเทียบกับรายงานปีเก่า</p>'
       + '<div class="flex flex-wrap items-end gap-3">'
@@ -1601,7 +1714,8 @@
       + (s(d.show_comment_teacher) ? ' checked' : '') + '>'
       + '<span>ให้อาจารย์เจ้าตัวอ่านข้อเสนอแนะปลายเปิดของตนเองได้'
       + '<span class="block text-xs text-gray-500">ยังไม่เปิดไว้ — ตอนนี้ข้อเสนอแนะอ่านได้เฉพาะผู้ดูแลระบบ เจ้าหน้าที่งานวิชาการ เจ้าหน้าที่งานทะเบียน และผู้บริหาร</span></span>'
-      + '</label></div>'
+      + '</label></div>', 'done', true)
+      + '</div>'
 
       + '<div class="flex justify-end gap-2">'
       + btn('evalBackToList()', 'x', 'ยกเลิก', 'border border-gray-200 text-gray-700 hover:bg-gray-50')
