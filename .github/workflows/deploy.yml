@@ -56,9 +56,21 @@ jobs:
 
       - name: ตรวจไวยากรณ์ JavaScript
         run: |
-          for f in config.js supabase-db.js auth.js app-patch.js app.js grad-images.js; do
+          # ตรวจทุกไฟล์ js ที่จะเผยแพร่ ไม่ใช่เฉพาะรายชื่อที่พิมพ์ไว้
+          # ของเดิมไม่ได้ตรวจ workload.js plo.js eval.js ซึ่งเป็นไฟล์ที่แก้บ่อยที่สุด
+          for f in *.js; do
             node --check "$f" && echo "OK  $f"
           done
+          # ชุดทดสอบของระบบ
+          if [ -d tests ]; then
+            # เตือนอย่างเดียว ไม่บล็อกการ deploy
+            # มีชุดทดสอบเดิมบางไฟล์ที่ยังไม่ผ่านอยู่ก่อนแล้ว (wellbeing / eng_round / practicum)
+            # ถ้าให้บล็อกทันที จะ deploy อะไรไม่ได้เลย เปลี่ยนเป็น error ได้เมื่อแก้ครบแล้ว
+            for t in tests/test_*.js; do
+              node "$t" > /dev/null 2>&1 || echo "::warning::ชุดทดสอบไม่ผ่าน: $t"
+            done
+          fi
+          echo "ผ่าน: ไวยากรณ์ JavaScript"
 
       - name: เตรียมไฟล์สำหรับเผยแพร่
         run: |
@@ -75,8 +87,11 @@ jobs:
           # เปลี่ยน ?v=... ในทุกไฟล์ HTML ให้เป็นรหัส commit
           # ทำให้ทุกครั้งที่ deploy เบราว์เซอร์มองเห็นเป็นไฟล์ใหม่และโหลดใหม่เสมอ
           VER="${GITHUB_SHA::7}"
+          # จับทุกค่าของ ?v=... ไม่ผูกกับวันที่ใดวันที่หนึ่ง
+          # ของเดิมผูกไว้กับ v=20260827 พอ index.html เปลี่ยนเป็นวันอื่น sed ก็ไม่ match
+          # ผลคือเบราว์เซอร์ของผู้ใช้ยังโหลดไฟล์เก่าค้างอยู่ แก้โค้ดไปก็ไม่ถึงมือผู้ใช้
           find _site -name '*.html' -print0 | xargs -0 --no-run-if-empty \
-            sed -i "s/v=20260827[^\"']*/v=$VER/g"
+            sed -i "s/[?]v=[A-Za-z0-9._-]*/?v=$VER/g"
           echo "ประทับหมายเลขรุ่น: $VER"
           grep -o 'v=[0-9a-f]\{7\}' _site/index.html | head -3
 

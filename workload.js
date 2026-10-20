@@ -1376,6 +1376,14 @@
       + blocks + '</div>';
   }
 
+  /* ผลรวมรายคนของอีกขอบเขตภาคการศึกษาหนึ่ง โดยไม่กระทบตัวกรองที่ผู้ใช้เลือกอยู่
+     ใช้เทียบว่า "ที่ไม่ขึ้นเปอร์เซ็นต์ เพราะไม่มีข้อมูลจริง หรือเพราะดูอยู่คนละภาค" */
+  function totalsForScope(year, sem) {
+    var st = state(), keep = st.mSem;
+    st.mSem = sem;
+    try { return studentTotals(year); } finally { st.mSem = keep; }
+  }
+
   /* ---------------- ข้อมูลรายบุคคลของทั้งชั้นปี ----------------
      แสดงชั่วโมงจริงรายพันธกิจของนักศึกษาทุกคนในชั้นปีที่เลือก
      คนที่มีค่าเฉพาะรายจะมีป้ายกำกับ เพื่อให้รู้ว่าไม่ได้ใช้ค่ามาตรฐานของชั้น */
@@ -1415,10 +1423,38 @@
             'ลบค่าเฉพาะรายของ ' + x.name, x.ovr ? '' : 'ใช้ค่ามาตรฐานของชั้นปี ไม่มีข้อมูลเฉพาะรายให้ลบ') : '')
         + '</tr>';
     }).join('');
+    /* เตือนเมื่อพันธกิจที่ขึ้น 0% มีข้อมูลอยู่จริงในภาคอื่น
+       ตารางนี้กรองตามภาคที่เลือกไว้ แต่หน้าต่างแก้ไขเปิดภาคที่มีข้อมูลให้เอง
+       ผู้ใช้จึงเห็นข้อมูลในหน้าต่างแต่เห็น 0% ในตาราง แล้วเข้าใจว่าระบบคิดผิด */
+    var scopeNote = '';
+    var smNow = norm(state().mSem);
+    if (smNow) {
+      var cur = {}, whole = {};
+      MISSIONS.forEach(function (m) { cur[m.key] = 0; whole[m.key] = 0; });
+      list.forEach(function (x) { MISSIONS.forEach(function (m) { cur[m.key] += n(x.raw[m.key]); }); });
+      totalsForScope(year, '').forEach(function (x) {
+        if (x.level !== level) return;
+        MISSIONS.forEach(function (m) { whole[m.key] += n(x.raw[m.key]); });
+      });
+      var hidden = MISSIONS.filter(function (m) {
+        return whole[m.key] - cur[m.key] > 0.009;
+      });
+      if (hidden.length) {
+        scopeNote = '<div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 mb-2 text-xs text-amber-800">'
+          + '<i data-lucide="info" class="w-4 h-4 inline"></i> กำลังดูเฉพาะ <b>' + esc(semScopeText()) + '</b> — '
+          + hidden.map(function (m) {
+              return esc(m.short) + ' มีอีก ' + fx(whole[m.key] - cur[m.key]) + ' ชม. ในภาคอื่น';
+            }).join(' · ')
+          + ' <button type="button" onclick="wlSet(\'mSem\',\'\')" class="ml-1 px-2 py-0.5 rounded-lg bg-white border border-amber-300 hover:bg-amber-100">ดูรวมทุกภาค</button></div>';
+      }
+    }
+
     return '<div class="mt-4">'
       + '<div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">'
       + '<h4 class="font-semibold text-sm">ข้อมูลรายบุคคล ชั้นปีที่ ' + esc(level) + ' (' + list.length + ' คน)</h4>'
-      + '<span class="text-xs text-gray-400">สัดส่วนเวลาที่ใช้ในแต่ละพันธกิจ · ' + semScopeText() + '</span></div>'
+      + '<span class="text-xs px-2 py-0.5 rounded-lg bg-primaryLight text-primary font-semibold">'
+      + esc(semScopeText()) + '</span></div>'
+      + scopeNote
       + '<div class="overflow-x-auto border border-blue-50 rounded-xl" style="max-height:60vh;overflow-y:auto">'
       + '<table class="w-full text-sm"><thead class="sticky top-0"><tr class="bg-surface text-left">'
       + '<th class="px-3 py-2 font-semibold">รหัส</th><th class="px-3 py-2 font-semibold">ชื่อ-สกุล</th>'

@@ -67,6 +67,28 @@ t('ป้าย "ปรับเฉพาะราย" นับเฉพาะ�
   assert.ok(WL.includes('if (ovr && MISSIONS.some(function (mm) { return ovrApplies(ovr, mm); })) extra = true;'));
 });
 
+console.log('\n[4] 0% เพราะไม่มีข้อมูล หรือเพราะดูอยู่คนละภาค');
+t('เทียบกับผลรวมทุกภาคโดยไม่ทำลายตัวกรองที่ผู้ใช้เลือกไว้', () => {
+  const i = WL.indexOf('function totalsForScope(year, sem)');
+  assert.ok(i > -1, 'ไม่มีตัวเทียบขอบเขตภาค');
+  const seg = WL.slice(i, i + 300);
+  assert.ok(seg.includes('keep = st.mSem') && seg.includes('finally { st.mSem = keep; }'),
+    'ต้องคืนค่าตัวกรองเดิมเสมอ แม้เกิดข้อผิดพลาดระหว่างคำนวณ');
+});
+t('ตารางรายบุคคลเตือนเมื่อพันธกิจมีข้อมูลอยู่ในภาคอื่น', () => {
+  assert.ok(WL.includes("totalsForScope(year, '')"), 'ไม่ได้เทียบกับผลรวมทุกภาค');
+  assert.ok(WL.includes('ชม. ในภาคอื่น'), 'ไม่ได้บอกว่ามีข้อมูลอยู่ในภาคอื่น');
+  assert.ok(WL.includes('ดูรวมทุกภาค'), 'ไม่มีปุ่มสลับไปดูรวมทุกภาค');
+});
+t('ขอบเขตภาคที่กำลังดูต้องเด่นพอให้สังเกตเห็น', () => {
+  // ของเดิมเป็น text-gray-400 จาง ๆ มุมขวา ผู้ใช้จึงไม่ทันเห็นว่ากำลังกรองภาคอยู่
+  const i = WL.indexOf('ข้อมูลรายบุคคล ชั้นปีที่ ');
+  const seg = WL.slice(i, i + 400);
+  assert.ok(seg.includes('semScopeText()'), 'ไม่ได้บอกภาคที่กำลังดู');
+  assert.ok(seg.includes('bg-primaryLight text-primary font-semibold'), 'ป้ายบอกภาคยังจางเกินไป');
+  assert.ok(!seg.includes("text-gray-400\">สัดส่วนเวลา"), 'ยังใช้ข้อความจาง ๆ แบบเดิม');
+});
+
 console.log('\n────────────────────────────');
 console.log((fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
 process.exit(fail ? 1 : 0);
