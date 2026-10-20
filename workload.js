@@ -159,7 +159,6 @@
       tol: 0,                       // ยอมให้เกินชั่วโมงเป้าหมายได้กี่เปอร์เซ็นต์ ก่อนถือว่าเกิน
       mView: 'level', mLevel: '', mSid: '', mq: '', mSem: '',  // มุมมองการ์ดพันธกิจ : รายชั้นปี / รายบุคคล
       mode: 'cohort', gsel: {},     // กล่องกรอกที่เปิดอยู่ : ทั้งชั้นปี / รายบุคคล ('' = ยุบทั้งคู่)
-      gparts: [],                   // รายชื่อผู้เข้าร่วมตั้งต้นของรายการที่เพิ่มใหม่ ([] = ทุกคนในชั้น)
       mission: '', gq: '',          // พันธกิจที่เลือกกรอก ('' = ทุกพันธกิจ) · คำค้นในรายชื่อนักศึกษา
       fold: fold0                   // การ์ดที่ถูกยุบไว้ (จำเฉพาะระหว่างใช้งาน)
       };
@@ -981,7 +980,7 @@
     var st = state();
     st[k] = v;
     // ล้างร่างเฉพาะเมื่อเปลี่ยนขอบเขตข้อมูลที่กรอก — เปลี่ยนตัวกรองของหน้าสรุปไม่ต้องล้าง
-    if (['year', 'level', 'sem', 'mode'].indexOf(k) !== -1) { st.draft = null; st.gparts = []; }
+    if (['year', 'level', 'sem', 'mode'].indexOf(k) !== -1) st.draft = null;
     if (k === 'year') st.mSem = '';   // ปีใหม่อาจไม่มีภาคที่เลือกค้างไว้
 
     /* เลือกพันธกิจแล้วต้องเห็นช่องกรอกทันที
@@ -1720,7 +1719,9 @@
       + ' → ถ่วงน้ำหนัก <b style="color:' + m.color + '" data-wl-w="' + m.key + '">' + fx(raw * w) + '</b></span>'
       + (readonly ? '' : '<button type="button" onclick="wlRowAdd(\'' + m.key + '\')" class="px-2 py-1 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50">+ เพิ่มแถว</button>')
       + (m.subject && !readonly ? '<button type="button" onclick="wlPullSubjects()" class="px-2 py-1 rounded-lg border border-primary text-xs text-primary hover:bg-primaryLight">ดึงรายวิชาที่เปิดสอน</button>' : '')
-      + (readonly ? '' : '<button type="button" onclick="wlSaveMission(\'' + m.key + '\')" class="px-3 py-1 rounded-lg text-xs text-white hover:opacity-90" style="background:' + m.color + '"><i data-lucide="save" class="w-3 h-3 inline mr-0.5"></i>บันทึกพันธกิจนี้</button>')
+      /* ปุ่มบันทึกรายพันธกิจถูกถอดออก — บันทึกครั้งเดียวที่ขั้นที่ 4 "ตรวจสรุปแล้วบันทึก"
+         มีปุ่มบันทึกหลายจุดทำให้กรอกไปครึ่งหนึ่งแล้วเผลอบันทึกเฉพาะด้านที่เปิดอยู่
+         ขั้นที่ 4 บันทึกทุกด้านที่บัญชีนี้มีสิทธิ์ในครั้งเดียว */
       + (locked ? '<span class="text-xs px-2 py-1 rounded-lg bg-gray-100 text-gray-500"><i data-lucide="lock" class="w-3 h-3 inline mr-0.5"></i>ไม่ได้รับมอบหมาย</span>' : '')
       + '</div></div>';
 
@@ -1814,67 +1815,6 @@
       + '</div>';
   }
 
-  /* ---------- กลุ่มผู้เข้าร่วมตั้งต้น ----------
-     ตอบโจทย์ "เลือกนักศึกษาหลายคน แล้วกรอกหลายกิจกรรม บันทึกครั้งเดียว"
-     เลือกรายชื่อไว้ครั้งเดียว ทุกรายการที่เพิ่มใหม่จะติดรายชื่อกลุ่มนี้ไปด้วย
-     ข้อมูลยังเก็บเป็น "กิจกรรมละ 1 แถวในแผนชั้นปี" เหมือนเดิม ไม่ได้สร้างระเบียนรายคน
-     จึงไม่มีข้อมูลซ้ำ และแก้ทีหลังได้ที่เดียว */
-  function partsGroupBox() {
-    var st = state();
-    var g = (st.gparts || []);
-    var total = cohortStudents(st.level).length;
-    var on = g.length > 0;
-    var btn = function (onclick, label, cls) {
-      return '<button type="button" onclick="' + onclick + '" class="px-3 py-1.5 rounded-xl border text-xs ' + cls + '">' + label + '</button>';
-    };
-    return '<div class="rounded-2xl p-4 mb-4 border ' + (on ? 'border-amber-200 bg-amber-50/60' : 'border-gray-100 bg-white') + '">'
-      + '<div class="flex flex-wrap items-center justify-between gap-2 mb-1">'
-      + '<p class="text-sm font-semibold text-gray-700"><i data-lucide="users" class="w-4 h-4 inline mr-1 '
-      + (on ? 'text-amber-600' : 'text-gray-400') + '"></i>กลุ่มผู้เข้าร่วมสำหรับรายการที่เพิ่มใหม่</p>'
-      + '<span class="text-xs ' + (on ? 'text-amber-800 font-semibold' : 'text-gray-500') + '">'
-      + (on ? 'เฉพาะ ' + g.length + ' คน' : 'ทุกคนในชั้น' + (total ? ' (' + total + ' คน)' : '')) + '</span></div>'
-      + '<p class="text-[11px] text-gray-500 mb-2">เลือกรายชื่อไว้ครั้งเดียว กรอกกิจกรรมให้ครบ '
-      + 'แล้ว<b>กดปุ่มใส่รายชื่อ</b>ทีเดียว · ระบบ<b>ไม่ใส่ให้อัตโนมัติ</b> แถวใหม่เริ่มที่ "ทุกคนในชั้น" เสมอ</p>'
-      + '<div class="flex flex-wrap gap-2">'
-      + btn('wlPickParts()', '<i data-lucide="user-plus" class="w-3.5 h-3.5 inline mr-1"></i>' + (on ? 'แก้รายชื่อกลุ่ม' : 'เลือกรายชื่อกลุ่ม'),
-            'border-primary text-primary bg-white hover:bg-primaryLight')
-      + (on ? btn('wlPartsApplyAll()', '<i data-lucide="user-check" class="w-3.5 h-3.5 inline mr-1"></i>ใส่รายชื่อกลุ่มให้แถวที่ยังเป็น "ทุกคนในชั้น"',
-                  'border-amber-500 bg-amber-500 text-white hover:bg-amber-600')
-            + btn('wlPartsClear()', 'ล้างกลุ่ม', 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50') : '')
-      + '</div></div>';
-  }
-
-  // เลือกรายชื่อกลุ่ม — ใช้กล่องเดียวกับการเลือกผู้เข้าร่วมรายแถว
-  window.wlPickParts = function () {
-    var st = state();
-    APP._wlPick = { kind: 'parts', sel: {}, q: '' };
-    (st.gparts || []).forEach(function (sid) { APP._wlPick.sel[sid] = 1; });
-    showModal('เลือกนักศึกษาที่จะกรอกกิจกรรมให้', pickBody());
-    setTimeout(function () { if (window.lucide) lucide.createIcons(); }, 30);
-  };
-  window.wlPartsClear = function () {
-    state().gparts = [];
-    renderCurrentPage();
-  };
-  /* ใส่รายชื่อกลุ่มให้แถวที่ยังไม่ได้ระบุผู้เข้าร่วม
-     ไม่แตะแถวที่ระบุรายชื่อไว้แล้ว เพราะอาจเป็นกลุ่มอื่นที่ตั้งใจกรอกไว้ก่อนหน้า */
-  window.wlPartsApplyAll = function () {
-    var st = state(), g = (st.gparts || []).slice();
-    if (!g.length) { showToast('ยังไม่ได้เลือกรายชื่อกลุ่ม', 'error'); return; }
-    var d = st.draft || draft();
-    var cnt = 0;
-    shownMissions().forEach(function (m) {
-      if (m.subject) return;                       // ด้านวิชาการเก็บเป็นรายวิชา ไม่มีผู้เข้าร่วม
-      (d[m.key] || []).forEach(function (r) {
-        if (partOf(r).length) return;
-        r.students = g.slice();
-        cnt++;
-      });
-    });
-    showToast(cnt ? 'ใส่รายชื่อกลุ่มให้ ' + cnt + ' รายการแล้ว' : 'ทุกแถวระบุผู้เข้าร่วมไว้แล้ว');
-    renderCurrentPage();
-  };
-
   /* ---------- กล่องเลือกนักศึกษาเข้าร่วมกิจกรรม ----------
      กิจกรรมนอกการเรียนการสอนไม่ได้มีนักศึกษาเข้าร่วมทุกคน
      จึงติ๊กเลือกได้ทีละหลายคน แทนการเพิ่มทีละคน */
@@ -1932,9 +1872,7 @@
       + '<button type="button" onclick="wlPickApply()" class="flex-1 bg-primary text-white py-2.5 rounded-xl text-sm">ใช้รายชื่อนี้</button>'
       + '<button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl border text-sm text-gray-600">ยกเลิก</button>'
       + '</div>'
-      + '<p class="text-[11px] text-gray-400">' + (p.kind === 'parts'
-          ? 'เลือกไว้เฉย ๆ ยังไม่มีผลกับรายการใด ต้องกดปุ่ม "ใส่รายชื่อกลุ่มให้แถว..." อีกครั้งจึงจะนำไปใช้ · ไม่เลือกใครเลยหรือเลือกครบทุกคน = ทุกคนในชั้น'
-        : p.kind === 'group'
+      + '<p class="text-[11px] text-gray-400">' + (p.kind === 'group'
           ? 'ค่าที่กรอกจะถูกบันทึกเป็นค่าเฉพาะรายของนักศึกษาทุกคนที่เลือก'
           : 'ติ๊กเฉพาะคนที่เข้าร่วมกิจกรรมนี้ · ระบบนับชั่วโมงกิจกรรมนี้ให้เฉพาะคนที่ติ๊ก · ไม่ติ๊กใครเลยหรือติ๊กครบทุกคน = นับให้ทุกคนในชั้น') + '</p>'
       + '</div>';
@@ -1973,16 +1911,6 @@
     if (!p) return;
     var st = state();
     var sel = Object.keys(p.sel).filter(function (k) { return p.sel[k]; });
-
-    if (p.kind === 'parts') {
-      var all0 = cohortStudents(st.level).length;
-      // เลือกครบทุกคน = เท่ากับไม่เจาะจง เก็บเป็นค่าว่างจะอ่านง่ายกว่า
-      st.gparts = (sel.length && sel.length < all0) ? sel : [];
-      APP._wlPick = null;
-      closeModal();
-      renderCurrentPage();
-      return;
-    }
 
     if (p.kind === 'group') {
       var g = {};
@@ -2044,8 +1972,8 @@
       }).join(' ');
     return '<div class="bg-white border border-blue-100 rounded-xl px-4 py-3 mb-4 text-xs text-gray-600 flex items-start gap-2">'
       + '<i data-lucide="info" class="w-4 h-4 text-primary flex-shrink-0 mt-0.5"></i><span>'
-      + '<b class="text-gray-700">บันทึกแยกทีละพันธกิจได้</b> — แต่ละกล่องด้านล่างมีปุ่ม "บันทึกพันธกิจนี้" ของตัวเอง '
-      + 'ต่างคนต่างเวลาก็บันทึกได้ ระบบดึงข้อมูลล่าสุดมาก่อนบันทึกทุกครั้ง จึงไม่ทับงานของคนอื่น<br>'
+      + '<b class="text-gray-700">กรอกให้ครบทุกด้าน แล้วบันทึกครั้งเดียวที่ขั้นที่ 4</b> — '
+      + 'ระบบดึงข้อมูลล่าสุดมาก่อนบันทึกทุกครั้ง จึงไม่ทับงานของคนอื่นที่กรอกด้านอื่นอยู่<br>'
       + '<b class="text-gray-700">พันธกิจที่บัญชีนี้บันทึกได้:</b> '
       + (names || '<span class="text-red-500">ยังไม่ได้รับมอบหมายพันธกิจใด</span>')
       + (all ? '' : ' <span class="text-gray-400">· พันธกิจอื่นจะถูกล็อกไว้ ผู้ดูแลระบบกำหนดได้ที่ ตั้งค่าระบบ → จัดการผู้ใช้งาน</span>')
@@ -2596,8 +2524,8 @@
           missionPicker().replace(/<p class="text-xs font-semibold text-gray-600 mb-2">[\s\S]*?<\/p>/, '') + missionScopeNote(), st.mission ? 'done' : 'active')
       + wlStep(3, group ? 'เลือกนักศึกษา 1 คน แล้วกรอกกิจกรรม' : 'เพิ่มกิจกรรม และเลือกว่าใครเข้าร่วม',
           group ? 'เลือกได้ทีละคน · ค่าที่กรอกจะใช้แทนภาระงานทั้งชุดของคนนั้น'
-                : 'แต่ละแถว = 1 กิจกรรม เริ่มที่ "ทุกคนในชั้น" · กรอกครบแล้วค่อยกดใส่รายชื่อกลุ่มทีเดียว · กรอกทีละมาก ๆ ใช้ไฟล์ CSV',
-          (group ? groupPicker() : howToBox() + partsGroupBox() + wlCsvPanel()) + foldBar() + missionEditors(group), 'active')
+                : 'แต่ละแถว = 1 กิจกรรม · ใต้แถวมีช่อง "ใครเข้าร่วม" เลือกรายชื่อได้ตั้งแต่ตอนเพิ่มกิจกรรม · กรอกให้ครบทุกด้านแล้วไปบันทึกที่ขั้นที่ 4',
+          (group ? groupPicker() : howToBox() + wlCsvPanel()) + foldBar() + missionEditors(group), 'active')
       + wlStep(4, 'ตรวจสรุปแล้วบันทึก', group
           ? (sel.length ? 'จะบันทึกเป็นค่าเฉพาะรายของนักศึกษาที่เลือก' : '<span class="text-amber-700">ยังไม่ได้เลือกนักศึกษาในขั้นที่ 3</span>')
           : 'บันทึกครั้งเดียวใช้กับทั้งชั้น · กิจกรรม "เฉพาะบางคน" นับให้เฉพาะคนที่ติ๊ก',
@@ -2625,74 +2553,10 @@
       + MISSIONS.map(function (m) { return missionEditor(m, d, true, plan); }).join('');
   }
 
-  /* บันทึกเฉพาะพันธกิจเดียว — ดึงข้อมูลล่าสุดจากฐานข้อมูลก่อนเสมอ
-     เพื่อไม่ให้ทับงานที่คนอื่นเพิ่งบันทึกในพันธกิจอื่น
-     โหมดกลุ่มจะเขียนค่าเฉพาะรายให้นักศึกษาทุกคนที่เลือกไว้ */
-  window.wlSaveMission = async function (mkey) {
-    var st = state(), d = st.draft;
-    if (!d) return;
-    var m = MISSIONS.filter(function (x) { return x.key === mkey; })[0];
-    if (!canEditMission(mkey)) { showToast('บัญชีของคุณไม่ได้รับมอบหมายให้บันทึก' + m.short, 'error'); return; }
-    var group = st.mode === 'group';
-    var sel = groupSel();
-    if (group && !sel.length) { showToast('เลือกนักศึกษาก่อนบันทึก', 'error'); return; }
-    if (group && sel.length > 1) {
-      showToast('บันทึกรายบุคคลได้ทีละคน · กิจกรรมของหลายคนให้กรอกที่แผนทั้งชั้นแล้วระบุผู้เข้าร่วม หรือนำเข้าไฟล์ CSV', 'error');
-      return;
-    }
-    var who = (APP.currentUser && APP.currentUser.name) || '';
-    var json = JSON.stringify(d[mkey] || []);
+  /* เคยมี window.wlSaveMission สำหรับปุ่ม "บันทึกพันธกิจนี้" ในหัวกล่องแต่ละพันธกิจ
+     ถอดออกแล้ว — บันทึกครั้งเดียวที่ขั้นที่ 4 "ตรวจสรุปแล้วบันทึก"
+     ถ้าเลือกกรอกพันธกิจเดียวไว้ในขั้นที่ 2 ขั้นที่ 4 ก็บันทึกเฉพาะพันธกิจนั้นให้อยู่แล้ว */
 
-    if (typeof showToast === 'function') showToast('กำลังบันทึก ' + m.short + (group ? ' ให้นักศึกษา ' + sel.length + ' คน' : '') + '...');
-    try { await GSheetDB.refreshTab(group ? 'workload_student' : 'workload_plan'); } catch (e) { /* ใช้ข้อมูลที่มีอยู่ */ }
-
-    if (group) {
-      var ok = 0, err = '';
-      for (var i = 0; i < sel.length; i++) {
-        var sid = sel[i];
-        var cur0 = overrideOf(sid, st.year, st.sem);
-        var mt0 = meta(cur0);
-        mt0[mkey] = { by: who, at: stampNow() };
-        var p0 = {
-          type: 'workload_student', student_id: sid, academic_year: st.year,
-          year_level: st.level, semester: st.sem, updated_by: who, meta_json: JSON.stringify(mt0)
-        };
-        p0[m.field] = fieldJson(d[mkey] || []);
-        var r0 = cur0 ? await GSheetDB.update(Object.assign({}, cur0, p0)) : await GSheetDB.create(p0);
-        if (r0 && r0.isOk) ok++; else err = (r0 && r0.error) || '';
-      }
-      if (ok === sel.length) showToast('บันทึก ' + m.short + ' ให้นักศึกษา ' + ok + ' คน เรียบร้อย');
-      else if (ok) showToast('บันทึกสำเร็จ ' + ok + ' คน ไม่สำเร็จ ' + (sel.length - ok) + ' คน: ' + err, 'error');
-      else showToast('บันทึกไม่สำเร็จ: ' + err, 'error');
-      renderCurrentPage();
-      return;
-    }
-
-    var cur = planOf(st.year, st.level, st.sem);
-    var mt = meta(cur);
-    mt[mkey] = { by: who, at: stampNow() };
-
-    var payload = {
-      type: 'workload_plan', academic_year: st.year, year_level: st.level, semester: st.sem,
-      updated_by: who, meta_json: JSON.stringify(mt)
-    };
-    payload[m.field] = json;
-
-    var r = cur ? await GSheetDB.update(Object.assign({}, cur, payload)) : await GSheetDB.create(payload);
-    if (!(r && r.isOk)) { showToast('บันทึกไม่สำเร็จ: ' + ((r && r.error) || ''), 'error'); return; }
-
-    // ซิงก์พันธกิจอื่นในหน้าจอให้เป็นค่าล่าสุดจากฐานข้อมูล (เผื่อมีคนแก้ระหว่างนี้)
-    var fresh = planOf(st.year, st.level, st.sem);
-    MISSIONS.forEach(function (x) {
-      if (x.key === mkey) return;
-      d[x.key] = rows(fresh, x).map(function (row) { return Object.assign({}, row); });
-    });
-
-    var hadParts = (st.gparts || []).length;
-    st.gparts = [];
-    showToast('บันทึก ' + m.short + ' เรียบร้อย' + (hadParts ? ' · ล้างกลุ่มผู้เข้าร่วมแล้ว' : ''));
-    renderCurrentPage();
-  };
 
   window.wlSavePlan = async function () {
     var st = state(), d = draft();
@@ -2736,6 +2600,8 @@
       return;
     }
 
+    showToast('กำลังบันทึก...');
+    try { await GSheetDB.refreshTab('workload_plan'); } catch (e) { /* ใช้ข้อมูลที่มีอยู่ */ }
     var plan = planOf(st.year, st.level, st.sem);
     var mt = meta(plan);
     mine.forEach(function (m) { mt[m.key] = { by: who, at: stampNow() }; });
@@ -2745,13 +2611,7 @@
     };
     mine.forEach(function (m) { payload[m.field] = JSON.stringify(d[m.key] || []); });
     var r = plan ? await GSheetDB.update(Object.assign({}, plan, payload)) : await GSheetDB.create(payload);
-    if (r && r.isOk) {
-      var hadParts2 = (st.gparts || []).length;
-      st.draft = null;
-      st.gparts = [];
-      showToast('บันทึกภาระงานเรียบร้อย' + (hadParts2 ? ' · ล้างกลุ่มผู้เข้าร่วมแล้ว' : ''));
-      renderCurrentPage();
-    }
+    if (r && r.isOk) { showToast('บันทึกภาระงานเรียบร้อย'); st.draft = null; renderCurrentPage(); }
     else showToast('บันทึกไม่สำเร็จ: ' + ((r && r.error) || ''), 'error');
   };
 

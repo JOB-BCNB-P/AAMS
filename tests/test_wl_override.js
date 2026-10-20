@@ -46,8 +46,8 @@ t('ร่างว่างเก็บเป็นค่าว่าง ไม�
   assert.strictEqual(F.fieldJson([{ hours: '5' }]), '[{"hours":"5"}]');
 });
 t('ทุกจุดที่เขียนตาราง workload_student ใช้ fieldJson', () => {
-  assert.ok(WL.includes('p0[m.field] = fieldJson(d[mkey] || []);'), 'บันทึกพันธกิจเดียวแบบกลุ่ม');
-  assert.ok(WL.includes('p0[m.field] = fieldJson(d[m.key] || []);'), 'บันทึกทั้งหน้าแบบกลุ่ม');
+  // ปุ่มบันทึกรายพันธกิจถูกถอดออกแล้ว เหลือบันทึกครั้งเดียวที่ขั้นที่ 4
+  assert.ok(WL.includes('p0[m.field] = fieldJson(d[m.key] || []);'), 'บันทึกค่าเฉพาะราย');
   assert.ok(WL.includes('p2[m.field] = fieldJson(M.data[m.key]);'), 'บันทึกจากหน้าต่างแก้ไขรายบุคคล');
   assert.ok(WL.includes('payload[m.field] = fieldJson(list);'), 'นักศึกษาบันทึกของตัวเอง');
 });

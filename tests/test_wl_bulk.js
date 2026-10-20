@@ -38,10 +38,10 @@ t('ไม่มีปุ่ม "เลือกทั้งหมด" ในร�
 });
 
 console.log('\n[2] ชั้นตรรกะกันการบันทึกหลายคน แม้หน้าจอจะถูกข้าม');
-t('บันทึกพันธกิจเดียว ปฏิเสธเมื่อเลือกเกินหนึ่งคน', () => {
-  const seg = WL.slice(WL.indexOf('window.wlSaveMission'), WL.indexOf('window.wlSaveMission') + 1600);
-  assert.ok(seg.includes('sel.length > 1'), 'ไม่ได้กันการบันทึกหลายคน');
-  assert.ok(seg.includes('นำเข้าไฟล์ CSV'), 'ไม่ได้บอกทางเลือกที่ถูกต้อง');
+t('มีจุดบันทึกเดียว ไม่มีปุ่มบันทึกรายพันธกิจแล้ว', () => {
+  assert.ok(!WL.includes('บันทึกพันธกิจนี้</button>'), 'ยังมีปุ่มบันทึกในหัวกล่องพันธกิจ');
+  assert.ok(!WL.includes('window.wlSaveMission = '), 'ยังเหลือตัวบันทึกรายพันธกิจที่ไม่มีใครเรียก');
+  assert.ok(WL.includes('window.wlSavePlan'), 'ไม่มีตัวบันทึกหลัก');
 });
 t('บันทึกทั้งหน้า ปฏิเสธเมื่อเลือกเกินหนึ่งคน', () => {
   const seg = WL.slice(WL.indexOf('window.wlSavePlan'), WL.indexOf('window.wlSavePlan') + 1800);
@@ -72,43 +72,27 @@ t('นำเข้าแล้วยังไม่เขียนลงระ�
   assert.ok(WL.includes('ยังไม่บันทึกจนกว่าจะกดปุ่มบันทึก'), 'ไม่ได้เตือนว่าต้องกดบันทึกเอง');
 });
 
-console.log('\n[4] เลือกนักศึกษาหลายคน กรอกหลายกิจกรรม บันทึกครั้งเดียว');
-t('มีกล่องเลือกกลุ่มผู้เข้าร่วมในโหมดกรอกทั้งชั้น', () => {
-  const seg = grab('function partsGroupBox()');
-  assert.ok(seg.includes('wlPickParts()'), 'ไม่มีปุ่มเลือกรายชื่อกลุ่ม');
-  assert.ok(seg.includes('wlPartsApplyAll()'), 'ไม่มีปุ่มใส่รายชื่อให้แถวที่ยังว่าง');
-  assert.ok(seg.includes('wlPartsClear()'), 'ไม่มีปุ่มล้างกลุ่ม');
-  assert.ok(WL.includes('howToBox() + partsGroupBox()'), 'กล่องไม่ได้ถูกวางในขั้นที่ 3');
+console.log('\n[4] เลือกผู้เข้าร่วมได้ตั้งแต่ตอนเพิ่มกิจกรรม');
+t('ทุกแถวมีช่อง "ใครเข้าร่วม" ของตัวเอง', () => {
+  const seg = grab('function partLine(mkey, i, r, readonly)');
+  assert.ok(seg.includes('ใครเข้าร่วม:'), 'ไม่มีช่องเลือกผู้เข้าร่วมในแถว');
+  assert.ok(seg.includes('wlClearStudents(') && seg.includes('wlPickStudents('),
+    'ต้องเลือกได้ทั้ง "ทุกคนในชั้น" และ "เฉพาะบางคน"');
 });
-t('แถวใหม่เริ่มที่ "ทุกคนในชั้น" เสมอ ไม่ใส่รายชื่อกลุ่มให้เอง', () => {
-  // ของเดิมใส่ให้อัตโนมัติ ทำให้กิจกรรมที่ตั้งใจให้ทั้งชั้น (พิธีไหว้ครู มอบหมวก)
-  // กลายเป็นเฉพาะกลุ่มโดยผู้กรอกไม่รู้ตัว
+t('แถวใหม่เริ่มที่ "ทุกคนในชั้น" เสมอ ไม่มีรายชื่อติดมาเอง', () => {
   const seg = grab('window.wlRowAdd = function (mkey)');
-  assert.ok(!seg.includes('gparts'), 'แถวใหม่ยังติดรายชื่อกลุ่มอัตโนมัติ');
-  assert.ok(!seg.includes('row.students'), 'แถวใหม่ไม่ควรถูกกำหนดผู้เข้าร่วมล่วงหน้า');
+  assert.ok(!seg.includes('students'), 'แถวใหม่ถูกกำหนดผู้เข้าร่วมล่วงหน้า');
 });
-t('รายชื่อกลุ่มมีผลเมื่อกดปุ่มเท่านั้น', () => {
-  const uses = (WL.match(/gparts/g) || []).length;
-  assert.ok(uses > 0, 'ไม่มีกลุ่มผู้เข้าร่วมแล้ว');
-  assert.ok(grab('window.wlPartsApplyAll = function ()').includes('r.students = g.slice()'),
-    'ปุ่มใส่รายชื่อไม่ได้เขียนลงแถว');
-  assert.ok(WL.includes('ไม่ใส่ให้อัตโนมัติ'), 'ไม่ได้บอกผู้ใช้ว่าต้องกดปุ่มเอง');
+t('ไม่มีกล่องกลุ่มผู้เข้าร่วมแยกต่างหากแล้ว', () => {
+  // เคยมีกล่องที่เลือกรายชื่อไว้ล่วงหน้า แล้วใส่ให้หลายแถวทีเดียว
+  // ถอดออกเพราะทำให้กิจกรรมที่ตั้งใจให้ทั้งชั้นติดรายชื่อกลุ่มโดยไม่รู้ตัว
+  ['partsGroupBox', 'wlPickParts', 'wlPartsApplyAll', 'wlPartsClear', 'gparts'].forEach(k => {
+    assert.ok(!WL.includes(k), 'ยังเหลือ ' + k);
+  });
 });
-t('ยังเก็บเป็นกิจกรรมละ 1 แถวในแผนชั้นปี ไม่ได้สร้างระเบียนรายคน', () => {
-  // จุดสำคัญ : ตอบโจทย์ "เลือกหลายคน" โดยไม่กลับไปสร้างข้อมูลซ้ำแบบการบันทึกแบบกลุ่มเดิม
-  const seg = grab('window.wlPartsApplyAll = function ()');
-  assert.ok(seg.includes('r.students = g.slice()'), 'ไม่ได้เขียนรายชื่อลงแถวกิจกรรม');
-  assert.ok(!seg.includes('workload_student'), 'กลับไปสร้างระเบียนรายคนอีกแล้ว');
+t('ยังเก็บเป็นกิจกรรมละ 1 แถวในแผนชั้นปี', () => {
   assert.ok(!grab('window.wlRowAdd = function (mkey)').includes('workload_student'),
     'กลับไปสร้างระเบียนรายคนอีกแล้ว');
-});
-t('เลือกครบทุกคน = ทุกคนในชั้น ไม่เก็บรายชื่อยาว ๆ ไว้เปล่า ๆ', () => {
-  const seg = WL.slice(WL.indexOf("if (p.kind === 'parts')"), WL.indexOf("if (p.kind === 'parts')") + 400);
-  assert.ok(seg.includes('sel.length < all0'), 'เลือกครบทุกคนแล้วยังเก็บรายชื่อทั้งหมด');
-});
-t('ไม่ทับรายชื่อของแถวที่ระบุผู้เข้าร่วมไว้แล้ว', () => {
-  assert.ok(grab('window.wlPartsApplyAll = function ()').includes('if (partOf(r).length) return;'),
-    'ทับรายชื่อเดิมที่ตั้งใจกรอกไว้');
 });
 
 console.log('\n[5] ทางเลือกที่ถูกต้องถูกบอกไว้ในหน้าจอ');
@@ -147,20 +131,21 @@ t('ใช้กับรายชื่อทั้งสองเส้นท�
   assert.ok(seg.includes('hit.slice().sort(bySid)'), 'เรียงทับอาร์เรย์เดิมที่ใช้ร่วมกับที่อื่น');
 });
 
-console.log('\n[7] บันทึกแล้วล้างกลุ่มผู้เข้าร่วม');
-t('บันทึกพันธกิจเดียวแล้วล้างกลุ่ม และบอกผู้ใช้', () => {
-  const seg = WL.slice(WL.indexOf('window.wlSaveMission'), WL.indexOf('window.wlSavePlan'));
-  assert.ok(seg.includes('st.gparts = [];'), 'กลุ่มเดิมยังค้างหลังบันทึก');
-  assert.ok(seg.includes('ล้างกลุ่มผู้เข้าร่วมแล้ว'), 'ไม่ได้บอกผู้ใช้ว่าล้างแล้ว');
-});
-t('บันทึกทั้งหน้าแล้วล้างกลุ่มด้วย', () => {
+console.log('\n[7] บันทึกครั้งเดียวต้องไม่ทับงานคนอื่น');
+t('ดึงข้อมูลล่าสุดก่อนเขียนแผนชั้นปี', () => {
+  // เดิมการดึงข้อมูลล่าสุดอยู่ที่ปุ่มบันทึกรายพันธกิจ พอย้ายมาบันทึกที่เดียว
+  // ต้องย้ายมาด้วย ไม่งั้นด้านที่คนอื่นเพิ่งบันทึกจะถูกเขียนทับด้วยค่าเก่าในเครื่อง
   const i = WL.indexOf('window.wlSavePlan');
-  const seg = WL.slice(i, i + 3000);
-  assert.ok(seg.includes('st.gparts = [];'), 'กลุ่มเดิมยังค้างหลังบันทึก');
+  const seg = WL.slice(i, i + 4000);
+  const refresh = seg.indexOf("refreshTab('workload_plan')");
+  const write = seg.indexOf('GSheetDB.update(Object.assign({}, plan, payload))');
+  assert.ok(refresh > -1, 'ไม่ได้ดึงข้อมูลล่าสุดก่อนบันทึกแผนชั้นปี');
+  assert.ok(write > -1 && refresh < write, 'ดึงข้อมูลล่าสุดหลังเขียนแล้ว ไม่ทันการณ์');
 });
-t('เปลี่ยนปี/ชั้นปี/ภาค/โหมด ต้องล้างกลุ่มด้วย', () => {
-  assert.ok(WL.includes("if (['year', 'level', 'sem', 'mode'].indexOf(k) !== -1) { st.draft = null; st.gparts = []; }"),
-    'รายชื่อของชั้นปีเดิมจะติดไปชั้นปีใหม่');
+t('บันทึกเฉพาะพันธกิจที่บัญชีนี้มีสิทธิ์', () => {
+  const seg = WL.slice(WL.indexOf('window.wlSavePlan'), WL.indexOf('window.wlSavePlan') + 1200);
+  assert.ok(seg.includes('canEditMission(m.key)'), 'ไม่ได้กรองพันธกิจตามสิทธิ์');
+  assert.ok(seg.includes('if (st.mission)'), 'เลือกกรอกพันธกิจเดียวแล้วต้องบันทึกเฉพาะพันธกิจนั้น');
 });
 
 console.log('\n────────────────────────────');
