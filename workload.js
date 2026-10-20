@@ -159,6 +159,7 @@
       tol: 0,                       // ยอมให้เกินชั่วโมงเป้าหมายได้กี่เปอร์เซ็นต์ ก่อนถือว่าเกิน
       mView: 'level', mLevel: '', mSid: '', mq: '', mSem: '',  // มุมมองการ์ดพันธกิจ : รายชั้นปี / รายบุคคล
       mode: 'cohort', gsel: {},     // กล่องกรอกที่เปิดอยู่ : ทั้งชั้นปี / รายบุคคล ('' = ยุบทั้งคู่)
+      gparts: [],                   // รายชื่อผู้เข้าร่วมตั้งต้นของรายการที่เพิ่มใหม่ ([] = ทุกคนในชั้น)
       mission: '', gq: '',          // พันธกิจที่เลือกกรอก ('' = ทุกพันธกิจ) · คำค้นในรายชื่อนักศึกษา
       fold: fold0                   // การ์ดที่ถูกยุบไว้ (จำเฉพาะระหว่างใช้งาน)
       };
@@ -1613,9 +1614,13 @@
     if (st0.fold) st0.fold[mkey] = false;   // เพิ่มแถวแล้วต้องเห็นแถวใหม่
     var d = st0.draft || draft();
     var m = MISSIONS.filter(function (x) { return x.key === mkey; })[0];
-    d[mkey].push(m.subject ? { subject_name: '', pieces: '', hours: '' }
+    var row = m.subject ? { subject_name: '', pieces: '', hours: '' }
       : m.timed ? { kind: 'กิจกรรมที่', activity: '', date_from: '', date_to: '', time_from: '', time_to: '', hours: '' }
-      : { kind: 'กิจกรรมที่', activity: '', hours: '' });
+      : { kind: 'กิจกรรมที่', activity: '', hours: '' };
+    // เลือกกลุ่มผู้เข้าร่วมไว้แล้ว ให้รายการใหม่ติดรายชื่อกลุ่มนั้นไปเลย
+    // จะได้กรอกหลายกิจกรรมรวดเดียวโดยไม่ต้องเลือกรายชื่อซ้ำทุกแถว
+    if (!m.subject && st0.mode !== 'group' && (st0.gparts || []).length) row.students = st0.gparts.slice();
+    d[mkey].push(row);
     renderCurrentPage();
   };
   window.wlRowDel = function (mkey, idx) {
@@ -1804,6 +1809,66 @@
       + '</div>';
   }
 
+  /* ---------- กลุ่มผู้เข้าร่วมตั้งต้น ----------
+     ตอบโจทย์ "เลือกนักศึกษาหลายคน แล้วกรอกหลายกิจกรรม บันทึกครั้งเดียว"
+     เลือกรายชื่อไว้ครั้งเดียว ทุกรายการที่เพิ่มใหม่จะติดรายชื่อกลุ่มนี้ไปด้วย
+     ข้อมูลยังเก็บเป็น "กิจกรรมละ 1 แถวในแผนชั้นปี" เหมือนเดิม ไม่ได้สร้างระเบียนรายคน
+     จึงไม่มีข้อมูลซ้ำ และแก้ทีหลังได้ที่เดียว */
+  function partsGroupBox() {
+    var st = state();
+    var g = (st.gparts || []);
+    var total = cohortStudents(st.level).length;
+    var on = g.length > 0;
+    var btn = function (onclick, label, cls) {
+      return '<button type="button" onclick="' + onclick + '" class="px-3 py-1.5 rounded-xl border text-xs ' + cls + '">' + label + '</button>';
+    };
+    return '<div class="rounded-2xl p-4 mb-4 border ' + (on ? 'border-amber-200 bg-amber-50/60' : 'border-gray-100 bg-white') + '">'
+      + '<div class="flex flex-wrap items-center justify-between gap-2 mb-1">'
+      + '<p class="text-sm font-semibold text-gray-700"><i data-lucide="users" class="w-4 h-4 inline mr-1 '
+      + (on ? 'text-amber-600' : 'text-gray-400') + '"></i>กลุ่มผู้เข้าร่วมสำหรับรายการที่เพิ่มใหม่</p>'
+      + '<span class="text-xs ' + (on ? 'text-amber-800 font-semibold' : 'text-gray-500') + '">'
+      + (on ? 'เฉพาะ ' + g.length + ' คน' : 'ทุกคนในชั้น' + (total ? ' (' + total + ' คน)' : '')) + '</span></div>'
+      + '<p class="text-[11px] text-gray-500 mb-2">เลือกรายชื่อไว้ครั้งเดียว แล้วกรอกกิจกรรมกี่รายการก็ได้ '
+      + 'ทุกรายการที่เพิ่มใหม่จะนับให้เฉพาะคนกลุ่มนี้ · กดบันทึกครั้งเดียวตอนท้าย</p>'
+      + '<div class="flex flex-wrap gap-2">'
+      + btn('wlPickParts()', '<i data-lucide="user-plus" class="w-3.5 h-3.5 inline mr-1"></i>' + (on ? 'แก้รายชื่อกลุ่ม' : 'เลือกรายชื่อกลุ่ม'),
+            'border-primary text-primary bg-white hover:bg-primaryLight')
+      + (on ? btn('wlPartsApplyAll()', 'ใส่ให้ทุกแถวที่ยังเป็น "ทุกคนในชั้น"', 'border-amber-300 text-amber-800 bg-white hover:bg-amber-100')
+            + btn('wlPartsClear()', 'ล้างกลุ่ม (กลับเป็นทุกคนในชั้น)', 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50') : '')
+      + '</div></div>';
+  }
+
+  // เลือกรายชื่อกลุ่ม — ใช้กล่องเดียวกับการเลือกผู้เข้าร่วมรายแถว
+  window.wlPickParts = function () {
+    var st = state();
+    APP._wlPick = { kind: 'parts', sel: {}, q: '' };
+    (st.gparts || []).forEach(function (sid) { APP._wlPick.sel[sid] = 1; });
+    showModal('เลือกนักศึกษาที่จะกรอกกิจกรรมให้', pickBody());
+    setTimeout(function () { if (window.lucide) lucide.createIcons(); }, 30);
+  };
+  window.wlPartsClear = function () {
+    state().gparts = [];
+    renderCurrentPage();
+  };
+  /* ใส่รายชื่อกลุ่มให้แถวที่ยังไม่ได้ระบุผู้เข้าร่วม
+     ไม่แตะแถวที่ระบุรายชื่อไว้แล้ว เพราะอาจเป็นกลุ่มอื่นที่ตั้งใจกรอกไว้ก่อนหน้า */
+  window.wlPartsApplyAll = function () {
+    var st = state(), g = (st.gparts || []).slice();
+    if (!g.length) { showToast('ยังไม่ได้เลือกรายชื่อกลุ่ม', 'error'); return; }
+    var d = st.draft || draft();
+    var cnt = 0;
+    shownMissions().forEach(function (m) {
+      if (m.subject) return;                       // ด้านวิชาการเก็บเป็นรายวิชา ไม่มีผู้เข้าร่วม
+      (d[m.key] || []).forEach(function (r) {
+        if (partOf(r).length) return;
+        r.students = g.slice();
+        cnt++;
+      });
+    });
+    showToast(cnt ? 'ใส่รายชื่อกลุ่มให้ ' + cnt + ' รายการแล้ว' : 'ทุกแถวระบุผู้เข้าร่วมไว้แล้ว');
+    renderCurrentPage();
+  };
+
   /* ---------- กล่องเลือกนักศึกษาเข้าร่วมกิจกรรม ----------
      กิจกรรมนอกการเรียนการสอนไม่ได้มีนักศึกษาเข้าร่วมทุกคน
      จึงติ๊กเลือกได้ทีละหลายคน แทนการเพิ่มทีละคน */
@@ -1861,7 +1926,9 @@
       + '<button type="button" onclick="wlPickApply()" class="flex-1 bg-primary text-white py-2.5 rounded-xl text-sm">ใช้รายชื่อนี้</button>'
       + '<button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl border text-sm text-gray-600">ยกเลิก</button>'
       + '</div>'
-      + '<p class="text-[11px] text-gray-400">' + (p.kind === 'group'
+      + '<p class="text-[11px] text-gray-400">' + (p.kind === 'parts'
+          ? 'ทุกรายการที่เพิ่มใหม่จะนับชั่วโมงให้เฉพาะคนที่เลือกไว้นี้ · กรอกได้หลายกิจกรรมแล้วกดบันทึกครั้งเดียว · ไม่เลือกใครเลยหรือเลือกครบทุกคน = ทุกคนในชั้น'
+        : p.kind === 'group'
           ? 'ค่าที่กรอกจะถูกบันทึกเป็นค่าเฉพาะรายของนักศึกษาทุกคนที่เลือก'
           : 'ติ๊กเฉพาะคนที่เข้าร่วมกิจกรรมนี้ · ระบบนับชั่วโมงกิจกรรมนี้ให้เฉพาะคนที่ติ๊ก · ไม่ติ๊กใครเลยหรือติ๊กครบทุกคน = นับให้ทุกคนในชั้น') + '</p>'
       + '</div>';
@@ -1900,6 +1967,16 @@
     if (!p) return;
     var st = state();
     var sel = Object.keys(p.sel).filter(function (k) { return p.sel[k]; });
+
+    if (p.kind === 'parts') {
+      var all0 = cohortStudents(st.level).length;
+      // เลือกครบทุกคน = เท่ากับไม่เจาะจง เก็บเป็นค่าว่างจะอ่านง่ายกว่า
+      st.gparts = (sel.length && sel.length < all0) ? sel : [];
+      APP._wlPick = null;
+      closeModal();
+      renderCurrentPage();
+      return;
+    }
 
     if (p.kind === 'group') {
       var g = {};
@@ -2513,8 +2590,8 @@
           missionPicker().replace(/<p class="text-xs font-semibold text-gray-600 mb-2">[\s\S]*?<\/p>/, '') + missionScopeNote(), st.mission ? 'done' : 'active')
       + wlStep(3, group ? 'เลือกนักศึกษา 1 คน แล้วกรอกกิจกรรม' : 'เพิ่มกิจกรรม และเลือกว่าใครเข้าร่วม',
           group ? 'เลือกได้ทีละคน · ค่าที่กรอกจะใช้แทนภาระงานทั้งชุดของคนนั้น'
-                : 'แต่ละแถว = 1 กิจกรรม · กำหนด "ใครเข้าร่วม" ได้ทีละแถว · กรอกทีละมาก ๆ ใช้ไฟล์ CSV',
-          (group ? groupPicker() : howToBox() + wlCsvPanel()) + foldBar() + missionEditors(group), 'active')
+                : 'เลือกกลุ่มผู้เข้าร่วมไว้ก่อน แล้วกรอกได้หลายกิจกรรม บันทึกครั้งเดียว · แต่ละแถวปรับผู้เข้าร่วมเองได้ · กรอกทีละมาก ๆ ใช้ไฟล์ CSV',
+          (group ? groupPicker() : howToBox() + partsGroupBox() + wlCsvPanel()) + foldBar() + missionEditors(group), 'active')
       + wlStep(4, 'ตรวจสรุปแล้วบันทึก', group
           ? (sel.length ? 'จะบันทึกเป็นค่าเฉพาะรายของนักศึกษาที่เลือก' : '<span class="text-amber-700">ยังไม่ได้เลือกนักศึกษาในขั้นที่ 3</span>')
           : 'บันทึกครั้งเดียวใช้กับทั้งชั้น · กิจกรรม "เฉพาะบางคน" นับให้เฉพาะคนที่ติ๊ก',

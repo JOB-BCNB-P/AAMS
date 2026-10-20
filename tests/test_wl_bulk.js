@@ -55,7 +55,8 @@ t('ไม่มีลูปเขียนรายคนแบบเดิม�
 console.log('\n[3] ไฟล์ CSV เป็นทางสำหรับกรอกทีละมาก ๆ');
 t('นำเข้า CSV ลงแผนชั้นปีเท่านั้น ไม่เปิดในโหมดรายบุคคล', () => {
   assert.ok(WL.includes('function wlCsvPanel()'), 'wlCsvPanel ยังรับโหมด');
-  assert.ok(WL.includes("(group ? groupPicker() : howToBox() + wlCsvPanel())"),
+  const step3 = WL.slice(WL.indexOf('group ? groupPicker()'), WL.indexOf('group ? groupPicker()') + 200);
+  assert.ok(step3.includes('wlCsvPanel()') && step3.indexOf('wlCsvPanel()') > step3.indexOf(':'),
     'แผงนำเข้า CSV ยังโผล่ในโหมดรายบุคคล');
   assert.ok(!WL.includes("wlCsvPanel(group ? 'group' : 'cohort')"), 'ยังส่งโหมดเข้าแผง CSV');
 });
@@ -71,7 +72,38 @@ t('นำเข้าแล้วยังไม่เขียนลงระ�
   assert.ok(WL.includes('ยังไม่บันทึกจนกว่าจะกดปุ่มบันทึก'), 'ไม่ได้เตือนว่าต้องกดบันทึกเอง');
 });
 
-console.log('\n[4] ทางเลือกที่ถูกต้องถูกบอกไว้ในหน้าจอ');
+console.log('\n[4] เลือกนักศึกษาหลายคน กรอกหลายกิจกรรม บันทึกครั้งเดียว');
+t('มีกล่องเลือกกลุ่มผู้เข้าร่วมในโหมดกรอกทั้งชั้น', () => {
+  const seg = grab('function partsGroupBox()');
+  assert.ok(seg.includes('wlPickParts()'), 'ไม่มีปุ่มเลือกรายชื่อกลุ่ม');
+  assert.ok(seg.includes('wlPartsApplyAll()'), 'ไม่มีปุ่มใส่รายชื่อให้แถวที่ยังว่าง');
+  assert.ok(seg.includes('wlPartsClear()'), 'ไม่มีปุ่มล้างกลุ่ม');
+  assert.ok(WL.includes('howToBox() + partsGroupBox()'), 'กล่องไม่ได้ถูกวางในขั้นที่ 3');
+});
+t('รายการที่เพิ่มใหม่ติดรายชื่อกลุ่มไปด้วย', () => {
+  const seg = grab('window.wlRowAdd = function (mkey)');
+  assert.ok(seg.includes('row.students = st0.gparts.slice()'), 'แถวใหม่ไม่ได้รับรายชื่อกลุ่ม');
+  assert.ok(seg.includes('!m.subject'), 'ด้านวิชาการเก็บเป็นรายวิชา ไม่ควรมีผู้เข้าร่วม');
+  assert.ok(seg.includes("st0.mode !== 'group'"), 'ไม่ควรใส่รายชื่อกลุ่มในโหมดปรับรายบุคคล');
+});
+t('ยังเก็บเป็นกิจกรรมละ 1 แถวในแผนชั้นปี ไม่ได้สร้างระเบียนรายคน', () => {
+  // จุดสำคัญ : ตอบโจทย์ "เลือกหลายคน" โดยไม่กลับไปสร้างข้อมูลซ้ำแบบการบันทึกแบบกลุ่มเดิม
+  const seg = grab('window.wlPartsApplyAll = function ()');
+  assert.ok(seg.includes('r.students = g.slice()'), 'ไม่ได้เขียนรายชื่อลงแถวกิจกรรม');
+  assert.ok(!seg.includes('workload_student'), 'กลับไปสร้างระเบียนรายคนอีกแล้ว');
+  const add = grab('window.wlRowAdd = function (mkey)');
+  assert.ok(!add.includes('workload_student'), 'กลับไปสร้างระเบียนรายคนอีกแล้ว');
+});
+t('เลือกครบทุกคน = ทุกคนในชั้น ไม่เก็บรายชื่อยาว ๆ ไว้เปล่า ๆ', () => {
+  const seg = WL.slice(WL.indexOf("if (p.kind === 'parts')"), WL.indexOf("if (p.kind === 'parts')") + 400);
+  assert.ok(seg.includes('sel.length < all0'), 'เลือกครบทุกคนแล้วยังเก็บรายชื่อทั้งหมด');
+});
+t('ไม่ทับรายชื่อของแถวที่ระบุผู้เข้าร่วมไว้แล้ว', () => {
+  assert.ok(grab('window.wlPartsApplyAll = function ()').includes('if (partOf(r).length) return;'),
+    'ทับรายชื่อเดิมที่ตั้งใจกรอกไว้');
+});
+
+console.log('\n[5] ทางเลือกที่ถูกต้องถูกบอกไว้ในหน้าจอ');
 t('กล่องรายบุคคลชี้ทางไปแผนชั้นปีหรือ CSV', () => {
   const seg = grab('function groupPicker()');
   assert.ok(seg.includes('เลือกได้ทีละคนเท่านั้น'), 'ไม่ได้บอกว่าเลือกได้ทีละคน');
