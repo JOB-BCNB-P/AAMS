@@ -14,7 +14,7 @@ const WL = fs.readFileSync(P + 'workload.js', 'utf8');
 let pass = 0, fail = 0;
 function t(n, f) { try { f(); pass++; console.log('  ✓ ' + n); } catch (e) { fail++; console.log('  ✗ ' + n + '\n      ' + (e.stack || e.message).split('\n').slice(0, 3).join('\n      ')); } }
 
-function env(role, roles, plans) {
+function env(role, roles, plans, missions) {
   const DATA = {
     workload_plan: plans || [], workload_student: [], workload_rate: [], subject: [],
     student: [{ student_id: '6611030101', name: 'กนกพร เดชกล้า', year_level: '1', status: 'กำลังศึกษา', batch: '80' }]
@@ -39,6 +39,9 @@ function env(role, roles, plans) {
   sb.window = sb; sb.getPageContent = () => ''; sb.buildSidebar = () => { };
   vm.createContext(sb);
   new vm.Script(WL).runInContext(sb);
+  // พันธกิจที่เจ้าหน้าที่งานอื่นๆ ได้รับมอบหมาย อ่านจากโปรไฟล์ผู้ใช้
+  // ไม่ส่งค่า = ยังไม่ได้รับมอบหมาย ซึ่งต้องบันทึกอะไรไม่ได้เลย
+  if (missions !== undefined) sb.__emsProfile = { workload_missions: missions };
   return sb;
 }
 function openPlan(sb, mission) {
@@ -102,8 +105,16 @@ t('บอกเหตุผลและทางแก้ ไม่ใช่ก�
   assert.ok(!h.includes('เพิ่มรายการแรก'), 'ไม่ควรมีปุ่มเพิ่มในพันธกิจที่ถูกล็อก');
 });
 t('เจ้าหน้าที่งานอื่นๆ ยังกรอกพันธกิจที่ได้รับมอบหมายได้', () => {
-  const h = openPlan(env('otherStaff', ['otherStaff']), 'research');
+  const h = openPlan(env('otherStaff', ['otherStaff'], null, 'research'), 'research');
   assert.ok(h.includes('เพิ่มรายการแรก'), 'กรอกพันธกิจที่ได้รับมอบหมายไม่ได้');
+});
+t('เจ้าหน้าที่งานอื่นๆ ที่ยังไม่ได้รับมอบหมายด้านใดเลย บันทึกไม่ได้', () => {
+  // ปฏิเสธโดยปริยาย ให้ตรงกับ ems.workload_missions() ในฐานข้อมูล
+  // ของเดิมคือไม่ระบุด้าน = ได้ทุกด้าน ซึ่งกลับหัวกับเจตนาของระบบ
+  ['research', 'service', 'student', 'personal'].forEach(function (k) {
+    const h = openPlan(env('otherStaff', ['otherStaff'], null, ''), k);
+    assert.ok(h.includes('ไม่ได้รับมอบหมายให้บันทึก'), k + ' : ยังบันทึกได้ทั้งที่ไม่ได้รับมอบหมาย');
+  });
 });
 
 
@@ -111,7 +122,7 @@ console.log('\n[4] ใครแก้ภาระงานได้บ้าง'
 const EDITORS = [['admin', 'ผู้ดูแลระบบ'], ['academic', 'งานวิชาการ'], ['registrar', 'งานทะเบียน'], ['otherStaff', 'เจ้าหน้าที่งานอื่นๆ']];
 EDITORS.forEach(function (r) {
   t(r[1] + ' แก้ไขได้', () => {
-    const h = openPlan(env(r[0], [r[0]]), 'research');
+    const h = openPlan(env(r[0], [r[0]], null, r[0] === 'otherStaff' ? 'research' : undefined), 'research');
     assert.ok(!h.includes('บัญชีของคุณดูได้อย่างเดียว'), r[1] + ' ถูกกันเป็นดูอย่างเดียว');
     assert.ok(h.includes('เพิ่มรายการแรก'), r[1] + ' ไม่มีช่องให้กรอก');
   });

@@ -131,7 +131,8 @@ t('ลบได้เฉพาะรายการที่ตัวเอง�
   assert.ok(seg.includes('if (!list[i] || !list[i].self) continue;'), 'อาจชี้ไปโดนรายการของวิทยาลัย');
   assert.ok(WL.slice(WL.indexOf('window.wlSelfRemove'), WL.indexOf('window.wlSelfRemove') + 700)
     .includes('selfIndexOf(list, rank)'), 'ตัวลบไม่ได้ใช้ตัวหาตำแหน่งที่กรองแล้ว');
-  assert.ok(WL.includes('x.self\n                  ?'), 'ปุ่มจัดการต้องขึ้นเฉพาะรายการที่บันทึกเอง');
+  assert.ok(WL.includes("x.self && rowStatus(x.r) !== ST_APPROVED\n                  ?"),
+    'ปุ่มจัดการต้องขึ้นเฉพาะรายการที่บันทึกเองและยังไม่ได้รับอนุมัติ');
 });
 t('เขียนลงแถวของตัวเองเท่านั้น', () => {
   const i = WL.indexOf('async function selfSave');
@@ -244,9 +245,10 @@ t('แก้ไขใช้ฟอร์มเดียวกับการเ�
 });
 t('แก้ไขแล้วคงป้าย "บันทึกเอง" ไว้ ไม่กลายเป็นของวิทยาลัย', () => {
   const i = WL.indexOf('if (editing) {', WL.indexOf('function selfForm'));
-  const seg = WL.slice(i, i + 420);
+  const seg = WL.slice(i, i + 700);
   assert.ok(seg.includes('Object.assign({}, list[target]'), 'เขียนทับทั้งก้อน ข้อมูลเดิมจะหาย');
   assert.ok(seg.includes('self: 1'), 'ป้ายบันทึกเองหลุด');
+  assert.ok(seg.includes('status: ST_PENDING'), 'แก้ไขแล้วต้องกลับไปรออนุมัติใหม่');
 });
 t('ย้ายภาคการศึกษาตอนแก้ไขไม่ได้ เพราะ rank ผูกกับภาค', () => {
   const i = WL.indexOf('function selfForm');

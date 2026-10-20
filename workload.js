@@ -247,11 +247,41 @@
     return !list.length || list.indexOf(String(sid)) !== -1;
   }
 
+  /* ---------------- สถานะการอนุมัติของรายการที่นักศึกษาบันทึกเอง ----------------
+     รายการที่วิทยาลัยกำหนด (ไม่มีธง self) ถือว่าผ่านการตรวจแล้วเสมอ นับชั่วโมงทันที
+     รายการที่นักศึกษาบันทึกเอง ต้องให้เจ้าหน้าที่ด้านนั้นหรือผู้ดูแลระบบอนุมัติก่อน
+     จึงจะถูกนับเป็นชั่วโมงภาระงาน เพื่อยืนยันว่านักศึกษาเข้าร่วมกิจกรรมจริง
+     ไม่มีช่อง status = ถือว่ารออนุมัติ (ข้อมูลที่บันทึกก่อนมีระบบอนุมัติ)
+     ฐานข้อมูลบังคับซ้ำใน ems.workload_student_guard() : นักศึกษาตั้ง approved เองไม่ได้
+     และแก้หรือลบรายการที่อนุมัติแล้วไม่ได้ */
+  var ST_PENDING = 'pending', ST_APPROVED = 'approved', ST_REJECTED = 'rejected';
+  function isSelfRow(r) { return !!(r && r.self); }
+  function rowStatus(r) {
+    if (!isSelfRow(r)) return ST_APPROVED;
+    var s = norm(r.status);
+    return (s === ST_APPROVED || s === ST_REJECTED) ? s : ST_PENDING;
+  }
+  // รายการนี้ถูกนับเป็นชั่วโมงภาระงานหรือยัง
+  function rowCounts(r) { return rowStatus(r) === ST_APPROVED; }
+  var ST_TEXT = {};
+  ST_TEXT[ST_PENDING]  = ['รออนุมัติ', 'bg-amber-50 text-amber-700'];
+  ST_TEXT[ST_APPROVED] = ['อนุมัติแล้ว', 'bg-emerald-50 text-emerald-700'];
+  ST_TEXT[ST_REJECTED] = ['ไม่อนุมัติ', 'bg-red-50 text-red-700'];
+  function statusChip(r) {
+    var k = rowStatus(r), t = ST_TEXT[k];
+    return '<span class="px-2 py-0.5 rounded-full text-xs ' + t[1] + '">' + t[0] + '</span>'
+      + (k === ST_REJECTED && norm(r.appr_note)
+          ? '<span class="block text-[11px] text-red-500 mt-0.5">' + esc(r.appr_note) + '</span>' : '')
+      + (k === ST_APPROVED && norm(r.appr_by)
+          ? '<span class="block text-[11px] text-gray-400 mt-0.5">โดย ' + esc(r.appr_by) + '</span>' : '');
+  }
+
   function calc(plan, ovr, sid) {
     var out = { raw: {}, weighted: {}, total: 0 };
     MISSIONS.forEach(function (m) {
       var useOvr = ovrApplies(ovr, m);
-      var list = rows(useOvr ? ovr : plan, m).filter(function (r) { return appliesTo(r, sid); });
+      // รายการที่นักศึกษาบันทึกเองและยังไม่ได้รับอนุมัติ ยังไม่ถูกนับเป็นชั่วโมง
+      var list = rows(useOvr ? ovr : plan, m).filter(function (r) { return appliesTo(r, sid) && rowCounts(r); });
       var raw = list.reduce(function (s, r) { return s + n(r.hours); }, 0);
       out.raw[m.key] = raw;
       out.weighted[m.key] = Math.round(raw * weightOf(plan, m) * 100) / 100;
@@ -437,7 +467,8 @@
     var p = window.__emsProfile || {};
     var list = p.workload_missions;
     if (typeof list === 'string') list = list.split(',');
-    if (!Array.isArray(list) || !list.length) list = ['research', 'service', 'student', 'personal'];
+    // ยังไม่ได้รับมอบหมายด้านใดเลย = บันทึกไม่ได้ (ตรงกับ ems.workload_missions() ในฐานข้อมูล)
+    if (!Array.isArray(list)) list = [];
     return list.map(function (x) { return String(x).trim(); })
       .filter(function (x) { return x && x !== 'teaching'; });
   }
@@ -578,16 +609,19 @@
         var target = selfIndexOf(list, opts.rank);
         if (target < 0) { showToast('ไม่พบรายการที่จะแก้ไข อาจมีการแก้จากที่อื่น', 'error'); return; }
         // คงป้าย self และผู้บันทึกเดิมไว้ เปลี่ยนเฉพาะสิ่งที่กรอกในฟอร์ม
+        // แก้ไขแล้วต้องกลับไปรออนุมัติใหม่ เพราะเนื้อหาเปลี่ยนจากที่เจ้าหน้าที่เคยตรวจ
         list[target] = Object.assign({}, list[target], {
           name: nameVal, hours: hours, note: String(f.note.value || '').trim(),
-          self: 1, at: stampNow()
+          self: 1, at: stampNow(),
+          status: ST_PENDING, appr_by: '', appr_at: '', appr_note: ''
         });
       } else {
         list.push({
           name: nameVal, hours: hours, note: String(f.note.value || '').trim(),
           self: 1,                       // ป้ายว่าเป็นรายการที่นักศึกษาบันทึกเอง
           by: (APP.currentUser && APP.currentUser.name) || mySid(),
-          at: stampNow()
+          at: stampNow(),
+          status: ST_PENDING             // รอเจ้าหน้าที่ด้านนั้นตรวจก่อนจึงนับชั่วโมง
         });
       }
       closeModal();
@@ -617,6 +651,9 @@
     var list = ovr ? rows(ovr, m).slice() : [];
     var idx = selfIndexOf(list, rank);
     if (idx < 0) { showToast('ไม่พบรายการที่จะแก้ไข', 'error'); return; }
+    if (rowStatus(list[idx]) === ST_APPROVED) {
+      showToast('รายการนี้ได้รับอนุมัติแล้ว แก้ไขไม่ได้ กรุณาแจ้งเจ้าหน้าที่', 'error'); return;
+    }
     selfForm(mkey, { editing: true, sem: sem, rank: rank, item: list[idx] });
   };
 
@@ -629,6 +666,9 @@
     var list = ovr ? rows(ovr, m).slice() : [];
     var target = selfIndexOf(list, rank);
     if (target < 0) { showToast('ไม่พบรายการที่จะลบ อาจมีการแก้ไขจากที่อื่น', 'error'); return; }
+    if (rowStatus(list[target]) === ST_APPROVED) {
+      showToast('รายการนี้ได้รับอนุมัติแล้ว ลบไม่ได้ กรุณาแจ้งเจ้าหน้าที่', 'error'); return;
+    }
     if (!confirm('ลบรายการ "' + (list[target].name || '') + '" ใช่หรือไม่')) return;
     list.splice(target, 1);
     selfSave(mkey, sem, list);
@@ -668,7 +708,7 @@
           if (!appliesTo(r, sid)) return;
           var isSelf = !!(r && r.self);
           byMission[m.key].push({ sm: sm, r: r, self: isSelf, rank: isSelf ? selfRank++ : -1 });
-          grand += n(r.hours);
+          if (rowCounts(r)) grand += n(r.hours);   // รออนุมัติยังไม่นับ
         });
       });
     });
@@ -685,7 +725,8 @@
     var sum = '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-5">'
       + MISSIONS.map(function (m) {
         var items = byMission[m.key];
-        var h = items.reduce(function (a, x) { return a + n(x.r.hours); }, 0);
+        var h = items.reduce(function (a, x) { return a + (rowCounts(x.r) ? n(x.r.hours) : 0); }, 0);
+        var hWait = items.reduce(function (a, x) { return a + (rowStatus(x.r) === ST_PENDING ? n(x.r.hours) : 0); }, 0);
         return '<div class="bg-white rounded-2xl p-4 border border-blue-100">'
           + '<div class="flex items-center gap-2 mb-1">'
           + '<span style="width:10px;height:10px;border-radius:50%;background:' + m.color + ';display:inline-block"></span>'
@@ -693,7 +734,9 @@
           + '<p class="text-2xl font-bold text-gray-800 tabular-nums">' + fx(h)
           + ' <span class="text-sm font-normal text-gray-500">ชม.</span></p>'
           + '<p class="text-xs text-gray-400">' + items.length + ' รายการ'
-          + (grand ? ' · ' + (Math.round(h / grand * 1000) / 10) + '% ของทั้งหมด' : '') + '</p></div>';
+          + (grand ? ' · ' + (Math.round(h / grand * 1000) / 10) + '% ของทั้งหมด' : '') + '</p>'
+          + (hWait ? '<p class="text-[11px] text-amber-600 mt-0.5">รออนุมัติอีก ' + fx(hWait) + ' ชม. (ยังไม่นับ)</p>' : '')
+          + '</div>';
       }).join('')
       + '</div>';
 
@@ -714,10 +757,11 @@
               + '<td class="px-3 py-2">' + itemLabel(m, x.r) + '</td>'
               + '<td class="px-3 py-2 text-center tabular-nums">' + fx(x.r.hours) + '</td>'
               + '<td class="px-3 py-2 text-center">'
-              + (x.self ? '<span class="px-2 py-0.5 rounded-full text-xs bg-emerald-50 text-emerald-700">ฉันบันทึกเอง</span>'
+              + (x.self ? '<span class="px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700">ฉันบันทึกเอง</span>'
+                            + '<span class="block mt-1">' + statusChip(x.r) + '</span>'
                         : '<span class="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">วิทยาลัยกำหนด</span>') + '</td>'
               + (mine ? '<td class="px-3 py-2 text-center">'
-                + (x.self
+                + (x.self && rowStatus(x.r) !== ST_APPROVED
                   ? '<button onclick="wlSelfEdit(\'' + m.key + '\',\'' + x.sm + '\',' + x.rank + ')" class="text-blue-400 hover:text-blue-600 px-1" title="แก้ไขรายการนี้"><i data-lucide="pencil" class="w-4 h-4"></i></button>'
                   + '<button onclick="wlSelfRemove(\'' + m.key + '\',\'' + x.sm + '\',' + x.rank + ')" class="text-red-400 hover:text-red-600 px-1" title="ลบรายการนี้"><i data-lucide="trash-2" class="w-4 h-4"></i></button>'
                   : '')
@@ -740,6 +784,150 @@
     return head + sum + blocks;
   }
 
+  /* ---------------- คิวรออนุมัติภาระงานที่นักศึกษาบันทึกเอง ----------------
+     เจ้าหน้าที่เห็นเฉพาะด้านที่ตนได้รับมอบหมาย (ems.workload_missions())
+     ผู้ดูแลระบบ · งานวิชาการ · งานทะเบียน เห็นทุกด้าน
+     ชั่วโมงจะถูกนับเข้าภาระงานก็ต่อเมื่อกดอนุมัติแล้วเท่านั้น */
+  function pendingRows(year) {
+    var mine = myMissions().filter(function (k) { return k !== 'teaching'; });
+    if (!mine.length) return [];
+    var names = {};
+    get('student').forEach(function (x) { names[norm(x.student_id)] = norm(x.name); });
+    var out = [];
+    get('workload_student').forEach(function (o) {
+      if (norm(o.academic_year) !== norm(year)) return;
+      MISSIONS.forEach(function (m) {
+        if (mine.indexOf(m.key) < 0) return;
+        var rank = 0;
+        rows(o, m).forEach(function (r) {
+          if (!isSelfRow(r)) return;
+          var rk = rank++;                       // ลำดับนับเฉพาะรายการที่บันทึกเอง
+          if (rowStatus(r) === ST_APPROVED) return;
+          out.push({ sid: norm(o.student_id), name: names[norm(o.student_id)] || '-',
+                     level: norm(o.year_level), sem: norm(o.semester),
+                     m: m, r: r, rank: rk, status: rowStatus(r) });
+        });
+      });
+    });
+    out.sort(function (a, b) {
+      return (a.level + a.sem + a.sid).localeCompare(b.level + b.sem + b.sid, 'th', { numeric: true });
+    });
+    return out;
+  }
+
+  function approveTab() {
+    var st = state();
+    var mine = myMissions().filter(function (k) { return k !== 'teaching'; });
+    if (!mine.length) {
+      return '<div class="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center">'
+        + '<i data-lucide="shield-alert" class="w-8 h-8 mx-auto mb-2 text-amber-500"></i>'
+        + '<p class="text-sm text-amber-800">บัญชีของคุณยังไม่ได้รับมอบหมายพันธกิจใดเลย จึงไม่มีรายการให้อนุมัติ</p>'
+        + '<p class="text-xs text-amber-700 mt-1">ผู้ดูแลระบบกำหนดได้ที่ ตั้งค่า &gt; ผู้ใช้งาน &gt; พันธกิจภาระงานที่รับผิดชอบ</p></div>';
+    }
+    var all = pendingRows(st.year);
+    var fM = norm(st.apMission), fL = norm(st.apLevel), fS = norm(st.apSem), fT = norm(st.apStatus) || ST_PENDING;
+    var list = all.filter(function (x) {
+      return (!fM || x.m.key === fM) && (!fL || x.level === fL) && (!fS || x.sem === fS)
+          && (fT === 'all' || x.status === fT);
+    });
+
+    var waiting = all.filter(function (x) { return x.status === ST_PENDING; }).length;
+    var sel = function (k, label, opts, cur) {
+      return '<label class="text-sm text-gray-500">' + label + '</label>'
+        + '<select onchange="wlSet(\'' + k + '\',this.value)" class="border border-gray-200 rounded-xl px-3 py-1.5 text-sm">'
+        + opts.map(function (o) {
+            return '<option value="' + esc(o[0]) + '"' + (norm(cur) === o[0] ? ' selected' : '') + '>' + esc(o[1]) + '</option>';
+          }).join('') + '</select>';
+    };
+    var bar = '<div class="flex flex-wrap items-center gap-2 mb-4">'
+      + sel('apStatus', 'สถานะ', [[ST_PENDING, 'รออนุมัติ'], [ST_REJECTED, 'ไม่อนุมัติ'], ['all', 'ทั้งหมดที่ยังไม่อนุมัติ']], fT)
+      + sel('apMission', 'พันธกิจ', [['', 'ทุกด้านที่ฉันดูแล']].concat(
+          MISSIONS.filter(function (m) { return mine.indexOf(m.key) >= 0; })
+                  .map(function (m) { return [m.key, m.short]; })), fM)
+      + sel('apLevel', 'ชั้นปี', [['', 'ทุกชั้นปี'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']], fL)
+      + sel('apSem', 'ภาค', [['', 'ทุกภาค'], ['1', '1'], ['2', '2'], ['3', 'ฤดูร้อน']], fS)
+      + '<span class="ml-auto text-sm ' + (waiting ? 'text-amber-700 font-semibold' : 'text-gray-400') + '">'
+      + 'รออนุมัติทั้งหมด ' + waiting + ' รายการ</span></div>';
+
+    if (!list.length) {
+      return bar + '<div class="bg-white border border-blue-100 rounded-2xl p-8 text-center">'
+        + '<i data-lucide="check-circle-2" class="w-8 h-8 mx-auto mb-2 text-emerald-400"></i>'
+        + '<p class="text-sm text-gray-500">ไม่มีรายการตามเงื่อนไขที่เลือก</p></div>';
+    }
+
+    var body = list.map(function (x) {
+      var act = "'" + esc(x.sid) + "','" + esc(x.sem) + "','" + x.m.key + "'," + x.rank;
+      return '<tr class="border-t hover:bg-gray-50">'
+        + '<td class="px-3 py-2 font-mono text-xs text-primary whitespace-nowrap">' + esc(x.sid) + '</td>'
+        + '<td class="px-3 py-2 whitespace-nowrap">' + esc(x.name)
+        + '<span class="block text-[11px] text-gray-400">ชั้นปีที่ ' + esc(x.level) + ' · ภาค ' + esc(semName(x.sem)) + '</span></td>'
+        + '<td class="px-3 py-2"><span class="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-lg ' + x.m.bg + ' ' + x.m.text + '">'
+        + '<span style="width:7px;height:7px;border-radius:50%;background:' + x.m.color + ';display:inline-block"></span>'
+        + esc(x.m.short) + '</span></td>'
+        + '<td class="px-3 py-2">' + esc(norm(x.r.name))
+        + (norm(x.r.note) ? '<span class="block text-[11px] text-gray-400">' + esc(x.r.note) + '</span>' : '')
+        + '<span class="block text-[11px] text-gray-300">บันทึก ' + esc(norm(x.r.at) || '-') + '</span></td>'
+        + '<td class="px-3 py-2 text-center tabular-nums font-semibold">' + fx(x.r.hours) + '</td>'
+        + '<td class="px-3 py-2 text-center">' + statusChip(x.r) + '</td>'
+        + '<td class="px-3 py-2 text-center whitespace-nowrap">'
+        + '<button onclick="wlApprove(' + act + ')" class="px-2.5 py-1 rounded-lg text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100">อนุมัติ</button>'
+        + '<button onclick="wlReject(' + act + ')" class="ml-1 px-2.5 py-1 rounded-lg text-xs bg-red-50 text-red-700 hover:bg-red-100">ไม่อนุมัติ</button>'
+        + '</td></tr>';
+    }).join('');
+
+    return bar
+      + '<div class="overflow-x-auto border border-blue-100 rounded-2xl bg-white">'
+      + '<table class="w-full text-sm"><thead><tr class="bg-surface text-left">'
+      + '<th class="px-3 py-2 font-semibold">รหัส</th><th class="px-3 py-2 font-semibold">ชื่อ-สกุล</th>'
+      + '<th class="px-3 py-2 font-semibold">พันธกิจ</th><th class="px-3 py-2 font-semibold">กิจกรรม</th>'
+      + '<th class="px-3 py-2 font-semibold text-center">ชม.</th>'
+      + '<th class="px-3 py-2 font-semibold text-center">สถานะ</th>'
+      + '<th class="px-3 py-2 font-semibold text-center">พิจารณา</th></tr></thead>'
+      + '<tbody>' + body + '</tbody></table></div>'
+      + '<p class="text-xs text-gray-400 mt-2">ชั่วโมงของรายการที่นักศึกษาบันทึกเองจะถูกนับเข้าภาระงาน'
+      + 'ก็ต่อเมื่อได้รับอนุมัติแล้วเท่านั้น · เมื่อกด "ไม่อนุมัติ" ให้ระบุเหตุผล นักศึกษาจะเห็นข้อความนั้น'
+      + 'และแก้ไขรายการเพื่อส่งใหม่ได้</p>';
+  }
+
+  /* บันทึกผลการพิจารณาลงรายการเดียว — ดึงข้อมูลล่าสุดก่อนเสมอ
+     กันการทับงานที่คนอื่นเพิ่งบันทึกในระเบียนเดียวกัน */
+  async function setRowStatus(sid, sem, mkey, rank, status, note) {
+    var st = state(), m = missionOf(mkey);
+    if (!m) return;
+    if (!canEditMission(mkey)) { showToast('บัญชีของคุณไม่ได้รับมอบหมายให้พิจารณา' + m.short, 'error'); return; }
+    showToast('กำลังบันทึก...');
+    try { await GSheetDB.refreshTab('workload_student'); } catch (e) { /* ใช้ข้อมูลที่มีอยู่ */ }
+    var cur = overrideOf(sid, st.year, sem);
+    if (!cur) { showToast('ไม่พบระเบียนของนักศึกษา', 'error'); return; }
+    var list = rows(cur, m).slice();
+    var idx = selfIndexOf(list, rank);
+    if (idx < 0) { showToast('ไม่พบรายการ อาจมีการแก้ไขจากที่อื่น', 'error'); return; }
+    var who = (APP.currentUser && APP.currentUser.name) || '';
+    list[idx] = Object.assign({}, list[idx], {
+      status: status, appr_by: who, appr_at: stampNow(), appr_note: note || ''
+    });
+    var payload = {
+      type: 'workload_student', student_id: sid, academic_year: st.year,
+      year_level: norm(cur.year_level), semester: sem, updated_by: who
+    };
+    payload[m.field] = JSON.stringify(list);
+    var r = await GSheetDB.update(Object.assign({}, cur, payload));
+    if (r && r.isOk) {
+      showToast(status === ST_APPROVED ? 'อนุมัติเรียบร้อย' : 'บันทึกผลการพิจารณาแล้ว');
+      renderCurrentPage();
+    } else showToast('บันทึกไม่สำเร็จ: ' + ((r && r.error) || ''), 'error');
+  }
+
+  window.wlApprove = function (sid, sem, mkey, rank) {
+    setRowStatus(sid, sem, mkey, rank, ST_APPROVED, '');
+  };
+  window.wlReject = function (sid, sem, mkey, rank) {
+    var note = prompt('เหตุผลที่ไม่อนุมัติ (นักศึกษาจะเห็นข้อความนี้)');
+    if (note === null) return;
+    if (!String(note).trim()) { showToast('กรุณาระบุเหตุผล', 'error'); return; }
+    setRowStatus(sid, sem, mkey, rank, ST_REJECTED, String(note).trim());
+  };
+
   function buildWorkloadPage() {
     var st = state();
     if (isStudentView()) return studentWorkloadPage();
@@ -749,6 +937,7 @@
     if (st.tab === 'students') st.tab = 'plan';   // ลิงก์เก่าที่ชี้มาแท็บรายบุคคล
     var TAB_NAME = { summary: ['สรุปผลรวม', 'คิดชั่วโมงภาระงานตามสัดส่วนพันธกิจของวิทยาลัย'],
       plan: ['กรอกภาระงาน', 'เลือกชั้นปีและภาคการศึกษา แล้วกรอกทั้งชั้นปีหรือเลือกกรอกรายบุคคล'],
+      approve: ['อนุมัติภาระงานนักศึกษา', 'ตรวจและอนุมัติรายการที่นักศึกษาบันทึกเอง ก่อนนับเป็นชั่วโมงภาระงาน'],
       rate: ['เกณฑ์หน่วยชั่วโมง', 'ตารางเทียบหน่วยชั่วโมงของกิจกรรมแต่ละประเภท'] };
     var t = TAB_NAME[st.tab] || TAB_NAME.summary;
 
@@ -762,6 +951,7 @@
       + '</select></div></div>';
 
     var body = st.tab === 'plan' ? planTab()
+      : st.tab === 'approve' ? approveTab()
       : st.tab === 'rate' ? rateTab() : summaryTab();
     return head + body;
   }
@@ -3073,7 +3263,7 @@
 
   /* ---------------- ต่อเข้ากับระบบเดิม ---------------- */
   // เมนูย่อยแต่ละอันเป็นหน้าของตัวเอง แถบเมนูซ้ายจึงไฮไลต์ได้ถูกและปุ่มย้อนกลับของเบราว์เซอร์ทำงานตามปกติ
-  var WL_PAGES = { workloadSummary: 'summary', workloadPlan: 'plan', workloadRate: 'rate' };
+  var WL_PAGES = { workloadSummary: 'summary', workloadPlan: 'plan', workloadApprove: 'approve', workloadRate: 'rate' };
   window.wlPages = WL_PAGES;
 
   (function () {
@@ -3105,7 +3295,8 @@
     };
 
     // เมนู "ภาระงานนักศึกษา" เป็นกลุ่มที่พับได้ ข้างในคือแท็บเดิมทั้ง 3
-    var WL_SUB = [['workloadSummary', 'สรุปผลรวม'], ['workloadPlan', 'กรอกภาระงาน'], ['workloadRate', 'เกณฑ์หน่วยชั่วโมง']];
+    var WL_SUB = [['workloadSummary', 'สรุปผลรวม'], ['workloadPlan', 'กรอกภาระงาน'],
+      ['workloadApprove', 'อนุมัติภาระงาน'], ['workloadRate', 'เกณฑ์หน่วยชั่วโมง']];
 
     function addItem() {
       var perms = (APP.permissions && APP.permissions[APP.currentRole]) || {};
