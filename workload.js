@@ -1623,9 +1623,8 @@
     var row = m.subject ? { subject_name: '', pieces: '', hours: '' }
       : m.timed ? { kind: 'กิจกรรมที่', activity: '', date_from: '', date_to: '', time_from: '', time_to: '', hours: '' }
       : { kind: 'กิจกรรมที่', activity: '', hours: '' };
-    // เลือกกลุ่มผู้เข้าร่วมไว้แล้ว ให้รายการใหม่ติดรายชื่อกลุ่มนั้นไปเลย
-    // จะได้กรอกหลายกิจกรรมรวดเดียวโดยไม่ต้องเลือกรายชื่อซ้ำทุกแถว
-    if (!m.subject && st0.mode !== 'group' && (st0.gparts || []).length) row.students = st0.gparts.slice();
+    // แถวใหม่เริ่มที่ "ทุกคนในชั้น" เสมอ ไม่ใส่รายชื่อกลุ่มให้อัตโนมัติ
+    // ต้องกดปุ่ม "ใส่รายชื่อกลุ่มให้แถวที่เลือก" เองเท่านั้น จึงจะติดรายชื่อ
     d[mkey].push(row);
     renderCurrentPage();
   };
@@ -1834,13 +1833,14 @@
       + (on ? 'text-amber-600' : 'text-gray-400') + '"></i>กลุ่มผู้เข้าร่วมสำหรับรายการที่เพิ่มใหม่</p>'
       + '<span class="text-xs ' + (on ? 'text-amber-800 font-semibold' : 'text-gray-500') + '">'
       + (on ? 'เฉพาะ ' + g.length + ' คน' : 'ทุกคนในชั้น' + (total ? ' (' + total + ' คน)' : '')) + '</span></div>'
-      + '<p class="text-[11px] text-gray-500 mb-2">เลือกรายชื่อไว้ครั้งเดียว แล้วกรอกกิจกรรมกี่รายการก็ได้ '
-      + 'ทุกรายการที่เพิ่มใหม่จะนับให้เฉพาะคนกลุ่มนี้ · กดบันทึกครั้งเดียวตอนท้าย</p>'
+      + '<p class="text-[11px] text-gray-500 mb-2">เลือกรายชื่อไว้ครั้งเดียว กรอกกิจกรรมให้ครบ '
+      + 'แล้ว<b>กดปุ่มใส่รายชื่อ</b>ทีเดียว · ระบบ<b>ไม่ใส่ให้อัตโนมัติ</b> แถวใหม่เริ่มที่ "ทุกคนในชั้น" เสมอ</p>'
       + '<div class="flex flex-wrap gap-2">'
       + btn('wlPickParts()', '<i data-lucide="user-plus" class="w-3.5 h-3.5 inline mr-1"></i>' + (on ? 'แก้รายชื่อกลุ่ม' : 'เลือกรายชื่อกลุ่ม'),
             'border-primary text-primary bg-white hover:bg-primaryLight')
-      + (on ? btn('wlPartsApplyAll()', 'ใส่ให้ทุกแถวที่ยังเป็น "ทุกคนในชั้น"', 'border-amber-300 text-amber-800 bg-white hover:bg-amber-100')
-            + btn('wlPartsClear()', 'ล้างกลุ่ม (กลับเป็นทุกคนในชั้น)', 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50') : '')
+      + (on ? btn('wlPartsApplyAll()', '<i data-lucide="user-check" class="w-3.5 h-3.5 inline mr-1"></i>ใส่รายชื่อกลุ่มให้แถวที่ยังเป็น "ทุกคนในชั้น"',
+                  'border-amber-500 bg-amber-500 text-white hover:bg-amber-600')
+            + btn('wlPartsClear()', 'ล้างกลุ่ม', 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50') : '')
       + '</div></div>';
   }
 
@@ -1933,7 +1933,7 @@
       + '<button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl border text-sm text-gray-600">ยกเลิก</button>'
       + '</div>'
       + '<p class="text-[11px] text-gray-400">' + (p.kind === 'parts'
-          ? 'ทุกรายการที่เพิ่มใหม่จะนับชั่วโมงให้เฉพาะคนที่เลือกไว้นี้ · กรอกได้หลายกิจกรรมแล้วกดบันทึกครั้งเดียว · ไม่เลือกใครเลยหรือเลือกครบทุกคน = ทุกคนในชั้น'
+          ? 'เลือกไว้เฉย ๆ ยังไม่มีผลกับรายการใด ต้องกดปุ่ม "ใส่รายชื่อกลุ่มให้แถว..." อีกครั้งจึงจะนำไปใช้ · ไม่เลือกใครเลยหรือเลือกครบทุกคน = ทุกคนในชั้น'
         : p.kind === 'group'
           ? 'ค่าที่กรอกจะถูกบันทึกเป็นค่าเฉพาะรายของนักศึกษาทุกคนที่เลือก'
           : 'ติ๊กเฉพาะคนที่เข้าร่วมกิจกรรมนี้ · ระบบนับชั่วโมงกิจกรรมนี้ให้เฉพาะคนที่ติ๊ก · ไม่ติ๊กใครเลยหรือติ๊กครบทุกคน = นับให้ทุกคนในชั้น') + '</p>'
@@ -2596,7 +2596,7 @@
           missionPicker().replace(/<p class="text-xs font-semibold text-gray-600 mb-2">[\s\S]*?<\/p>/, '') + missionScopeNote(), st.mission ? 'done' : 'active')
       + wlStep(3, group ? 'เลือกนักศึกษา 1 คน แล้วกรอกกิจกรรม' : 'เพิ่มกิจกรรม และเลือกว่าใครเข้าร่วม',
           group ? 'เลือกได้ทีละคน · ค่าที่กรอกจะใช้แทนภาระงานทั้งชุดของคนนั้น'
-                : 'เลือกกลุ่มผู้เข้าร่วมไว้ก่อน แล้วกรอกได้หลายกิจกรรม บันทึกครั้งเดียว · แต่ละแถวปรับผู้เข้าร่วมเองได้ · กรอกทีละมาก ๆ ใช้ไฟล์ CSV',
+                : 'แต่ละแถว = 1 กิจกรรม เริ่มที่ "ทุกคนในชั้น" · กรอกครบแล้วค่อยกดใส่รายชื่อกลุ่มทีเดียว · กรอกทีละมาก ๆ ใช้ไฟล์ CSV',
           (group ? groupPicker() : howToBox() + partsGroupBox() + wlCsvPanel()) + foldBar() + missionEditors(group), 'active')
       + wlStep(4, 'ตรวจสรุปแล้วบันทึก', group
           ? (sel.length ? 'จะบันทึกเป็นค่าเฉพาะรายของนักศึกษาที่เลือก' : '<span class="text-amber-700">ยังไม่ได้เลือกนักศึกษาในขั้นที่ 3</span>')

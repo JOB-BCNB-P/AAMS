@@ -80,19 +80,27 @@ t('มีกล่องเลือกกลุ่มผู้เข้าร�
   assert.ok(seg.includes('wlPartsClear()'), 'ไม่มีปุ่มล้างกลุ่ม');
   assert.ok(WL.includes('howToBox() + partsGroupBox()'), 'กล่องไม่ได้ถูกวางในขั้นที่ 3');
 });
-t('รายการที่เพิ่มใหม่ติดรายชื่อกลุ่มไปด้วย', () => {
+t('แถวใหม่เริ่มที่ "ทุกคนในชั้น" เสมอ ไม่ใส่รายชื่อกลุ่มให้เอง', () => {
+  // ของเดิมใส่ให้อัตโนมัติ ทำให้กิจกรรมที่ตั้งใจให้ทั้งชั้น (พิธีไหว้ครู มอบหมวก)
+  // กลายเป็นเฉพาะกลุ่มโดยผู้กรอกไม่รู้ตัว
   const seg = grab('window.wlRowAdd = function (mkey)');
-  assert.ok(seg.includes('row.students = st0.gparts.slice()'), 'แถวใหม่ไม่ได้รับรายชื่อกลุ่ม');
-  assert.ok(seg.includes('!m.subject'), 'ด้านวิชาการเก็บเป็นรายวิชา ไม่ควรมีผู้เข้าร่วม');
-  assert.ok(seg.includes("st0.mode !== 'group'"), 'ไม่ควรใส่รายชื่อกลุ่มในโหมดปรับรายบุคคล');
+  assert.ok(!seg.includes('gparts'), 'แถวใหม่ยังติดรายชื่อกลุ่มอัตโนมัติ');
+  assert.ok(!seg.includes('row.students'), 'แถวใหม่ไม่ควรถูกกำหนดผู้เข้าร่วมล่วงหน้า');
+});
+t('รายชื่อกลุ่มมีผลเมื่อกดปุ่มเท่านั้น', () => {
+  const uses = (WL.match(/gparts/g) || []).length;
+  assert.ok(uses > 0, 'ไม่มีกลุ่มผู้เข้าร่วมแล้ว');
+  assert.ok(grab('window.wlPartsApplyAll = function ()').includes('r.students = g.slice()'),
+    'ปุ่มใส่รายชื่อไม่ได้เขียนลงแถว');
+  assert.ok(WL.includes('ไม่ใส่ให้อัตโนมัติ'), 'ไม่ได้บอกผู้ใช้ว่าต้องกดปุ่มเอง');
 });
 t('ยังเก็บเป็นกิจกรรมละ 1 แถวในแผนชั้นปี ไม่ได้สร้างระเบียนรายคน', () => {
   // จุดสำคัญ : ตอบโจทย์ "เลือกหลายคน" โดยไม่กลับไปสร้างข้อมูลซ้ำแบบการบันทึกแบบกลุ่มเดิม
   const seg = grab('window.wlPartsApplyAll = function ()');
   assert.ok(seg.includes('r.students = g.slice()'), 'ไม่ได้เขียนรายชื่อลงแถวกิจกรรม');
   assert.ok(!seg.includes('workload_student'), 'กลับไปสร้างระเบียนรายคนอีกแล้ว');
-  const add = grab('window.wlRowAdd = function (mkey)');
-  assert.ok(!add.includes('workload_student'), 'กลับไปสร้างระเบียนรายคนอีกแล้ว');
+  assert.ok(!grab('window.wlRowAdd = function (mkey)').includes('workload_student'),
+    'กลับไปสร้างระเบียนรายคนอีกแล้ว');
 });
 t('เลือกครบทุกคน = ทุกคนในชั้น ไม่เก็บรายชื่อยาว ๆ ไว้เปล่า ๆ', () => {
   const seg = WL.slice(WL.indexOf("if (p.kind === 'parts')"), WL.indexOf("if (p.kind === 'parts')") + 400);
