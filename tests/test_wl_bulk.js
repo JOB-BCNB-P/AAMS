@@ -116,6 +116,45 @@ t('การปรับรายบุคคลยังทำได้ ไม�
   assert.ok(WL.includes("type: 'workload_student'"), 'ไม่มีทางเขียนค่าเฉพาะรายแล้ว');
 });
 
+console.log('\n[6] รายชื่อนักศึกษาเรียงตามรหัสเสมอ');
+const SORT = new Function(`
+  ${grab('function bySid(a, b)')}
+  return bySid;
+`)();
+t('เรียงจากน้อยไปมากตามรหัส', () => {
+  const ids = ['67101301061', '67101301004', '67101301080', '67101301021', '67101301002', '67101301001'];
+  const got = ids.map(x => ({ student_id: x })).sort(SORT).map(x => x.student_id);
+  assert.deepStrictEqual(got, ids.slice().sort(), 'ยังเรียงไม่ถูก');
+  assert.strictEqual(got[0], '67101301001');
+  assert.strictEqual(got[got.length - 1], '67101301080');
+});
+t('รหัสหายหรือว่างก็ไม่พัง', () => {
+  const got = [{ student_id: '' }, {}, { student_id: '67101301005' }].sort(SORT);
+  assert.strictEqual(got.length, 3);
+});
+t('ใช้กับรายชื่อทั้งสองเส้นทางของ cohortStudentsRaw', () => {
+  const seg = grab('function cohortStudentsRaw(level, yr)');
+  assert.strictEqual((seg.match(/sort\(bySid\)/g) || []).length, 2,
+    'เส้นทางหาตามรหัสรุ่น และเส้นทางถอยไปใช้ชั้นปี ต้องเรียงทั้งคู่');
+  assert.ok(seg.includes('hit.slice().sort(bySid)'), 'เรียงทับอาร์เรย์เดิมที่ใช้ร่วมกับที่อื่น');
+});
+
+console.log('\n[7] บันทึกแล้วล้างกลุ่มผู้เข้าร่วม');
+t('บันทึกพันธกิจเดียวแล้วล้างกลุ่ม และบอกผู้ใช้', () => {
+  const seg = WL.slice(WL.indexOf('window.wlSaveMission'), WL.indexOf('window.wlSavePlan'));
+  assert.ok(seg.includes('st.gparts = [];'), 'กลุ่มเดิมยังค้างหลังบันทึก');
+  assert.ok(seg.includes('ล้างกลุ่มผู้เข้าร่วมแล้ว'), 'ไม่ได้บอกผู้ใช้ว่าล้างแล้ว');
+});
+t('บันทึกทั้งหน้าแล้วล้างกลุ่มด้วย', () => {
+  const i = WL.indexOf('window.wlSavePlan');
+  const seg = WL.slice(i, i + 3000);
+  assert.ok(seg.includes('st.gparts = [];'), 'กลุ่มเดิมยังค้างหลังบันทึก');
+});
+t('เปลี่ยนปี/ชั้นปี/ภาค/โหมด ต้องล้างกลุ่มด้วย', () => {
+  assert.ok(WL.includes("if (['year', 'level', 'sem', 'mode'].indexOf(k) !== -1) { st.draft = null; st.gparts = []; }"),
+    'รายชื่อของชั้นปีเดิมจะติดไปชั้นปีใหม่');
+});
+
 console.log('\n────────────────────────────');
 console.log((fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
 process.exit(fail ? 1 : 0);

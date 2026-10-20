@@ -419,6 +419,12 @@
     var yr = year || state().year;
     return memo('co|' + yr + '|' + level, function () { return cohortStudentsRaw(level, yr); });
   }
+  /* เรียงตามรหัสนักศึกษาเสมอ
+     ฐานข้อมูลคืนแถวตามลำดับภายในของมัน ซึ่งไม่ได้เรียงอะไรเลย
+     ทุกจุดที่แสดงรายชื่อจึงสลับไปมา หาคนในรายชื่อ 157 คนแทบไม่ได้ */
+  function bySid(a, b) {
+    return String(a.student_id || '').localeCompare(String(b.student_id || ''), 'th', { numeric: true });
+  }
   function cohortStudentsRaw(level, yr) {
     var pfx = cohortPrefix(yr, level);
     var all = get('student');
@@ -427,12 +433,12 @@
         return String(s.student_id || '').slice(0, 2) === pfx && norm(s.status) !== 'ลาออก';
       });
       // รุ่นที่จบไปแล้วยังต้องนับได้ เพราะตอนนั้นเขาเป็นนักศึกษาของชั้นปีนั้นจริง
-      if (hit.length) return hit;
+      if (hit.length) return hit.slice().sort(bySid);
     }
     // ไม่พบรหัสรุ่นนั้นในทะเบียน — ถอยไปใช้ชั้นปีปัจจุบันตามเดิม
     return all.filter(function (s) {
       return norm(s.year_level) === norm(level) && (typeof isActiveStudent === 'function' ? isActiveStudent(s) : true);
-    });
+    }).sort(bySid);
   }
   function myRoles() { return (APP._roles && APP._roles.length) ? APP._roles : [APP.currentRole]; }
 
@@ -975,7 +981,7 @@
     var st = state();
     st[k] = v;
     // ล้างร่างเฉพาะเมื่อเปลี่ยนขอบเขตข้อมูลที่กรอก — เปลี่ยนตัวกรองของหน้าสรุปไม่ต้องล้าง
-    if (['year', 'level', 'sem', 'mode'].indexOf(k) !== -1) st.draft = null;
+    if (['year', 'level', 'sem', 'mode'].indexOf(k) !== -1) { st.draft = null; st.gparts = []; }
     if (k === 'year') st.mSem = '';   // ปีใหม่อาจไม่มีภาคที่เลือกค้างไว้
 
     /* เลือกพันธกิจแล้วต้องเห็นช่องกรอกทันที
@@ -2682,7 +2688,9 @@
       d[x.key] = rows(fresh, x).map(function (row) { return Object.assign({}, row); });
     });
 
-    showToast('บันทึก ' + m.short + ' เรียบร้อย');
+    var hadParts = (st.gparts || []).length;
+    st.gparts = [];
+    showToast('บันทึก ' + m.short + ' เรียบร้อย' + (hadParts ? ' · ล้างกลุ่มผู้เข้าร่วมแล้ว' : ''));
     renderCurrentPage();
   };
 
@@ -2737,7 +2745,13 @@
     };
     mine.forEach(function (m) { payload[m.field] = JSON.stringify(d[m.key] || []); });
     var r = plan ? await GSheetDB.update(Object.assign({}, plan, payload)) : await GSheetDB.create(payload);
-    if (r && r.isOk) { showToast('บันทึกภาระงานเรียบร้อย'); st.draft = null; renderCurrentPage(); }
+    if (r && r.isOk) {
+      var hadParts2 = (st.gparts || []).length;
+      st.draft = null;
+      st.gparts = [];
+      showToast('บันทึกภาระงานเรียบร้อย' + (hadParts2 ? ' · ล้างกลุ่มผู้เข้าร่วมแล้ว' : ''));
+      renderCurrentPage();
+    }
     else showToast('บันทึกไม่สำเร็จ: ' + ((r && r.error) || ''), 'error');
   };
 
