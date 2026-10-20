@@ -95,6 +95,41 @@ t('ยังเก็บเป็นกิจกรรมละ 1 แถวใ�
     'กลับไปสร้างระเบียนรายคนอีกแล้ว');
 });
 
+console.log('\n[4ข] หน้าต่างเพิ่มกิจกรรมให้กลุ่ม');
+t('เลือกรายชื่อครั้งเดียว กรอกได้หลายกิจกรรม', () => {
+  assert.ok(WL.includes('window.wlBatchOpen'), 'ไม่มีหน้าต่างเพิ่มกิจกรรมให้กลุ่ม');
+  const body = grab('function batchBody()');
+  assert.ok(body.includes('1. เลือกรายชื่อ') && body.includes('2. กรอกกิจกรรม'), 'ลำดับขั้นในหน้าต่างไม่ครบ');
+  assert.ok(WL.includes('window.wlBatchRowAdd'), 'เพิ่มกิจกรรมหลายรายการไม่ได้');
+});
+t('รายชื่อติดเฉพาะแถวที่เพิ่มจากหน้าต่างนี้', () => {
+  const seg = grab('window.wlBatchApply = function ()');
+  assert.ok(seg.includes('row.students = parts.slice()'), 'ไม่ได้ใส่รายชื่อให้แถวที่เพิ่ม');
+  // แถวปกติต้องไม่ถูกแตะ — กันไม่ให้รายชื่อรั่วไปกิจกรรมของทั้งชั้นเหมือนรอบก่อน
+  assert.ok(!grab('window.wlRowAdd = function (mkey)').includes('students'),
+    'แถวปกติยังถูกกำหนดผู้เข้าร่วมล่วงหน้า');
+});
+t('บังคับให้เลือกคนและกรอกชั่วโมงก่อนเพิ่ม', () => {
+  const seg = grab('window.wlBatchApply = function ()');
+  assert.ok(seg.includes('if (!sel.length)'), 'เพิ่มได้ทั้งที่ยังไม่เลือกใคร');
+  assert.ok(seg.includes('canEditMission(b.mkey)'), 'ไม่ได้ตรวจสิทธิ์พันธกิจ');
+  assert.ok(seg.includes('n(r.hours) > 0'), 'ปล่อยให้เพิ่มรายการที่ไม่มีชั่วโมง');
+  assert.ok(seg.includes("norm(r.activity) !== ''"), 'ปล่อยให้เพิ่มรายการที่ไม่มีชื่อ');
+});
+t('เลือกครบทุกคน = ทุกคนในชั้น', () => {
+  assert.ok(grab('window.wlBatchApply = function ()').includes('(sel.length < all) ? sel.slice() : []'),
+    'เลือกครบทุกคนแล้วยังเก็บรายชื่อทั้งหมด');
+});
+t('เพิ่มแล้วยังไม่เขียนลงระบบ ต้องไปบันทึกที่ขั้นที่ 4', () => {
+  const seg = grab('window.wlBatchApply = function ()');
+  assert.ok(seg.includes('d[m.key].push(row)'), 'ไม่ได้ใส่ลงในช่องกรอก');
+  assert.ok(!seg.includes('GSheetDB'), 'เขียนลงฐานข้อมูลทันที ข้ามขั้นตรวจสอบ');
+  assert.ok(seg.includes('ขั้นที่ 4'), 'ไม่ได้บอกผู้ใช้ว่าต้องไปกดบันทึก');
+});
+t('ปุ่มเปิดหน้าต่างอยู่ในขั้นที่ 3', () => {
+  assert.ok(grab('function howToBox()').includes('wlBatchOpen()'), 'ไม่มีปุ่มเปิดหน้าต่าง');
+});
+
 console.log('\n[5] ทางเลือกที่ถูกต้องถูกบอกไว้ในหน้าจอ');
 t('กล่องรายบุคคลชี้ทางไปแผนชั้นปีหรือ CSV', () => {
   const seg = grab('function groupPicker()');

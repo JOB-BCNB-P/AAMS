@@ -1815,6 +1815,231 @@
       + '</div>';
   }
 
+  /* ---------- เพิ่มหลายกิจกรรมให้นักศึกษากลุ่มเดียวกัน ----------
+     เลือกรายชื่อครั้งเดียว กรอกกิจกรรมได้หลายรายการในหน้าต่างเดียว แล้วกดเพิ่มลงในแผน
+     แถวที่ได้จะติดรายชื่อกลุ่มนั้นทันที ส่วนแถวที่เพิ่มด้วยปุ่ม "+ เพิ่มแถว" ตามปกติ
+     ยังเป็น "ทุกคนในชั้น" เหมือนเดิม ขอบเขตจึงชัด ไม่มีรายชื่อรั่วไปแถวอื่น
+     เพิ่มเสร็จยังไม่เขียนลงระบบ ต้องไปกดบันทึกที่ขั้นที่ 4 เหมือนการกรอกด้วยมือ */
+  function batchRow() {
+    return { kind: ACT_KINDS[0], activity: '', date_from: '', date_from_in: '',
+             date_to: '', date_to_in: '', time_from: '', time_to: '', hours: '', hours_manual: '' };
+  }
+  function batchMissions() {
+    return MISSIONS.filter(function (m) { return !m.subject && canEditMission(m.key); });
+  }
+  function batchState() {
+    if (!APP._wlBatch) {
+      var st = state(), able = batchMissions();
+      var pick = (st.mission && able.some(function (m) { return m.key === st.mission; }))
+        ? st.mission : (able[0] ? able[0].key : '');
+      APP._wlBatch = { mkey: pick, sel: {}, q: '', rows: [batchRow()] };
+    }
+    return APP._wlBatch;
+  }
+  function batchSel() {
+    var b = batchState();
+    return Object.keys(b.sel).filter(function (k) { return b.sel[k]; });
+  }
+
+  window.wlBatchOpen = function () {
+    if (!batchMissions().length) { showToast('บัญชีของคุณยังไม่ได้รับมอบหมายพันธกิจใดเลย', 'error'); return; }
+    APP._wlBatch = null;
+    batchState();
+    showModal('เพิ่มกิจกรรมให้นักศึกษากลุ่มหนึ่ง', batchBody(), null, 'max-w-4xl');
+    setTimeout(function () { if (window.lucide) lucide.createIcons(); }, 30);
+  };
+  function batchRepaint() {
+    var el = document.getElementById('wlBatchBody');
+    if (el) { el.outerHTML = batchBody(); if (window.lucide) lucide.createIcons(); }
+  }
+  window.wlBatchMission = function (v) { batchState().mkey = v; batchRepaint(); };
+  window.wlBatchSearch = function (v) {
+    batchState().q = v;
+    var box = document.querySelector('[data-wl-blist]');
+    if (box) { box.outerHTML = batchList(); if (window.lucide) lucide.createIcons(); }
+    else batchRepaint();
+  };
+  window.wlBatchOne = function (sid, on) {
+    var b = batchState();
+    if (on) b.sel[norm(sid)] = 1; else delete b.sel[norm(sid)];
+    var c = document.getElementById('wlBatchCount');
+    if (c) c.textContent = batchSel().length;
+  };
+  window.wlBatchAll = function (on) {
+    var b = batchState(), q = norm(b.q).toLowerCase();
+    cohortStudents(state().level).forEach(function (s) {
+      var sid = norm(s.student_id);
+      if (q && (sid + ' ' + norm(s.name)).toLowerCase().indexOf(q) < 0) return;
+      if (on) b.sel[sid] = 1; else delete b.sel[sid];
+    });
+    batchRepaint();
+  };
+  window.wlBatchRowAdd = function () { batchState().rows.push(batchRow()); batchRepaint(); };
+  window.wlBatchRowDel = function (i) {
+    var b = batchState();
+    b.rows.splice(i, 1);
+    if (!b.rows.length) b.rows.push(batchRow());
+    batchRepaint();
+  };
+  window.wlBatchSet = function (i, field, v) {
+    var b = batchState(), r = b.rows[i];
+    if (!r) return;
+    r[field] = v;
+    if (field === 'hours') r.hours_manual = norm(v) === '' ? '' : '1';
+    else if (SPAN_FIELDS.indexOf(field) !== -1) batchHours(i, r);
+  };
+  window.wlBatchDate = function (i, field, text) {
+    var b = batchState(), r = b.rows[i];
+    if (!r) return;
+    var iso = thToIso(text);
+    r[field] = iso;
+    r[field + '_in'] = (norm(text) === '' || iso) ? '' : norm(text);
+    batchHours(i, r);
+    var el = document.querySelector('[data-wl-bdt="' + i + '|' + field + '"]');
+    if (el) el.innerHTML = dateEcho(r, field);
+  };
+  // คิดชั่วโมงจากช่วงวันเวลา เว้นแต่ผู้ใช้พิมพ์ชั่วโมงเอง
+  function batchHours(i, r) {
+    if (norm(r.hours_manual) === '1') return;
+    var c = spanCalc(r);
+    r.hours = c.ready ? String(c.hours) : '';
+    var el = document.querySelector('[data-wl-bhr="' + i + '"]');
+    if (el) el.value = r.hours;
+    var note = document.querySelector('[data-wl-bnote="' + i + '"]');
+    if (note) note.innerHTML = c.ready
+      ? '<span class="text-gray-500">' + c.days + ' วัน x ' + fx(c.perDay) + ' ชม./วัน = <b>' + fx(c.hours) + '</b> ชม.</span>'
+      : (c.err ? '<span class="text-amber-700">' + esc(c.err) + '</span>' : '');
+  }
+
+  function batchList() {
+    var b = batchState(), st = state();
+    var all = cohortStudents(st.level);
+    var q = norm(b.q).toLowerCase();
+    var list = q ? all.filter(function (s) {
+      return (norm(s.student_id) + ' ' + norm(s.name)).toLowerCase().indexOf(q) >= 0;
+    }) : all;
+    return '<div data-wl-blist class="border border-gray-200 rounded-xl max-h-56 overflow-y-auto divide-y divide-gray-50">'
+      + (list.length ? list.map(function (s) {
+          var sid = norm(s.student_id), on = !!b.sel[sid];
+          return '<label class="flex items-center gap-3 px-3 py-1.5 cursor-pointer ' + (on ? 'bg-primaryLight' : 'hover:bg-surface') + '">'
+            + '<input type="checkbox" ' + (on ? 'checked' : '') + ' value="' + esc(sid) + '" '
+            + 'onchange="wlBatchOne(this.value,this.checked)" class="w-4 h-4 flex-shrink-0">'
+            + '<span class="font-mono text-xs text-gray-400 w-28 flex-shrink-0">' + esc(sid) + '</span>'
+            + '<span class="text-sm truncate">' + esc(s.name) + '</span></label>';
+        }).join('') : '<p class="px-3 py-6 text-center text-sm text-gray-400">ไม่พบนักศึกษา</p>')
+      + '</div>';
+  }
+
+  function batchBody() {
+    var b = batchState(), st = state();
+    var m = missionOf(b.mkey) || {};
+    var able = batchMissions();
+    var nSel = batchSel().length;
+    var total = cohortStudents(st.level).length;
+    var inp = function (i, field, val, cls, extra) {
+      return '<input value="' + esc(val) + '" oninput="wlBatchSet(' + i + ',\'' + field + '\',this.value)" '
+        + (extra || '') + ' class="border border-gray-200 rounded-lg px-2 py-1.5 text-sm ' + (cls || '') + '">';
+    };
+
+    var rows = b.rows.map(function (r, i) {
+      var head = '<div class="flex flex-wrap items-center gap-2">'
+        + '<select onchange="wlBatchSet(' + i + ',\'kind\',this.value)" class="border border-gray-200 rounded-lg px-2 py-1.5 text-sm">'
+        + ACT_KINDS.map(function (k) {
+            return '<option ' + (norm(r.kind) === k ? 'selected' : '') + '>' + esc(k) + '</option>';
+          }).join('') + '</select>'
+        + inp(i, 'activity', r.activity, 'flex-1 min-w-[200px]', 'placeholder="ชื่อกิจกรรม"')
+        + inp(i, 'hours', r.hours, 'w-24 text-center', 'type="number" step="0.5" min="0" placeholder="ชม." data-wl-bhr="' + i + '"')
+        + '<button type="button" onclick="wlBatchRowDel(' + i + ')" class="text-red-400 hover:text-red-600 px-1" title="ลบแถวนี้">'
+        + '<i data-lucide="trash-2" class="w-4 h-4"></i></button></div>';
+      var span = '';
+      if (m.timed) {
+        var dt = function (field, label) {
+          return '<div><label class="block text-[11px] text-gray-500 mb-0.5">' + label + '</label>'
+            + '<input value="' + esc(isoToTh(r[field]) || norm(r[field + '_in'])) + '" '
+            + 'oninput="wlBatchDate(' + i + ',\'' + field + '\',this.value)" placeholder="วว/ดด/ปปปป" '
+            + 'class="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm">'
+            + '<div data-wl-bdt="' + i + '|' + field + '" class="text-[11px] mt-0.5">' + dateEcho(r, field) + '</div></div>';
+        };
+        var tm = function (field, label) {
+          return '<div><label class="block text-[11px] text-gray-500 mb-0.5">' + label + '</label>'
+            + inp(i, field, r[field], 'w-full', 'type="time"') + '</div>';
+        };
+        span = '<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 bg-surface rounded-lg p-2">'
+          + dt('date_from', 'วันที่เริ่ม (พ.ศ.)') + dt('date_to', 'วันที่สิ้นสุด (พ.ศ.)')
+          + tm('time_from', 'เวลาเริ่ม') + tm('time_to', 'เวลาสิ้นสุด')
+          + '</div><div data-wl-bnote="' + i + '" class="text-[11px] mt-1"></div>';
+      }
+      return '<div class="border border-gray-100 rounded-xl p-3 mb-2">' + head + span + '</div>';
+    }).join('');
+
+    return '<div id="wlBatchBody" class="space-y-4">'
+      + '<div class="flex flex-wrap items-center gap-2">'
+      + '<label class="text-sm text-gray-600">พันธกิจ</label>'
+      + '<select onchange="wlBatchMission(this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm">'
+      + able.map(function (x) {
+          return '<option value="' + x.key + '" ' + (x.key === b.mkey ? 'selected' : '') + '>' + esc(x.label) + '</option>';
+        }).join('') + '</select>'
+      + '<span class="text-xs text-gray-400">' + esc(levelLabel(st.year, st.level)) + ' · ' + esc(semLabel(st.sem)) + '</span></div>'
+
+      + '<div>'
+      + '<div class="flex flex-wrap items-center gap-2 mb-2">'
+      + '<p class="text-sm font-semibold text-gray-700"><i data-lucide="users" class="w-4 h-4 inline mr-1 text-primary"></i>1. เลือกรายชื่อ</p>'
+      + '<span class="text-xs text-gray-500">เลือกแล้ว <b id="wlBatchCount" class="text-primary">' + nSel + '</b> คน จาก ' + total + ' คน</span>'
+      + '<span class="ml-auto flex gap-2">'
+      + '<button type="button" onclick="wlBatchAll(1)" class="px-2.5 py-1 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50">เลือกที่แสดงทั้งหมด</button>'
+      + '<button type="button" onclick="wlBatchAll(0)" class="px-2.5 py-1 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50">ล้าง</button>'
+      + '</span></div>'
+      + '<input value="' + esc(b.q) + '" oninput="wlBatchSearch(this.value)" placeholder="ค้นหารหัส/ชื่อ..." '
+      + 'class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm mb-2">'
+      + batchList() + '</div>'
+
+      + '<div>'
+      + '<p class="text-sm font-semibold text-gray-700 mb-2"><i data-lucide="list-plus" class="w-4 h-4 inline mr-1 text-primary"></i>2. กรอกกิจกรรม (เพิ่มได้หลายรายการ)</p>'
+      + rows
+      + '<button type="button" onclick="wlBatchRowAdd()" class="px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50">'
+      + '<i data-lucide="plus" class="w-3.5 h-3.5 inline mr-1"></i>เพิ่มอีกกิจกรรม</button></div>'
+
+      + '<div class="flex items-center gap-2 pt-1">'
+      + '<button type="button" onclick="wlBatchApply()" class="flex-1 bg-primary text-white py-2.5 rounded-xl text-sm hover:bg-primaryDark">'
+      + 'เพิ่มลงในแผน</button>'
+      + '<button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl border text-sm text-gray-600">ยกเลิก</button></div>'
+      + '<p class="text-[11px] text-gray-400">ทุกกิจกรรมที่เพิ่มในหน้าต่างนี้จะนับชั่วโมงให้เฉพาะคนที่เลือกไว้ '
+      + '· ยังไม่เขียนลงระบบ ต้องกดบันทึกที่ <b>ขั้นที่ 4</b> อีกครั้ง</p>'
+      + '</div>';
+  }
+
+  window.wlBatchApply = function () {
+    var b = batchState(), st = state();
+    var m = missionOf(b.mkey);
+    if (!m) { showToast('เลือกพันธกิจก่อน', 'error'); return; }
+    if (!canEditMission(b.mkey)) { showToast('บัญชีของคุณไม่ได้รับมอบหมายให้บันทึก' + m.short, 'error'); return; }
+    var sel = batchSel();
+    if (!sel.length) {
+      showToast('เลือกรายชื่ออย่างน้อย 1 คน · ถ้าเป็นกิจกรรมของทั้งชั้น ให้ใช้ปุ่ม "+ เพิ่มแถว" ตามปกติ', 'error');
+      return;
+    }
+    var ready = b.rows.filter(function (r) { return norm(r.activity) !== ''; });
+    if (!ready.length) { showToast('กรอกชื่อกิจกรรมอย่างน้อย 1 รายการ', 'error'); return; }
+    var bad = ready.filter(function (r) { return !(n(r.hours) > 0); });
+    if (bad.length) { showToast('ยังมี ' + bad.length + ' รายการที่ยังไม่มีจำนวนชั่วโมง', 'error'); return; }
+
+    var all = cohortStudents(st.level).length;
+    // เลือกครบทุกคน = เท่ากับไม่เจาะจง เก็บเป็นค่าว่างจะอ่านง่ายกว่า
+    var parts = (sel.length < all) ? sel.slice() : [];
+    var d = st.draft || draft();
+    ready.forEach(function (r) {
+      var row = Object.assign({}, r);
+      delete row.hours_manual;
+      row.students = parts.slice();
+      d[m.key].push(row);
+    });
+    if (st.fold) st.fold[m.key] = false;     // เพิ่มแล้วต้องเห็นของที่เพิ่ง เพิ่ม
+    APP._wlBatch = null;
+    closeModal();
+    showToast('เพิ่ม ' + ready.length + ' กิจกรรมให้นักศึกษา ' + sel.length + ' คนแล้ว · ตรวจแล้วกดบันทึกที่ขั้นที่ 4');
+    renderCurrentPage();
+  };
+
   /* ---------- กล่องเลือกนักศึกษาเข้าร่วมกิจกรรม ----------
      กิจกรรมนอกการเรียนการสอนไม่ได้มีนักศึกษาเข้าร่วมทุกคน
      จึงติ๊กเลือกได้ทีละหลายคน แทนการเพิ่มทีละคน */
@@ -2480,7 +2705,9 @@
       + '<div class="rounded-xl border border-blue-100 bg-blue-50/60 p-3"><p class="font-semibold text-primary mb-1"><i data-lucide="users" class="w-3.5 h-3.5 inline"></i> กิจกรรมที่ทั้งชั้นเข้าร่วม</p>'
       + '<p class="text-gray-600">กด <b>+ เพิ่มแถว</b> กรอกชื่อกิจกรรม วันที่และเวลา (ระบบคิดชั่วโมงให้) · "ใครเข้าร่วม" เป็น <b>ทุกคนในชั้น</b> อยู่แล้ว ไม่ต้องทำอะไรเพิ่ม</p></div>'
       + '<div class="rounded-xl border border-amber-100 bg-amber-50/60 p-3"><p class="font-semibold text-amber-700 mb-1"><i data-lucide="user-check" class="w-3.5 h-3.5 inline"></i> กิจกรรมที่บางคนเข้าร่วม</p>'
-      + '<p class="text-gray-600">เพิ่มแถวเหมือนกัน แล้วกด <b>เฉพาะบางคน</b> ติ๊กรายชื่อคนที่เข้า · ระบบนับชั่วโมงกิจกรรมนั้นให้เฉพาะคนที่ติ๊ก คนอื่นในชั้นไม่ได้ชั่วโมงนี้</p></div>'
+      + '<p class="text-gray-600">เพิ่มแถวเหมือนกัน แล้วกด <b>เฉพาะบางคน</b> ติ๊กรายชื่อคนที่เข้า · ระบบนับชั่วโมงกิจกรรมนั้นให้เฉพาะคนที่ติ๊ก คนอื่นในชั้นไม่ได้ชั่วโมงนี้</p>'
+      + '<button type="button" onclick="wlBatchOpen()" class="mt-2 w-full px-3 py-2 rounded-xl bg-amber-500 text-white text-xs hover:bg-amber-600">'
+      + '<i data-lucide="user-plus" class="w-3.5 h-3.5 inline mr-1"></i>เพิ่มกิจกรรมให้กลุ่ม — เลือกรายชื่อครั้งเดียว กรอกได้หลายกิจกรรม</button></div>'
       + '</div>';
   }
   // สรุปก่อนบันทึก : กิจกรรมทั้งชั้นกี่รายการ · เฉพาะบางคนกี่รายการ (ใครบ้าง)
@@ -2524,7 +2751,7 @@
           missionPicker().replace(/<p class="text-xs font-semibold text-gray-600 mb-2">[\s\S]*?<\/p>/, '') + missionScopeNote(), st.mission ? 'done' : 'active')
       + wlStep(3, group ? 'เลือกนักศึกษา 1 คน แล้วกรอกกิจกรรม' : 'เพิ่มกิจกรรม และเลือกว่าใครเข้าร่วม',
           group ? 'เลือกได้ทีละคน · ค่าที่กรอกจะใช้แทนภาระงานทั้งชุดของคนนั้น'
-                : 'แต่ละแถว = 1 กิจกรรม · ใต้แถวมีช่อง "ใครเข้าร่วม" เลือกรายชื่อได้ตั้งแต่ตอนเพิ่มกิจกรรม · กรอกให้ครบทุกด้านแล้วไปบันทึกที่ขั้นที่ 4',
+                : 'กิจกรรมของทั้งชั้นใช้ + เพิ่มแถว · กิจกรรมของกลุ่มใช้ปุ่มสีส้ม เลือกรายชื่อครั้งเดียวแล้วกรอกได้หลายกิจกรรม · กรอกครบทุกด้านแล้วไปบันทึกที่ขั้นที่ 4',
           (group ? groupPicker() : howToBox() + wlCsvPanel()) + foldBar() + missionEditors(group), 'active')
       + wlStep(4, 'ตรวจสรุปแล้วบันทึก', group
           ? (sel.length ? 'จะบันทึกเป็นค่าเฉพาะรายของนักศึกษาที่เลือก' : '<span class="text-amber-700">ยังไม่ได้เลือกนักศึกษาในขั้นที่ 3</span>')
