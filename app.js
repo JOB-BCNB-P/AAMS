@@ -745,8 +745,10 @@ function buildSidebar() {
   let trackSub = [];
   if (p.tracking) trackSub.push({ id: 'tracking', label: 'ส่งรายละเอียดรายวิชา' });
   if (p.resultTracking) trackSub.push({ id: 'resultTracking', label: 'ส่งผลการดำเนินงานรายวิชา' });
-  if (p.gradeTracking) trackSub.push({ id: 'gradeTracking', label: 'ส่งเกรดรายวิชา' });
-  if (p.fileTracking) trackSub.push({ id: 'fileTracking', label: 'ส่งแฟ้มรายวิชา' });
+  // ส่งเกรดรายวิชา และ ส่งแฟ้มรายวิชา ถูกถอดออกจากเมนูแล้ว
+  // โค้ดของหน้าและตารางในฐานข้อมูลยังอยู่ครบ เปิดคืนได้ด้วยการเอาคอมเมนต์สองบรรทัดนี้ออก
+  // if (p.gradeTracking) trackSub.push({ id: 'gradeTracking', label: 'ส่งเกรดรายวิชา' });
+  // if (p.fileTracking) trackSub.push({ id: 'fileTracking', label: 'ส่งแฟ้มรายวิชา' });
   if (trackSub.length) items.push({ id: 'trackingGroup', icon: 'clipboard-list', label: 'ติดตามการส่ง', sub: trackSub });
 
   // ระบบการลาของนักศึกษา ถูกถอดออกจากทุกบทบาทแล้ว (ย้ายไปทำเป็นระบบแยกต่างหาก)
@@ -897,7 +899,7 @@ function activeStudents(list) { return (list || []).filter(isActiveStudent); }
 function isAdminRole() {
   const r = APP.currentRole;
   if (r === 'admin' || r === 'academic' || r === 'registrar') return true;
-  if (r === 'deptHead' && ['tracking', 'resultTracking', 'gradeTracking', 'fileTracking', 'teacherDirectory'].includes(APP.currentPage)) return true;
+  if (r === 'deptHead' && ['tracking', 'resultTracking', 'teacherDirectory'].includes(APP.currentPage)) return true;
   return false;
 }
 // สิทธิ์ระดับ admin-only เดิม (ข้อมูลอาจารย์ ฯลฯ) — ให้งานทะเบียนทำได้เหมือน admin
@@ -1266,8 +1268,9 @@ function getPendingTrackingsForCurrentRole() {
   const types = [
     { type: 'tracking', page: 'tracking', label: 'รายละเอียดรายวิชา', step1: 'class_teacher_check', step2: 'academic_propose', step3: 'deputy_sign' },
     { type: 'result_tracking', page: 'resultTracking', label: 'ผลการดำเนินงาน', step1: 'class_teacher_check', step2: 'academic_propose', step3: 'deputy_sign' },
-    { type: 'grade_tracking', page: 'gradeTracking', label: 'เกรด', step1: 'coordinator_check', step2: 'academic_check', step3: 'deputy_sign' },
-    { type: 'file_tracking', page: 'fileTracking', label: 'แฟ้มรายวิชา', step1: 'coordinator_check', step2: 'academic_check', step3: 'deputy_sign' },
+    // ถอดออกพร้อมเมนู — ไม่ต้องแจ้งเตือนงานค้างของสองเรื่องนี้อีก
+    // { type: 'grade_tracking', page: 'gradeTracking', label: 'เกรด', step1: 'coordinator_check', step2: 'academic_check', step3: 'deputy_sign' },
+    // { type: 'file_tracking', page: 'fileTracking', label: 'แฟ้มรายวิชา', step1: 'coordinator_check', step2: 'academic_check', step3: 'deputy_sign' },
   ];
   const DONE = 'เสร็จสิ้น';
   const needAct = v => { const x = norm(v); return (!x || x === 'รอ' || x === 'ส่งกลับแก้ไข'); };
@@ -1303,8 +1306,9 @@ function getUnstartedTrackings() {
   const types = [
     { type: 'tracking', steps: ['class_teacher_check', 'academic_propose', 'deputy_sign'] },
     { type: 'result_tracking', steps: ['class_teacher_check', 'academic_propose', 'deputy_sign'] },
-    { type: 'grade_tracking', steps: ['coordinator_check', 'academic_check', 'deputy_sign'] },
-    { type: 'file_tracking', steps: ['coordinator_check', 'academic_check', 'deputy_sign'] },
+    // ถอดออกพร้อมเมนู
+    // { type: 'grade_tracking', steps: ['coordinator_check', 'academic_check', 'deputy_sign'] },
+    // { type: 'file_tracking', steps: ['coordinator_check', 'academic_check', 'deputy_sign'] },
   ];
   const out = [];
   types.forEach(t => {
@@ -11653,7 +11657,7 @@ async function pwOtpConfirm(mode) {
 
 function settingsPage() {
   const roles = ['admin', 'academic', 'registrar', 'deptHead', 'executive', 'teacher', 'classTeacher', 'otherStaff', 'student'];
-  const modules = ['dashboard', 'curriculum', 'ploAssess', 'students', 'teachers', 'advisors', 'specialTeachers', 'practicumSites', 'alumni', 'schedule', 'subjects', 'grades', 'engResults', 'teacherDirectory', 'services', 'tracking', 'resultTracking', 'gradeTracking', 'fileTracking', 'leave', 'workload', 'survey',
+  const modules = ['dashboard', 'curriculum', 'ploAssess', 'students', 'teachers', 'advisors', 'specialTeachers', 'practicumSites', 'alumni', 'schedule', 'subjects', 'grades', 'engResults', 'teacherDirectory', 'services', 'tracking', 'resultTracking', 'leave', 'workload', 'survey',
     'evalCourse', 'evalDo', 'evalSetup', 'evalReport', 'evalMine', 'counsel'];
   const moduleLabels = { dashboard: 'หน้าหลัก', curriculum: 'ข้อมูลหลักสูตร', ploAssess: 'ประเมินผลหลักสูตร PLOs', students: 'ข้อมูลนักศึกษา', teachers: 'ข้อมูลอาจารย์', advisors: 'ข้อมูลอาจารย์ที่ปรึกษา', specialTeachers: 'ข้อมูลอาจารย์พิเศษ', practicumSites: 'ข้อมูลแหล่งฝึกภาคปฏิบัติ', alumni: 'ข้อมูลศิษย์เก่า', schedule: 'ปฏิทินกิจกรรมวิชาการ', subjects: 'รายวิชาที่เปิดสอน', grades: 'ผลการเรียน', engResults: 'ผลสอบ ENG', teacherDirectory: 'ทำเนียบอาจารย์', services: 'บริการอื่นๆ', tracking: 'ติดตามการส่งรายละเอียดรายวิชา', resultTracking: 'ติดตามการส่งผลการดำเนินงานรายวิชา', gradeTracking: 'ติดตามการส่งเกรดรายวิชา', fileTracking: 'ติดตามส่งแฟ้มรายวิชา', leave: 'ระบบการลาของนักศึกษา', workload: 'ภาระงานนักศึกษา (Student workload)', survey: 'แบบประเมินความพึงพอใจ',
     evalCourse: 'ประเมินผลรายวิชา (เห็นกลุ่มเมนู)',

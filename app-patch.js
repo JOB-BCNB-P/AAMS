@@ -1602,7 +1602,8 @@
   var CFG = window.EMS_CONFIG || {};
   var POLL_MIN = (CFG.AUTO_REFRESH_MINUTES === undefined) ? 3 : Number(CFG.AUTO_REFRESH_MINUTES) || 0;
   var IDLE_MIN = (CFG.AUTO_REFRESH_IDLE_MINUTES === undefined) ? 5 : Number(CFG.AUTO_REFRESH_IDLE_MINUTES) || 5;
-  var POLL_TABS = ['leave', 'tracking', 'result_tracking', 'grade_tracking', 'file_tracking', 'announcement'];
+  // grade_tracking และ file_tracking ถูกถอดออกจากเมนูแล้ว จึงไม่ต้องคอยดึงข้อมูลซ้ำ
+  var POLL_TABS = ['leave', 'tracking', 'result_tracking', 'announcement'];
   var FOCUS_TABS = POLL_TABS.concat(['schedule', 'subject', 'student', 'doc_request', 'support_ticket']);
   var RETRY_MS = 30 * 1000;
 
