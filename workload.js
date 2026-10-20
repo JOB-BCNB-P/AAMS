@@ -216,6 +216,19 @@
       return norm(o.student_id) === norm(sid) && norm(o.academic_year) === norm(year) && norm(o.semester) === norm(sem);
     }) || null;
   }
+  /* ---------------- ค่าเฉพาะรายมีผลจริงหรือไม่ ----------------
+     เดิมถือว่า "มีข้อความในช่องนั้น" = ปรับเฉพาะราย แต่ค่า "[]" ที่ค้างอยู่
+     (เกิดจากการบันทึกแบบกลุ่มขณะที่ร่างของพันธกิจนั้นยังว่าง) ก็เข้าเงื่อนไขด้วย
+     จึงบังรายการของชั้นปีไว้ถาวร — กรอกที่ระดับชั้นปีเท่าไรคนเหล่านั้นก็ขึ้น 0
+     แก้เป็น : ถือว่ามีผลเฉพาะเมื่อมีรายการจริงอย่างน้อย 1 รายการ
+     ถ้าต้องการยกเว้นนักศึกษาบางคนจากกิจกรรมของชั้นปี ให้ระบุผู้เข้าร่วม
+     ในช่อง students ของรายการนั้นแทน (ดู appliesTo) ไม่ใช่สร้างค่าเฉพาะรายว่าง */
+  function ovrApplies(ovr, m) {
+    return !!(ovr && norm(ovr[m.field]) !== '' && rows(ovr, m).length);
+  }
+  // ร่างว่าง เก็บเป็นค่าว่าง ไม่ใช่ "[]" — ค่าว่างแปลว่า "ใช้ค่ามาตรฐานของชั้นปี"
+  function fieldJson(list) { return (list && list.length) ? JSON.stringify(list) : ''; }
+
   function weightOf(plan, m) {
     var v = plan ? norm(plan[m.wkey]) : '';
     return v === '' ? m.def : n(v);
@@ -237,7 +250,7 @@
   function calc(plan, ovr, sid) {
     var out = { raw: {}, weighted: {}, total: 0 };
     MISSIONS.forEach(function (m) {
-      var useOvr = ovr && norm(ovr[m.field]) !== '';
+      var useOvr = ovrApplies(ovr, m);
       var list = rows(useOvr ? ovr : plan, m).filter(function (r) { return appliesTo(r, sid); });
       var raw = list.reduce(function (s, r) { return s + n(r.hours); }, 0);
       out.raw[m.key] = raw;
@@ -459,7 +472,7 @@
 
   function selfSeedRows(sid, year, sem, m) {
     var ovr = overrideOf(sid, year, sem);
-    if (ovr && norm(ovr[m.field]) !== '') return rows(ovr, m).slice();
+    if (ovrApplies(ovr, m)) return rows(ovr, m).slice();
     var plan = planOf(year, myLevel(), sem);
     if (!plan) return [];
     // เอาเฉพาะรายการที่มีผลกับนักศึกษาคนนี้
@@ -484,7 +497,7 @@
       type: 'workload_student', student_id: sid, academic_year: st.year,
       year_level: myLevel(), semester: sem, updated_by: who, meta_json: JSON.stringify(mt)
     };
-    payload[m.field] = JSON.stringify(list);
+    payload[m.field] = fieldJson(list);
     var r = cur ? await GSheetDB.update(Object.assign({}, cur, payload)) : await GSheetDB.create(payload);
     if (r && r.isOk) { showToast('บันทึกแล้ว'); renderCurrentPage(); }
     else showToast('บันทึกไม่สำเร็จ: ' + ((r && r.error) || ''), 'error');
@@ -646,7 +659,7 @@
       var plan = planOf(st.year, lv, sm);
       var ovr = overrideOf(sid, st.year, sm);
       MISSIONS.forEach(function (m) {
-        var useOvr = ovr && norm(ovr[m.field]) !== '';
+        var useOvr = ovrApplies(ovr, m);
         var src = useOvr ? ovr : plan;
         if (!src) return;
         // นับลำดับของรายการที่บันทึกเองภายในภาคนี้ไว้เลย ตอนลบจะได้ชี้ตัวถูก
@@ -823,7 +836,8 @@
       var plan = plans[i];
       if (!plan) return;
       var ovr = overrideOf(stu.student_id, year, sm);
-      if (ovr) extra = true;          // ป้าย "ปรับเฉพาะราย" ดูทั้งปี ไม่ขึ้นกับภาคที่เลือกดู
+      // ป้าย "ปรับเฉพาะราย" ดูทั้งปี ไม่ขึ้นกับภาคที่เลือกดู และนับเฉพาะค่าที่มีผลจริง
+      if (ovr && MISSIONS.some(function (mm) { return ovrApplies(ovr, mm); })) extra = true;
       if (only.indexOf(sm) < 0) return;
       var c = calc(plan, ovr, stu.student_id);
       tot += c.total;
@@ -1112,7 +1126,7 @@
         var plan = planOf(year, rec.level, sm);
         if (!plan) return;
         var ovr = overrideOf(rec.sid, year, sm);
-        var useOvr = ovr && norm(ovr[m.field]) !== '';
+        var useOvr = ovrApplies(ovr, m);
         rows(useOvr ? ovr : plan, m).forEach(function (r) {
           if (!appliesTo(r, rec.sid)) return;
           items.push({ sm: sm, r: r, ovr: !!useOvr });
@@ -1283,7 +1297,7 @@
     var base = (st.mode === 'group' && sel.length === 1) ? overrideOf(sel[0], st.year, st.sem) : null;
     var d = { weights: {} };
     MISSIONS.forEach(function (m) {
-      var src = (base && norm(base[m.field]) !== '') ? base : plan;
+      var src = ovrApplies(base, m) ? base : plan;
       d[m.key] = rows(src, m).map(function (r) { return Object.assign({}, r); });
       d.weights[m.key] = weightOf(plan, m);
     });
@@ -2332,7 +2346,7 @@
           type: 'workload_student', student_id: sid, academic_year: st.year,
           year_level: st.level, semester: st.sem, updated_by: who, meta_json: JSON.stringify(mt0)
         };
-        p0[m.field] = json;
+        p0[m.field] = fieldJson(d[mkey] || []);
         var r0 = cur0 ? await GSheetDB.update(Object.assign({}, cur0, p0)) : await GSheetDB.create(p0);
         if (r0 && r0.isOk) ok++; else err = (r0 && r0.error) || '';
       }
@@ -2395,7 +2409,7 @@
           type: 'workload_student', student_id: sid, academic_year: st.year,
           year_level: st.level, semester: st.sem, updated_by: who, meta_json: JSON.stringify(mt0)
         };
-        mine.forEach(function (m) { p0[m.field] = JSON.stringify(d[m.key] || []); });
+        mine.forEach(function (m) { p0[m.field] = fieldJson(d[m.key] || []); });
         var r0 = cur0 ? await GSheetDB.update(Object.assign({}, cur0, p0)) : await GSheetDB.create(p0);
         if (r0 && r0.isOk) ok++; else err = (r0 && r0.error) || '';
       }
@@ -2455,7 +2469,7 @@
     } else {
       M.ovr = overrideOf(M.sid, st.year, M.sm);
       MISSIONS.forEach(function (m) {
-        var useOvr = M.ovr && norm(M.ovr[m.field]) !== '';
+        var useOvr = ovrApplies(M.ovr, m);
         M.data[m.key] = wlmClone(rows(useOvr ? M.ovr : M.plan, m).filter(function (r) { return appliesTo(r, M.sid); }));
         M.own = M.own || {}; M.own[m.key] = !!useOvr;
       });
@@ -2742,7 +2756,7 @@
         var mt2 = meta(cur);
         changed.forEach(function (m) { mt2[m.key] = { by: who, at: stampNow() }; });
         var p2 = { type: 'workload_student', student_id: M.sid, academic_year: st.year, year_level: M.lv, semester: M.sm, updated_by: who, meta_json: JSON.stringify(mt2) };
-        changed.forEach(function (m) { p2[m.field] = JSON.stringify(M.data[m.key]); });
+        changed.forEach(function (m) { p2[m.field] = fieldJson(M.data[m.key]); });
         r0 = cur ? await GSheetDB.update(Object.assign({}, cur, p2)) : await GSheetDB.create(p2);
       }
     } catch (e) { r0 = { isOk: false, error: String(e && e.message || e) }; }
