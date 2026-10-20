@@ -1982,7 +1982,11 @@
       + '</div>';
   }
 
-  /* รายชื่อนักศึกษาของกล่อง "กรอกรายบุคคล" — ติ๊กเลือกได้ทีละหลายคนในหน้าเดียว */
+  /* รายชื่อนักศึกษาของกล่อง "กรอกรายบุคคล" — เลือกได้ทีละคนเท่านั้น
+     การบันทึกทีละหลายคนถูกยกเลิกแล้ว เพราะสร้างสำเนาข้อมูลเดียวกันคนละชุด
+     (กิจกรรมหนึ่งงาน x นักศึกษา 157 คน = 157 ระเบียน) ซึ่งเป็นต้นเหตุของบั๊ก
+     ค่าเฉพาะรายที่บังรายการของชั้นปี และทำให้แก้ข้อมูลทีหลังแทบเป็นไปไม่ได้
+     กิจกรรมของคนหลายคน ให้กรอกที่แผนชั้นปีแล้วระบุผู้เข้าร่วม หรือนำเข้าด้วยไฟล์ CSV */
   function groupListBox() {
     var st = state();
     var all = cohortStudents(st.level);
@@ -1995,7 +1999,7 @@
       + (list.length ? list.map(function (s) {
           var sid = norm(s.student_id), on = !!g[sid];
           return '<label class="flex items-center gap-3 px-3 py-2 cursor-pointer ' + (on ? 'bg-primaryLight' : 'hover:bg-surface') + '">'
-            + '<input type="checkbox" ' + (on ? 'checked' : '') + ' value="' + esc(sid) + '" '
+            + '<input type="radio" name="wlGroupPick" ' + (on ? 'checked' : '') + ' value="' + esc(sid) + '" '
             + 'onchange="wlGroupOne(this.value,this.checked)" class="w-4 h-4 flex-shrink-0">'
             + '<span class="font-mono text-xs text-gray-400 w-28 flex-shrink-0">' + esc(sid) + '</span>'
             + '<span class="text-sm truncate">' + esc(s.name) + '</span></label>';
@@ -2010,14 +2014,16 @@
       + '<div class="flex flex-wrap items-center gap-2 mb-2">'
       + '<input id="wlGroupSearch" value="' + esc(st.gq || '') + '" placeholder="ค้นหารหัส/ชื่อ..." '
       + 'oninput="wlGroupSearch(this.value)" class="flex-1 min-w-[180px] border border-gray-200 rounded-xl px-3 py-2 text-sm">'
-      + '<button type="button" onclick="wlGroupAll(1)" class="px-3 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50">เลือกที่แสดงทั้งหมด</button>'
-      + '<button type="button" onclick="wlGroupAll(0)" class="px-3 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50">ล้างรายชื่อ</button>'
+      + '<button type="button" onclick="wlGroupAll(0)" class="px-3 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50">ล้างที่เลือก</button>'
       + '</div>'
       + '<p class="text-xs text-gray-500 mb-2">เลือกแล้ว <b data-wl-gcount="1" class="text-primary">' + groupSel().length + '</b> คน'
       + ' จาก' + esc(levelLabel(st.year, st.level)) + ' ทั้งหมด ' + all.length + ' คน</p>'
       + groupListBox()
-      + '<p class="text-[11px] text-gray-400 mt-2">ค่าที่กรอกจะถูกบันทึกเป็นค่าเฉพาะรายของนักศึกษาทุกคนที่ติ๊กไว้'
-      + ' · ติ๊กคนเดียวจะดึงค่าเดิมของคนนั้นขึ้นมาแก้</p>';
+      + '<div class="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">'
+      + '<p class="text-[11px] text-amber-800"><b>เลือกได้ทีละคนเท่านั้น</b> — ค่าที่กรอกจะใช้แทนภาระงานทั้งชุดของคนนั้น'
+      + ' เหมาะกับกรณีลาพัก ย้ายเข้ากลางภาค หรือเทียบโอน<br>'
+      + 'ถ้าเป็นกิจกรรมที่มีนักศึกษาหลายคนเข้าร่วม ให้กลับไปกรอกที่<b>แผนทั้งชั้น</b>แล้วระบุผู้เข้าร่วมในช่อง "เฉพาะบางคน"'
+      + ' หรือใช้<b>นำเข้าไฟล์ CSV</b> จะได้ข้อมูลชุดเดียว แก้ทีหลังได้ที่เดียว</p></div>';
   }
 
   window.wlGroupSearch = function (v) {
@@ -2028,27 +2034,18 @@
     if (box) { box.outerHTML = groupListBox(); if (window.lucide) lucide.createIcons(); }
     else renderCurrentPage();
   };
+  // เลือกได้ทีละคน เลือกคนใหม่แทนที่คนเดิมเสมอ แล้วดึงค่าเดิมของคนนั้นมาตั้งต้น
   window.wlGroupOne = function (sid, on) {
     var st = state();
-    if (!st.gsel) st.gsel = {};
-    var before = groupSel().length;
-    if (on) st.gsel[norm(sid)] = 1; else delete st.gsel[norm(sid)];
-    var after = groupSel().length;
-    // ติ๊กคนเดียว = แก้ค่าเฉพาะรายของคนนั้น ต้องดึงค่าเดิมของเขามาตั้งต้นใหม่
-    // (ทั้งตอนเข้าสู่สภาพ "คนเดียว" และตอนออกจากสภาพนั้น)
-    if (before === 1 || after === 1) { st.draft = null; renderCurrentPage(); return; }
-    var c = document.querySelector('[data-wl-gcount]');
-    if (c) c.textContent = after;
+    st.gsel = {};
+    if (on) st.gsel[norm(sid)] = 1;
+    st.draft = null;
+    renderCurrentPage();
   };
-  window.wlGroupAll = function (on) {
+  // เหลือไว้เฉพาะการล้างที่เลือก (ปุ่ม "เลือกทั้งหมด" ถูกยกเลิกพร้อมการบันทึกแบบกลุ่ม)
+  window.wlGroupAll = function () {
     var st = state();
-    var q = norm(st.gq).toLowerCase();
-    if (!st.gsel) st.gsel = {};
-    cohortStudents(st.level).forEach(function (s) {
-      var sid = norm(s.student_id);
-      if (q && (sid + ' ' + norm(s.name)).toLowerCase().indexOf(q) < 0) return;
-      if (on) st.gsel[sid] = 1; else delete st.gsel[sid];
-    });
+    st.gsel = {};
     st.draft = null;
     renderCurrentPage();
   };
@@ -2147,11 +2144,11 @@
     })[0] || null;
   }
 
-  function wlCsvPanel(which) {
+  // นำเข้า CSV ใช้กับแผนของชั้นปีเท่านั้น (กิจกรรม 1 งาน = 1 แถว ระบุผู้เข้าร่วมในช่อง students)
+  // ไม่เปิดให้นำเข้าในโหมดรายบุคคล เพราะจะกลายเป็นการสร้างสำเนาข้อมูลรายคนอีกแบบ
+  function wlCsvPanel() {
     var st = state();
-    var target = which === 'group'
-      ? (groupSel().length ? 'นักศึกษาที่เลือกไว้ ' + groupSel().length + ' คน' : 'ยังไม่ได้เลือกนักศึกษา')
-      : esc(levelLabel(st.year, st.level)) + ' ทั้งชั้น';
+    var target = esc(levelLabel(st.year, st.level)) + ' ทั้งชั้น';
     var btn = function (onclick, icon, label, cls) {
       return '<button type="button" onclick="' + onclick + '" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm ' + cls + '">'
         + '<i data-lucide="' + icon + '" class="w-4 h-4"></i>' + esc(label) + '</button>';
@@ -2478,19 +2475,20 @@
       + wlStep(1, 'เลือกชั้นปีและภาคการศึกษา', scope + ' · นักศึกษา ' + nStu + ' คน', cohortPicker(true), 'done')
       + wlStep(2, 'เลือกพันธกิจที่จะกรอก', 'แนะนำให้กรอกทีละพันธกิจ · เลือกแล้ว: <b>' + esc(mLabel) + '</b>',
           missionPicker().replace(/<p class="text-xs font-semibold text-gray-600 mb-2">[\s\S]*?<\/p>/, '') + missionScopeNote(), st.mission ? 'done' : 'active')
-      + wlStep(3, group ? 'เลือกนักศึกษา แล้วกรอกกิจกรรม' : 'เพิ่มกิจกรรม และเลือกว่าใครเข้าร่วม',
-          group ? 'ติ๊กนักศึกษาที่ต้องการ แล้วกรอกรายการที่จะใช้กับคนกลุ่มนี้'
-                : 'แต่ละแถว = 1 กิจกรรม · กำหนด "ใครเข้าร่วม" ได้ทีละแถว',
-          (group ? groupPicker() : howToBox()) + wlCsvPanel(group ? 'group' : 'cohort') + foldBar() + missionEditors(group), 'active')
+      + wlStep(3, group ? 'เลือกนักศึกษา 1 คน แล้วกรอกกิจกรรม' : 'เพิ่มกิจกรรม และเลือกว่าใครเข้าร่วม',
+          group ? 'เลือกได้ทีละคน · ค่าที่กรอกจะใช้แทนภาระงานทั้งชุดของคนนั้น'
+                : 'แต่ละแถว = 1 กิจกรรม · กำหนด "ใครเข้าร่วม" ได้ทีละแถว · กรอกทีละมาก ๆ ใช้ไฟล์ CSV',
+          (group ? groupPicker() : howToBox() + wlCsvPanel()) + foldBar() + missionEditors(group), 'active')
       + wlStep(4, 'ตรวจสรุปแล้วบันทึก', group
-          ? (sel.length ? 'จะบันทึกให้นักศึกษาที่เลือก ' + sel.length + ' คน' : '<span class="text-amber-700">ยังไม่ได้เลือกนักศึกษาในขั้นที่ 3</span>')
+          ? (sel.length ? 'จะบันทึกเป็นค่าเฉพาะรายของนักศึกษาที่เลือก' : '<span class="text-amber-700">ยังไม่ได้เลือกนักศึกษาในขั้นที่ 3</span>')
           : 'บันทึกครั้งเดียวใช้กับทั้งชั้น · กิจกรรม "เฉพาะบางคน" นับให้เฉพาะคนที่ติ๊ก',
           partSummary() + grandCard(group), 'active', true)
       + '</div>';
     var special = group ? '' : '<div class="bg-white rounded-2xl border border-gray-100 p-4 mb-4 flex flex-wrap items-center justify-between gap-3">'
       + '<div class="min-w-0"><p class="text-sm font-semibold text-gray-700"><i data-lucide="user-cog" class="w-4 h-4 inline text-gray-400"></i> กรณีพิเศษ: กรอกรายบุคคล</p>'
       + '<p class="text-[11px] text-gray-500">ใช้เมื่อภาระงาน<b>ทั้งชุด</b>ของนักศึกษาบางคนต่างจากเพื่อนในชั้น (เช่น ลาพัก ย้ายเข้ากลางภาค) · '
-      + 'ถ้าแค่บางกิจกรรมที่เข้าไม่เหมือนกัน ใช้ <b>"เฉพาะบางคน"</b> ในขั้นที่ 3 ก็พอ</p></div>'
+      + '<b>เลือกได้ทีละคน</b> · ถ้าแค่บางกิจกรรมที่เข้าไม่เหมือนกัน ใช้ <b>"เฉพาะบางคน"</b> ในขั้นที่ 3 '
+      + 'หรือ<b>นำเข้าไฟล์ CSV</b> จะได้ข้อมูลชุดเดียวที่แก้ทีหลังได้ที่เดียว</p></div>'
       + '<button type="button" onclick="wlSet(\'mode\',\'group\')" class="px-3 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 flex-shrink-0">เปิดการกรอกรายบุคคล</button></div>';
     return modeBar + steps + special + ovrPanel();
   }
@@ -2519,6 +2517,10 @@
     var group = st.mode === 'group';
     var sel = groupSel();
     if (group && !sel.length) { showToast('เลือกนักศึกษาก่อนบันทึก', 'error'); return; }
+    if (group && sel.length > 1) {
+      showToast('บันทึกรายบุคคลได้ทีละคน · กิจกรรมของหลายคนให้กรอกที่แผนทั้งชั้นแล้วระบุผู้เข้าร่วม หรือนำเข้าไฟล์ CSV', 'error');
+      return;
+    }
     var who = (APP.currentUser && APP.currentUser.name) || '';
     var json = JSON.stringify(d[mkey] || []);
 
@@ -2586,8 +2588,11 @@
     if (st.mode === 'group') {
       var sel = groupSel();
       if (!sel.length) { showToast('เลือกนักศึกษาก่อนบันทึก', 'error'); return; }
-      if (sel.length > 40 && !confirm('บันทึกให้นักศึกษา ' + sel.length + ' คน?\n\nระบบจะสร้างค่าเฉพาะรายของแต่ละคน อาจใช้เวลาสักครู่')) return;
-      showToast('กำลังบันทึกให้นักศึกษา ' + sel.length + ' คน...');
+      if (sel.length > 1) {
+        showToast('บันทึกรายบุคคลได้ทีละคน · กิจกรรมของหลายคนให้กรอกที่แผนทั้งชั้นแล้วระบุผู้เข้าร่วม หรือนำเข้าไฟล์ CSV', 'error');
+        return;
+      }
+      showToast('กำลังบันทึก...');
       try { await GSheetDB.refreshTab('workload_student'); } catch (e) { /* ใช้ข้อมูลที่มีอยู่ */ }
       var ok = 0, err = '';
       for (var i = 0; i < sel.length; i++) {
