@@ -3239,6 +3239,26 @@
         changed.forEach(function (m) { payload[m.field] = JSON.stringify(M.data[m.key]); });
         r0 = M.plan ? await GSheetDB.update(Object.assign({}, M.plan, payload)) : await GSheetDB.create(payload);
       } else {
+        /* ลบรายการของวิทยาลัยจากหน้าต่างรายบุคคล ทำไม่ได้และไม่ควรทำเงียบ ๆ
+           รายการที่มาจากแผนชั้นปีเป็นของกลาง ลบที่นี่ก็ได้แค่ค่าเฉพาะรายว่างเปล่า
+           ซึ่งระบบตีความว่า "ใช้ตามแผนชั้นปี" นักศึกษาจึงยังได้ชั่วโมงเท่าเดิม
+           ต้องไปเอาชื่อออกจากช่องผู้เข้าร่วมของกิจกรรมนั้นในแผนชั้นปีแทน */
+        var missing = [];
+        changed.forEach(function (m) {
+          var keep = (M.data[m.key] || []).map(function (r) { return JSON.stringify(r); });
+          rows(M.plan, m).forEach(function (r) {
+            if (!appliesTo(r, M.sid)) return;
+            if (keep.indexOf(JSON.stringify(r)) === -1) {
+              missing.push(m.short + ' : ' + (norm(r.activity) || norm(r.subject_name) || '(ไม่มีชื่อ)'));
+            }
+          });
+        });
+        if (missing.length) {
+          if (btn) btn.disabled = false;
+          showToast('ลบรายการของวิทยาลัยจากหน้านี้ไม่ได้ (' + missing[0] + ')'
+            + ' · ถ้านักศึกษาคนนี้ไม่ได้เข้าร่วม ให้ไปเอาชื่อออกจากช่อง "ใครเข้าร่วม" ของกิจกรรมนั้นในแผนชั้นปี', 'error');
+          return;
+        }
         var cur = overrideOf(M.sid, st.year, M.sm);
         var mt2 = meta(cur);
         changed.forEach(function (m) { mt2[m.key] = { by: who, at: stampNow() }; });
