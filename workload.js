@@ -1025,7 +1025,7 @@
   }
   // ภาระงานทั้งปีของนักศึกษาหนึ่งคน
   function oneTotal(year, lv, stu, plans) {
-    var tot = 0, rawTot = 0, per = {}, raw = {}, extra = false;
+    var tot = 0, rawTot = 0, per = {}, raw = {}, extra = false, hasRec = false;
     MISSIONS.forEach(function (m) { per[m.key] = 0; raw[m.key] = 0; });
     var only = semsShown();
     SEMS.forEach(function (sm, i) {
@@ -1033,6 +1033,7 @@
       if (!plan) return;
       var ovr = overrideOf(stu.student_id, year, sm);
       // ป้าย "ปรับเฉพาะราย" ดูทั้งปี ไม่ขึ้นกับภาคที่เลือกดู และนับเฉพาะค่าที่มีผลจริง
+      if (ovr) hasRec = true;                 // มีระเบียนอยู่จริง แม้ทุกช่องจะว่าง
       if (ovr && MISSIONS.some(function (mm) { return ovrApplies(ovr, mm); })) extra = true;
       if (only.indexOf(sm) < 0) return;
       var c = calc(plan, ovr, stu.student_id);
@@ -1045,7 +1046,7 @@
     });
     return { sid: norm(stu.student_id), name: norm(stu.name), level: lv,
              total: Math.round(tot * 100) / 100, per: per,
-             raw: raw, rawTotal: Math.round(rawTot * 100) / 100, ovr: extra };
+             raw: raw, rawTotal: Math.round(rawTot * 100) / 100, ovr: extra, rec: hasRec };
   }
 
   function studentTotalsRaw(year) {
@@ -1424,9 +1425,11 @@
         + '<td class="px-3 py-2 text-center tabular-nums font-semibold text-primary">' + fx(x.rawTotal) + '</td>'
         + '<td class="px-3 py-2 text-center">' + (x.ovr
             ? '<span class="px-2 py-0.5 rounded-full text-[11px] bg-amber-50 text-amber-700">ปรับเฉพาะราย</span>'
-            : '<span class="text-[11px] text-gray-400">ตามมาตรฐาน</span>') + '</td>'
+            : x.rec
+              ? '<span class="px-2 py-0.5 rounded-full text-[11px] bg-gray-100 text-gray-500" title="มีระเบียนของคนนี้ค้างอยู่แต่ไม่มีรายการใดเลย · ใช้ค่ามาตรฐานของชั้นปี · ลบระเบียนที่ค้างได้ด้วยปุ่มถังขยะ">ระเบียนว่าง</span>'
+              : '<span class="text-[11px] text-gray-400">ตามมาตรฐาน</span>') + '</td>'
         + (manageOn() ? manageCell("wlEditPerson('" + esc(x.sid) + "','" + esc(level) + "')", "wlDeletePerson('" + esc(x.sid) + "')",
-            'ลบค่าเฉพาะรายของ ' + x.name, x.ovr ? '' : 'ใช้ค่ามาตรฐานของชั้นปี ไม่มีข้อมูลเฉพาะรายให้ลบ') : '')
+            'ลบค่าเฉพาะรายของ ' + x.name, x.rec ? '' : 'ใช้ค่ามาตรฐานของชั้นปี ไม่มีข้อมูลเฉพาะรายให้ลบ') : '')
         + '</tr>';
     }).join('');
     /* เตือนเมื่อพันธกิจที่ขึ้น 0% มีข้อมูลอยู่จริงในภาคอื่น
@@ -1979,7 +1982,12 @@
       + able.map(function (x) {
           return '<option value="' + x.key + '" ' + (x.key === b.mkey ? 'selected' : '') + '>' + esc(x.label) + '</option>';
         }).join('') + '</select>'
-      + '<span class="text-xs text-gray-400">' + esc(levelLabel(st.year, st.level)) + ' · ' + esc(semLabel(st.sem)) + '</span></div>'
+      + '</div>'
+      + '<div class="rounded-xl border border-primary/30 bg-primaryLight px-3 py-2 text-xs text-primary">'
+      + '<i data-lucide="calendar-check" class="w-4 h-4 inline mr-1"></i>กำลังลงข้อมูลให้ '
+      + '<b>ปีการศึกษา ' + esc(st.year) + '</b> · ' + esc(levelLabel(st.year, st.level)) + ' · ' + esc(semLabel(st.sem))
+      + '<span class="block text-[11px] text-gray-500 mt-0.5">รายชื่อด้านล่างคือนักศึกษาของชั้นปีนี้ในปีการศึกษานี้ '
+      + 'ถ้าปีการศึกษาไม่ใช่ที่ต้องการ ให้ปิดหน้าต่างแล้วเปลี่ยนที่มุมขวาบนก่อน</span></div>'
 
       + '<div>'
       + '<div class="flex flex-wrap items-center gap-2 mb-2">'
@@ -2731,6 +2739,20 @@
         }).join('') + '</ul>' : '')
       + '</div>';
   }
+  /* ยืนยันขอบเขตก่อนกดบันทึก — ปีการศึกษา ชั้นปี ภาค และรหัสรุ่นของชั้นปีนั้น
+     ปีการศึกษาเป็นตัวที่กรอกผิดแล้วหายากที่สุด เพราะข้อมูลไปอยู่อีกปีโดยไม่มีอะไรเตือน
+     และรหัสนักศึกษาที่เห็นในรายชื่อก็เปลี่ยนตามปีด้วย */
+  function saveScopeNote() {
+    var st = state();
+    var pfx = cohortPrefix(st.year, st.level);
+    return '<div class="rounded-xl border border-primary/30 bg-primaryLight px-4 py-2.5 mb-3 text-sm text-primary">'
+      + '<i data-lucide="calendar-check" class="w-4 h-4 inline mr-1"></i>กำลังจะบันทึกลง '
+      + '<b>ปีการศึกษา ' + esc(st.year) + '</b> · ' + esc(levelLabel(st.year, st.level)) + ' · ' + esc(semLabel(st.sem))
+      + (pfx ? '<span class="block text-[11px] text-gray-500 mt-0.5">ชั้นปีนี้ในปีการศึกษานี้คือนักศึกษารหัสขึ้นต้นด้วย '
+               + esc(pfx) + ' — ถ้าไม่ตรงกับที่ตั้งใจ ให้เปลี่ยนปีการศึกษาที่มุมขวาบนก่อนบันทึก</span>' : '')
+      + '</div>';
+  }
+
   function planTab() {
     var st = state();
     if (!canEdit()) return cohortPicker() + readonlyPlan();
@@ -2756,7 +2778,7 @@
       + wlStep(4, 'ตรวจสรุปแล้วบันทึก', group
           ? (sel.length ? 'จะบันทึกเป็นค่าเฉพาะรายของนักศึกษาที่เลือก' : '<span class="text-amber-700">ยังไม่ได้เลือกนักศึกษาในขั้นที่ 3</span>')
           : 'บันทึกครั้งเดียวใช้กับทั้งชั้น · กิจกรรม "เฉพาะบางคน" นับให้เฉพาะคนที่ติ๊ก',
-          partSummary() + grandCard(group), 'active', true)
+          saveScopeNote() + partSummary() + grandCard(group), 'active', true)
       + '</div>';
     var special = group ? '' : '<div class="bg-white rounded-2xl border border-gray-100 p-4 mb-4 flex flex-wrap items-center justify-between gap-3">'
       + '<div class="min-w-0"><p class="text-sm font-semibold text-gray-700"><i data-lucide="user-cog" class="w-4 h-4 inline text-gray-400"></i> กรณีพิเศษ: กรอกรายบุคคล</p>'
