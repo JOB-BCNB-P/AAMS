@@ -159,6 +159,7 @@
       tol: 0,                       // ยอมให้เกินชั่วโมงเป้าหมายได้กี่เปอร์เซ็นต์ ก่อนถือว่าเกิน
       mView: 'level', mLevel: '', mSid: '', mq: '', mSem: '',  // มุมมองการ์ดพันธกิจ : รายชั้นปี / รายบุคคล
       mode: 'cohort', gsel: {},     // กล่องกรอกที่เปิดอยู่ : ทั้งชั้นปี / รายบุคคล ('' = ยุบทั้งคู่)
+      addMode: false,               // เพิ่งบันทึกกลุ่มไป ฟอร์มว่างอยู่ รอบนี้บันทึกแบบต่อท้าย
       mission: '', gq: '',          // พันธกิจที่เลือกกรอก ('' = ทุกพันธกิจ) · คำค้นในรายชื่อนักศึกษา
       fold: fold0                   // การ์ดที่ถูกยุบไว้ (จำเฉพาะระหว่างใช้งาน)
       };
@@ -980,7 +981,8 @@
     var st = state();
     st[k] = v;
     // ล้างร่างเฉพาะเมื่อเปลี่ยนขอบเขตข้อมูลที่กรอก — เปลี่ยนตัวกรองของหน้าสรุปไม่ต้องล้าง
-    if (['year', 'level', 'sem', 'mode'].indexOf(k) !== -1) st.draft = null;
+    // เปลี่ยนขอบเขต = เริ่มใหม่ทั้งหมด ไม่ใช่การต่อท้ายของเดิม
+    if (['year', 'level', 'sem', 'mode'].indexOf(k) !== -1) { st.draft = null; st.addMode = false; }
     if (k === 'year') st.mSem = '';   // ปีใหม่อาจไม่มีภาคที่เลือกค้างไว้
 
     /* เลือกพันธกิจแล้วต้องเห็นช่องกรอกทันที
@@ -1521,6 +1523,44 @@
   function groupSel() {
     var g = state().gsel || {};
     return Object.keys(g).filter(function (k) { return g[k]; });
+  }
+
+  /* ---------------- บันทึกทีละกลุ่ม แล้วเริ่มกลุ่มใหม่ ----------------
+     บันทึกกลุ่มหนึ่งเสร็จ ฟอร์มจะถูกล้างให้เริ่มกลุ่มถัดไปได้ทันที
+     แต่ "ล้างฟอร์ม" ต้องไม่แปลว่า "ลบของเดิมในแผน" — ถ้าบันทึกรอบถัดไป
+     ยังเขียนทับทั้งก้อนเหมือนเดิม กลุ่มที่เพิ่งลงไว้จะหายทันที
+     รอบที่อยู่ในสถานะนี้จึงบันทึกแบบ "ต่อท้าย" : ของเดิมในฐานข้อมูล + ของใหม่ในฟอร์ม
+     และดึงของเดิมสดจากฐานข้อมูลตอนบันทึก จึงไม่ทับงานที่คนอื่นเพิ่งลงด้วย */
+  function emptyDraft() {
+    var st = state(), plan = planOf(st.year, st.level, st.sem);
+    var d = { weights: {} };
+    MISSIONS.forEach(function (m) { d[m.key] = []; d.weights[m.key] = weightOf(plan, m); });
+    return d;
+  }
+  // จำนวนรายการที่อยู่ในแผนแล้ว (ไม่ได้แสดงในฟอร์มรอบนี้)
+  function savedCount() {
+    var st = state(), plan = planOf(st.year, st.level, st.sem), c = 0;
+    if (!plan) return 0;
+    shownMissions().forEach(function (m) { c += rows(plan, m).length; });
+    return c;
+  }
+  // กลับไปแก้ไขของที่บันทึกไปแล้ว — โหลดทั้งแผนขึ้นมาในฟอร์มตามปกติ
+  window.wlShowAll = function () {
+    var st = state();
+    st.draft = null;
+    st.addMode = false;
+    renderCurrentPage();
+  };
+  function addModeBar() {
+    var st = state();
+    if (!st.addMode) return '';
+    var c = savedCount();
+    return '<div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 mb-3 text-sm text-emerald-800">'
+      + '<i data-lucide="check-circle-2" class="w-4 h-4 inline mr-1"></i>'
+      + 'บันทึกกลุ่มที่แล้วเรียบร้อย — ล้างฟอร์มให้เริ่มกลุ่มใหม่แล้ว'
+      + (c ? ' · ในแผนมีอยู่แล้ว <b>' + c + ' รายการ</b> (ไม่แสดงในฟอร์มรอบนี้ แต่ไม่ถูกลบ)' : '')
+      + ' <button type="button" onclick="wlShowAll()" class="ml-1 px-2 py-0.5 rounded-lg bg-white border border-emerald-300 hover:bg-emerald-100">'
+      + 'แสดง/แก้ไขรายการทั้งหมด</button></div>';
   }
 
   function draft() {
@@ -2660,6 +2700,7 @@
     var scope = st.mission ? ('เฉพาะ' + esc((missionOf(st.mission) || {}).label || '')) : 'ทุกพันธกิจ';
     var saveLabel = group
       ? (st.mission ? 'บันทึกพันธกิจนี้ให้ทุกคนที่เลือก' : 'บันทึกให้ทุกคนที่เลือก')
+      : st.addMode ? (st.mission ? 'เพิ่มเข้าแผน (พันธกิจนี้)' : 'เพิ่มเข้าแผน')
       : (st.mission ? 'บันทึกพันธกิจนี้' : 'บันทึกทุกพันธกิจที่ทำได้');
     return '<div class="bg-blue-50 border border-blue-100 rounded-2xl p-4 mb-4 flex flex-wrap items-start justify-between gap-3">'
       + '<div><p class="text-sm text-gray-600">ชั่วโมงภาระงาน (' + scope + ') · ' + esc(levelLabel(st.year, st.level))
@@ -2774,7 +2815,7 @@
       + wlStep(3, group ? 'เลือกนักศึกษา 1 คน แล้วกรอกกิจกรรม' : 'เพิ่มกิจกรรม และเลือกว่าใครเข้าร่วม',
           group ? 'เลือกได้ทีละคน · ค่าที่กรอกจะใช้แทนภาระงานทั้งชุดของคนนั้น'
                 : 'กิจกรรมของทั้งชั้นใช้ + เพิ่มแถว · กิจกรรมของกลุ่มใช้ปุ่มสีส้ม เลือกรายชื่อครั้งเดียวแล้วกรอกได้หลายกิจกรรม · กรอกครบทุกด้านแล้วไปบันทึกที่ขั้นที่ 4',
-          (group ? groupPicker() : howToBox() + wlCsvPanel()) + foldBar() + missionEditors(group), 'active')
+          addModeBar() + (group ? groupPicker() : howToBox() + wlCsvPanel()) + foldBar() + missionEditors(group), 'active')
       + wlStep(4, 'ตรวจสรุปแล้วบันทึก', group
           ? (sel.length ? 'จะบันทึกเป็นค่าเฉพาะรายของนักศึกษาที่เลือก' : '<span class="text-amber-700">ยังไม่ได้เลือกนักศึกษาในขั้นที่ 3</span>')
           : 'บันทึกครั้งเดียวใช้กับทั้งชั้น · กิจกรรม "เฉพาะบางคน" นับให้เฉพาะคนที่ติ๊ก',
@@ -2858,9 +2899,21 @@
       type: 'workload_plan', academic_year: st.year, year_level: st.level, semester: st.sem,
       updated_by: who, meta_json: JSON.stringify(mt)
     };
-    mine.forEach(function (m) { payload[m.field] = JSON.stringify(d[m.key] || []); });
+    mine.forEach(function (m) {
+      var add = d[m.key] || [];
+      // รอบที่ฟอร์มถูกล้างเพื่อเริ่มกลุ่มใหม่ ให้ต่อท้ายของเดิมที่อยู่ในแผน
+      // (อ่านสดจากฐานข้อมูลหลัง refreshTab แล้ว) ไม่ใช่เขียนทับทั้งก้อน
+      payload[m.field] = JSON.stringify(st.addMode ? rows(plan, m).concat(add) : add);
+    });
     var r = plan ? await GSheetDB.update(Object.assign({}, plan, payload)) : await GSheetDB.create(payload);
-    if (r && r.isOk) { showToast('บันทึกภาระงานเรียบร้อย'); st.draft = null; renderCurrentPage(); }
+    if (r && r.isOk) {
+      // ล้างฟอร์มให้เริ่มกลุ่มใหม่ได้ทันที ของที่บันทึกแล้วยังอยู่ในแผนครบ
+      try { await GSheetDB.refreshTab('workload_plan'); } catch (e) { /* ใช้ข้อมูลที่มีอยู่ */ }
+      st.addMode = true;
+      st.draft = emptyDraft();
+      showToast('บันทึกเรียบร้อย · ล้างฟอร์มให้เริ่มกลุ่มใหม่แล้ว');
+      renderCurrentPage();
+    }
     else showToast('บันทึกไม่สำเร็จ: ' + ((r && r.error) || ''), 'error');
   };
 

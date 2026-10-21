@@ -183,6 +183,41 @@ t('บันทึกเฉพาะพันธกิจที่บัญช�
   assert.ok(seg.includes('if (st.mission)'), 'เลือกกรอกพันธกิจเดียวแล้วต้องบันทึกเฉพาะพันธกิจนั้น');
 });
 
+console.log('\n[8] บันทึกทีละกลุ่ม แล้วเริ่มกลุ่มใหม่');
+t('บันทึกเสร็จแล้วล้างฟอร์ม ไม่ใช่โหลดของเดิมกลับมา', () => {
+  const i = WL.indexOf('window.wlSavePlan');
+  const seg = WL.slice(i, i + 5000);
+  assert.ok(seg.includes('st.draft = emptyDraft()'), 'ฟอร์มยังไม่ถูกล้างหลังบันทึก');
+  assert.ok(seg.includes('st.addMode = true'), 'ไม่ได้เข้าสู่รอบเพิ่มกลุ่มใหม่');
+});
+t('รอบเพิ่มกลุ่มใหม่ต้องต่อท้าย ไม่ใช่เขียนทับของเดิม', () => {
+  // จุดตายของฟีเจอร์นี้ : ถ้าเขียนทับ กลุ่มที่เพิ่งบันทึกไปจะหายทันทีที่บันทึกกลุ่มถัดไป
+  const i = WL.indexOf('window.wlSavePlan');
+  const seg = WL.slice(i, i + 5000);
+  assert.ok(seg.includes('st.addMode ? rows(plan, m).concat(add) : add'), 'บันทึกทับของเดิม');
+  const refresh = seg.indexOf("refreshTab('workload_plan')");
+  const read = seg.indexOf('rows(plan, m).concat(add)');
+  assert.ok(refresh > -1 && refresh < read, 'อ่านของเดิมจากข้อมูลค้างในเครื่อง ไม่ใช่ของสดจากฐานข้อมูล');
+});
+t('ยังกลับไปแก้ไขของที่บันทึกแล้วได้', () => {
+  const seg = grab('window.wlShowAll = function ()');
+  assert.ok(seg.includes('st.draft = null') && seg.includes('st.addMode = false'),
+    'ออกจากรอบเพิ่มกลุ่มไม่ได้');
+  assert.ok(grab('function addModeBar()').includes('wlShowAll()'), 'ไม่มีทางกลับไปแก้ของเดิม');
+});
+t('บอกผู้ใช้ว่าของเดิมยังอยู่ ไม่ได้หายไป', () => {
+  const seg = grab('function addModeBar()');
+  assert.ok(seg.includes('ไม่แสดงในฟอร์มรอบนี้ แต่ไม่ถูกลบ'), 'ผู้ใช้จะเข้าใจว่าข้อมูลหาย');
+  assert.ok(WL.includes('function savedCount()'), 'ไม่ได้นับรายการที่อยู่ในแผนแล้ว');
+});
+t('เปลี่ยนปี/ชั้นปี/ภาค/โหมด ต้องออกจากรอบเพิ่มกลุ่ม', () => {
+  // ไม่งั้นจะไปต่อท้ายแผนของขอบเขตใหม่ด้วยข้อมูลที่ตั้งใจลงให้ขอบเขตเดิม
+  assert.ok(WL.includes("{ st.draft = null; st.addMode = false; }"), 'ยังค้างสถานะข้ามขอบเขต');
+});
+t('ปุ่มบันทึกบอกว่ากำลังเพิ่มเข้าแผน', () => {
+  assert.ok(WL.includes("'เพิ่มเข้าแผน'"), 'ปุ่มยังบอกว่า "บันทึก" ทั้งที่เป็นการเพิ่มต่อท้าย');
+});
+
 console.log('\n────────────────────────────');
 console.log((fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
 process.exit(fail ? 1 : 0);
