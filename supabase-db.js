@@ -314,6 +314,30 @@ const EMSDB = (() => {
       return { isOk: false, error: String((e && e.message) || e) };
     }
   }
+  /* ---------------- เซสชันหมดอายุระหว่างใช้งาน ----------------
+     โทเค็นของ Supabase มีอายุ 1 ชั่วโมง ถ้าเปิดหน้าค้างไว้ข้ามชั่วโมง
+     (พักหน้าจอ สลับแท็บ เครื่องหลับ) การต่ออายุอัตโนมัติอาจไม่ทันรอบที่กดบันทึก
+     คำสั่งเขียนจะถูกปฏิเสธด้วย 401 ทั้งที่สิทธิ์ของบัญชีถูกต้องทุกอย่าง
+     จึงต่ออายุให้หนึ่งครั้งแล้วลองใหม่ ผู้ใช้จะไม่เห็นอะไรเลยนอกจากบันทึกสำเร็จ */
+  function isAuthErr(e) {
+    const code = String((e && e.code) || '');
+    const msg = String((e && e.message) || '');
+    return code === 'PGRST301' || code === '401'
+        || /jwt|token|expired|not authenticated|invalid claim/i.test(msg);
+  }
+  async function reauth() {
+    try {
+      const { data, error } = await client().auth.refreshSession();
+      return !error && !!(data && data.session);
+    } catch (e) { return false; }
+  }
+  // ลองคำสั่งเขียนใหม่หนึ่งครั้งถ้าพลาดเพราะโทเค็นหมดอายุ
+  async function writeOnce(run) {
+    let res = await run();
+    if (res && res.error && isAuthErr(res.error) && await reauth()) res = await run();
+    return res;
+  }
+
   async function create(obj, opts) {
     const t = obj && obj.type;
     if (!t) return { isOk: false, error: 'ไม่ระบุประเภทข้อมูล (type)' };
@@ -330,13 +354,15 @@ const EMSDB = (() => {
        ฐานข้อมูลจะถือว่าคำสั่งไม่สำเร็จแล้วยกเลิกการเพิ่มนั้นไปทั้งหมด
        จึงมีโหมด noReturn ไว้สำหรับตารางแบบนี้ : เพิ่มอย่างเดียว ไม่ต้องอ่านกลับ */
     if (opts && opts.noReturn) {
-      const { error: e0 } = await client().from(table).insert(payload);
+      const { error: e0 } = await writeOnce(function () { return client().from(table).insert(payload); });
       if (e0) return { isOk: false, error: friendly(e0) };
       if (!(opts && opts.noRefresh)) await refreshTab(t);
       return { isOk: true, message: 'บันทึกแล้ว' };
     }
 
-    const { data, error } = await client().from(table).insert(payload).select('id').single();
+    const { data, error } = await writeOnce(function () {
+      return client().from(table).insert(payload).select('id').single();
+    });
     if (error) return { isOk: false, error: friendly(error) };
     if (nid) { try { await saveNationalId(data.id, nid); } catch (e) { /* ไม่ให้ล้มทั้งรายการ */ } }
     const lineRes = await notifyLine(table, data.id, obj);
@@ -359,7 +385,9 @@ const EMSDB = (() => {
     const merged = await mergeExtra(table, id, extra);
     if (merged) payload.extra = merged;
 
-    const { error } = await client().from(table).update(payload).eq('id', id);
+    const { error } = await writeOnce(function () {
+      return client().from(table).update(payload).eq('id', id);
+    });
     if (error) return { isOk: false, error: friendly(error) };
     if (nid) { try { await saveNationalId(id, nid); } catch (e) { /* ignore */ } }
     const lineRes = await notifyLine(table, id, obj);
@@ -373,7 +401,9 @@ const EMSDB = (() => {
   async function remove(obj) {
     const t = obj && obj.type, id = obj && obj.__rowIndex;
     if (!t || !id) return { isOk: false, error: 'ไม่พบรหัสแถวที่จะลบ' };
-    const { error } = await client().from(tbl(t)).delete().eq('id', id);
+    const { error } = await writeOnce(function () {
+      return client().from(tbl(t)).delete().eq('id', id);
+    });
     if (error) return { isOk: false, error: friendly(error) };
     await refreshTab(t);
     return { isOk: true, message: 'ลบแล้ว' };
@@ -441,8 +471,11 @@ const EMSDB = (() => {
   function friendly(error) {
     const m = String((error && error.message) || error || '');
     if (/duplicate key.*uq_survey_response_once/i.test(m)) return 'คุณได้ทำแบบประเมินของปีการศึกษานี้ไปแล้ว';
+    // ตรวจเซสชันก่อนเรื่องสิทธิ์ เพราะโทเค็นหมดอายุมักถูกรายงานปนกันมา
+    // แล้วผู้ใช้จะไปไล่แก้สิทธิ์ทั้งที่แค่ต้องเข้าสู่ระบบใหม่
+    if (/JWT|token|expired|not authenticated|invalid claim|PGRST301/i.test(m))
+      return 'เซสชันหมดอายุ กรุณารีเฟรชหน้าจอ (F5) แล้วลองใหม่ ถ้ายังไม่ได้ให้ออกจากระบบแล้วเข้าใหม่';
     if (/row-level security|permission denied/i.test(m))   return 'บัญชีของคุณไม่มีสิทธิ์ดำเนินการนี้';
-    if (/JWT|not authenticated|invalid claim/i.test(m))    return 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่';
     return m;
   }
 
