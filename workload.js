@@ -3215,7 +3215,10 @@
     var M = wlmState(); if (!M) return;
     if (!isAdminNow()) { showToast('บันทึกจากหน้านี้ได้เฉพาะผู้ดูแลระบบ', 'error'); return; }
     var changed = MISSIONS.filter(function (m) { return M.dirty[m.key]; });
-    if (!changed.length) { closeModal(); return; }
+    /* ของเดิมปิดหน้าต่างเงียบ ๆ เมื่อไม่มีอะไรเปลี่ยน
+       ถ้าการกดลบไม่ติด ผู้ใช้จะเห็นแค่หน้าต่างปิดไป แล้วเข้าใจว่า "ลบไม่ได้"
+       โดยไม่มีเบาะแสว่าปัญหาอยู่ตรงไหน จึงบอกให้ชัดแทน */
+    if (!changed.length) { showToast('ยังไม่มีการเปลี่ยนแปลงให้บันทึก', 'error'); return; }
     // ตรวจ : ทุกรายการต้องมีชื่อ และชั่วโมงเป็นตัวเลขไม่ติดลบ
     for (var k = 0; k < changed.length; k++) {
       var m = changed[k], list = M.data[m.key];
