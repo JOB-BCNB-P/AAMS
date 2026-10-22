@@ -7541,7 +7541,7 @@ function alumniPage() {
   </div>
   <div class="bg-white rounded-2xl border border-blue-100 overflow-hidden">
     <div class="overflow-x-auto"><table class="w-full text-sm">
-      <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">รหัสนักศึกษา</th><th class="px-4 py-3 font-semibold">คำนำหน้า</th><th class="px-4 py-3 font-semibold">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold">รุ่นที่</th><th class="px-4 py-3 font-semibold">เข้าศึกษาวันที่</th><th class="px-4 py-3 font-semibold">จบการศึกษาวันที่</th><th class="px-4 py-3 font-semibold">สถานภาพ</th><th class="px-4 py-3 font-semibold">สถานที่ปฏิบัติงาน</th><th class="px-4 py-3 font-semibold text-right">เงินเดือน (บาท)</th>${isAdmin ? '<th class="px-4 py-3"></th>' : ''}</tr></thead>
+      <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">รหัสนักศึกษา</th><th class="px-4 py-3 font-semibold">คำนำหน้า</th><th class="px-4 py-3 font-semibold">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold">รุ่นที่</th><th class="px-4 py-3 font-semibold">เข้าศึกษาวันที่</th><th class="px-4 py-3 font-semibold">จบการศึกษาวันที่</th>${isAdmin ? '<th class="px-4 py-3"></th>' : ''}</tr></thead>
       <tbody>${paged.length ? paged.map(a => {
     const pp = parseTitlePrefix(a.name || '');
     return `<tr class="border-t hover:bg-gray-50">
@@ -7551,11 +7551,8 @@ function alumniPage() {
         <td class="px-4 py-3">${a.batch || ''}</td>
         <td class="px-4 py-3">${a.admission_date ? toBuddhistDate(a.admission_date) : ''}</td>
         <td class="px-4 py-3">${a.graduation_date ? toBuddhistDate(a.graduation_date) : ''}</td>
-        <td class="px-4 py-3">${a.alumni_status || ''}</td>
-        <td class="px-4 py-3">${a.workplace || ''}</td>
-        <td class="px-4 py-3 text-right tabular-nums">${fmtSalary(a.salary)}</td>
         ${isAdmin ? `<td class="px-4 py-3"><div class="flex gap-1"><button onclick="showEditAlumniModal('${a.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${a.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>` : ''}</tr>`;
-  }).join('') : `<tr><td colspan="${isAdmin ? 10 : 9}" class="px-4 py-8 text-center text-gray-400">ไม่มีข้อมูล</td></tr>`}</tbody>
+  }).join('') : `<tr><td colspan="${isAdmin ? 7 : 6}" class="px-4 py-8 text-center text-gray-400">ไม่มีข้อมูล</td></tr>`}</tbody>
     </table></div>
   </div>
   ${paginationHTML(total, APP.pagination.perPage, APP.pagination.page, 'changePage')}`;
@@ -11526,7 +11523,7 @@ function userGuidePage() {
     <p><b>ข้อมูลนักศึกษา</b> — เลือกชั้นปี (1-4) หรือ "ผู้สำเร็จการศึกษา" เพื่อดูรายชื่อ; ผู้ดูแลเพิ่ม/แก้ไข/ลบ และนำเข้าด้วย CSV ได้ มีปุ่ม <b>เลื่อนชั้นปี</b> (ดูข้อ 5) สถานภาพมี กำลังศึกษา / พักการศึกษา / ลาออก / สำเร็จการศึกษา (ระบบจะนับเฉพาะผู้ที่กำลังศึกษาในหน้าหลัก)</p>
     <p><b>ข้อมูลอาจารย์</b> — เลือกสาขาเพื่อดูรายชื่อ ผู้ดูแลเพิ่ม/แก้ไข/ลบได้</p>
     <p><b>ข้อมูลอาจารย์พิเศษ</b> — บันทึกอาจารย์พิเศษ (ปีการศึกษา, คำนำหน้า, ชื่อ, ตำแหน่ง, หน่วยงาน, ระดับวุฒิ) กรองตามปีการศึกษาได้ และทำเนียบอาจารย์สามารถดึงข้อมูลจากที่นี่ไปใช้ได้</p>
-    <p><b>ข้อมูลศิษย์เก่า</b> — รายชื่อผู้สำเร็จการศึกษา (คำนำหน้า, ชื่อ, รุ่น, สถานภาพ, สถานที่ปฏิบัติงาน, วันเข้า/จบการศึกษา, วันที่บันทึก) กรองตามรุ่นได้ ระบบจะเพิ่มให้อัตโนมัติเมื่อเลื่อนชั้นปี 4 เป็นสำเร็จการศึกษา</p>
+    <p><b>ข้อมูลศิษย์เก่า</b> — รายชื่อผู้สำเร็จการศึกษา (รหัสนักศึกษา, คำนำหน้า, ชื่อ-สกุล, รุ่นที่, เข้าศึกษาวันที่, จบการศึกษาวันที่) กรองตามรุ่นได้ · ข้อมูลการได้งานทำ (สถานภาพ, สถานที่ปฏิบัติงาน, เงินเดือน) ดูได้ที่เมนู <b>รายงาน → การได้งานทำของศิษย์เก่า</b> ระบบจะเพิ่มให้อัตโนมัติเมื่อเลื่อนชั้นปี 4 เป็นสำเร็จการศึกษา</p>
     <p><b>ปฏิทินกิจกรรมวิชาการ</b> — รายการกิจกรรม/กำหนดการของวิทยาลัย</p>
     <p><b>รายวิชาที่เปิดสอน</b> — เลือกปีการศึกษาเพื่อดูรายวิชา แสดงรหัสหน่วยกิตแบบ น(ท-ป-อ) (ดูข้อ 6) ผู้ดูแลเพิ่ม/แก้ไข/นำเข้า CSV และ "นำเข้ารายชื่อสร้างผลการเรียน" ได้</p>`)}
 
