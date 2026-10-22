@@ -7541,10 +7541,11 @@ function alumniPage() {
   </div>
   <div class="bg-white rounded-2xl border border-blue-100 overflow-hidden">
     <div class="overflow-x-auto"><table class="w-full text-sm">
-      <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">คำนำหน้า</th><th class="px-4 py-3 font-semibold">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold">รุ่นที่</th><th class="px-4 py-3 font-semibold">เข้าศึกษาวันที่</th><th class="px-4 py-3 font-semibold">จบการศึกษาวันที่</th><th class="px-4 py-3 font-semibold">สถานภาพ</th><th class="px-4 py-3 font-semibold">สถานที่ปฏิบัติงาน</th><th class="px-4 py-3 font-semibold text-right">เงินเดือน (บาท)</th>${isAdmin ? '<th class="px-4 py-3"></th>' : ''}</tr></thead>
+      <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">รหัสนักศึกษา</th><th class="px-4 py-3 font-semibold">คำนำหน้า</th><th class="px-4 py-3 font-semibold">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold">รุ่นที่</th><th class="px-4 py-3 font-semibold">เข้าศึกษาวันที่</th><th class="px-4 py-3 font-semibold">จบการศึกษาวันที่</th><th class="px-4 py-3 font-semibold">สถานภาพ</th><th class="px-4 py-3 font-semibold">สถานที่ปฏิบัติงาน</th><th class="px-4 py-3 font-semibold text-right">เงินเดือน (บาท)</th>${isAdmin ? '<th class="px-4 py-3"></th>' : ''}</tr></thead>
       <tbody>${paged.length ? paged.map(a => {
     const pp = parseTitlePrefix(a.name || '');
     return `<tr class="border-t hover:bg-gray-50">
+        <td class="px-4 py-3 font-mono text-xs text-primary whitespace-nowrap">${a.student_id || '<span class="text-gray-300 font-sans">ไม่มีรหัส</span>'}</td>
         <td class="px-4 py-3">${pp.prefix || ''}</td>
         <td class="px-4 py-3 font-medium">${pp.rest || a.name || ''}</td>
         <td class="px-4 py-3">${a.batch || ''}</td>
@@ -7554,7 +7555,7 @@ function alumniPage() {
         <td class="px-4 py-3">${a.workplace || ''}</td>
         <td class="px-4 py-3 text-right tabular-nums">${fmtSalary(a.salary)}</td>
         ${isAdmin ? `<td class="px-4 py-3"><div class="flex gap-1"><button onclick="showEditAlumniModal('${a.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${a.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>` : ''}</tr>`;
-  }).join('') : `<tr><td colspan="${isAdmin ? 9 : 8}" class="px-4 py-8 text-center text-gray-400">ไม่มีข้อมูล</td></tr>`}</tbody>
+  }).join('') : `<tr><td colspan="${isAdmin ? 10 : 9}" class="px-4 py-8 text-center text-gray-400">ไม่มีข้อมูล</td></tr>`}</tbody>
     </table></div>
   </div>
   ${paginationHTML(total, APP.pagination.perPage, APP.pagination.page, 'changePage')}`;
@@ -7586,8 +7587,10 @@ function alumniFormBody(a) {
       <div><label class="block text-xs text-gray-600 mb-1">สถานที่ปฏิบัติงาน</label><input name="workplace" value="${v('workplace')}" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น รพ.ราชวิถี"></div>
       <div><label class="block text-xs text-gray-600 mb-1">เงินเดือน (บาท)</label><input name="salary" value="${v('salary')}" inputmode="numeric" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น 18000"></div>
     </div>
-    <div><label class="block text-xs text-gray-600 mb-1">วันที่บันทึกข้อมูล</label><input name="recorded_date" type="date" value="${v('recorded_date')}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
-    <input type="hidden" name="student_id" value="${v('student_id')}">`;
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="block text-xs text-gray-600 mb-1">รหัสนักศึกษา</label><input name="student_id" value="${v('student_id')}" inputmode="numeric" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น 65101301001"><p class="text-[11px] text-gray-400 mt-0.5">ใช้จับคู่กับผลสอบสภาการพยาบาลที่นำเข้าภายหลัง</p></div>
+      <div><label class="block text-xs text-gray-600 mb-1">วันที่บันทึกข้อมูล</label><input name="recorded_date" type="date" value="${v('recorded_date')}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
+    </div>`;
 }
 
 function collectAlumni(form, obj) {

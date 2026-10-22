@@ -31,7 +31,7 @@ const EMSDB = (() => {
     'tracking', 'result_tracking', 'grade_tracking', 'file_tracking',
     'announcement', 'user', 'doc_request', 'permission',
     'teacher_directory', 'directory_summary', 'login_log',
-    'special_teacher', 'alumni',
+    'special_teacher', 'alumni', 'council_exam',
     // password_log ไม่โหลดแล้ว — ถอดหน้าบันทึกการเปลี่ยนรหัสผ่านออก (เข้าระบบด้วยอีเมลวิทยาลัย) ข้อมูลเดิมยังอยู่ในฐานข้อมูล
     'survey_config', 'survey_question', 'survey_response',
     'support_ticket',
@@ -60,7 +60,8 @@ const EMSDB = (() => {
   // ตารางที่นักศึกษาไม่มีสิทธิ์อ่าน — ข้ามไปเลยเพื่อไม่ให้เสียเวลาเรียกฟรี
   const STUDENT_SKIP = new Set([
     'teacher', 'teacher_directory', 'directory_summary', 'special_teacher',
-    'alumni', 'app_user', 'user', 'login_log', 'password_log',
+    'alumni', 'council_exam',   // ผลสอบสภาฯ เป็นข้อมูลของรายงาน นักศึกษาไม่ต้องโหลด
+    'app_user', 'user', 'login_log', 'password_log',
     'tracking', 'result_tracking', 'grade_tracking', 'file_tracking',
     'doc_request',
     'plo_setting', 'plo_band', 'plo_clo',
