@@ -74,7 +74,11 @@
         '  <p class="text-sm text-gray-700 font-medium mb-1">เข้าสู่ระบบด้วยบัญชี Google ของวิทยาลัย</p>' +
         '  <p class="text-xs text-gray-600">ใช้อีเมล <b>@' + (CFG.ALLOWED_DOMAIN || 'bcn.ac.th') + '</b> ' +
         '     กดปุ่มด้านล่างเพื่อเข้าสู่ระบบ ไม่ต้องจำรหัสผ่านแยกอีกต่อไป</p>' +
-        '</div>';
+        '</div>' +
+        /* ทางเข้าสำหรับบัญชีทดสอบ วางไว้แบบไม่เด่น ผู้ใช้ทั่วไปไม่ต้องสนใจ */
+        '<div class="text-right mt-2"><button type="button" onclick="emsShowPwLogin()" ' +
+        'class="text-xs text-gray-400 hover:text-primary hover:underline">' +
+        'เข้าสู่ระบบด้วยรหัสผ่าน (บัญชีทดสอบ)</button></div>';
       if (btn) { btn.classList.add('hidden'); btn.style.display = 'none'; }
       if (divider) divider.classList.add('hidden');
       if (gbox) gbox.classList.remove('hidden');
@@ -115,6 +119,101 @@
     var r = await GSheetDB.loginWithGoogle();
     if (!r.isOk) setErr('เปิดหน้าลงชื่อเข้าใช้ Google ไม่สำเร็จ: ' + r.error);
   };
+
+  /* ============================================================
+     2.5) เข้าสู่ระบบด้วยรหัสผ่าน — เฉพาะ "บัญชีทดสอบ"
+     ------------------------------------------------------------
+     ใช้ตรวจว่าแต่ละบทบาทบันทึกข้อมูลได้จริงหรือไม่ โดยไม่ต้องสวมสิทธิ์ผู้อื่น
+     เซสชันเป็นของบัญชีทดสอบนั้นจริง ฐานข้อมูลจึงตรวจสิทธิ์เหมือนผู้ใช้คนจริง
+     ต่างจากโหมดดูแทนผู้ใช้ ซึ่งจำลองแค่หน้าจอและบันทึกข้อมูลไม่ได้
+
+     เปิดเฉพาะอีเมลที่ขึ้นต้นตามที่กำหนด (ค่าตั้งต้น test.)
+     บัญชีของบุคลากรและนักศึกษาตัวจริงใช้ช่องทางนี้ไม่ได้ แม้จะรู้รหัสผ่าน
+     เพราะระบบไม่ส่งคำขอตรวจรหัสผ่านให้เลยถ้าอีเมลไม่เข้าเงื่อนไข
+
+     วิธีสร้างบัญชีทดสอบ (ไม่ต้องใช้สิทธิ์ผู้ดูแล Google Workspace)
+       1) หน้าจัดการ Supabase → Authentication → Users → Add user
+          ใส่อีเมล เช่น test.teacher@bcn.ac.th ตั้งรหัสผ่าน และยืนยันบัญชีอัตโนมัติ
+       2) AAMS → ตั้งค่าระบบ → จัดการผู้ใช้งาน เพิ่มผู้ใช้ด้วยอีเมลเดียวกัน
+          แล้วกำหนดบทบาท พันธกิจ และสิทธิ์รายบุคคลให้ตรงกับของจริง
+       3) เข้าสู่ระบบผ่านช่องทางนี้ แล้วทดสอบการบันทึกข้อมูล
+     ============================================================ */
+  var TEST_PREFIX = String(CFG.TEST_LOGIN_PREFIX || 'test.').toLowerCase();
+
+  function isTestEmail(email) {
+    var e = String(email || '').trim().toLowerCase();
+    return e.indexOf(TEST_PREFIX) === 0 && e.indexOf('@') > 0;
+  }
+  window.emsIsTestAccount = isTestEmail;
+
+  /* กดลิงก์ที่หน้าเข้าสู่ระบบเพื่อเปิด/ปิดช่องกรอก */
+  window.emsShowPwLogin = function emsShowPwLogin() {
+    var box = el('emsPwBox');
+    if (box) { box.remove(); return; }
+    var host = el('loginFields');
+    if (!host) return;
+    box = document.createElement('div');
+    box.id = 'emsPwBox';
+    box.className = 'mt-3 border border-amber-200 bg-amber-50 rounded-xl p-3 space-y-2';
+    box.innerHTML =
+      '<p class="text-xs font-semibold text-amber-800">สำหรับบัญชีทดสอบเท่านั้น</p>' +
+      '<p class="text-[11px] text-amber-700 leading-relaxed">ใช้ตรวจว่าแต่ละบทบาทบันทึกข้อมูลได้จริงหรือไม่ ' +
+      'บัญชีของบุคลากรและนักศึกษาตัวจริงใช้ช่องทางนี้ไม่ได้ ให้เข้าสู่ระบบด้วยปุ่ม Google</p>' +
+      '<input id="emsPwEmail" type="email" class="ems-input" autocomplete="username" ' +
+      'placeholder="' + TEST_PREFIX + 'teacher@' + (CFG.ALLOWED_DOMAIN || 'bcn.ac.th') + '">' +
+      '<input id="emsPwPass" type="password" class="ems-input" autocomplete="current-password" ' +
+      'placeholder="รหัสผ่านบัญชีทดสอบ" onkeypress="if(event.key===\'Enter\')emsPwLogin()">' +
+      '<button type="button" onclick="emsPwLogin()" ' +
+      'class="w-full min-h-[40px] rounded-xl bg-amber-600 text-white text-sm font-medium ' +
+      'hover:bg-amber-700 transition">เข้าสู่ระบบด้วยบัญชีทดสอบ</button>';
+    host.appendChild(box);
+    var f = el('emsPwEmail');
+    if (f) f.focus();
+  };
+
+  window.emsPwLogin = async function emsPwLogin() {
+    setErr('');
+    var email = (el('emsPwEmail') && el('emsPwEmail').value || '').trim().toLowerCase();
+    var pass = (el('emsPwPass') && el('emsPwPass').value) || '';
+    if (!email || !pass) { setErr('กรุณากรอกอีเมลและรหัสผ่านของบัญชีทดสอบ'); return; }
+    if (!EMSAuth.domainOk(email)) {
+      setErr('อนุญาตเฉพาะอีเมล @' + (CFG.ALLOWED_DOMAIN || 'bcn.ac.th') + ' ของวิทยาลัยเท่านั้น');
+      return;
+    }
+    /* ด่านสำคัญ : ไม่ส่งรหัสผ่านไปตรวจเลยถ้าไม่ใช่บัญชีทดสอบ
+       จึงใช้ช่องทางนี้เดารหัสผ่านบัญชีจริงไม่ได้ */
+    if (!isTestEmail(email)) {
+      setErr('ช่องทางนี้เปิดเฉพาะบัญชีทดสอบที่อีเมลขึ้นต้นด้วย "' + TEST_PREFIX + '" เท่านั้น ' +
+             'บัญชีของบุคลากรและนักศึกษาให้เข้าสู่ระบบด้วยปุ่ม Google');
+      return;
+    }
+
+    busy(true);
+    var res = await GSheetDB.login({ identifier: email, password: pass });
+    busy(false);
+    if (!res || !res.isOk) { setErr((res && res.error) || 'เข้าสู่ระบบไม่สำเร็จ'); return; }
+
+    showScreen('loadingScreen');
+    await emsEnterApp(res.user);
+  };
+
+  /* แถบเตือนว่ากำลังใช้บัญชีทดสอบ กันเข้าใจผิดว่าข้อมูลที่เห็นเป็นของจริง
+     ข้อมูลที่บันทึกระหว่างนี้ถูกเก็บลงฐานข้อมูลจริง จึงต้องเตือนให้เห็นตลอดเวลา */
+  function emsTestBanner() {
+    var bar = el('emsTestBar');
+    var p = window.__emsRealProfile || window.__emsProfile || {};
+    if (!isTestEmail(p.email || '')) { if (bar) bar.remove(); return; }
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'emsTestBar';
+      bar.className = 'fixed bottom-0 left-0 right-0 z-30 bg-amber-600 text-white ' +
+                      'px-3 py-1.5 text-center text-xs sm:text-sm shadow-lg';
+      document.body.appendChild(bar);
+    }
+    bar.textContent = 'กำลังใช้บัญชีทดสอบ ' + (p.email || '') +
+                      ' — ข้อมูลที่บันทึกจะถูกเก็บลงระบบจริง';
+  }
+  window.emsTestBanner = emsTestBanner;
 
   /* ============================================================
      3) เข้าสู่หน้าหลัก — ประกอบ APP.currentUser จากบทบาทในฐานข้อมูล
@@ -220,6 +319,7 @@
     navigateTo('dashboard');
     updateNotifBadge();
     emsRenderRoleSwitcher();
+    emsTestBanner();                   // เตือนเมื่อเข้าด้วยบัญชีทดสอบ
     if (window.lucide) lucide.createIcons();
   };
 
