@@ -36,22 +36,31 @@
   var VIEW_ROLES = ['admin', 'academic', 'registrar', 'executive', 'deptHead'];
   var DETAIL_ROLES = ['admin', 'academic', 'registrar'];
 
-  /* สิทธิ์เห็นเมนูรายงาน ผู้ดูแลระบบปรับได้ที่ ตั้งค่าระบบ > สิทธิ์การเข้าถึงระบบ
-     บทบาทที่ยังไม่เคยถูกตั้งค่า ใช้ค่าตั้งต้นเดิมตาม VIEW_ROLES
+  /* สิทธิ์เห็นรายงาน แยกกันคนละช่องระหว่างผลสอบสภาฯ กับการได้งานทำของศิษย์เก่า
+     ผู้ดูแลระบบปรับได้ที่ ตั้งค่าระบบ > สิทธิ์การเข้าถึงระบบ
+     ลำดับการตัดสิน
+       1) ค่าของรายงานนั้นเอง (reportExam / reportJob)
+       2) ค่ารวม report ของรุ่นก่อนหน้า เผื่อยังตั้งค่าไว้แบบเดิม
+       3) ยังไม่เคยตั้งค่าเลย ใช้ค่าตั้งต้นเดิมตาม VIEW_ROLES
      ถ้ามีหลายบทบาท ถือว่าเห็นได้เมื่อบทบาทใดบทบาทหนึ่งมีสิทธิ์ ให้ตรงกับเมนูอื่นของระบบ */
-  function canView() {
+  function permAllows(key) {
     var perms = (APP && APP.permissions) || {};
     var decided = false;
     var allowed = roles().some(function (r) {
       var p = perms[r] || {};
-      if (!Object.prototype.hasOwnProperty.call(p, 'report')) return false;
+      var k = Object.prototype.hasOwnProperty.call(p, key) ? key
+            : (Object.prototype.hasOwnProperty.call(p, 'report') ? 'report' : '');
+      if (!k) return false;
       decided = true;
-      return !!p.report;
+      return !!p[k];
     });
     if (allowed) return true;
     if (decided) return false;          // ตั้งค่าไว้แล้วว่าไม่ให้เห็น
     return hasRole(VIEW_ROLES);         // ยังไม่เคยตั้งค่า ใช้ค่าตั้งต้นเดิม
   }
+  function canExam() { return permAllows('reportExam'); }
+  function canJob() { return permAllows('reportJob'); }
+  function canView() { return canExam() || canJob(); }   // เห็นกลุ่มเมนู "รายงาน" หรือไม่
 
   /* ตารางรายบุคคลและเงินเดือนยังคุมด้วยบทบาทตายตัว ไม่ผูกกับตารางสิทธิ์
      เพราะเป็นข้อมูลส่วนบุคคล การเปิดให้ควรเป็นการตัดสินใจที่ตั้งใจ ไม่ใช่ติ๊กผ่าน ๆ */
@@ -316,7 +325,7 @@
 
   /* ---------------- หน้า : ผลสอบสภาฯ ---------------- */
   function examPage() {
-    if (!canView()) return emptyBox('บัญชีของคุณไม่มีสิทธิ์ดูรายงานนี้');
+    if (!canExam()) return emptyBox('บัญชีของคุณไม่มีสิทธิ์ดูรายงานผลสอบสภาการพยาบาล');
     var list = filtered();
     var head = '<div class="flex flex-wrap items-center justify-between gap-3 mb-4">'
       + '<div><h2 class="text-xl font-bold text-gray-800">'
@@ -336,7 +345,7 @@
 
   /* ---------------- หน้า : การได้งานทำของศิษย์เก่า ---------------- */
   function jobPage() {
-    if (!canView()) return emptyBox('บัญชีของคุณไม่มีสิทธิ์ดูรายงานนี้');
+    if (!canJob()) return emptyBox('บัญชีของคุณไม่มีสิทธิ์ดูรายงานการได้งานทำของศิษย์เก่า');
     var st = state();
     var all = get('alumni').map(function (a) {
       var p = (typeof parseTitlePrefix === 'function') ? parseTitlePrefix(a.name || '') : { prefix: '', rest: n(a.name) };
@@ -669,11 +678,31 @@
     }
 
     function addItem() {
-      if (!canView()) return;
       var nav = document.getElementById('sidebarNav');
-      if (!nav || nav.querySelector('[data-page="reportExam"]')) return;
+      if (!nav || nav.querySelector('[data-rep-menu]')) return;
+      // แสดงเฉพาะรายงานที่บัญชีนี้มีสิทธิ์ ไม่มีสิทธิ์สักอันก็ไม่ต้องขึ้นกลุ่มเมนู
+      var subs = SUB.filter(function (s) {
+        return s[0] === 'reportExam' ? canExam() : canJob();
+      });
+      if (!subs.length) return;
       var here = APP.currentPage;
-      var open = SUB.some(function (s) { return s[0] === here; });
+
+      // เหลือรายงานเดียว ไม่ต้องทำเป็นกลุ่มพับให้กดสองครั้ง
+      if (subs.length === 1) {
+        var one = document.createElement('button');
+        one.setAttribute('onclick', "navigateTo('" + subs[0][0] + "')");
+        one.setAttribute('data-page', subs[0][0]);
+        one.setAttribute('data-rep-menu', '1');
+        one.className = 'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition '
+          + (here === subs[0][0] ? 'bg-primaryLight text-primary font-semibold'
+                                 : 'text-gray-700 hover:bg-surface hover:text-primary');
+        one.innerHTML = '<i data-lucide="bar-chart-3" class="w-5 h-5 flex-shrink-0"></i>' + subs[0][1];
+        insertAfter(nav, one, '[data-page="services"]');
+        if (window.lucide) lucide.createIcons();
+        return;
+      }
+
+      var open = subs.some(function (s) { return s[0] === here; });
       var box = document.createElement('div');
       box.className = 'dropdown-item' + (open ? ' dropdown-open' : '');
       box.setAttribute('data-rep-menu', '1');
@@ -682,7 +711,7 @@
         + '<span class="flex items-center gap-3"><i data-lucide="bar-chart-3" class="w-5 h-5 flex-shrink-0"></i>รายงาน</span>'
         + '<i data-lucide="chevron-down" class="w-4 h-4 transition-transform"></i></button>'
         + '<div class="dropdown-menu pl-4 mt-1 space-y-1">'
-        + SUB.map(function (s) {
+        + subs.map(function (s) {
             var on = here === s[0];
             return '<button onclick="navigateTo(\'' + s[0] + '\')" data-page="' + s[0] + '" '
               + 'class="nav-item w-full text-left px-3 py-2 rounded-xl text-sm transition '
