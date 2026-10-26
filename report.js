@@ -35,7 +35,26 @@
   // ใครเห็นรายงานได้ / ใครเห็นตารางรายบุคคลได้
   var VIEW_ROLES = ['admin', 'academic', 'registrar', 'executive', 'deptHead'];
   var DETAIL_ROLES = ['admin', 'academic', 'registrar'];
-  function canView() { return hasRole(VIEW_ROLES); }
+
+  /* สิทธิ์เห็นเมนูรายงาน ผู้ดูแลระบบปรับได้ที่ ตั้งค่าระบบ > สิทธิ์การเข้าถึงระบบ
+     บทบาทที่ยังไม่เคยถูกตั้งค่า ใช้ค่าตั้งต้นเดิมตาม VIEW_ROLES
+     ถ้ามีหลายบทบาท ถือว่าเห็นได้เมื่อบทบาทใดบทบาทหนึ่งมีสิทธิ์ ให้ตรงกับเมนูอื่นของระบบ */
+  function canView() {
+    var perms = (APP && APP.permissions) || {};
+    var decided = false;
+    var allowed = roles().some(function (r) {
+      var p = perms[r] || {};
+      if (!Object.prototype.hasOwnProperty.call(p, 'report')) return false;
+      decided = true;
+      return !!p.report;
+    });
+    if (allowed) return true;
+    if (decided) return false;          // ตั้งค่าไว้แล้วว่าไม่ให้เห็น
+    return hasRole(VIEW_ROLES);         // ยังไม่เคยตั้งค่า ใช้ค่าตั้งต้นเดิม
+  }
+
+  /* ตารางรายบุคคลและเงินเดือนยังคุมด้วยบทบาทตายตัว ไม่ผูกกับตารางสิทธิ์
+     เพราะเป็นข้อมูลส่วนบุคคล การเปิดให้ควรเป็นการตัดสินใจที่ตั้งใจ ไม่ใช่ติ๊กผ่าน ๆ */
   function canSeeDetail() { return hasRole(DETAIL_ROLES); }
 
   /* ---------------- ค่าตั้งรายวิชาและสาขา ---------------- */
