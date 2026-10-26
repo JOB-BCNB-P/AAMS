@@ -30,7 +30,12 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
   function get(t) { return (typeof getDataByType === 'function' ? getDataByType(t) : []) || []; }
-  function roles() { return (APP._roles && APP._roles.length) ? APP._roles : [APP.currentRole]; }
+  /* ตัดสินจาก "บทบาทที่กำลังใช้งาน" เท่านั้น ให้ตรงกับเมนูอื่นทุกเมนูของระบบ
+     ซึ่งอ่านสิทธิ์จาก APP.permissions[APP.currentRole]
+     เดิมใช้ผลรวมของทุกบทบาทที่ผู้ใช้ถืออยู่ ทำให้ผู้ที่มีหลายบทบาทสลับมุมมองเป็นอาจารย์
+     แล้วยังเห็นเมนูรายงานของผู้ดูแลระบบติดมาด้วย
+     สิทธิ์จริงยังบังคับที่ฐานข้อมูลเหมือนเดิม การสลับมุมมองไม่ได้เพิ่มหรือลดสิทธิ์ */
+  function roles() { return [APP.currentRole]; }
   function hasRole(list) { return roles().some(function (r) { return list.indexOf(r) !== -1; }); }
   // ใครเห็นรายงานได้ / ใครเห็นตารางรายบุคคลได้
   var VIEW_ROLES = ['admin', 'academic', 'registrar', 'executive', 'deptHead'];
@@ -42,7 +47,7 @@
        1) ค่าของรายงานนั้นเอง (reportExam / reportJob)
        2) ค่ารวม report ของรุ่นก่อนหน้า เผื่อยังตั้งค่าไว้แบบเดิม
        3) ยังไม่เคยตั้งค่าเลย ใช้ค่าตั้งต้นเดิมตาม VIEW_ROLES
-     ถ้ามีหลายบทบาท ถือว่าเห็นได้เมื่อบทบาทใดบทบาทหนึ่งมีสิทธิ์ ให้ตรงกับเมนูอื่นของระบบ */
+     ผู้ที่มีหลายบทบาท ให้สลับมุมมองบทบาทก่อน เมนูจะเปลี่ยนตามบทบาทที่เลือก */
   function permAllows(key) {
     var perms = (APP && APP.permissions) || {};
     var decided = false;

@@ -60,7 +60,7 @@ t('บทบาทที่ไม่เคยเห็น ต้องไม่�
 console.log('\n[3] ตรรกะการตัดสินสิทธิ์');
 const VIEW_ROLES = ['admin', 'academic', 'registrar', 'executive', 'deptHead'];
 function mk(APPX) {
-  function roles() { return (APPX._roles && APPX._roles.length) ? APPX._roles : [APPX.currentRole]; }
+  function roles() { return [APPX.currentRole]; }   // ตามโค้ดจริง : ใช้บทบาทที่กำลังใช้งานเท่านั้น
   function hasRole(l) { return roles().some(r => l.indexOf(r) !== -1); }
   function permAllows(key) {
     var perms = (APPX && APPX.permissions) || {}, decided = false;
@@ -114,10 +114,20 @@ t('ค่าของรายงานนั้นเอง ต้องชน�
   assert.strictEqual(f.exam(), true, 'ผลสอบสภาฯ ไม่มีค่าเฉพาะ จึงใช้ค่ารวม');
   assert.strictEqual(f.job(), false, 'การได้งานทำมีค่าเฉพาะว่าปิด ต้องชนะค่ารวม');
 });
-t('หลายบทบาท บทบาทใดบทบาทหนึ่งมีสิทธิ์ก็เห็นได้', () => {
-  const f = mk({ currentRole: 'teacher', _roles: ['teacher', 'registrar'],
-                 permissions: { teacher: { reportExam: 0 }, registrar: { reportExam: 1 } } });
-  assert.strictEqual(f.exam(), true);
+t('มีหลายบทบาท ต้องยึดบทบาทที่กำลังใช้งาน ไม่ใช่ผลรวมของทุกบทบาท', () => {
+  // ผู้ดูแลระบบที่สลับมุมมองเป็นอาจารย์ ต้องเห็นเท่าที่อาจารย์เห็น
+  const asTeacher = mk({ currentRole: 'teacher', _roles: ['admin', 'teacher'],
+                         permissions: { admin: { reportExam: 1 }, teacher: { reportExam: 0 } } });
+  assert.strictEqual(asTeacher.exam(), false, 'สลับเป็นอาจารย์แล้วยังเห็นเมนูของผู้ดูแลระบบ');
+  // สลับกลับเป็นผู้ดูแลระบบ ต้องเห็นตามเดิม
+  const asAdmin = mk({ currentRole: 'admin', _roles: ['admin', 'teacher'],
+                       permissions: { admin: { reportExam: 1 }, teacher: { reportExam: 0 } } });
+  assert.strictEqual(asAdmin.exam(), true);
+});
+t('อาจารย์ที่ยังไม่เคยตั้งค่า ต้องไม่เห็นรายงาน แม้ถือบทบาทอื่นอยู่ด้วย', () => {
+  const f = mk({ currentRole: 'teacher', _roles: ['admin', 'teacher'], permissions: {} });
+  assert.strictEqual(f.exam(), false);
+  assert.strictEqual(f.job(), false);
 });
 
 console.log('\n[4] หน้าจอและเมนูใช้สิทธิ์ของตัวเอง');
@@ -137,6 +147,12 @@ t('เมนูแสดงเฉพาะรายงานที่มีส�
   assert.ok(g.includes('if (!subs.length) return;'), 'ไม่มีสิทธิ์สักอันแต่ยังขึ้นกลุ่มเมนู');
   assert.ok(g.includes('subs.length === 1'), 'เหลือรายงานเดียวแล้วยังทำเป็นกลุ่มพับ');
   assert.ok(!/\bSUB\.map\b/.test(g), 'ยังวาดเมนูย่อยจากรายการเต็ม ไม่ใช่รายการที่คัดแล้ว');
+});
+
+t('โค้ดจริงตัดสินจากบทบาทที่กำลังใช้งาน', () => {
+  const g = grab(RP, 'function roles()');
+  assert.ok(g.includes('APP.currentRole'), 'ไม่ได้อ่านบทบาทที่กำลังใช้งาน');
+  assert.ok(!g.includes('APP._roles'), 'ยังใช้ผลรวมของทุกบทบาท ทำให้สลับมุมมองแล้วเมนูไม่เปลี่ยน');
 });
 
 console.log('\n[5] ข้อมูลส่วนบุคคลต้องไม่เปิดตามตารางสิทธิ์');
