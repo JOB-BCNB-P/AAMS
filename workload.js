@@ -161,6 +161,7 @@
       mode: 'cohort', gsel: {},     // กล่องกรอกที่เปิดอยู่ : ทั้งชั้นปี / รายบุคคล ('' = ยุบทั้งคู่)
       addMode: false,               // เพิ่งบันทึกกลุ่มไป ฟอร์มว่างอยู่ รอบนี้บันทึกแบบต่อท้าย
       mission: '', gq: '',          // พันธกิจที่เลือกกรอก ('' = ทุกพันธกิจ) · คำค้นในรายชื่อนักศึกษา
+      pscope: 'all', psel: {}, pq: '',  // ขอบเขตผู้รับภาระงานรอบนี้ : ทั้งชั้นปี / sec / เลือกเป็นรายคน
       fold: fold0                   // การ์ดที่ถูกยุบไว้ (จำเฉพาะระหว่างใช้งาน)
       };
     }
@@ -1492,9 +1493,9 @@
   }
 
   /* ---------------- ตัวเลือกชั้นปี/ภาคเรียน ---------------- */
-  /* ขั้นที่ 1-2 ของหน้ากรอกภาระงาน : เลือกชั้นปี (มีเลขรุ่นกำกับ) และภาคการศึกษา
+  /* ตัวเลือกชั้นปีและภาคการศึกษา — หน้ากรอกภาระงานแยกเป็นขั้นที่ 1 และ 2
      ทำเป็นช่องเลื่อนลงเรียงในแถวเดียวกัน ประหยัดพื้นที่และเห็นค่าที่เลือกอยู่ทันที */
-  function cohortPicker(bare) {
+  function cohortPicker(bare, only) {
     var st = state();
     var sel = function (label, icon, key, opts, cur) {
       return '<div class="min-w-[13rem]">'
@@ -1512,12 +1513,164 @@
       var tag = (b ? 'รุ่น ' + b : '') + (p ? (b ? ' · ' : '') + 'รหัส ' + p : '');
       return [l, 'ชั้นปีที่ ' + l + (tag ? ' (' + tag + ')' : '')];
     });
-    var inner = '<div class="flex flex-wrap items-end gap-3">'
-      + sel('เลือกชั้นปี', 'layers', 'level', levelOpts, st.level)
-      + sel('ภาคการศึกษา', 'calendar', 'sem', SEMS.map(function (x) { return [x, semLabel(x)]; }), st.sem)
-      + '</div>';
+    /* only = 'level' หรือ 'sem' เมื่อหน้ากรอกภาระงานแยกสองช่องนี้เป็นคนละขั้น
+       ไม่ส่งมา = แสดงทั้งคู่ในแถวเดียว (หน้าอื่นที่ยังเรียกใช้แบบเดิม) */
+    var fields = '';
+    if (only !== 'sem') fields += sel('เลือกชั้นปี', 'layers', 'level', levelOpts, st.level);
+    if (only !== 'level') fields += sel('ภาคการศึกษา', 'calendar', 'sem', SEMS.map(function (x) { return [x, semLabel(x)]; }), st.sem);
+    var inner = '<div class="flex flex-wrap items-end gap-3">' + fields + '</div>';
     if (bare) return inner;
     return '<div class="bg-white rounded-2xl p-4 border border-blue-100 mb-4">' + inner + '</div>';
+  }
+
+  /* ---------------- ขั้นที่ 3 : ขอบเขตผู้รับภาระงานของรอบนี้ ----------------
+     เลือกได้ 3 แบบ : ทั้งชั้นปี · เฉพาะ sec · เลือกเป็นรายคนจากเลขที่
+     "เลขที่" คือลำดับในรายชื่อที่เรียงตามรหัสนักศึกษา ไม่ใช่เลขประจำตัวที่วิทยาลัยกำหนด
+     ค่าที่เลือกตรงนี้จะถูกใส่เป็น "ใครเข้าร่วม" ของแถวใหม่ที่เพิ่มในขั้นที่ 4 ให้อัตโนมัติ
+     แถวที่กรอกไว้ก่อนหน้าไม่ถูกแตะ เพราะอาจตั้งใจให้คนละกลุ่มกัน */
+  function roomsOf(level) {
+    var seen = {}, out = [];
+    cohortStudents(level).forEach(function (s) {
+      var r = norm(s.room);
+      if (r && !seen[r]) { seen[r] = 1; out.push(r); }
+    });
+    return out.sort();
+  }
+  // รายชื่อที่อยู่ในขอบเขตรอบนี้ — คืนค่าว่างแปลว่า "ทุกคนในชั้น"
+  function scopeStudents() {
+    var st = state(), all = cohortStudents(st.level);
+    if (st.pscope === 'room') {
+      var r = norm(st.proom);
+      if (!r) return [];
+      return all.filter(function (s) { return norm(s.room) === r; })
+                .map(function (s) { return norm(s.student_id); });
+    }
+    if (st.pscope === 'pick') {
+      var g = st.psel || {};
+      return all.map(function (s) { return norm(s.student_id); })
+                .filter(function (sid) { return g[sid]; });
+    }
+    return [];
+  }
+  function scopeLabel() {
+    var st = state();
+    if (st.pscope === 'room') return norm(st.proom) ? ('เฉพาะ sec ' + norm(st.proom)) : 'ยังไม่ได้เลือก sec';
+    if (st.pscope === 'pick') {
+      var n0 = scopeStudents().length;
+      return n0 ? ('เลือกเป็นรายคน ' + n0 + ' คน') : 'ยังไม่ได้เลือกนักศึกษา';
+    }
+    return 'ทั้งชั้นปี (' + cohortStudents(st.level).length + ' คน)';
+  }
+  // แปลงข้อความเลขที่ เช่น "1-5, 12, 20" เป็นรายการลำดับ (เริ่มที่ 1)
+  function parseSeats(text, max) {
+    var out = {}, bad = [];
+    String(text || '').split(/[^0-9\-]+/).forEach(function (part) {
+      if (!part) return;
+      var mm = /^(\d+)-(\d+)$/.exec(part);
+      if (mm) {
+        var a0 = Math.min(+mm[1], +mm[2]), b0 = Math.max(+mm[1], +mm[2]);
+        for (var i = a0; i <= b0; i++) { if (i >= 1 && i <= max) out[i] = 1; else bad.push(String(i)); }
+        return;
+      }
+      if (!/^\d+$/.test(part)) { bad.push(part); return; }
+      var v = +part;
+      if (v >= 1 && v <= max) out[v] = 1; else bad.push(part);
+    });
+    return { seats: Object.keys(out).map(Number).sort(function (x, y) { return x - y; }), bad: bad };
+  }
+  window.wlScope = function (kind, room) {
+    var st = state();
+    st.pscope = kind;
+    if (kind === 'room') st.proom = norm(room);
+    if (kind !== 'pick') st.psel = {};
+    renderCurrentPage();
+  };
+  window.wlSeatApply = function () {
+    var st = state(), el = document.getElementById('wlSeatBox');
+    var all = cohortStudents(st.level);
+    var r = parseSeats(el ? el.value : '', all.length);
+    if (!r.seats.length) {
+      showToast('ยังไม่ได้ใส่เลขที่ · พิมพ์ได้ทั้งเลขเดี่ยวและช่วง เช่น 1-5, 12, 20', 'error');
+      return;
+    }
+    st.psel = {};
+    r.seats.forEach(function (no) {
+      var stu = all[no - 1];
+      if (stu) st.psel[norm(stu.student_id)] = 1;
+    });
+    renderCurrentPage();
+    if (r.bad.length) showToast('ข้ามเลขที่ที่ไม่มีในชั้นนี้ : ' + r.bad.slice(0, 6).join(', '), 'error');
+    else showToast('เลือกแล้ว ' + r.seats.length + ' คน');
+  };
+  window.wlSeatToggle = function (sid, on) {
+    var st = state();
+    if (!st.psel) st.psel = {};
+    if (on) st.psel[norm(sid)] = 1; else delete st.psel[norm(sid)];
+    var c = document.querySelector('[data-wl-pcount]');
+    if (c) c.textContent = scopeStudents().length;
+  };
+  window.wlSeatClear = function () { var st = state(); st.psel = {}; renderCurrentPage(); };
+  window.wlSeatSearch = function (v) {
+    var st = state(); st.pq = v;
+    var box = document.querySelector('[data-wl-plist]');
+    if (box) { box.outerHTML = seatListBox(); if (window.lucide) lucide.createIcons(); }
+  };
+  function seatListBox() {
+    var st = state(), q = norm(st.pq).toLowerCase(), g = st.psel || {};
+    var all = cohortStudents(st.level);
+    var rowsHtml = all.map(function (s, i) {
+      var sid = norm(s.student_id), no = i + 1;
+      var hay = (sid + ' ' + norm(s.name) + ' ' + no).toLowerCase();
+      if (q && hay.indexOf(q) === -1) return '';
+      return '<label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface cursor-pointer">'
+        + '<span class="w-8 text-right text-[11px] text-gray-400 tabular-nums flex-shrink-0">' + no + '.</span>'
+        + '<input type="checkbox" ' + (g[sid] ? 'checked ' : '')
+        + 'onchange="wlSeatToggle(\'' + esc(sid) + '\',this.checked)" class="w-4 h-4 rounded border-gray-300 text-primary">'
+        + '<span class="text-xs text-gray-500 font-mono flex-shrink-0">' + esc(sid) + '</span>'
+        + '<span class="text-sm text-gray-700 truncate">' + esc(norm(s.name)) + '</span>'
+        + '<span class="ml-auto text-[11px] text-gray-400 flex-shrink-0">sec ' + esc(norm(s.room) || '-') + '</span>'
+        + '</label>';
+    }).join('');
+    return '<div data-wl-plist="1" class="max-h-72 overflow-y-auto border border-gray-200 rounded-xl p-1 bg-white">'
+      + (rowsHtml || '<p class="text-xs text-gray-400 text-center py-4">ไม่พบรายชื่อที่ค้นหา</p>') + '</div>';
+  }
+  function partScopePicker() {
+    var st = state(), all = cohortStudents(st.level);
+    var btn = function (kind, room, label, sub) {
+      var on = (kind === 'room') ? (st.pscope === 'room' && norm(st.proom) === norm(room)) : st.pscope === kind;
+      return '<button type="button" onclick="wlScope(\'' + kind + '\',\'' + esc(room || '') + '\')" '
+        + 'class="flex-1 min-w-[10rem] text-left rounded-xl border px-3 py-2.5 transition '
+        + (on ? 'border-primary bg-primaryLight' : 'border-gray-200 bg-white hover:bg-surface') + '">'
+        + '<span class="block text-sm font-semibold ' + (on ? 'text-primary' : 'text-gray-700') + '">' + esc(label) + '</span>'
+        + '<span class="block text-[11px] text-gray-500">' + sub + '</span></button>';
+    };
+    var roomBtns = roomsOf(st.level).map(function (r) {
+      var n0 = all.filter(function (s) { return norm(s.room) === r; }).length;
+      return btn('room', r, 'เฉพาะ sec ' + r, n0 + ' คน');
+    }).join('');
+    var pickBox = st.pscope !== 'pick' ? '' :
+      '<div class="rounded-xl border border-primary/30 bg-primaryLight/40 p-3 space-y-2">'
+      + '<div class="flex flex-wrap items-end gap-2">'
+      + '<div class="flex-1 min-w-[16rem]"><label class="block text-xs font-medium text-gray-600 mb-1">'
+      + 'พิมพ์เลขที่ที่ต้องการ (เลขเดี่ยวหรือช่วงก็ได้)</label>'
+      + '<input id="wlSeatBox" placeholder="เช่น 1-5, 12, 20" '
+      + 'onkeypress="if(event.key===\'Enter\'){event.preventDefault();wlSeatApply();}" '
+      + 'class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"></div>'
+      + '<button type="button" onclick="wlSeatApply()" class="px-4 py-2 rounded-xl bg-primary text-white text-sm hover:bg-primaryDark">ใส่เลขที่</button>'
+      + '<button type="button" onclick="wlSeatClear()" class="px-3 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-white">ล้างที่เลือก</button>'
+      + '</div>'
+      + '<p class="text-[11px] text-gray-500">เลขที่ = ลำดับในรายชื่อที่เรียงตามรหัสนักศึกษา · '
+      + 'เลือกแล้ว <b data-wl-pcount="1" class="text-primary">' + scopeStudents().length + '</b> คน จากทั้งหมด ' + all.length + ' คน</p>'
+      + '<input value="' + esc(st.pq || '') + '" placeholder="ค้นหาเลขที่ / รหัส / ชื่อ..." oninput="wlSeatSearch(this.value)" '
+      + 'class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm">'
+      + seatListBox() + '</div>';
+    return '<div class="flex flex-wrap gap-2">'
+      + btn('all', '', 'ทั้งชั้นปี', all.length + ' คน')
+      + roomBtns
+      + btn('pick', '', 'เลือกเป็นรายคน', 'เลือกจากเลขที่')
+      + '</div>' + pickBox
+      + '<p class="text-[11px] text-gray-500">ขอบเขตนี้จะถูกใส่เป็น "ใครเข้าร่วม" ให้กิจกรรม<b>แถวใหม่</b>ที่เพิ่มในขั้นที่ 4 โดยอัตโนมัติ '
+      + 'แถวที่กรอกค้างไว้ก่อนหน้าจะไม่ถูกเปลี่ยน</p>';
   }
 
   function groupSel() {
@@ -1665,8 +1818,11 @@
     var row = m.subject ? { subject_name: '', pieces: '', hours: '' }
       : m.timed ? { kind: 'กิจกรรมที่', activity: '', date_from: '', date_to: '', time_from: '', time_to: '', hours: '' }
       : { kind: 'กิจกรรมที่', activity: '', hours: '' };
-    // แถวใหม่เริ่มที่ "ทุกคนในชั้น" เสมอ ไม่ใส่รายชื่อกลุ่มให้อัตโนมัติ
-    // ต้องกดปุ่ม "ใส่รายชื่อกลุ่มให้แถวที่เลือก" เองเท่านั้น จึงจะติดรายชื่อ
+    /* แถวใหม่รับ "ใครเข้าร่วม" จากขอบเขตที่เลือกไว้ในขั้นที่ 3
+       เลือกทั้งชั้นปี = ไม่ใส่รายชื่อ (ทุกคนในชั้น) เหมือนเดิม
+       เลือก sec หรือรายคน = ใส่รายชื่อชุดนั้นให้เลย จะได้ไม่ต้องไปติ๊กทีละแถว */
+    var scope = (st0.mode === 'group') ? [] : scopeStudents();
+    if (scope.length) row.students = scope.slice();
     d[mkey].push(row);
     renderCurrentPage();
   };
@@ -1762,9 +1918,9 @@
       + ' → ถ่วงน้ำหนัก <b style="color:' + m.color + '" data-wl-w="' + m.key + '">' + fx(raw * w) + '</b></span>'
       + (readonly ? '' : '<button type="button" onclick="wlRowAdd(\'' + m.key + '\')" class="px-2 py-1 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50">+ เพิ่มแถว</button>')
       + (m.subject && !readonly ? '<button type="button" onclick="wlPullSubjects()" class="px-2 py-1 rounded-lg border border-primary text-xs text-primary hover:bg-primaryLight">ดึงรายวิชาที่เปิดสอน</button>' : '')
-      /* ปุ่มบันทึกรายพันธกิจถูกถอดออก — บันทึกครั้งเดียวที่ขั้นที่ 4 "ตรวจสรุปแล้วบันทึก"
+      /* ปุ่มบันทึกรายพันธกิจถูกถอดออก — บันทึกครั้งเดียวที่ขั้นที่ 6
          มีปุ่มบันทึกหลายจุดทำให้กรอกไปครึ่งหนึ่งแล้วเผลอบันทึกเฉพาะด้านที่เปิดอยู่
-         ขั้นที่ 4 บันทึกทุกด้านที่บัญชีนี้มีสิทธิ์ในครั้งเดียว */
+         ขั้นที่ 6 บันทึกทุกด้านที่บัญชีนี้มีสิทธิ์ในครั้งเดียว */
       + (locked ? '<span class="text-xs px-2 py-1 rounded-lg bg-gray-100 text-gray-500"><i data-lucide="lock" class="w-3 h-3 inline mr-0.5"></i>ไม่ได้รับมอบหมาย</span>' : '')
       + '</div></div>';
 
@@ -1862,7 +2018,7 @@
      เลือกรายชื่อครั้งเดียว กรอกกิจกรรมได้หลายรายการในหน้าต่างเดียว แล้วกดเพิ่มลงในแผน
      แถวที่ได้จะติดรายชื่อกลุ่มนั้นทันที ส่วนแถวที่เพิ่มด้วยปุ่ม "+ เพิ่มแถว" ตามปกติ
      ยังเป็น "ทุกคนในชั้น" เหมือนเดิม ขอบเขตจึงชัด ไม่มีรายชื่อรั่วไปแถวอื่น
-     เพิ่มเสร็จยังไม่เขียนลงระบบ ต้องไปกดบันทึกที่ขั้นที่ 4 เหมือนการกรอกด้วยมือ */
+     เพิ่มเสร็จยังไม่เขียนลงระบบ ต้องไปกดบันทึกที่ขั้นที่ 6 เหมือนการกรอกด้วยมือ */
   function batchRow() {
     return { kind: ACT_KINDS[0], activity: '', date_from: '', date_from_in: '',
              date_to: '', date_to_in: '', time_from: '', time_to: '', hours: '', hours_manual: '' };
@@ -2052,7 +2208,7 @@
       + 'เพิ่มลงในแผน</button>'
       + '<button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl border text-sm text-gray-600">ยกเลิก</button></div>'
       + '<p class="text-[11px] text-gray-400">ทุกกิจกรรมที่เพิ่มในหน้าต่างนี้จะนับชั่วโมงให้เฉพาะคนที่เลือกไว้ '
-      + '· ยังไม่เขียนลงระบบ ต้องกดบันทึกที่ <b>ขั้นที่ 4</b> อีกครั้ง</p>'
+      + '· ยังไม่เขียนลงระบบ ต้องกดบันทึกที่ <b>ขั้นที่ 6</b> อีกครั้ง</p>'
       + '</div>';
   }
 
@@ -2084,7 +2240,7 @@
     if (st.fold) st.fold[m.key] = false;     // เพิ่มแล้วต้องเห็นของที่เพิ่ง เพิ่ม
     APP._wlBatch = null;
     closeModal();
-    showToast('เพิ่ม ' + ready.length + ' กิจกรรมให้นักศึกษา ' + sel.length + ' คนแล้ว · ตรวจแล้วกดบันทึกที่ขั้นที่ 4');
+    showToast('เพิ่ม ' + ready.length + ' กิจกรรมให้นักศึกษา ' + sel.length + ' คนแล้ว · ตรวจแล้วกดบันทึกที่ขั้นที่ 6');
     renderCurrentPage();
   };
 
@@ -2245,7 +2401,7 @@
       }).join(' ');
     return '<div class="bg-white border border-blue-100 rounded-xl px-4 py-3 mb-4 text-xs text-gray-600 flex items-start gap-2">'
       + '<i data-lucide="info" class="w-4 h-4 text-primary flex-shrink-0 mt-0.5"></i><span>'
-      + '<b class="text-gray-700">กรอกให้ครบทุกด้าน แล้วบันทึกครั้งเดียวที่ขั้นที่ 4</b> — '
+      + '<b class="text-gray-700">กรอกให้ครบทุกด้าน แล้วบันทึกครั้งเดียวที่ขั้นที่ 6</b> — '
       + 'ระบบดึงข้อมูลล่าสุดมาก่อนบันทึกทุกครั้ง จึงไม่ทับงานของคนอื่นที่กรอกด้านอื่นอยู่<br>'
       + '<b class="text-gray-700">พันธกิจที่บัญชีนี้บันทึกได้:</b> '
       + (names || '<span class="text-red-500">ยังไม่ได้รับมอบหมายพันธกิจใด</span>')
@@ -2253,7 +2409,7 @@
       + '</span></div>';
   }
 
-  /* ---------------- ขั้นที่ 3-4 : กล่องกรอกที่ยุบ-ขยายได้ ----------------
+  /* ---------------- ขั้นที่ 4 : กล่องกรอกที่ยุบ-ขยายได้ ----------------
      กล่องที่เปิดอยู่คือโหมดที่จะบันทึก เปิดกล่องหนึ่งอีกกล่องจะยุบลง
      เพื่อไม่ให้สับสนว่าค่าที่กรอกอยู่จะถูกบันทึกให้ทั้งชั้นปีหรือเฉพาะคนที่เลือก */
   function sectionBox(key, icon, title, sub, badge, body) {
@@ -2689,7 +2845,7 @@
   };
 
   /* แถบสรุปชั่วโมง + ปุ่มบันทึก ของกล่องที่เปิดอยู่ */
-  function grandCard(group) {
+  function grandCard(group, noSave) {
     var st = state();
     var sel = groupSel();
     var d = draft();
@@ -2712,9 +2868,47 @@
               : '<span class="text-amber-700">ยังไม่ได้ติ๊กเลือกนักศึกษา — เลือกจากรายชื่อด้านบนก่อนบันทึก</span>')
           : 'ใช้กับนักศึกษารหัส ' + esc(cohortPrefix(st.year, st.level))
             + ' จำนวน ' + cohortStudents(st.level).length + ' คน ที่ไม่ได้ปรับเฉพาะราย') + '</p></div>'
-      + '<button onclick="wlSavePlan()" class="px-5 py-2.5 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm flex items-center gap-2 self-start">'
-      + '<i data-lucide="save" class="w-4 h-4"></i>' + saveLabel + '</button></div>';
+      + (noSave ? '' :
+          '<button onclick="wlSavePlan()" class="px-5 py-2.5 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm flex items-center gap-2 self-start">'
+          + '<i data-lucide="save" class="w-4 h-4"></i>' + saveLabel + '</button>') + '</div>';
   }
+
+  // ข้อความบนปุ่มบันทึก ใช้ร่วมกันระหว่างการ์ดสรุปกับแถบปุ่มขั้นที่ 6
+  function saveLabelOf(group) {
+    var st = state();
+    return group
+      ? (st.mission ? 'บันทึกพันธกิจนี้ให้ทุกคนที่เลือก' : 'บันทึกให้ทุกคนที่เลือก')
+      : st.addMode ? (st.mission ? 'เพิ่มเข้าแผน (พันธกิจนี้)' : 'เพิ่มเข้าแผน')
+      : (st.mission ? 'บันทึกพันธกิจนี้' : 'บันทึกทุกพันธกิจที่ทำได้');
+  }
+
+  /* ---------------- ขั้นที่ 6 : ปุ่มบันทึก / ล้างข้อมูล / ยกเลิก ----------------
+     "ล้างข้อมูล" ล้างเฉพาะสิ่งที่กรอกค้างอยู่ในฟอร์มรอบนี้ ไม่ได้ลบของที่บันทึกไปแล้ว
+     "ยกเลิก" ออกจากหน้ากรอก กลับไปหน้าสรุปผลรวม โดยไม่บันทึกอะไร */
+  function actionBar(group) {
+    return '<div class="flex flex-wrap items-center gap-2">'
+      + '<button type="button" onclick="wlSavePlan()" class="px-5 py-2.5 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm flex items-center gap-2">'
+      + '<i data-lucide="save" class="w-4 h-4"></i>' + esc(saveLabelOf(group)) + '</button>'
+      + '<button type="button" onclick="wlClearForm()" class="px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-surface flex items-center gap-2">'
+      + '<i data-lucide="eraser" class="w-4 h-4"></i>ล้างข้อมูลที่กรอก</button>'
+      + '<button type="button" onclick="wlCancelForm()" class="px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-surface flex items-center gap-2">'
+      + '<i data-lucide="x" class="w-4 h-4"></i>ยกเลิก</button>'
+      + '<span class="text-[11px] text-gray-400">ล้างข้อมูลที่กรอก = ล้างเฉพาะที่พิมพ์ค้างไว้รอบนี้ ไม่ได้ลบข้อมูลที่บันทึกไปแล้ว</span>'
+      + '</div>';
+  }
+  window.wlClearForm = function () {
+    var st = state();
+    if (!confirm('ล้างข้อมูลที่กรอกค้างไว้ในฟอร์มรอบนี้ใช่หรือไม่\n\nข้อมูลที่บันทึกลงระบบไปแล้วจะไม่ถูกลบ')) return;
+    st.draft = st.addMode ? emptyDraft() : null;
+    renderCurrentPage();
+    showToast('ล้างข้อมูลที่กรอกแล้ว');
+  };
+  window.wlCancelForm = function () {
+    if (!confirm('ออกจากหน้ากรอกภาระงานใช่หรือไม่\n\nสิ่งที่กรอกค้างไว้และยังไม่ได้บันทึกจะหายไป')) return;
+    var st = state();
+    st.draft = null;
+    navigateTo('workloadSummary');
+  };
 
   function foldBar() {
     if (state().mission) return '';   // เลือกพันธกิจเดียวแล้ว ไม่ต้องมีปุ่มยุบ/ขยายทั้งหมด
@@ -2808,26 +3002,37 @@
         + '<button type="button" onclick="wlSet(\'mode\',\'cohort\')" class="px-3 py-1.5 rounded-lg bg-white border border-amber-300 text-amber-800 text-xs hover:bg-amber-100">'
         + '<i data-lucide="arrow-left" class="w-3.5 h-3.5 inline"></i> กลับไปกรอกทั้งชั้น</button></div>'
       : '';
+    /* ลำดับขั้นใหม่ : นำเข้าไฟล์ CSV อยู่บนสุดก่อนเข้าขั้นตอน
+       1 ชั้นปี · 2 ภาคการศึกษา · 3 ขอบเขตผู้รับภาระงาน · 4 พันธกิจและช่องกรอก
+       5 สรุปทั้งหมด · 6 ปุ่มบันทึก/ล้าง/ยกเลิก */
+    var csvTop = group ? '' : '<div class="mb-4">' + wlCsvPanel() + '</div>';
     var steps = '<div class="ems-stepped bg-white rounded-2xl border border-blue-100 p-5 mb-4">'
-      + wlStep(1, 'เลือกชั้นปีและภาคการศึกษา', scope + ' · นักศึกษา ' + nStu + ' คน', cohortPicker(true), 'done')
-      + wlStep(2, 'เลือกพันธกิจที่จะกรอก', 'แนะนำให้กรอกทีละพันธกิจ · เลือกแล้ว: <b>' + esc(mLabel) + '</b>',
-          missionPicker().replace(/<p class="text-xs font-semibold text-gray-600 mb-2">[\s\S]*?<\/p>/, '') + missionScopeNote(), st.mission ? 'done' : 'active')
-      + wlStep(3, group ? 'เลือกนักศึกษา 1 คน แล้วกรอกกิจกรรม' : 'เพิ่มกิจกรรม และเลือกว่าใครเข้าร่วม',
+      + wlStep(1, 'เลือกชั้นปี', esc(levelLabel(st.year, st.level)) + ' · นักศึกษา ' + nStu + ' คน',
+          cohortPicker(true, 'level'), 'done')
+      + wlStep(2, 'เลือกภาคการศึกษา', esc(semLabel(st.sem)) + ' · ปีการศึกษา ' + esc(st.year),
+          cohortPicker(true, 'sem'), 'done')
+      + wlStep(3, group ? 'เลือกนักศึกษา 1 คน (กรณีพิเศษ)' : 'เลือกผู้รับภาระงานรอบนี้',
           group ? 'เลือกได้ทีละคน · ค่าที่กรอกจะใช้แทนภาระงานทั้งชุดของคนนั้น'
-                : 'กิจกรรมของทั้งชั้นใช้ + เพิ่มแถว · กิจกรรมของกลุ่มใช้ปุ่มสีส้ม เลือกรายชื่อครั้งเดียวแล้วกรอกได้หลายกิจกรรม · กรอกครบทุกด้านแล้วไปบันทึกที่ขั้นที่ 4',
-          addModeBar() + (group ? groupPicker() : howToBox() + wlCsvPanel()) + foldBar() + missionEditors(group), 'active')
-      + wlStep(4, 'ตรวจสรุปแล้วบันทึก', group
+                : 'ทั้งชั้นปี · เฉพาะ sec · หรือเลือกเป็นรายคนจากเลขที่ — ตอนนี้: <b>' + scopeLabel() + '</b>',
+          group ? groupPicker() : partScopePicker(), 'done')
+      + wlStep(4, 'เลือกพันธกิจที่จะกรอก แล้วกรอกได้เลย',
+          'เลือกแล้ว: <b>' + esc(mLabel) + '</b> · ช่องกรอกจะขึ้นให้ด้านล่างทันที',
+          missionPicker().replace(/<p class="text-xs font-semibold text-gray-600 mb-2">[\s\S]*?<\/p>/, '')
+            + missionScopeNote() + addModeBar() + (group ? '' : howToBox()) + foldBar() + missionEditors(group),
+          st.mission ? 'done' : 'active')
+      + wlStep(5, 'สรุปที่เลือกและกรอกทั้งหมด', group
           ? (sel.length ? 'จะบันทึกเป็นค่าเฉพาะรายของนักศึกษาที่เลือก' : '<span class="text-amber-700">ยังไม่ได้เลือกนักศึกษาในขั้นที่ 3</span>')
-          : 'บันทึกครั้งเดียวใช้กับทั้งชั้น · กิจกรรม "เฉพาะบางคน" นับให้เฉพาะคนที่ติ๊ก',
-          saveScopeNote() + partSummary() + grandCard(group), 'active', true)
+          : 'ผู้รับภาระงาน: <b>' + scopeLabel() + '</b> · กิจกรรมที่ระบุผู้เข้าร่วม นับให้เฉพาะคนที่ระบุ',
+          saveScopeNote() + partSummary() + grandCard(group, true), 'active')
+      + wlStep(6, 'บันทึก / ล้างข้อมูล / ยกเลิก', '', actionBar(group), 'active', true)
       + '</div>';
     var special = group ? '' : '<div class="bg-white rounded-2xl border border-gray-100 p-4 mb-4 flex flex-wrap items-center justify-between gap-3">'
       + '<div class="min-w-0"><p class="text-sm font-semibold text-gray-700"><i data-lucide="user-cog" class="w-4 h-4 inline text-gray-400"></i> กรณีพิเศษ: กรอกรายบุคคล</p>'
       + '<p class="text-[11px] text-gray-500">ใช้เมื่อภาระงาน<b>ทั้งชุด</b>ของนักศึกษาบางคนต่างจากเพื่อนในชั้น (เช่น ลาพัก ย้ายเข้ากลางภาค) · '
-      + '<b>เลือกได้ทีละคน</b> · ถ้าแค่บางกิจกรรมที่เข้าไม่เหมือนกัน ใช้ <b>"เฉพาะบางคน"</b> ในขั้นที่ 3 '
+      + '<b>เลือกได้ทีละคน</b> · ถ้าแค่บางกิจกรรมที่เข้าไม่เหมือนกัน ใช้ <b>"เฉพาะบางคน"</b> ในขั้นที่ 4 '
       + 'หรือ<b>นำเข้าไฟล์ CSV</b> จะได้ข้อมูลชุดเดียวที่แก้ทีหลังได้ที่เดียว</p></div>'
       + '<button type="button" onclick="wlSet(\'mode\',\'group\')" class="px-3 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 flex-shrink-0">เปิดการกรอกรายบุคคล</button></div>';
-    return modeBar + steps + special + ovrPanel();
+    return modeBar + csvTop + steps + special + ovrPanel();
   }
 
   function readonlyPlan() {
@@ -2844,8 +3049,8 @@
   }
 
   /* เคยมี window.wlSaveMission สำหรับปุ่ม "บันทึกพันธกิจนี้" ในหัวกล่องแต่ละพันธกิจ
-     ถอดออกแล้ว — บันทึกครั้งเดียวที่ขั้นที่ 4 "ตรวจสรุปแล้วบันทึก"
-     ถ้าเลือกกรอกพันธกิจเดียวไว้ในขั้นที่ 2 ขั้นที่ 4 ก็บันทึกเฉพาะพันธกิจนั้นให้อยู่แล้ว */
+     ถอดออกแล้ว — บันทึกครั้งเดียวที่ขั้นที่ 6
+     ถ้าเลือกกรอกพันธกิจเดียวไว้ในขั้นที่ 4 การบันทึกก็ทำเฉพาะพันธกิจนั้นให้อยู่แล้ว */
 
 
   window.wlSavePlan = async function () {

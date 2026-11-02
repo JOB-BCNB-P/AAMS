@@ -55,8 +55,8 @@ t('ไม่มีลูปเขียนรายคนแบบเดิม�
 console.log('\n[3] ไฟล์ CSV เป็นทางสำหรับกรอกทีละมาก ๆ');
 t('นำเข้า CSV ลงแผนชั้นปีเท่านั้น ไม่เปิดในโหมดรายบุคคล', () => {
   assert.ok(WL.includes('function wlCsvPanel()'), 'wlCsvPanel ยังรับโหมด');
-  const step3 = WL.slice(WL.indexOf('group ? groupPicker()'), WL.indexOf('group ? groupPicker()') + 200);
-  assert.ok(step3.includes('wlCsvPanel()') && step3.indexOf('wlCsvPanel()') > step3.indexOf(':'),
+  // ย้ายแผงขึ้นไปไว้บนสุดของหน้าแล้ว แต่ยังต้องซ่อนในโหมดรายบุคคลเหมือนเดิม
+  assert.ok(/var csvTop = group \? '' :[\s\S]{0,80}wlCsvPanel\(\)/.test(WL),
     'แผงนำเข้า CSV ยังโผล่ในโหมดรายบุคคล');
   assert.ok(!WL.includes("wlCsvPanel(group ? 'group' : 'cohort')"), 'ยังส่งโหมดเข้าแผง CSV');
 });
@@ -79,9 +79,13 @@ t('ทุกแถวมีช่อง "ใครเข้าร่วม" ข�
   assert.ok(seg.includes('wlClearStudents(') && seg.includes('wlPickStudents('),
     'ต้องเลือกได้ทั้ง "ทุกคนในชั้น" และ "เฉพาะบางคน"');
 });
-t('แถวใหม่เริ่มที่ "ทุกคนในชั้น" เสมอ ไม่มีรายชื่อติดมาเอง', () => {
+t('แถวใหม่ติดรายชื่อตามขอบเขตขั้นที่ 3 เท่านั้น', () => {
   const seg = grab('window.wlRowAdd = function (mkey)');
-  assert.ok(!seg.includes('students'), 'แถวใหม่ถูกกำหนดผู้เข้าร่วมล่วงหน้า');
+  // เลือก "ทั้งชั้นปี" ต้องไม่ใส่รายชื่อ ไม่งั้นกิจกรรมของทั้งชั้นจะกลายเป็นของกลุ่มโดยไม่รู้ตัว
+  assert.ok(seg.includes('if (scope.length) row.students'),
+    'ใส่รายชื่อโดยไม่ดูว่าเลือกขอบเขตไว้หรือไม่');
+  assert.ok(/st0\.mode === 'group'\) \? \[\]/.test(seg),
+    'โหมดรายบุคคลไม่ควรมีรายชื่อกลุ่มติดมา');
 });
 t('ไม่มีกล่องกลุ่มผู้เข้าร่วมแยกต่างหากแล้ว', () => {
   // เคยมีกล่องที่เลือกรายชื่อไว้ล่วงหน้า แล้วใส่ให้หลายแถวทีเดียว
@@ -105,9 +109,9 @@ t('เลือกรายชื่อครั้งเดียว กรอ�
 t('รายชื่อติดเฉพาะแถวที่เพิ่มจากหน้าต่างนี้', () => {
   const seg = grab('window.wlBatchApply = function ()');
   assert.ok(seg.includes('row.students = parts.slice()'), 'ไม่ได้ใส่รายชื่อให้แถวที่เพิ่ม');
-  // แถวปกติต้องไม่ถูกแตะ — กันไม่ให้รายชื่อรั่วไปกิจกรรมของทั้งชั้นเหมือนรอบก่อน
-  assert.ok(!grab('window.wlRowAdd = function (mkey)').includes('students'),
-    'แถวปกติยังถูกกำหนดผู้เข้าร่วมล่วงหน้า');
+  // แถวปกติใส่รายชื่อได้เฉพาะเมื่อผู้ใช้เลือกขอบเขตไว้เองในขั้นที่ 3
+  assert.ok(grab('window.wlRowAdd = function (mkey)').includes('scopeStudents()'),
+    'แถวปกติไม่ได้อ่านขอบเขตจากขั้นที่ 3');
 });
 t('บังคับให้เลือกคนและกรอกชั่วโมงก่อนเพิ่ม', () => {
   const seg = grab('window.wlBatchApply = function ()');
@@ -120,13 +124,13 @@ t('เลือกครบทุกคน = ทุกคนในชั้น',
   assert.ok(grab('window.wlBatchApply = function ()').includes('(sel.length < all) ? sel.slice() : []'),
     'เลือกครบทุกคนแล้วยังเก็บรายชื่อทั้งหมด');
 });
-t('เพิ่มแล้วยังไม่เขียนลงระบบ ต้องไปบันทึกที่ขั้นที่ 4', () => {
+t('เพิ่มแล้วยังไม่เขียนลงระบบ ต้องไปบันทึกที่ขั้นที่ 6', () => {
   const seg = grab('window.wlBatchApply = function ()');
   assert.ok(seg.includes('d[m.key].push(row)'), 'ไม่ได้ใส่ลงในช่องกรอก');
   assert.ok(!seg.includes('GSheetDB'), 'เขียนลงฐานข้อมูลทันที ข้ามขั้นตรวจสอบ');
-  assert.ok(seg.includes('ขั้นที่ 4'), 'ไม่ได้บอกผู้ใช้ว่าต้องไปกดบันทึก');
+  assert.ok(seg.includes('ขั้นที่ 6'), 'ไม่ได้บอกผู้ใช้ว่าต้องไปกดบันทึก');
 });
-t('ปุ่มเปิดหน้าต่างอยู่ในขั้นที่ 3', () => {
+t('ปุ่มเปิดหน้าต่างอยู่ในขั้นที่ 4', () => {
   assert.ok(grab('function howToBox()').includes('wlBatchOpen()'), 'ไม่มีปุ่มเปิดหน้าต่าง');
 });
 
