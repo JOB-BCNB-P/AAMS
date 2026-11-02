@@ -161,6 +161,7 @@
       mode: 'cohort', gsel: {},     // กล่องกรอกที่เปิดอยู่ : ทั้งชั้นปี / รายบุคคล ('' = ยุบทั้งคู่)
       addMode: false,               // เพิ่งบันทึกกลุ่มไป ฟอร์มว่างอยู่ รอบนี้บันทึกแบบต่อท้าย
       mission: '', gq: '',          // พันธกิจที่เลือกกรอก ('' = ทุกพันธกิจ) · คำค้นในรายชื่อนักศึกษา
+      ptab: 'cohort',               // แท็บหน้ากรอกภาระงาน : แบบชั้นปี / แบบรายบุคคล
       pscope: 'all', psel: {}, pq: '',  // ขอบเขตผู้รับภาระงานรอบนี้ : ทั้งชั้นปี / sec / เลือกเป็นรายคน
       fold: fold0                   // การ์ดที่ถูกยุบไว้ (จำเฉพาะระหว่างใช้งาน)
       };
@@ -1634,6 +1635,38 @@
     return '<div data-wl-plist="1" class="max-h-72 overflow-y-auto border border-gray-200 rounded-xl p-1 bg-white">'
       + (rowsHtml || '<p class="text-xs text-gray-400 text-center py-4">ไม่พบรายชื่อที่ค้นหา</p>') + '</div>';
   }
+  /* แท็บของหน้ากรอกภาระงาน
+     ทั้งสองแท็บบันทึกลง "แผนชั้นปี" ที่เดียวกัน ต่างกันแค่ช่องผู้เข้าร่วมของแต่ละกิจกรรม
+       แบบชั้นปี   : ไม่ระบุผู้เข้าร่วม (ทั้งชั้น) หรือระบุเป็นทั้ง sec
+       แบบรายบุคคล : ระบุผู้เข้าร่วมเป็นรายคนตามเลขที่
+     จึงเป็นการ "เพิ่ม" ให้คนที่เลือก ไม่ได้ไปลบกิจกรรมของชั้นที่เขาเคยได้
+     ส่วนการแทนภาระงานทั้งชุดของคนใดคนหนึ่ง ยังอยู่ที่การ์ดกรณีพิเศษท้ายหน้า */
+  window.wlPTab = function (v) {
+    var st = state();
+    st.ptab = (v === 'person') ? 'person' : 'cohort';
+    st.mode = 'cohort';                     // ออกจากการ์ดกรณีพิเศษเสมอเมื่อสลับแท็บ
+    if (st.ptab === 'person') st.pscope = 'pick';
+    else if (st.pscope === 'pick') { st.pscope = 'all'; st.psel = {}; }
+    renderCurrentPage();
+  };
+  function ptabBar() {
+    var st = state();
+    var tab = function (key, icon, label, sub) {
+      var on = st.ptab === key;
+      return '<button type="button" onclick="wlPTab(\'' + key + '\')" '
+        + 'class="flex-1 min-w-[12rem] text-left rounded-xl border px-4 py-3 transition '
+        + (on ? 'border-primary bg-primaryLight' : 'border-gray-200 bg-white hover:bg-surface') + '">'
+        + '<span class="block text-sm font-bold ' + (on ? 'text-primary' : 'text-gray-700') + '">'
+        + '<i data-lucide="' + icon + '" class="w-4 h-4 inline mr-1"></i>' + esc(label) + '</span>'
+        + '<span class="block text-[11px] text-gray-500 mt-0.5">' + esc(sub) + '</span></button>';
+    };
+    return '<div class="flex flex-wrap gap-2 mb-4">'
+      + tab('cohort', 'users', 'เลือกแบบชั้นปี', 'กรอกให้ทั้งชั้นปี หรือเลือกเป็นราย sec')
+      + tab('person', 'user-check', 'เลือกแบบรายบุคคล', 'เลือกเลขที่ได้หลายคน แล้วกรอกให้เฉพาะคนที่เลือก')
+      + '</div>';
+  }
+
+  // แท็บแบบชั้นปี : ทั้งชั้นปี หรือเลือกเป็นราย sec
   function partScopePicker() {
     var st = state(), all = cohortStudents(st.level);
     var btn = function (kind, room, label, sub) {
@@ -1648,7 +1681,18 @@
       var n0 = all.filter(function (s) { return norm(s.room) === r; }).length;
       return btn('room', r, 'เฉพาะ sec ' + r, n0 + ' คน');
     }).join('');
-    var pickBox = st.pscope !== 'pick' ? '' :
+    return '<div class="flex flex-wrap gap-2">'
+      + btn('all', '', 'ทั้งชั้นปี', all.length + ' คน')
+      + roomBtns
+      + '</div>'
+      + '<p class="text-[11px] text-gray-500">กิจกรรมที่เพิ่มในขั้นที่ 4 จะถูกบันทึกให้ตามขอบเขตนี้ · '
+      + 'เลือกทั้งชั้นปีแล้วไม่ต้องระบุผู้เข้าร่วมอีก</p>';
+  }
+
+  // แท็บแบบรายบุคคล : เลือกเลขที่ได้หลายคน
+  function seatPicker() {
+    var st = state(), all = cohortStudents(st.level);
+    var pickBox =
       '<div class="rounded-xl border border-primary/30 bg-primaryLight/40 p-3 space-y-2">'
       + '<div class="flex flex-wrap items-end gap-2">'
       + '<div class="flex-1 min-w-[16rem]"><label class="block text-xs font-medium text-gray-600 mb-1">'
@@ -1664,13 +1708,11 @@
       + '<input value="' + esc(st.pq || '') + '" placeholder="ค้นหาเลขที่ / รหัส / ชื่อ..." oninput="wlSeatSearch(this.value)" '
       + 'class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm">'
       + seatListBox() + '</div>';
-    return '<div class="flex flex-wrap gap-2">'
-      + btn('all', '', 'ทั้งชั้นปี', all.length + ' คน')
-      + roomBtns
-      + btn('pick', '', 'เลือกเป็นรายคน', 'เลือกจากเลขที่')
-      + '</div>' + pickBox
-      + '<p class="text-[11px] text-gray-500">ขอบเขตนี้จะถูกใส่เป็น "ใครเข้าร่วม" ให้กิจกรรม<b>แถวใหม่</b>ที่เพิ่มในขั้นที่ 4 โดยอัตโนมัติ '
-      + 'แถวที่กรอกค้างไว้ก่อนหน้าจะไม่ถูกเปลี่ยน</p>';
+    return pickBox
+      + '<div class="rounded-xl border border-blue-100 bg-blue-50/60 p-3">'
+      + '<p class="text-[11px] text-gray-600"><b>กิจกรรมที่เพิ่มในขั้นที่ 4 จะถูกบันทึกให้เฉพาะคนที่เลือกไว้</b> '
+      + 'โดยเพิ่มเข้าไปในแผนของชั้นปีพร้อมระบุชื่อผู้เข้าร่วม '
+      + 'กิจกรรมของชั้นที่นักศึกษาเหล่านี้เคยได้รับ จะยังอยู่ครบเหมือนเดิม ไม่ถูกแทนที่</p></div>';
   }
 
   function groupSel() {
@@ -1822,6 +1864,12 @@
        เลือกทั้งชั้นปี = ไม่ใส่รายชื่อ (ทุกคนในชั้น) เหมือนเดิม
        เลือก sec หรือรายคน = ใส่รายชื่อชุดนั้นให้เลย จะได้ไม่ต้องไปติ๊กทีละแถว */
     var scope = (st0.mode === 'group') ? [] : scopeStudents();
+    /* แท็บรายบุคคลต้องเลือกคนก่อน ไม่งั้นแถวที่เพิ่มจะไม่มีชื่อผู้เข้าร่วม
+       แล้วกลายเป็นกิจกรรมของทั้งชั้นปีโดยไม่ได้ตั้งใจ */
+    if (st0.mode !== 'group' && st0.ptab === 'person' && !scope.length) {
+      showToast('เลือกเลขที่นักศึกษาในขั้นที่ 3 ก่อน แล้วจึงเพิ่มกิจกรรมได้', 'error');
+      return;
+    }
     if (scope.length) row.students = scope.slice();
     d[mkey].push(row);
     renderCurrentPage();
@@ -2943,6 +2991,20 @@
       + (sub ? '<p class="ems-step-sub">' + sub + '</p>' : '') + '</div></div>'
       + '<div class="ems-step-body space-y-3">' + inner + '</div></section>';
   }
+  /* คำอธิบายของแท็บรายบุคคล
+     ช่องกรอกแสดงกิจกรรมทั้งหมดของแผนชั้นปี ไม่ได้กรองเฉพาะคนที่เลือก
+     จึงต้องบอกให้ชัดว่าแถวไหนคือของใหม่ที่จะเป็นของคนที่เลือก */
+  function personHowTo() {
+    var n0 = scopeStudents().length;
+    return '<div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs space-y-1">'
+      + '<p class="font-semibold text-amber-800"><i data-lucide="info" class="w-3.5 h-3.5 inline"></i> '
+      + 'กำลังกรอกให้นักศึกษาที่เลือกไว้ ' + n0 + ' คน</p>'
+      + '<p class="text-gray-700">กด <b>+ เพิ่มแถว</b> แล้วกรอกกิจกรรม ระบบจะใส่ชื่อนักศึกษาทั้ง ' + n0 + ' คนเป็นผู้เข้าร่วมให้เอง</p>'
+      + '<p class="text-gray-600">รายการที่ขึ้นอยู่ก่อนแล้วคือกิจกรรมเดิมของชั้นปีนี้ '
+      + '<b>แก้หรือลบรายการเหล่านั้น จะมีผลกับทั้งชั้น</b> ไม่ใช่เฉพาะคนที่เลือก '
+      + 'ถ้าต้องการแก้เฉพาะบางคน ให้แก้ที่ช่อง "เฉพาะบางคน" ของแถวนั้นแทน</p>'
+      + '</div>';
+  }
   function howToBox() {
     return '<div class="grid sm:grid-cols-2 gap-2 text-xs">'
       + '<div class="rounded-xl border border-blue-100 bg-blue-50/60 p-3"><p class="font-semibold text-primary mb-1"><i data-lucide="users" class="w-3.5 h-3.5 inline"></i> กิจกรรมที่ทั้งชั้นเข้าร่วม</p>'
@@ -3005,34 +3067,41 @@
     /* ลำดับขั้นใหม่ : นำเข้าไฟล์ CSV อยู่บนสุดก่อนเข้าขั้นตอน
        1 ชั้นปี · 2 ภาคการศึกษา · 3 ขอบเขตผู้รับภาระงาน · 4 พันธกิจและช่องกรอก
        5 สรุปทั้งหมด · 6 ปุ่มบันทึก/ล้าง/ยกเลิก */
-    var csvTop = group ? '' : '<div class="mb-4">' + wlCsvPanel() + '</div>';
+    var person = !group && st.ptab === 'person';
+    // นำเข้า CSV ใช้กับแผนทั้งชั้นปี จึงแสดงเฉพาะแท็บแบบชั้นปี
+    var csvTop = (group || person) ? '' : '<div class="mb-4">' + wlCsvPanel() + '</div>';
     var steps = '<div class="ems-stepped bg-white rounded-2xl border border-blue-100 p-5 mb-4">'
       + wlStep(1, 'เลือกชั้นปี', esc(levelLabel(st.year, st.level)) + ' · นักศึกษา ' + nStu + ' คน',
           cohortPicker(true, 'level'), 'done')
       + wlStep(2, 'เลือกภาคการศึกษา', esc(semLabel(st.sem)) + ' · ปีการศึกษา ' + esc(st.year),
           cohortPicker(true, 'sem'), 'done')
-      + wlStep(3, group ? 'เลือกนักศึกษา 1 คน (กรณีพิเศษ)' : 'เลือกผู้รับภาระงานรอบนี้',
+      + wlStep(3, group ? 'เลือกนักศึกษา 1 คน (กรณีพิเศษ)'
+                  : person ? 'เลือกเลขที่ (เลือกได้หลายคน)' : 'เลือกทั้งชั้นปี หรือเลือกเป็นราย sec',
           group ? 'เลือกได้ทีละคน · ค่าที่กรอกจะใช้แทนภาระงานทั้งชุดของคนนั้น'
-                : 'ทั้งชั้นปี · เฉพาะ sec · หรือเลือกเป็นรายคนจากเลขที่ — ตอนนี้: <b>' + scopeLabel() + '</b>',
-          group ? groupPicker() : partScopePicker(), 'done')
+                : 'ตอนนี้: <b>' + scopeLabel() + '</b>',
+          group ? groupPicker() : person ? seatPicker() : partScopePicker(),
+          (group || person) ? (sel.length || scopeStudents().length ? 'done' : 'active') : 'done')
       + wlStep(4, 'เลือกพันธกิจที่จะกรอก แล้วกรอกได้เลย',
           'เลือกแล้ว: <b>' + esc(mLabel) + '</b> · ช่องกรอกจะขึ้นให้ด้านล่างทันที',
           missionPicker().replace(/<p class="text-xs font-semibold text-gray-600 mb-2">[\s\S]*?<\/p>/, '')
-            + missionScopeNote() + addModeBar() + (group ? '' : howToBox()) + foldBar() + missionEditors(group),
+            + missionScopeNote() + addModeBar()
+            + (group ? '' : person ? personHowTo() : howToBox()) + foldBar() + missionEditors(group),
           st.mission ? 'done' : 'active')
       + wlStep(5, 'สรุปที่เลือกและกรอกทั้งหมด', group
           ? (sel.length ? 'จะบันทึกเป็นค่าเฉพาะรายของนักศึกษาที่เลือก' : '<span class="text-amber-700">ยังไม่ได้เลือกนักศึกษาในขั้นที่ 3</span>')
-          : 'ผู้รับภาระงาน: <b>' + scopeLabel() + '</b> · กิจกรรมที่ระบุผู้เข้าร่วม นับให้เฉพาะคนที่ระบุ',
+          : 'ผู้รับภาระงาน: <b>' + scopeLabel() + '</b>'
+            + (person ? ' · บันทึกเพิ่มให้เฉพาะคนที่เลือก กิจกรรมของชั้นที่เคยได้ยังอยู่ครบ'
+                      : ' · กิจกรรมที่ระบุผู้เข้าร่วม นับให้เฉพาะคนที่ระบุ'),
           saveScopeNote() + partSummary() + grandCard(group, true), 'active')
       + wlStep(6, 'บันทึก / ล้างข้อมูล / ยกเลิก', '', actionBar(group), 'active', true)
       + '</div>';
-    var special = group ? '' : '<div class="bg-white rounded-2xl border border-gray-100 p-4 mb-4 flex flex-wrap items-center justify-between gap-3">'
+    var special = (group || !person) ? '' : '<div class="bg-white rounded-2xl border border-gray-100 p-4 mb-4 flex flex-wrap items-center justify-between gap-3">'
       + '<div class="min-w-0"><p class="text-sm font-semibold text-gray-700"><i data-lucide="user-cog" class="w-4 h-4 inline text-gray-400"></i> กรณีพิเศษ: กรอกรายบุคคล</p>'
       + '<p class="text-[11px] text-gray-500">ใช้เมื่อภาระงาน<b>ทั้งชุด</b>ของนักศึกษาบางคนต่างจากเพื่อนในชั้น (เช่น ลาพัก ย้ายเข้ากลางภาค) · '
       + '<b>เลือกได้ทีละคน</b> · ถ้าแค่บางกิจกรรมที่เข้าไม่เหมือนกัน ใช้ <b>"เฉพาะบางคน"</b> ในขั้นที่ 4 '
       + 'หรือ<b>นำเข้าไฟล์ CSV</b> จะได้ข้อมูลชุดเดียวที่แก้ทีหลังได้ที่เดียว</p></div>'
       + '<button type="button" onclick="wlSet(\'mode\',\'group\')" class="px-3 py-2 rounded-xl border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 flex-shrink-0">เปิดการกรอกรายบุคคล</button></div>';
-    return modeBar + csvTop + steps + special + ovrPanel();
+    return modeBar + (group ? '' : ptabBar()) + csvTop + steps + special + ovrPanel();
   }
 
   function readonlyPlan() {

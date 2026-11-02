@@ -29,7 +29,7 @@ t('มีครบ 6 ขั้น เรียงถูกลำดับ', () =
 t('หัวข้อแต่ละขั้นตรงตามที่กำหนด', () => {
   assert.ok(titles[0][1].includes('เลือกชั้นปี'), 'ขั้น 1 ต้องเป็นเลือกชั้นปี');
   assert.ok(titles[1][1].includes('ภาคการศึกษา'), 'ขั้น 2 ต้องเป็นภาคการศึกษา');
-  assert.ok(/ผู้รับภาระงาน|นักศึกษา/.test(titles[2][1]), 'ขั้น 3 ต้องเป็นการเลือกผู้รับภาระงาน');
+  assert.ok(/เลขที่|ชั้นปี|นักศึกษา|sec/.test(titles[2][1]), 'ขั้น 3 ต้องเป็นการเลือกผู้รับภาระงาน');
   assert.ok(titles[3][1].includes('พันธกิจ'), 'ขั้น 4 ต้องเป็นการเลือกพันธกิจ');
   assert.ok(titles[4][1].includes('สรุป'), 'ขั้น 5 ต้องเป็นสรุป');
   assert.ok(/บันทึก.*ล้างข้อมูล.*ยกเลิก/.test(titles[5][1]), 'ขั้น 6 ต้องเป็นแถบปุ่ม');
@@ -42,20 +42,52 @@ t('ขั้นที่ 4 แสดงช่องกรอกทันที�
 
 console.log('\n[2] นำเข้าไฟล์ CSV อยู่บนสุด');
 t('แผง CSV อยู่นอกและอยู่ก่อนบล็อกขั้นตอน', () => {
-  assert.ok(/var csvTop = group \? '' :[\s\S]{0,80}wlCsvPanel\(\)/.test(plan), 'ไม่พบแผง CSV ด้านบน');
-  assert.ok(plan.includes('return modeBar + csvTop + steps'), 'แผง CSV ไม่ได้อยู่ก่อนขั้นตอน');
+  assert.ok(/var csvTop = \(group \|\| person\) \? '' :[\s\S]{0,80}wlCsvPanel\(\)/.test(plan), 'ไม่พบแผง CSV ด้านบน');
+  assert.ok(/return modeBar \+ .*csvTop \+ steps/.test(plan), 'แผง CSV ไม่ได้อยู่ก่อนขั้นตอน');
 });
 t('ไม่มีแผง CSV ซ้ำอยู่ในขั้นตอนอีก', () => {
   const stepsBlock = plan.slice(plan.indexOf('var steps ='), plan.indexOf("+ '</div>';", plan.indexOf('var steps =')));
   assert.ok(!stepsBlock.includes('wlCsvPanel()'), 'ยังมีแผง CSV ซ้อนอยู่ในขั้นตอน');
 });
 
-console.log('\n[3] ขอบเขตผู้รับภาระงาน');
-t('มีตัวเลือกครบ ทั้งชั้นปี / sec / รายคน', () => {
+console.log('\n[3] สองแท็บ : แบบชั้นปี / แบบรายบุคคล');
+t('มีแถบแท็บครบสองแบบ', () => {
+  const g = grab('function ptabBar()');
+  assert.ok(g.includes("tab('cohort'") && g.includes('เลือกแบบชั้นปี'), 'ไม่มีแท็บแบบชั้นปี');
+  assert.ok(g.includes("tab('person'") && g.includes('เลือกแบบรายบุคคล'), 'ไม่มีแท็บแบบรายบุคคล');
+  assert.ok(plan.includes('ptabBar()'), 'ไม่ได้แสดงแถบแท็บในหน้า');
+});
+t('แท็บแบบชั้นปี มีทั้งชั้นปีและราย sec แต่ไม่มีรายคน', () => {
   const g = grab('function partScopePicker()');
   assert.ok(g.includes("btn('all'"), 'ไม่มีตัวเลือกทั้งชั้นปี');
   assert.ok(g.includes("btn('room'"), 'ไม่มีตัวเลือกราย sec');
-  assert.ok(g.includes("btn('pick'"), 'ไม่มีตัวเลือกรายคน');
+  assert.ok(!g.includes("btn('pick'"), 'แท็บชั้นปีไม่ควรมีตัวเลือกรายคน');
+});
+t('แท็บแบบรายบุคคล เลือกเลขที่ได้หลายคน', () => {
+  const g = grab('function seatPicker()');
+  assert.ok(g.includes('seatListBox()'), 'ไม่มีรายชื่อให้ติ๊ก');
+  assert.ok(g.includes('wlSeatApply()'), 'ไม่มีช่องใส่เลขที่');
+  assert.ok(g.includes('ไม่ถูกแทนที่'), 'ไม่ได้บอกว่าข้อมูลเดิมของชั้นยังอยู่');
+});
+t('สลับแท็บแล้วตั้งขอบเขตให้ถูกโดยอัตโนมัติ', () => {
+  const g = grab('window.wlPTab = function (v)');
+  assert.ok(g.includes("st.pscope = 'pick'"), 'แท็บรายบุคคลไม่ได้ตั้งเป็นเลือกรายคน');
+  assert.ok(g.includes("st.pscope = 'all'"), 'กลับมาแท็บชั้นปีแล้วยังค้างที่เลือกรายคน');
+  assert.ok(g.includes("st.mode = 'cohort'"), 'ไม่ได้ออกจากการ์ดกรณีพิเศษเมื่อสลับแท็บ');
+});
+t('แท็บรายบุคคลไม่แสดงแผงนำเข้า CSV', () => {
+  assert.ok(/var csvTop = \(group \|\| person\) \? ''/.test(plan),
+    'แผง CSV ยังโผล่ในแท็บรายบุคคล ทั้งที่ CSV ใช้กับแผนทั้งชั้นปี');
+});
+t('ยังไม่เลือกใครในแท็บรายบุคคล ห้ามเพิ่มแถว', () => {
+  const g = grab('window.wlRowAdd = function (mkey)');
+  assert.ok(/ptab === 'person' && !scope\.length/.test(g),
+    'เพิ่มแถวได้ทั้งที่ยังไม่เลือกคน กิจกรรมจะกลายเป็นของทั้งชั้น');
+  assert.ok(g.includes('เลือกเลขที่นักศึกษาในขั้นที่ 3 ก่อน'), 'ไม่ได้บอกผู้ใช้ว่าต้องเลือกคนก่อน');
+});
+t('เตือนว่าการแก้รายการเดิมมีผลทั้งชั้น', () => {
+  const g = grab('function personHowTo()');
+  assert.ok(g.includes('มีผลกับทั้งชั้น'), 'ไม่ได้เตือนว่าแก้รายการเดิมกระทบทั้งชั้น');
 });
 t('sec อ่านจากช่องห้องของนักศึกษา', () => {
   const g = grab('function roomsOf(level)');

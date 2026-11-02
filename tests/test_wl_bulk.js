@@ -56,7 +56,7 @@ console.log('\n[3] ไฟล์ CSV เป็นทางสำหรับก�
 t('นำเข้า CSV ลงแผนชั้นปีเท่านั้น ไม่เปิดในโหมดรายบุคคล', () => {
   assert.ok(WL.includes('function wlCsvPanel()'), 'wlCsvPanel ยังรับโหมด');
   // ย้ายแผงขึ้นไปไว้บนสุดของหน้าแล้ว แต่ยังต้องซ่อนในโหมดรายบุคคลเหมือนเดิม
-  assert.ok(/var csvTop = group \? '' :[\s\S]{0,80}wlCsvPanel\(\)/.test(WL),
+  assert.ok(/var csvTop = \(group \|\| person\) \? '' :[\s\S]{0,80}wlCsvPanel\(\)/.test(WL),
     'แผงนำเข้า CSV ยังโผล่ในโหมดรายบุคคล');
   assert.ok(!WL.includes("wlCsvPanel(group ? 'group' : 'cohort')"), 'ยังส่งโหมดเข้าแผง CSV');
 });
