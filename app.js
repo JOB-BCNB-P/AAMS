@@ -3269,6 +3269,14 @@ function updateSchedSplitState() {
 // สลับการแสดงฟิลด์เมื่อประเภทเป็น/ไม่เป็น "การสอบ"
 function onScheduleTypeChange(el) {
   const isExam = ((el && el.value) || '').includes('สอบ');
+  // ป้าย * / (ไม่บังคับ) ของช่องรายวิชา เปลี่ยนตามประเภทที่พิมพ์ทันที
+  const need = schedNeedsSubject((el && el.value) || '');
+  ['schedSubjReq1', 'schedSubjReq2'].forEach(id => {
+    const n = document.getElementById(id); if (n) n.classList.toggle('hidden', !need);
+  });
+  ['schedSubjOpt1', 'schedSubjOpt2'].forEach(id => {
+    const n = document.getElementById(id); if (n) n.classList.toggle('hidden', need);
+  });
   const ex = document.getElementById('schedExamFields');
   const sw = document.getElementById('schedSubjectSingleWrap');
   const mw = document.getElementById('schedSubjectMultiWrap');
@@ -3334,6 +3342,14 @@ function removeSchedExtraDate(i) {
   const a = getSchedExtraDatesArr(); a.splice(i, 1); setSchedExtraDatesArr(a);
 }
 
+/* รายวิชาเป็นช่องบังคับเฉพาะการสอบตามตารางของหลักสูตร
+   คือ สอบกลางภาค สอบปลายภาค และสอบซ่อมของทั้งสองรายการ
+   ประเภทอื่น เช่น สอบย่อย สอบ OSCE สอบรวบยอด วิพากษ์ กิจกรรม วันหยุด
+   บางครั้งไม่ได้ผูกกับรายวิชาใดวิชาหนึ่ง จึงปล่อยให้เว้นว่างได้ */
+function schedNeedsSubject(type) {
+  const t = norm(type);
+  return t.includes('สอบ') && (t.includes('กลางภาค') || t.includes('ปลายภาค'));
+}
 function scheduleFormBody(s, isNew) {
   s = s || {};
   const v = k => String(s[k] == null ? '' : s[k]).replace(/"/g, '&quot;');
@@ -3345,11 +3361,11 @@ function scheduleFormBody(s, isNew) {
   return `
     <div><label class="block text-xs text-gray-600 mb-1">ประเภท * <span class="font-normal text-gray-400">(เลือกก่อน)</span></label>${scheduleTypeInput('schedule_type', s.schedule_type || '')}</div>
     <div id="schedSubjectSingleWrap" class="${isExam ? 'hidden' : ''}">
-      <label class="block text-xs text-gray-600 mb-1">รายวิชา/กิจกรรม *</label>
+      <label class="block text-xs text-gray-600 mb-1">รายวิชา/กิจกรรม <span id="schedSubjReq1" class="${schedNeedsSubject(s.schedule_type) ? '' : 'hidden'}">*</span><span id="schedSubjOpt1" class="font-normal text-gray-400 ${schedNeedsSubject(s.schedule_type) ? 'hidden' : ''}">(ไม่บังคับ)</span></label>
       <input name="subject_name" id="schedSubjectSingle" value="${subjVal}" ${isExam ? 'disabled' : ''} class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="ชื่อรายวิชาหรือกิจกรรม">
     </div>
     <div id="schedSubjectMultiWrap" class="${isExam ? '' : 'hidden'}">
-      <label class="block text-xs text-gray-600 mb-1">รายวิชาที่สอบ * <span class="font-normal text-gray-400">(เลือกได้หลายวิชา)</span></label>
+      <label class="block text-xs text-gray-600 mb-1">รายวิชาที่สอบ <span id="schedSubjReq2" class="${schedNeedsSubject(s.schedule_type) ? '' : 'hidden'}">*</span> <span class="font-normal text-gray-400">(เลือกได้หลายวิชา<span id="schedSubjOpt2" class="${schedNeedsSubject(s.schedule_type) ? 'hidden' : ''}"> · ไม่บังคับ</span>)</span></label>
       <input type="hidden" name="subject_name" id="schedSubjectMultiValue" value="${subjVal}" ${isExam ? '' : 'disabled'}>
       <div class="flex gap-2 items-stretch">
         <select id="schedSubjectSelect" class="flex-1 min-w-0 border rounded-xl px-3 py-2 text-sm">${schedSubjectOptionsHTML(s.year_level)}</select>
@@ -3654,7 +3670,7 @@ function showAddScheduleModal() {
     await withLoading(e.target, async () => {
       const fd = new FormData(e.target);
       if (!(fd.get('schedule_type') || '').trim()) { showToast('กรุณาระบุประเภท', 'error'); return; }
-      if (!(fd.get('subject_name') || '').trim()) { showToast('กรุณาระบุรายวิชา/กิจกรรม', 'error'); return; }
+      if (schedNeedsSubject(fd.get('schedule_type')) && !(fd.get('subject_name') || '').trim()) { showToast('การสอบกลางภาค/ปลายภาค ต้องระบุรายวิชา', 'error'); return; }
       const base = { type: 'schedule', created_at: new Date().toISOString() }; fd.forEach((v, k) => base[k] = v);
       // รวมวันที่: วันหลัก + วันที่เพิ่มเติม (จัดหลายวัน)
       const dates = [];
@@ -4341,7 +4357,7 @@ function gradesPage() {
     ${isAdmin ? `<div class="flex gap-2"><button onclick="showAddGradeModal()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มผลการเรียน</button>${csvUploadBtn('grade', 'student_id,subject_code,subject_name,grade,credits,semester,academic_year')}</div>` : ''}
   </div>
   ${/* การ์ด GPAx เดิมถูกยุบรวมเข้ากับการ์ดภาพรวมผลการเรียน (GPAx) ใบใหม่แล้ว */ ''}
-  ${isStudent ? '' : gradeOverviewCardsHTML()}
+  ${isStudent ? gradeGateNoticeHTML() : gradeOverviewCardsHTML()}
   ${gradeMissingCardHTML()}
   ${studentSelector}
   ${noSelectionMsg || `${filterBar({ yearData: yearScopeGrades })}
@@ -4357,6 +4373,38 @@ function gradesPage() {
     </table></div>
   </div>
   ${paginationHTML(total, APP.pagination.perPage, APP.pagination.page, 'changePage')}`}`;
+}
+
+/* ───── แถบอธิบายเหตุผลที่เกรดบางวิชายังไม่ขึ้น ─────
+   ตัวที่กันจริงคือนโยบายอ่านของตาราง grade ที่ฐานข้อมูล (ems.grade_locked)
+   แถบนี้ไม่ได้ทำหน้าที่กัน แต่ทำหน้าที่บอกเหตุผลและพาไปทำแบบประเมิน
+   ถ้าไม่มีแถบนี้ นักศึกษาจะเห็นตารางขาดวิชาไปเฉย ๆ แล้วแจ้งว่าข้อมูลหาย */
+function gradeGateNoticeHTML() {
+  if (typeof window.evalGateSubjects !== 'function') return '';
+  setTimeout(renderGradeGateNotice, 0);
+  return '<div id="gradeGateNotice" class="mb-4"></div>';
+}
+async function renderGradeGateNotice() {
+  const box = document.getElementById('gradeGateNotice');
+  if (!box) return;
+  let list = [];
+  try { list = await window.evalGateSubjects(); } catch (e) { return; }
+  if (!box.isConnected) return;
+  if (!list.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+    <p class="text-sm font-semibold text-amber-800"><i data-lucide="lock" class="w-4 h-4 inline"></i>
+      ผลการเรียน ${list.length} รายวิชายังไม่แสดง เพราะยังไม่ได้ทำแบบประเมินรายวิชา</p>
+    <p class="text-xs text-amber-700 mt-1">ทำแบบประเมินเสร็จแล้ว ผลการเรียนของวิชานั้นจะขึ้นทันที
+      คำตอบที่ให้ไว้ไม่ผูกกับชื่อผู้ตอบ อาจารย์เห็นเฉพาะผลรวมของทั้งห้อง</p>
+    <div class="flex flex-wrap gap-2 mt-3">
+      ${list.map(f => `<button type="button" onclick="evalGoTo('${htmlEsc(f.form_code).replace(/'/g, '&#39;')}')"
+        class="px-3 py-1.5 rounded-xl bg-white border border-amber-300 text-amber-800 text-xs hover:bg-amber-100">
+        ${htmlEsc(f.subject_name || f.subject_code || 'แบบประเมิน')}
+        ${f.close_date ? '<span class="text-amber-500"> · ถึง ' + htmlEsc(f.close_date) + '</span>' : ''}</button>`).join('')}
+    </div>
+    <p class="text-xs text-amber-600 mt-2">หากทำแบบประเมินไม่ได้ด้วยเหตุผลใด ติดต่องานวิชาการเพื่อขอปลดล็อกเป็นรายกรณี</p>
+  </div>`;
+  if (window.lucide) lucide.createIcons();
 }
 
 // ======================== Auto-fill รายวิชา จากรหัสวิชา (ฟอร์มผลการเรียน) ========================
@@ -13524,7 +13572,7 @@ function showEditScheduleModal(id) {
   document.getElementById('editScheduleForm').onsubmit = async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    if (!(fd.get('subject_name') || '').trim()) { showToast('กรุณาระบุรายวิชา/กิจกรรม', 'error'); return; }
+    if (schedNeedsSubject(fd.get('schedule_type')) && !(fd.get('subject_name') || '').trim()) { showToast('การสอบกลางภาค/ปลายภาค ต้องระบุรายวิชา', 'error'); return; }
     // อ่านค่าการแจ้งเตือนก่อนปิด modal
     const notifyEl = document.getElementById('schedNotify');
     const doNotify = !!(notifyEl && notifyEl.checked);

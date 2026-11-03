@@ -1991,6 +1991,33 @@
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
   }
 
+  /* ───── ประตูกั้นผลการเรียน ─────
+     ฐานข้อมูลเป็นผู้บังคับจริง (ems.grade_locked) หน้าเว็บมีหน้าที่อธิบายให้นักศึกษาเข้าใจ
+     ว่าทำไมเกรดบางวิชาถึงยังไม่ขึ้น และกดไปทำแบบประเมินได้ทันที
+     ไม่ใช่ปล่อยให้เห็นตารางว่างเปล่าแล้วเข้าใจว่าข้อมูลหาย */
+  window.evalGateSubjects = async function () {
+    var stu = myStudent();
+    if (!stu) return [];
+    var st = state();
+    if (!st.myLoaded && !st.myLoading) { try { await loadMyResponses(); } catch (e) { return []; } }
+    var mine = st.myResp || {};
+    return forms().filter(function (f) {
+      if (!ownsForm(stu, f) || !formOpenNow(f)) return false;
+      var r = mine[s(f.form_code)];
+      return !(r && r.status === 'ส่งแล้ว');
+    }).map(function (f) {
+      return {
+        form_code: s(f.form_code), subject_code: s(f.subject_code), subject_name: s(f.subject_name),
+        semester: s(f.semester), academic_year: s(f.academic_year), close_date: s(f.close_date)
+      };
+    });
+  };
+  // เปิดแบบประเมินจากหน้าอื่น เช่น ปุ่มในแถบแจ้งเตือนหน้าผลการเรียน
+  window.evalGoTo = function (code) {
+    state().doForm = s(code);
+    if (typeof navigateTo === 'function') navigateTo('evalDo');
+  };
+
   window.evalOpenAnswer = function (code) {
     var st = state();
     st.doForm = s(code); st.ans = {}; st.ansLoaded = false;
@@ -2217,6 +2244,47 @@
     }
   };
 
+  /* ---------------- ปลดล็อกผลการเรียนเป็นรายคน (ผู้ดูแล) ----------------
+     ใช้กับกรณีที่นักศึกษาทำแบบประเมินไม่ได้จริง ๆ เช่น เจ็บป่วย ระบบขัดข้อง หรืออยู่ระหว่างอุทธรณ์
+     ตารางนี้ไม่ได้อยู่ในชุดที่โหลดตอนเปิดระบบ จึงอ่านเฉพาะตอนเปิดหน้าต่างนี้ */
+  async function gateExemptSet() {
+    try {
+      var r = await sbc().from('eval_grade_exempt').select('student_id');
+      if (r.error) throw new Error(r.error.message);
+      var m = {};
+      (r.data || []).forEach(function (x) { m[s(x.student_id)] = true; });
+      return m;
+    } catch (e) { return null; }       // null = อ่านไม่ได้ (ยังไม่ได้ติดตั้งตาราง หรือไม่มีสิทธิ์)
+  }
+  window.evalGateUnlock = async function (sid, on) {
+    sid = s(sid);
+    if (!sid) return;
+    try {
+      if (on) {
+        var r = await sbc().from('eval_grade_exempt')
+          .upsert({ student_id: sid, reason: 'ปลดล็อกโดยผู้ดูแลระบบ', created_by: who() }, { onConflict: 'student_id' });
+        if (r.error) throw new Error(r.error.message);
+        showToast('ปลดล็อกผลการเรียนของ ' + sid + ' แล้ว');
+      } else {
+        var d = await sbc().from('eval_grade_exempt').delete().eq('student_id', sid);
+        if (d.error) throw new Error(d.error.message);
+        showToast('ยกเลิกการปลดล็อกของ ' + sid + ' แล้ว');
+      }
+      var btn = document.getElementById('gateBtn_' + sid);
+      if (btn) btn.outerHTML = gateBtnHTML(sid, on);
+    } catch (e) {
+      showToast('ทำรายการไม่สำเร็จ · ' + (e.message || e), 'error');
+    }
+  };
+  function gateBtnHTML(sid, unlocked) {
+    var id = 'gateBtn_' + esc(sid);
+    return unlocked
+      ? '<button type="button" id="' + id + '" onclick="evalGateUnlock(\'' + esc(sid) + '\', false)" '
+        + 'class="px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs hover:bg-emerald-100">ปลดล็อกแล้ว · กดเพื่อยกเลิก</button>'
+      : '<button type="button" id="' + id + '" onclick="evalGateUnlock(\'' + esc(sid) + '\', true)" '
+        + 'class="px-2 py-1 rounded-lg bg-white border border-gray-200 text-gray-600 text-xs hover:bg-gray-50">ปลดล็อกผลการเรียน</button>';
+  }
+
   /* ---------------- ติดตามอัตราการตอบ (เจ้าหน้าที่) ---------------- */
   window.evalShowProgress = async function (code) {
     var f = formByCode(code);
@@ -2235,6 +2303,7 @@
         return active && ownsForm(x, f);
       }).sort(function (a, b) { return s(a.student_id).localeCompare(s(b.student_id)); });
 
+      var exempt = await gateExemptSet();
       var nDone = stus.filter(function (x) { return done[s(x.student_id)]; }).length;
       var pct = stus.length ? Math.round(nDone / stus.length * 1000) / 10 : 0;
       var waiting = stus.filter(function (x) { return !done[s(x.student_id)]; });
@@ -2251,15 +2320,22 @@
         + (waiting.length
           ? '<div class="border border-gray-100 rounded-xl overflow-auto" style="max-height:320px"><table class="w-full text-sm">'
           + '<thead class="sticky top-0"><tr class="bg-surface text-left">'
-          + '<th class="px-3 py-2 font-semibold">รหัสนักศึกษา</th><th class="px-3 py-2 font-semibold">ชื่อ-สกุล</th></tr></thead><tbody>'
+          + '<th class="px-3 py-2 font-semibold">รหัสนักศึกษา</th><th class="px-3 py-2 font-semibold">ชื่อ-สกุล</th>'
+          + (exempt ? '<th class="px-3 py-2 font-semibold text-right">ผลการเรียน</th>' : '') + '</tr></thead><tbody>'
           + waiting.map(function (x) {
+            var sid = s(x.student_id);
             return '<tr class="border-t border-gray-50"><td class="px-3 py-2 font-mono text-primary">'
-              + esc(s(x.student_id)) + '</td><td class="px-3 py-2">'
-              + esc(typeof studentDisplayName === 'function' ? studentDisplayName(x) : s(x.name)) + '</td></tr>';
+              + esc(sid) + '</td><td class="px-3 py-2">'
+              + esc(typeof studentDisplayName === 'function' ? studentDisplayName(x) : s(x.name)) + '</td>'
+              + (exempt ? '<td class="px-3 py-2 text-right">' + gateBtnHTML(sid, !!exempt[sid]) + '</td>' : '')
+              + '</tr>';
           }).join('')
           + '</tbody></table></div>'
           : '<p class="text-sm text-emerald-600">ประเมินครบทุกคนแล้ว</p>')
-        + '<p class="text-xs text-gray-400 mt-3">รายชื่อนี้บอกได้แค่ว่าใครประเมินแล้ว ไม่สามารถดูได้ว่าแต่ละคนให้คะแนนเท่าไร</p>',
+        + '<p class="text-xs text-gray-400 mt-3">รายชื่อนี้บอกได้แค่ว่าใครประเมินแล้ว ไม่สามารถดูได้ว่าแต่ละคนให้คะแนนเท่าไร</p>'
+        + (exempt === null
+          ? '<p class="text-xs text-gray-400 mt-1">ยังไม่ได้ติดตั้งประตูกั้นผลการเรียน จึงยังไม่มีปุ่มปลดล็อกรายคน</p>'
+          : '<p class="text-xs text-gray-400 mt-1">ปลดล็อกให้ดูผลการเรียนได้ทุกวิชา แม้ยังไม่ได้ทำแบบประเมิน ใช้เฉพาะกรณีจำเป็น</p>'),
         null, 'max-w-2xl');
       if (window.lucide) lucide.createIcons();
     } catch (e) {

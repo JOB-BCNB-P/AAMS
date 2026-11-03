@@ -34,6 +34,20 @@ t('ไม่ถูกนับเป็นการสอบ จึงไม่�
   assert.ok(!'วิพากษ์'.includes('สอบ'), 'ชื่อประเภทไปชนเงื่อนไขการสอบ');
 });
 
+t('บังคับเลือกรายวิชาเฉพาะสอบกลางภาค/ปลายภาค', () => {
+  const F = new Function('norm', grab('function schedNeedsSubject(') + ' return schedNeedsSubject;')(
+    v => String(v == null ? '' : v).trim());
+  ['สอบกลางภาค', 'สอบซ่อมกลางภาค', 'สอบปลายภาค', 'สอบซ่อมปลายภาค'].forEach(t2 =>
+    assert.strictEqual(F(t2), true, t2 + ' ต้องบังคับเลือกรายวิชา'));
+  ['วิพากษ์', 'กิจกรรม', 'วันหยุด', 'สอบย่อย', 'สอบ OSCE', 'สอบรวบยอด', 'สอบซ่อมรวบยอด', 'สอบภาษาอังกฤษสบช.', ''].forEach(t2 =>
+    assert.strictEqual(F(t2), false, t2 + ' ไม่ควรบังคับเลือกรายวิชา'));
+});
+t('ด่านตรวจตอนบันทึกใช้เงื่อนไขเดียวกัน ทั้งฟอร์มเพิ่มและฟอร์มแก้ไข', () => {
+  const n = (APP.match(/schedNeedsSubject\(fd\.get\('schedule_type'\)\)/g) || []).length;
+  assert.strictEqual(n, 2, 'ยังมีฟอร์มที่บังคับเลือกรายวิชาทุกประเภทอยู่');
+  assert.ok(!APP.includes("showToast('กรุณาระบุรายวิชา/กิจกรรม'"), 'ยังเหลือข้อความบังคับแบบเดิม');
+});
+
 console.log('\n[2] กติกาฝั่งส่งอีเมล (Edge Function) ที่โค้ดหน้าเว็บต้องเคารพ');
 t('รายชื่อเจาะจงจะ "แทนที่" บทบาทได้ ก็ต่อเมื่อช่องบทบาทว่าง', () => {
   assert.ok(/const onlyNamed = nameSet\.size > 0 && roles\.length === 0/.test(FN),
