@@ -3116,6 +3116,7 @@ function scheduleTypeBadge(type) {
   if (t.includes('สอบ')) return `<span class="px-2 py-1 rounded-full text-xs bg-red-100 text-red-700">${t}</span>`;
   if (t === 'วันหยุด') return `<span class="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">${t}</span>`;
   if (t === 'กิจกรรม') return `<span class="px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-700">${t}</span>`;
+  if (t.includes('วิพากษ์')) return `<span class="px-2 py-1 rounded-full text-xs bg-amber-100 text-amber-700">${t}</span>`;
   return `<span class="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-700">${t}</span>`;
 }
 
@@ -3155,7 +3156,7 @@ function schedulePage() {
 
 function scheduleTypeInput(name, selectedValue) {
   const existing = [...new Set(getDataByType('schedule').map(s => (s.schedule_type || '').trim()).filter(Boolean))];
-  const defaults = ['สอบกลางภาค', 'สอบซ่อมกลางภาค', 'สอบปลายภาค', 'สอบซ่อมปลายภาค', 'สอบย่อย', 'สอบภาษาอังกฤษสบช.', 'สอบ OSCE', 'สอบรวบยอด', 'สอบซ่อมรวบยอด', 'กิจกรรม', 'วันหยุด'];
+  const defaults = ['สอบกลางภาค', 'สอบซ่อมกลางภาค', 'สอบปลายภาค', 'สอบซ่อมปลายภาค', 'สอบย่อย', 'สอบภาษาอังกฤษสบช.', 'สอบ OSCE', 'สอบรวบยอด', 'สอบซ่อมรวบยอด', 'วิพากษ์', 'กิจกรรม', 'วันหยุด'];
   const allTypes = [...new Set([...defaults, ...existing])];
   const listId = 'scheduleTypeList_' + Date.now();
   return `<input name="${name}" list="${listId}" value="${selectedValue || ''}" oninput="if(window.onScheduleTypeChange)onScheduleTypeChange(this)" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น สอบกลางภาค, กิจกรรม">
@@ -9147,12 +9148,142 @@ function annRolesFieldHTML(selected) {
   const sel = annParseRoles(selected);
   return `<div><label class="block text-xs text-gray-600 mb-1">แจ้งให้บทบาท <span class="text-gray-400">(ไม่เลือกเลย = ทุกบทบาท)</span></label>
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-2 bg-gray-50 rounded-xl">
-      ${ANN_ROLES.map(r => `<label class="flex items-center gap-1.5 text-sm text-gray-700"><input type="checkbox" class="ann-role-cb accent-primary" value="${r}" ${sel.indexOf(r) !== -1 ? 'checked' : ''}> ${ANN_ROLE_LABEL[r]}</label>`).join('')}
+      ${ANN_ROLES.map(r => `<label class="flex items-center gap-1.5 text-sm text-gray-700"><input type="checkbox" class="ann-role-cb accent-primary" value="${r}" ${sel.indexOf(r) !== -1 ? 'checked' : ''} onchange="if(window.annPeopleRender)annPeopleRender()"> ${ANN_ROLE_LABEL[r]}</label>`).join('')}
     </div></div>`;
 }
 function annCollectRoles() {
   const arr = Array.prototype.map.call(document.querySelectorAll('.ann-role-cb:checked'), el => el.value);
   return (arr.length === 0 || arr.length === ANN_ROLES.length) ? '' : arr.join(',');
+}
+
+/* ───────── เลือกผู้รับรายบุคคล (ภายในบทบาทที่เลือก) ─────────
+   กลไกเบื้องหลัง : Edge Function "announce-send" ส่งถึง "รายชื่อเจาะจง" อย่างเดียว
+   ก็ต่อเมื่อช่องบทบาทว่าง (onlyNamed) ถ้าส่งทั้งบทบาทและรายชื่อไปด้วยกัน
+   ระบบจะตีความว่า "ทุกคนในบทบาท บวกกับคนในรายชื่อ" ซึ่งตรงข้ามกับที่ผู้ใช้ต้องการ
+   ตอนบันทึกจึงล้างช่องบทบาททิ้งเมื่อมีการเลือกรายบุคคล
+   บทบาทด้านบนทำหน้าที่เป็นเพียง "ตัวกรองรายชื่อ" ให้หาคนง่ายขึ้น */
+
+// ผู้ใช้ที่ส่งอีเมลถึงได้จริง — ต้องมีชื่อ มีอีเมล และยังเปิดใช้งานอยู่
+function annPeopleAll() {
+  const rows = getDataByType('user') || [];
+  const out = [];
+  rows.forEach(u => {
+    const name = norm(u.name), email = norm(u.email);
+    if (!name || !email) return;
+    const act = String(u.is_active == null ? '' : u.is_active).trim().toLowerCase();
+    if (act === 'false' || act === '0' || act === 'no' || act === 'ไม่ใช้งาน') return;
+    out.push({
+      name, email,
+      roles: annParseRoles((u.role || '') + ',' + (u.extra_roles || '')),
+      key: annNameKey(name)
+    });
+  });
+  out.sort((a, b) => a.name.localeCompare(b.name, 'th'));
+  return out;
+}
+// ชื่อซ้ำกันในระบบ = ส่งถึงทุกคนที่ชื่อตรงกัน เพราะฝั่งส่งอีเมลเทียบด้วยชื่อ ไม่ใช่อีเมล
+function annDupKeys(people) {
+  const c = {}, dup = {};
+  people.forEach(p => { c[p.key] = (c[p.key] || 0) + 1; });
+  Object.keys(c).forEach(k => { if (c[k] > 1) dup[k] = c[k]; });
+  return dup;
+}
+function annPeopleSel() {
+  if (!window._annPeopleSel) window._annPeopleSel = [];
+  return window._annPeopleSel;
+}
+function annPeopleFieldHTML(selected) {
+  const sel = annParseNames(selected);
+  window._annPeopleSel = sel.slice();
+  /* ประกาศเดิมบางรายการ (เช่น แจ้งผู้คุมสอบ) ตั้งใจให้ "ทั้งบทบาท + รายชื่อเพิ่ม"
+     จึงล้างบทบาททิ้งเฉพาะเมื่อผู้ใช้ลงมือเลือกรายชื่อเองในรอบนี้ */
+  window._annNarrow = false;
+  return `<div class="rounded-xl border border-gray-200 p-2.5">
+    <label class="flex items-center gap-2 text-sm text-gray-700">
+      <input type="checkbox" id="annPeopleOn" class="accent-primary" ${sel.length ? 'checked' : ''} onchange="annPeopleToggle()">
+      <span>แจ้งเฉพาะบางคน <span class="text-gray-400">(ติ๊กบทบาทด้านบนเพื่อกรองรายชื่อ แล้วเลือกเป็นรายคน)</span></span>
+    </label>
+    <div id="annPeoplePanel" class="${sel.length ? '' : 'hidden'} mt-2">
+      <input id="annPeopleQ" type="search" oninput="annPeopleRender()" placeholder="พิมพ์ค้นหาชื่อ-สกุล"
+        class="w-full border rounded-xl px-3 py-2 text-sm" autocomplete="off">
+      <div id="annPeopleList" class="mt-2 max-h-56 overflow-y-auto rounded-xl border border-gray-100 divide-y divide-gray-50"></div>
+      <p id="annPeopleNote" class="text-xs text-gray-500 mt-1.5"></p>
+    </div>
+    <input type="hidden" name="target_names" id="annTargetNames" value="${htmlEsc(sel.join(', '))}">
+  </div>`;
+}
+window.annPeopleToggle = function () {
+  window._annNarrow = true;
+  const on = !!(document.getElementById('annPeopleOn') || {}).checked;
+  const panel = document.getElementById('annPeoplePanel');
+  if (panel) panel.classList.toggle('hidden', !on);
+  if (!on) window._annPeopleSel = [];
+  annPeopleRender();
+};
+window.annPeopleRender = function () {
+  const list = document.getElementById('annPeopleList');
+  const on = !!(document.getElementById('annPeopleOn') || {}).checked;
+  const picked = annPeopleSel();
+  // ซิงก์ค่าที่จะถูกบันทึก + ตัวนับผู้รับอีเมล ให้ตรงกับที่เลือกเสมอ
+  const hid = document.getElementById('annTargetNames');
+  const val = on ? picked.join(', ') : '';
+  if (hid) hid.value = val;
+  window._annEditNames = val;
+  if (typeof annChannelChanged === 'function') annChannelChanged();
+  if (!list || !on) return;
+
+  const people = annPeopleAll();
+  const dup = annDupKeys(people);
+  const wantRoles = annParseRoles(annCollectRoles());    // ว่าง = ทุกบทบาท
+  const q = norm((document.getElementById('annPeopleQ') || {}).value).toLowerCase();
+  const pickedKeys = picked.map(annNameKey);
+  const shown = people.filter(p => {
+    if (wantRoles.length && !p.roles.some(r => wantRoles.indexOf(r) !== -1)) return false;
+    if (q && p.name.toLowerCase().indexOf(q) === -1) return false;
+    return true;
+  }).slice(0, 300);
+
+  list.innerHTML = shown.length ? shown.map(p => {
+    const checked = pickedKeys.indexOf(p.key) !== -1;
+    const roleTxt = p.roles.map(r => ANN_ROLE_LABEL[r] || r).join('/');
+    return `<label class="flex items-center gap-2 px-2.5 py-1.5 text-sm hover:bg-gray-50 cursor-pointer">
+      <input type="checkbox" class="accent-primary" ${checked ? 'checked' : ''}
+        onchange="annPeoplePick('${htmlEsc(p.name).replace(/'/g, '&#39;')}', this.checked)">
+      <span class="flex-1 min-w-0">
+        <span class="text-gray-800">${htmlEsc(p.name)}</span>
+        ${dup[p.key] ? '<span class="ml-1 text-xs text-amber-600" title="มีผู้ใช้ชื่อซ้ำกัน ระบบส่งอีเมลโดยเทียบจากชื่อ จึงจะส่งถึงทุกคนที่ชื่อตรงกัน">ชื่อซ้ำ ' + dup[p.key] + ' บัญชี</span>' : ''}
+        <span class="block text-xs text-gray-400 truncate">${htmlEsc(p.email)}${roleTxt ? ' · ' + htmlEsc(roleTxt) : ''}</span>
+      </span></label>`;
+  }).join('') : '<p class="px-2.5 py-4 text-center text-sm text-gray-400">ไม่พบรายชื่อตามที่ค้นหา</p>';
+
+  const note = document.getElementById('annPeopleNote');
+  if (note) {
+    const dupPicked = picked.filter(n => dup[annNameKey(n)]).length;
+    note.innerHTML = !picked.length
+      ? '<span class="text-amber-600">ยังไม่ได้เลือกใคร — ถ้าไม่เลือก ระบบจะแจ้งทุกคนตามบทบาทที่ติ๊กไว้ด้านบน</span>'
+      : 'เลือกแล้ว <b class="text-gray-800">' + picked.length + '</b> คน · ประกาศนี้จะส่งถึงเฉพาะคนที่เลือก (บทบาทด้านบนใช้กรองรายชื่อเท่านั้น)'
+        + (dupPicked ? ' <span class="text-amber-600">· มีชื่อซ้ำ ' + dupPicked + ' รายการ จะส่งถึงทุกบัญชีที่ชื่อตรงกัน</span>' : '')
+        + (shown.length >= 300 ? ' <span class="text-gray-400">· แสดง 300 รายชื่อแรก พิมพ์ค้นหาเพื่อจำกัดให้แคบลง</span>' : '');
+  }
+};
+window.annPeoplePick = function (name, on) {
+  window._annNarrow = true;
+  const k = annNameKey(name);
+  let sel = annPeopleSel().filter(n => annNameKey(n) !== k);
+  if (on) sel.push(name);
+  window._annPeopleSel = sel;
+  annPeopleRender();
+};
+// ถ้าเลือกรายบุคคลไว้ ต้องล้างบทบาททิ้ง ไม่งั้นกลายเป็นส่งทั้งบทบาทบวกคนที่เลือก
+function annRolesForSave() {
+  const names = annCollectNames();
+  if (!names) return annCollectRoles();
+  return window._annNarrow ? '' : annCollectRoles();
+}
+function annCollectNames() {
+  const on = !!(document.getElementById('annPeopleOn') || {}).checked;
+  if (!on) return '';
+  return annPeopleSel().join(', ');
 }
 // ช่องเลือกชั้นปีผู้รับ (มีผลกับนักศึกษาเท่านั้น)
 function annYearFieldHTML(selected) {
@@ -9218,7 +9349,7 @@ function servicesPage() {
     ${announcements.length ? announcements.map(a => `<div class="p-3 bg-surface rounded-xl mb-2 flex justify-between items-start">
       <div class="min-w-0">
         <p class="font-medium text-sm">${a.announcement_title || ''}</p>
-        <p class="text-xs text-gray-500">${a.announcement_date || ''} · ${a.event_type || 'ทั่วไป'}${isFull ? ' · <span class="' + (annParseRoles(a.roles).length ? 'text-teal-600' : 'text-gray-400') + '">' + (annParseRoles(a.roles).length ? annParseRoles(a.roles).map(r => ANN_ROLE_LABEL[r] || r).join('/') : 'ทุกบทบาท') + '</span>' + (annYearsOf(a).length ? ' · <span class="text-indigo-600">ชั้นปี ' + annYearsOf(a).join(',') + '</span>' : '') + (annVisibleTo(a, APP.currentRole) ? '' : ' · <span class="text-amber-600" title="ประกาศนี้ไม่ได้ส่งถึงบทบาทที่คุณใช้อยู่ แต่แสดงให้เพื่อจัดการได้">ไม่ได้ส่งถึงคุณ</span>') : ''}</p>
+        <p class="text-xs text-gray-500">${a.announcement_date || ''} · ${a.event_type || 'ทั่วไป'}${isFull ? ' · <span class="' + (annParseRoles(a.roles).length ? 'text-teal-600' : (annParseNames(a.target_names).length ? 'text-teal-600' : 'text-gray-400')) + '">' + (annParseRoles(a.roles).length ? annParseRoles(a.roles).map(r => ANN_ROLE_LABEL[r] || r).join('/') : (annParseNames(a.target_names).length ? 'เฉพาะรายชื่อ ' + annParseNames(a.target_names).length + ' คน' : 'ทุกบทบาท')) + '</span>' + (annYearsOf(a).length ? ' · <span class="text-indigo-600">ชั้นปี ' + annYearsOf(a).join(',') + '</span>' : '') + (annVisibleTo(a, APP.currentRole) ? '' : ' · <span class="text-amber-600" title="ประกาศนี้ไม่ได้ส่งถึงบทบาทที่คุณใช้อยู่ แต่แสดงให้เพื่อจัดการได้">ไม่ได้ส่งถึงคุณ</span>') : ''}</p>
         <p class="text-xs text-gray-600 mt-1">${(a.announcement_content || '').substring(0, 120)}</p>
       </div>
       ${isFull ? `<div class="flex gap-1 ml-2 flex-shrink-0"><button onclick="showEditAnnouncementModal('${a.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${a.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>` : ''}
@@ -12867,6 +12998,7 @@ function calEventDot(e) {
   if (st.includes('สอบ')) return 'bg-red-500';
   if (st.includes('วันหยุด')) return 'bg-green-500';
   if (st === 'กิจกรรม') return 'bg-purple-500';
+  if (st.includes('วิพากษ์')) return 'bg-amber-500';
   return 'bg-blue-500';
 }
 function calEventTitle(e) {
@@ -13558,6 +13690,7 @@ function showAddAnnouncementModal() {
         <div><label class="block text-xs text-gray-600 mb-1">ประเภท</label><select name="event_type" class="w-full border rounded-xl px-3 py-2 text-sm"><option>ทั่วไป</option><option>สอบ</option><option>วันหยุด</option><option>กิจกรรม</option></select></div>
       </div>
       ${annRolesFieldHTML('')}
+      ${annPeopleFieldHTML('')}
       ${annYearFieldHTML('')}
       ${annChannelFieldHTML(null)}
       <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึก</button>
@@ -13570,7 +13703,8 @@ function showAddAnnouncementModal() {
     await withLoading(e.target, async () => {
       const fd = new FormData(e.target);
       const obj = { type: 'announcement', created_at: new Date().toISOString() }; fd.forEach((v, k) => obj[k] = v);
-      obj.roles = annCollectRoles();
+      obj.target_names = annCollectNames();
+      obj.roles = annRolesForSave();
       obj.yr = annCollectYears();
       obj.line_notify = '';   // ไม่ให้ระบบส่ง LINE เอง — ส่งต่อด้านล่างตามช่องทางที่เลือก
       const r = await GSheetDB.create(obj, { noRefresh: true });
@@ -13642,6 +13776,7 @@ function annLineGroupsFor(roles, years) {
 }
 async function loadAnnChannels(a) {
   window._annEditNames = (a && norm(a.target_names)) || '';
+  if (window.annPeopleRender) annPeopleRender();
   if (!window._annSendOpts) window._annSendOpts = await annSendCall({ mode: 'options' });
   const o = window._annSendOpts || {};
   const m = document.getElementById('annChMail'), l = document.getElementById('annChLine');
@@ -13709,6 +13844,7 @@ function showEditAnnouncementModal(id) {
         <div><label class="block text-xs text-gray-600 mb-1">ประเภท</label><select name="event_type" class="w-full border rounded-xl px-3 py-2 text-sm"><option ${a.event_type === 'ทั่วไป' ? 'selected' : ''}>ทั่วไป</option><option ${a.event_type === 'สอบ' ? 'selected' : ''}>สอบ</option><option ${a.event_type === 'วันหยุด' ? 'selected' : ''}>วันหยุด</option><option ${a.event_type === 'กิจกรรม' ? 'selected' : ''}>กิจกรรม</option></select></div>
       </div>
       ${annRolesFieldHTML(a.roles || '')}
+      ${annPeopleFieldHTML(a.target_names || '')}
       ${annYearFieldHTML(annYearsOf(a).join(','))}
       ${annChannelFieldHTML(a)}
       <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึกการแก้ไข</button>
@@ -13718,7 +13854,8 @@ function showEditAnnouncementModal(id) {
   document.getElementById('editAnnForm').onsubmit = async (e) => {
     e.preventDefault();
     const ch = annChannelOpts();
-    a.roles = annCollectRoles(); a.yr = annCollectYears();
+    a.target_names = annCollectNames();
+    a.roles = annRolesForSave(); a.yr = annCollectYears();
     // กันไม่ให้การบันทึกแก้ไขไปสั่งส่ง LINE แบบเดิม (ทุกกลุ่ม + broadcast) เอง
     if (!norm(a.line_sent)) a.line_notify = '';
     await editRecord(id, 'editAnnForm');
