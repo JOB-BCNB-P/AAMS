@@ -85,6 +85,45 @@ t('ยังไม่เลือกใครในแท็บรายบุ�
     'เพิ่มแถวได้ทั้งที่ยังไม่เลือกคน กิจกรรมจะกลายเป็นของทั้งชั้น');
   assert.ok(g.includes('เลือกเลขที่นักศึกษาในขั้นที่ 3 ก่อน'), 'ไม่ได้บอกผู้ใช้ว่าต้องเลือกคนก่อน');
 });
+t('แท็บรายบุคคลเริ่มจากฟอร์มเปล่า ไม่ดึงกิจกรรมเดิมของทั้งชั้นมาแสดง', () => {
+  const g = grab('window.wlPTab = function (v)');
+  assert.ok(/st\.draft = \(st\.ptab === 'person'\) \? emptyDraft\(\) : null/.test(g),
+    'สลับเข้าแท็บรายบุคคลแล้วยังโหลดแผนทั้งชั้นขึ้นมา');
+  assert.ok(/st\.addMode = \(st\.ptab === 'person'\)/.test(g),
+    'ไม่ได้ตั้งเป็นบันทึกแบบต่อท้าย ของเดิมในแผนอาจถูกเขียนทับ');
+});
+t('หน้ากรอกเป็นฟอร์มเปล่าเสมอ ทั้งแบบชั้นปีและรายบุคคล', () => {
+  /* คนที่มาช่วยกรอกต้องเห็นฟอร์มเปล่า ไม่ใช่รายการเดิมหลายสิบแถว
+     ของที่บันทึกแล้วไปดูและแก้ที่หน้าสรุปผลรวม */
+  const g = grab('function planTab()');
+  assert.ok(/st\.mode !== 'group'[\s\S]{0,120}if \(!st\.draft\) st\.draft = emptyDraft\(\)/.test(g),
+    'ไม่มีตัวกันตอนกลับเข้าหน้าใหม่ ฟอร์มอาจมีรายการเดิมโผล่มา');
+  assert.ok(/st\.mode !== 'group'[\s\S]{0,160}st\.addMode = true/.test(g),
+    'ฟอร์มเปล่าแต่ไม่ได้บันทึกแบบต่อท้าย จะเขียนทับแผนทั้งพันธกิจ');
+});
+t('โหมดกรณีพิเศษไม่ถูกบังคับให้เป็นฟอร์มเปล่า', () => {
+  const g = grab('function planTab()');
+  assert.ok(g.indexOf("st.mode !== 'group'") > -1, 'ตัวกันไม่ได้ยกเว้นโหมดกรณีพิเศษ');
+});
+t('มีแผงอ่านอย่างเดียวบอกว่าในแผนมีอะไรอยู่แล้ว', () => {
+  assert.ok(WL.includes('function existingPanel()'), 'ไม่มีแผงบอกรายการที่อยู่ในแผนแล้ว');
+  const g = grab('function existingPanel()');
+  assert.ok(/st\.fold \|\| \{\}\)\.existing === false/.test(g), 'แผงไม่ได้ย่อไว้ก่อน หน้ากรอกจะรกตา');
+  assert.ok(g.includes('สรุปผลรวม'), 'ไม่ได้บอกว่าแก้ไขหรือลบได้ที่ไหน');
+  assert.ok(!/onclick="wl(Row|Set|Save|Del)/.test(g), 'แผงอ่านอย่างเดียวต้องไม่มีปุ่มแก้ไขข้อมูล');
+  assert.ok(WL.includes('window.wlToggleExisting'), 'ไม่มีปุ่มกางแผง');
+});
+t('บันทึกแบบต่อท้ายอ่านแผนสดจากฐานข้อมูลก่อนเสมอ', () => {
+  const g = grab('window.wlSavePlan = async function ()');
+  assert.ok(g.includes("refreshTab('workload_plan')"), 'ไม่ได้ดึงข้อมูลล่าสุดก่อนบันทึก');
+  assert.ok(/st\.addMode \? rows\(plan, m\)\.concat\(add\) : add/.test(g),
+    'โหมดต่อท้ายไม่ได้รวมของเดิมในแผน');
+});
+t('แถบ "บันทึกกลุ่มที่แล้ว" ไม่โผล่ในแท็บรายบุคคล', () => {
+  const g = grab('function addModeBar()');
+  assert.ok(/ptab === 'person' && st\.mode !== 'group'\) return ''/.test(g),
+    'ข้อความของโหมดกลุ่มยังโผล่ในแท็บรายบุคคล');
+});
 t('เตือนว่าการแก้รายการเดิมมีผลทั้งชั้น', () => {
   const g = grab('function personHowTo()');
   assert.ok(g.includes('มีผลกับทั้งชั้น'), 'ไม่ได้เตือนว่าแก้รายการเดิมกระทบทั้งชั้น');

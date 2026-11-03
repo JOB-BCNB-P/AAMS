@@ -203,15 +203,18 @@ t('รอบเพิ่มกลุ่มใหม่ต้องต่อท�
   const read = seg.indexOf('rows(plan, m).concat(add)');
   assert.ok(refresh > -1 && refresh < read, 'อ่านของเดิมจากข้อมูลค้างในเครื่อง ไม่ใช่ของสดจากฐานข้อมูล');
 });
-t('ยังกลับไปแก้ไขของที่บันทึกแล้วได้', () => {
+t('ยังกลับไปแก้ไขของที่บันทึกแล้วได้ โดยส่งไปหน้าสรุปผลรวม', () => {
+  /* หน้ากรอกเป็นฟอร์มเปล่าเสมอแล้ว การเปิดโหมดเขียนทับ (addMode = false)
+     บนฟอร์มเปล่าจะล้างพันธกิจนั้นทิ้งทั้งหมด จึงต้องพาไปแก้ที่หน้าสรุปผลรวมแทน */
   const seg = grab('window.wlShowAll = function ()');
-  assert.ok(seg.includes('st.draft = null') && seg.includes('st.addMode = false'),
-    'ออกจากรอบเพิ่มกลุ่มไม่ได้');
+  assert.ok(seg.includes("st.tab = 'summary'"), 'ไม่ได้พาไปหน้าสรุปผลรวม');
+  assert.ok(seg.includes('st.addMode = true'), 'ยังเปิดโหมดเขียนทับ ฟอร์มเปล่าจะลบของเดิมทิ้ง');
+  assert.ok(!/st\.addMode = false/.test(seg), 'ยังมีการปิดโหมดต่อท้าย เสี่ยงเขียนทับแผน');
   assert.ok(grab('function addModeBar()').includes('wlShowAll()'), 'ไม่มีทางกลับไปแก้ของเดิม');
 });
 t('บอกผู้ใช้ว่าของเดิมยังอยู่ ไม่ได้หายไป', () => {
   const seg = grab('function addModeBar()');
-  assert.ok(seg.includes('ไม่แสดงในฟอร์มรอบนี้ แต่ไม่ถูกลบ'), 'ผู้ใช้จะเข้าใจว่าข้อมูลหาย');
+  assert.ok(/ไม่ถูกลบ|ล้างฟอร์มให้เริ่มรอบใหม่/.test(seg), 'ผู้ใช้จะเข้าใจว่าข้อมูลหาย');
   assert.ok(WL.includes('function savedCount()'), 'ไม่ได้นับรายการที่อยู่ในแผนแล้ว');
 });
 t('เปลี่ยนปี/ชั้นปี/ภาค/โหมด ต้องออกจากรอบเพิ่มกลุ่ม', () => {

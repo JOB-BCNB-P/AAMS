@@ -1647,6 +1647,11 @@
     st.mode = 'cohort';                     // ออกจากการ์ดกรณีพิเศษเสมอเมื่อสลับแท็บ
     if (st.ptab === 'person') st.pscope = 'pick';
     else if (st.pscope === 'pick') { st.pscope = 'all'; st.psel = {}; }
+    /* แท็บรายบุคคลเป็นการ "เพิ่มกิจกรรมให้คนที่เลือก" จึงเริ่มจากฟอร์มเปล่าเสมอ
+       ถ้าโหลดกิจกรรมเดิมของทั้งชั้นขึ้นมา ผู้ใช้จะเห็นรายการของคนอื่นเต็มไปหมด
+       และเสี่ยงแก้ของคนอื่นโดยไม่ตั้งใจ · บันทึกแบบต่อท้าย ของเดิมในแผนจึงอยู่ครบ */
+    st.draft = (st.ptab === 'person') ? emptyDraft() : null;
+    st.addMode = (st.ptab === 'person');
     renderCurrentPage();
   };
   function ptabBar() {
@@ -1739,23 +1744,28 @@
     shownMissions().forEach(function (m) { c += rows(plan, m).length; });
     return c;
   }
-  // กลับไปแก้ไขของที่บันทึกไปแล้ว — โหลดทั้งแผนขึ้นมาในฟอร์มตามปกติ
+  /* ของที่บันทึกไปแล้ว แก้ที่หน้าสรุปผลรวม ไม่ใช่ที่หน้ากรอก
+     เดิมปุ่มนี้โหลดทั้งแผนขึ้นมาในฟอร์มแล้วเปลี่ยนเป็นบันทึกทับทั้งชุด
+     ซึ่งถ้ามีเจ้าหน้าที่อีกคนกรอกอยู่พร้อมกัน งานของอีกฝ่ายจะหายไปเงียบ ๆ */
   window.wlShowAll = function () {
     var st = state();
     st.draft = null;
-    st.addMode = false;
+    st.addMode = true;
+    st.tab = 'summary';
     renderCurrentPage();
+    showToast('ไปที่หน้าสรุปผลรวม · กดปุ่มดินสอของชั้นปีและภาคที่ต้องการเพื่อแก้ไขรายการเดิม');
   };
   function addModeBar() {
     var st = state();
     if (!st.addMode) return '';
+    if (st.ptab === 'person' && st.mode !== 'group') return '';   // แท็บรายบุคคลมีคำอธิบายของตัวเองอยู่แล้ว
     var c = savedCount();
     return '<div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 mb-3 text-sm text-emerald-800">'
       + '<i data-lucide="check-circle-2" class="w-4 h-4 inline mr-1"></i>'
-      + 'บันทึกกลุ่มที่แล้วเรียบร้อย — ล้างฟอร์มให้เริ่มกลุ่มใหม่แล้ว'
-      + (c ? ' · ในแผนมีอยู่แล้ว <b>' + c + ' รายการ</b> (ไม่แสดงในฟอร์มรอบนี้ แต่ไม่ถูกลบ)' : '')
+      + 'บันทึกเรียบร้อย — ล้างฟอร์มให้เริ่มรอบใหม่แล้ว'
+      + (c ? ' · ในแผนมีอยู่แล้ว <b>' + c + ' รายการ</b> (ไม่แสดงในฟอร์มนี้ แต่ไม่ถูกลบ)' : '')
       + ' <button type="button" onclick="wlShowAll()" class="ml-1 px-2 py-0.5 rounded-lg bg-white border border-emerald-300 hover:bg-emerald-100">'
-      + 'แสดง/แก้ไขรายการทั้งหมด</button></div>';
+      + 'ไปแก้ไขที่หน้าสรุปผลรวม</button></div>';
   }
 
   function draft() {
@@ -2994,6 +3004,52 @@
   /* คำอธิบายของแท็บรายบุคคล
      ช่องกรอกแสดงกิจกรรมทั้งหมดของแผนชั้นปี ไม่ได้กรองเฉพาะคนที่เลือก
      จึงต้องบอกให้ชัดว่าแถวไหนคือของใหม่ที่จะเป็นของคนที่เลือก */
+  /* รายการที่มีอยู่แล้วในแผน — อ่านอย่างเดียว ย่อไว้ กดเปิดดูได้
+     มีไว้กันกรอกซ้ำ เพราะหน้ากรอกเป็นฟอร์มเปล่า ถ้าไม่เห็นของเดิมจะเผลอลงซ้ำ
+     รวมแถวที่ชื่อกิจกรรมเดียวกันเข้าด้วยกัน แล้วนับจำนวนคนแบบไม่ซ้ำ */
+  function existingPanel() {
+    var st = state(), plan = planOf(st.year, st.level, st.sem);
+    if (!plan) return '';
+    var groups = [], index = {}, total = 0;
+    shownMissions().forEach(function (m) {
+      rows(plan, m).forEach(function (r) {
+        total++;
+        var name = norm(r.subject_name) || norm(r.activity) || '(ไม่มีชื่อ)';
+        var key = m.key + '|' + name;
+        if (!index[key]) { index[key] = { m: m, name: name, n: 0, who: {}, all: false }; groups.push(index[key]); }
+        var g = index[key];
+        g.n++;
+        var who = partOf(r);
+        if (!who.length) g.all = true;
+        else who.forEach(function (sid) { g.who[norm(sid)] = 1; });
+      });
+    });
+    if (!total) return '';
+    var open = (st.fold || {}).existing === false;   // ย่อไว้ก่อนเสมอ กดเองถึงจะเปิด
+    var body = groups.map(function (g) {
+      var cnt = g.all ? 'ทั้งชั้น' : (Object.keys(g.who).length + ' คน');
+      return '<li class="flex flex-wrap items-baseline gap-x-2 py-0.5">'
+        + '<span class="text-gray-700">' + esc(g.name) + '</span>'
+        + '<span class="text-[11px] ' + g.m.text + '">' + esc(g.m.short) + '</span>'
+        + '<span class="text-[11px] text-gray-400">· ' + cnt + (g.n > 1 ? ' · ' + g.n + ' แถว' : '') + '</span>'
+        + '</li>';
+    }).join('');
+    return '<div class="rounded-xl border border-gray-200 bg-surface/60 p-3">'
+      + '<button type="button" onclick="wlToggleExisting()" class="w-full flex items-center justify-between text-left">'
+      + '<span class="text-xs font-semibold text-gray-600"><i data-lucide="list-checks" class="w-3.5 h-3.5 inline mr-1"></i>'
+      + 'มีอยู่แล้วในแผน ' + groups.length + ' กิจกรรม (' + total + ' แถว)</span>'
+      + '<span class="text-[11px] text-primary">' + (open ? 'ย่อ' : 'กดดู') + '</span></button>'
+      + (open ? '<ul class="mt-2 text-xs space-y-0 max-h-48 overflow-y-auto">' + body + '</ul>'
+          + '<p class="text-[11px] text-gray-400 mt-2">อ่านอย่างเดียว · แก้ไขหรือลบได้ที่หน้า <b>สรุปผลรวม</b> '
+          + 'ปุ่มดินสอของชั้นปีและภาคนั้น</p>' : '')
+      + '</div>';
+  }
+  window.wlToggleExisting = function () {
+    var st = state();
+    if (!st.fold) st.fold = {};
+    st.fold.existing = (st.fold.existing === false);
+    renderCurrentPage();
+  };
   function personHowTo() {
     var n0 = scopeStudents().length;
     return '<div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs space-y-1">'
@@ -3053,6 +3109,16 @@
   function planTab() {
     var st = state();
     if (!canEdit()) return cohortPicker() + readonlyPlan();
+    /* หน้ากรอกภาระงานเป็น "ฟอร์มเปล่าสำหรับเพิ่มของใหม่" เสมอ ทั้งสองแท็บ
+       ของที่บันทึกไปแล้วดูและแก้ที่หน้าสรุปผลรวม (ปุ่มดินสอของชั้นปี/ภาค)
+       เหตุผล
+         - บันทึกเป็นแบบต่อท้ายทั้งหมด เจ้าหน้าที่หลายคนกรอกพร้อมกันได้ ไม่เขียนทับงานกัน
+         - ไม่ต้องโหลดรายการเดิมหลายสิบแถวมาแสดง ทั้งที่ตั้งใจจะเพิ่มแค่รายการเดียว
+       โหมดกรณีพิเศษ (แทนภาระงานทั้งชุดของคนเดียว) ยังทำงานแบบเดิม เพราะต้องเห็นของเดิมเพื่อแทนที่ */
+    if (st.mode !== 'group') {
+      if (!st.draft) st.draft = emptyDraft();
+      st.addMode = true;
+    }
     var group = st.mode === 'group';
     var sel = groupSel();
     var nStu = cohortStudents(st.level).length;
@@ -3085,7 +3151,8 @@
           'เลือกแล้ว: <b>' + esc(mLabel) + '</b> · ช่องกรอกจะขึ้นให้ด้านล่างทันที',
           missionPicker().replace(/<p class="text-xs font-semibold text-gray-600 mb-2">[\s\S]*?<\/p>/, '')
             + missionScopeNote() + addModeBar()
-            + (group ? '' : person ? personHowTo() : howToBox()) + foldBar() + missionEditors(group),
+            + (group ? '' : person ? personHowTo() : howToBox())
+            + (group ? '' : existingPanel()) + foldBar() + missionEditors(group),
           st.mission ? 'done' : 'active')
       + wlStep(5, 'สรุปที่เลือกและกรอกทั้งหมด', group
           ? (sel.length ? 'จะบันทึกเป็นค่าเฉพาะรายของนักศึกษาที่เลือก' : '<span class="text-amber-700">ยังไม่ได้เลือกนักศึกษาในขั้นที่ 3</span>')
