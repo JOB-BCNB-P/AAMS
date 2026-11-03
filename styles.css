@@ -1469,3 +1469,71 @@ form.ems-stepped > * + * { margin-top: 0; }
     animation: none !important;
   }
 }
+
+/* ═══════════ หน้าเปิดระบบ (splash) ═══════════
+   โลโก้อยู่กึ่งกลาง มีวงแหวนสองสีหมุนรอบ
+   แยกคลาสจาก .ems-spin-lg เพราะวงแหวนตัวนั้นยังถูกใช้ในกล่องโหลดกลางจอของหน้าอื่น */
+.ems-boot {
+  background: #f5f7fa;
+}
+
+.ems-boot-ring {
+  position: relative;
+  width: 132px;
+  height: 132px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* วงนอกสีน้ำเงิน หมุนตามเข็ม · วงในสีเหลืองทอง หมุนทวนเข็ม
+   เว้นช่องว่างคนละด้าน จึงเห็นเป็นเส้นโค้งสองเส้นวิ่งไล่กัน */
+.ems-boot-ring::before,
+.ems-boot-ring::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  border-style: solid;
+}
+
+.ems-boot-ring::before {
+  inset: 0;
+  border-width: 3px;
+  border-color: #1e6fba transparent transparent #1e6fba;
+  animation: ems-spin 1.4s cubic-bezier(.55, .15, .45, .85) infinite;
+}
+
+.ems-boot-ring::after {
+  inset: 7px;
+  border-width: 3px;
+  border-color: transparent #f0b429 #f0b429 transparent;
+  animation: ems-spin 1.9s cubic-bezier(.55, .15, .45, .85) infinite reverse;
+}
+
+.ems-boot-logo {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+  /* กันจอกระตุกตอนรูปยังโหลดไม่เสร็จ หรือโหลดไม่ขึ้นเพราะเครือข่ายบล็อก CDN */
+  min-width: 58px;
+  min-height: 58px;
+}
+
+.ems-boot-title {
+  color: #15314f;
+  font-weight: 700;
+  letter-spacing: .01em;
+}
+
+.ems-boot-sub {
+  color: #8a93a0;
+  font-size: .95rem;
+  margin-top: .35rem;
+}
+
+/* เครื่องที่ตั้งค่าลดการเคลื่อนไหว ให้หยุดหมุนแต่ยังเห็นวงแหวน */
+@media (prefers-reduced-motion: reduce) {
+  .ems-boot-ring::before,
+  .ems-boot-ring::after { animation: none; }
+}

@@ -50,18 +50,22 @@
        มาพร้อมเว็บโดยตรง ไม่ต้องรอ CDN และไม่ต้องอาศัยการสร้างสไตล์ตอนใช้งาน
        จึงแสดงผลเหมือนกันทุกเครื่อง ทั้งคอมพิวเตอร์ แท็บเล็ต และมือถือ -->
   <link rel="stylesheet" href="tailwind.css?v=20261018a">
-  <link rel="stylesheet" href="styles.css?v=20261018a">
+  <link rel="stylesheet" href="styles.css?v=20261103a">
 </head>
 
 <body class="bg-gray-50">
   <div id="app">
 
     <!-- ═══════════ หน้าจอกำลังโหลด ═══════════ -->
-    <div id="loadingScreen" class="ems-screen flex items-center justify-center bg-gradient-to-br from-sky-50 via-white to-blue-50">
+    <div id="loadingScreen" class="ems-screen ems-boot flex items-center justify-center">
       <div class="text-center px-6">
-        <div class="ems-spin-wrap mb-5"><div class="ems-spin-lg"></div></div>
-        <p class="text-gray-700 font-semibold">กำลังโหลดข้อมูล</p>
-        <p class="text-gray-500 text-sm mt-1">กรุณารอสักครู่</p>
+        <div class="ems-boot-ring mb-6">
+          <img src="https://cdn.jsdelivr.net/gh/JOB-BCNB-P/LOGO/Logo%20Thai.png"
+            alt="" aria-hidden="true" class="ems-boot-logo"
+            onerror="this.style.visibility='hidden'">
+        </div>
+        <p class="ems-boot-title">ระบบบริหารจัดการงานวิชาการ</p>
+        <p class="ems-boot-sub">กำลังเตรียมระบบ..</p>
       </div>
     </div>
 
