@@ -210,19 +210,32 @@ const curEnv2 = {
 };
 const CUR2 = new Function(...Object.keys(curEnv2),
   grab(APP, 'function curCoursesOf(curYear)') + grab(APP, 'function curCourseLabel(c)')
-  + grab(APP, 'function curCourseOptionsHTML(curYear)')
-  + '; return { curCoursesOf, curCourseLabel, curCourseOptionsHTML };')(...Object.values(curEnv2));
+  + grab(APP, 'function curCourseOptionsHTML(curYear)') + grab(APP, 'function curCoursePlaceholder(curYear)')
+  + '; return { curCoursesOf, curCourseLabel, curCourseOptionsHTML, curCoursePlaceholder };')(...Object.values(curEnv2));
 
 t('ยังไม่เลือกหลักสูตร ต้องยังเลือกรายวิชาไม่ได้', () => {
-  const h = CUR2.curCourseOptionsHTML('');
-  assert.ok(h.includes('เลือกหลักสูตรก่อน'), 'ปล่อยให้เลือกรายวิชาข้ามหลักสูตรได้');
-  assert.ok(!h.includes('GE 104'), 'รายวิชาโผล่ทั้งที่ยังไม่เลือกหลักสูตร');
+  assert.strictEqual(CUR2.curCourseOptionsHTML(''), '', 'รายวิชาโผล่ทั้งที่ยังไม่เลือกหลักสูตร');
+  assert.ok(CUR2.curCoursePlaceholder('').includes('เลือกหลักสูตรก่อน'), 'ไม่ได้บอกว่าต้องเลือกหลักสูตรก่อน');
+  const g = grab(APP, 'function curCoursePickerHTML()');
+  assert.ok(/<input id="curCoursePick"[^>]*disabled/.test(g), 'ช่องยังพิมพ์ได้ทั้งที่ยังไม่เลือกหลักสูตร');
 });
 t('เลือกหลักสูตรแล้ว ขึ้นเฉพาะรายวิชาของหลักสูตรนั้น', () => {
   const h = CUR2.curCourseOptionsHTML('2565');
   assert.ok(h.includes('GE 104 ภาษาอังกฤษ'), 'ไม่มีรายวิชาของหลักสูตรที่เลือก');
   assert.ok(!h.includes('OLD 101'), 'รายวิชาของหลักสูตรอื่นปนมาด้วย');
-  assert.ok(h.includes('(2 วิชา)'), 'ไม่ได้บอกจำนวนรายวิชา');
+  assert.ok(CUR2.curCoursePlaceholder('2565').includes('(2 วิชา)'), 'ไม่ได้บอกจำนวนรายวิชา');
+});
+t('พิมพ์ค้นหาได้ ไม่ใช่ dropdown ที่ต้องเลื่อนหา', () => {
+  const g = grab(APP, 'function curCoursePickerHTML()');
+  assert.ok(g.includes('list="curCourseList"'), 'ยังเป็น select');
+  assert.ok(g.includes('พิมพ์ชื่อวิชาหรือรหัสวิชา') || CUR2.curCoursePlaceholder('2565').includes('พิมพ์'),
+    'ไม่ได้บอกว่าพิมพ์ค้นหาได้');
+  assert.ok(/<option value="[^"]+">/.test(CUR2.curCourseOptionsHTML('2565')), 'รายการค้นหาว่างเปล่า');
+});
+t('พิมพ์รหัสวิชาตรง ๆ ก็เติมให้ ไม่ต้องพิมพ์ชื่อเต็ม', () => {
+  const g = grab(APP, 'window.curCoursePick = function (sel)');
+  assert.ok(g.includes('curCourseLabel(c) === txt'), 'เลือกจากรายการแล้วไม่ตรง');
+  assert.ok(g.includes("norm(c.course_code).replace"), 'พิมพ์รหัสวิชาแล้วไม่เติมให้');
 });
 t('แสดงแค่รหัสวิชาและชื่อวิชา ไม่มีปี ภาค ชั้นปี', () => {
   const lb = CUR2.curCourseLabel({ course_code: 'GE 104', name_th: 'ภาษาอังกฤษ' });
@@ -231,7 +244,9 @@ t('แสดงแค่รหัสวิชาและชื่อวิช�
   assert.ok(!/ปีการศึกษา|ภาค |ชั้นปี/.test(h), 'ยังมีปี ภาค หรือชั้นปีในรายการ');
 });
 t('หลักสูตรที่ยังไม่มีรายวิชา ต้องบอกให้รู้', () => {
-  assert.ok(CUR2.curCourseOptionsHTML('2599').includes('ยังไม่มีรายวิชา'), 'ขึ้นรายการเปล่าเฉย ๆ');
+  assert.ok(CUR2.curCoursePlaceholder('2599').includes('ยังไม่มีรายวิชา'), 'ขึ้นช่องเปล่าเฉย ๆ');
+  const g = grab(APP, 'window.curCourseReload = function (sel)');
+  assert.ok(g.includes('pick.disabled = !y || !curCoursesOf(y).length'), 'หลักสูตรที่ไม่มีรายวิชา ยังพิมพ์ได้แต่ไม่มีอะไรขึ้น');
 });
 t('เรียงตามรหัสวิชา', () => {
   const codes = CUR2.curCoursesOf('2565').map(c => c.course_code);
@@ -242,6 +257,7 @@ t('เปลี่ยนหลักสูตรแล้วรายการ�
     'เปลี่ยนหลักสูตรแล้วยังค้างรายวิชาของหลักสูตรเดิม');
   const g = grab(APP, 'window.curCourseReload = function (sel)');
   assert.ok(g.includes("pick.value = ''"), 'ไม่ได้ล้างค่าที่เลือกไว้ จะค้างรายวิชาของหลักสูตรเดิม');
+  assert.ok(g.includes('list.innerHTML = curCourseOptionsHTML(y)'), 'รายการค้นหายังเป็นของหลักสูตรเดิม');
 });
 t('เลือกรายวิชาแล้วเติมข้อมูลจากหลักสูตร และไม่ทับที่พิมพ์เอง', () => {
   const g = grab(APP, 'window.curCoursePick = function (sel)');

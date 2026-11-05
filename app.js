@@ -2939,39 +2939,53 @@ function curCoursesOf(curYear) {
 function curCourseLabel(c) {
   return [norm(c.course_code), norm(c.name_th)].filter(Boolean).join(' ');
 }
+// รายการสำหรับพิมพ์ค้นหา — ป้ายคือ "รหัสวิชา ชื่อวิชา" ซึ่งไม่ซ้ำกัน จึงย้อนกลับไปหาระเบียนได้
 function curCourseOptionsHTML(curYear) {
-  const list = curCoursesOf(curYear);
-  if (!norm(curYear)) return '<option value="">— เลือกหลักสูตรก่อน —</option>';
-  if (!list.length) return '<option value="">— หลักสูตรนี้ยังไม่มีรายวิชา —</option>';
-  return '<option value="">— เลือกรายวิชา (' + list.length + ' วิชา) —</option>'
-    + list.map(c => '<option value="' + htmlEsc(norm(c.course_code)) + '">' + htmlEsc(curCourseLabel(c)) + '</option>').join('');
+  if (!norm(curYear)) return '';      // ยังไม่เลือกหลักสูตร = ไม่มีรายวิชาให้ค้นหา
+  return curCoursesOf(curYear)
+    .map(c => '<option value="' + htmlEsc(curCourseLabel(c)) + '">').join('');
+}
+function curCoursePlaceholder(curYear) {
+  const y = norm(curYear);
+  if (!y) return 'เลือกหลักสูตรก่อน แล้วจึงพิมพ์ค้นหารายวิชา';
+  const n = curCoursesOf(y).length;
+  return n ? 'พิมพ์ชื่อวิชาหรือรหัสวิชาเพื่อค้นหา (' + n + ' วิชา)' : 'หลักสูตรนี้ยังไม่มีรายวิชา';
 }
 function curCoursePickerHTML() {
   return `<div class="bg-blue-50 border border-blue-100 rounded-xl p-3">
     <label class="block text-xs font-medium text-blue-800 mb-1">เลือกรายวิชาจากหลักสูตร <span class="font-normal text-blue-600">(ไม่บังคับ)</span></label>
-    <select id="curCoursePick" onchange="curCoursePick(this)" class="w-full border border-blue-200 rounded-xl px-3 py-2 text-sm bg-white">
-      ${curCourseOptionsHTML('')}
-    </select>
+    <input id="curCoursePick" list="curCourseList" oninput="curCoursePick(this)" autocomplete="off" disabled
+      class="w-full border border-blue-200 rounded-xl px-3 py-2 text-sm bg-white disabled:opacity-50"
+      placeholder="${htmlEsc(curCoursePlaceholder(''))}">
+    <datalist id="curCourseList">${curCourseOptionsHTML('')}</datalist>
     <p class="text-[11px] text-blue-700 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>
-      เลือกแล้วระบบเติม รหัสวิชา ชื่อไทย ชื่ออังกฤษ หน่วยกิต และชั่วโมงให้
+      พิมพ์บางส่วนของชื่อวิชาหรือรหัสวิชา แล้วเลือกจากรายการ ระบบจะเติม รหัสวิชา ชื่อไทย ชื่ออังกฤษ หน่วยกิต และชั่วโมงให้
       · ส่วน <b>ปีการศึกษา ภาคการศึกษา และชั้นปี</b> ให้เลือกเองทุกครั้ง</p>
   </div>`;
 }
-// เปลี่ยนหลักสูตร → โหลดรายวิชาของหลักสูตรนั้นใหม่
+// เปลี่ยนหลักสูตร → โหลดรายวิชาของหลักสูตรนั้นใหม่ และล้างค่าที่พิมพ์ไว้
 window.curCourseReload = function (sel) {
   const form = sel && sel.form; if (!form) return;
   const pick = form.querySelector('#curCoursePick');
+  const list = form.querySelector('#curCourseList');
   if (!pick) return;
-  pick.innerHTML = curCourseOptionsHTML(sel.value);
+  const y = norm(sel.value);
+  if (list) list.innerHTML = curCourseOptionsHTML(y);
   pick.value = '';
+  pick.placeholder = curCoursePlaceholder(y);
+  pick.disabled = !y || !curCoursesOf(y).length;
 };
 // เลือกรายวิชา → เติมข้อมูลจากหลักสูตร (เติมเฉพาะช่องที่ยังว่าง ไม่ทับที่พิมพ์เอง)
 window.curCoursePick = function (sel) {
   const form = sel && sel.form; if (!form) return;
-  const code = norm(sel.value); if (!code) return;
+  const txt = norm(sel.value); if (!txt) return;
   const cur = form.querySelector('[name="curriculum_year"]');
-  const hit = curCoursesOf(cur ? cur.value : '').find(c => norm(c.course_code) === code);
-  if (!hit) return;
+  const list = curCoursesOf(cur ? cur.value : '');
+  // ตรงกับป้ายเต็ม (เลือกจากรายการ) หรือพิมพ์รหัสวิชามาตรง ๆ ก็ได้
+  const key = txt.replace(/\s+/g, '').toLowerCase();
+  const hit = list.find(c => curCourseLabel(c) === txt)
+    || list.find(c => norm(c.course_code).replace(/\s+/g, '').toLowerCase() === key);
+  if (!hit) return;        // ยังพิมพ์ไม่ครบ หรือไม่ตรงรายวิชาไหน — รอให้เลือกจากรายการก่อน
   const set = (n, v) => { const f = form.querySelector('[name="' + n + '"]'); if (f && !norm(f.value)) f.value = norm(v); };
   set('subject_code', hit.course_code);
   set('subject_name', hit.name_th);

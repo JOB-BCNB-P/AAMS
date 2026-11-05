@@ -527,8 +527,9 @@
       + (sel.length > 1
         ? '<button type="button" onclick="ploRadarYearClear()" class="text-xs text-gray-400 hover:text-red-500 underline">ล้างที่เลือก</button>'
         : '')
-      + '<span class="text-[11px] text-gray-400 w-full">เทียบพร้อมกันได้สูงสุด ' + RADAR_MAX_YEARS + ' ปี '
-      + '(เท่าจำนวนสีที่แยกออกจากกันได้) · เลือกเกินจะปล่อยปีที่เก่าที่สุดออกให้เอง</span>'
+      + '<span class="text-[11px] text-gray-400 w-full">รายการปีมาจากปีการศึกษาที่กำหนด CLO ไว้แล้วเท่านั้น '
+      + '(ตอนนี้มี ' + years.length + ' ปี) · เทียบพร้อมกันได้สูงสุด ' + RADAR_MAX_YEARS + ' ปี '
+      + '· เลือกเกินจะปล่อยปีที่เก่าที่สุดออกให้เอง</span>'
       + '</div>';
   }
 
@@ -584,7 +585,10 @@
           + (gap.length ? '<p class="text-xs text-amber-600 mt-3"><i data-lucide="alert-triangle" class="w-3.5 h-3.5 inline"></i> '
               + 'ยังไม่มีรายวิชาครอบคลุม ' + gap.map(function (a) { return 'PLO ' + esc(a.no); }).join(' · ')
               + ' — ตรวจสอบว่าเป็นช่องว่างของหลักสูตรจริง หรือยังกำหนด CLO ไม่ครบ</p>' : '')
-        : '<p class="text-sm text-gray-400 py-8 text-center">ยังไม่มีข้อมูลในมุมมองนี้</p>')
+        : '<p class="text-sm text-gray-400 py-8 text-center">'
+          + (rs.mode === 'year' && !(rs.years || []).length
+            ? 'ยังไม่ได้เลือกปีการศึกษา — กดปุ่มปีด้านบนเพื่อเริ่มเทียบ'
+            : 'ยังไม่มีข้อมูลในมุมมองนี้') + '</p>')
       + '</div>';
   }
   window.ploRadarMode = function (v) {
