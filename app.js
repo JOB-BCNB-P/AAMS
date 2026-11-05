@@ -2895,10 +2895,10 @@ function showAddSubjectModal() {
     <form id="addSubjectForm" class="space-y-3">
       <div class="bg-blue-50 border border-blue-100 rounded-xl p-3">
         <label class="block text-xs font-medium text-blue-800 mb-1">คัดลอกจากรายวิชาที่เคยเปิดสอน <span class="font-normal text-blue-600">(ไม่บังคับ)</span></label>
-        <select id="copyFromSubject" onchange="subjectCopyFrom(this)" class="w-full border border-blue-200 rounded-xl px-3 py-2 text-sm bg-white">
-          <option value="">-- ไม่คัดลอก กรอกใหม่ทั้งหมด --</option>${subjectPickOptionsHTML()}
-        </select>
-        <p class="text-[11px] text-blue-700 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>เลือกรายวิชาของปีก่อนหน้าเพื่อดึงข้อมูลมาให้ครบ แล้วแก้เฉพาะที่ต่าง — <b>ปีการศึกษาจะไม่ถูกคัดลอกมา</b> เพื่อกันบันทึกซ้ำปีเดิม</p>
+        <input id="copyFromSubject" list="copySubjectList" oninput="subjectCopyFrom(this)" autocomplete="off"
+          class="w-full border border-blue-200 rounded-xl px-3 py-2 text-sm bg-white" placeholder="พิมพ์ชื่อวิชาหรือรหัสวิชาเพื่อค้นหา">
+        ${subjectCopyDatalistHTML('copySubjectList')}
+        <p class="text-[11px] text-blue-700 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>พิมพ์ชื่อวิชาเพื่อค้นหา แล้วเลือกจากรายการ ระบบจะดึงข้อมูลมาให้ แล้วแก้เฉพาะที่ต่าง — <b>ปีการศึกษา ภาคการศึกษา และชั้นปี จะไม่ถูกคัดลอกมา</b> ให้เลือกใหม่ทุกครั้ง เผื่อย้ายไปสอนชั้นปีหรือภาคอื่น</p>
       </div>
       ${curriculumField({})}
       <div><label class="block text-xs text-gray-600 mb-1">รหัสวิชา</label><input name="subject_code" oninput="if(window.curFillFromCurriculum)curFillFromCurriculum(this)" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น GE 104"></div>
@@ -2931,15 +2931,43 @@ function showAddSubjectModal() {
   };
 }
 
+/* รายการให้พิมพ์ค้นหา "คัดลอกจากรายวิชาที่เคยเปิดสอน"
+   ใช้ datalist เพราะพิมพ์กรองได้ในตัว ไม่ต้องพึ่งไลบรารีภายนอก
+   ป้ายของแต่ละรายการต้องไม่ซ้ำกัน เพราะย้อนกลับไปหาระเบียนด้วยข้อความที่พิมพ์ */
+function subjectCopyLabel(x) {
+  return [norm(x.subject_code), norm(x.subject_name)].filter(Boolean).join(' ')
+    + ' · ปีการศึกษา ' + (norm(x.academic_year) || 'ไม่ระบุ')
+    + (normSem(x.semester) ? ' ภาค ' + semLabel(x.semester) : '')
+    + (norm(x.year_level) ? ' ชั้นปี ' + norm(x.year_level) : '');
+}
+function subjectCopyDatalistHTML(listId) {
+  const list = getDataByType('subject').filter(x => norm(x.subject_name));
+  const seen = {};
+  const opts = list.sort((a, b) => {
+    const ya = norm(a.academic_year), yb = norm(b.academic_year);
+    if (ya !== yb) return yb.localeCompare(ya, 'th', { numeric: true });
+    return norm(a.subject_name).localeCompare(norm(b.subject_name), 'th');
+  }).map(x => {
+    let lb = subjectCopyLabel(x);
+    if (seen[lb]) lb += ' #' + (++seen[lb]); else seen[lb] = 1;
+    return '<option value="' + String(lb).replace(/"/g, '&quot;') + '">';
+  }).join('');
+  return '<datalist id="' + listId + '">' + opts + '</datalist>';
+}
+function subjectCopyFind(text) {
+  const t = norm(text).replace(/ #\d+$/, '');
+  if (!t) return null;
+  return getDataByType('subject').find(x => norm(x.subject_name) && subjectCopyLabel(x) === t) || null;
+}
+
 // คัดลอกข้อมูลรายวิชาที่เคยเปิดสอนมาใส่ในฟอร์ม "เพิ่มรายวิชา"
-// ไม่คัดลอกปีการศึกษา เพื่อไม่ให้เผลอบันทึกซ้ำในปีเดิม
+// ไม่คัดลอก ปีการศึกษา ภาคการศึกษา และชั้นปี เพราะรายวิชาเดิมอาจย้ายไปสอนชั้นปีหรือภาคอื่น
+// ถ้าคัดลอกมาด้วยแล้วผู้ใช้ลืมแก้ จะได้รายวิชาที่ผูกชั้นปีผิดโดยไม่รู้ตัว
 function subjectCopyFrom(sel) {
   const form = sel.closest('form');
   if (!form) return;
-  const id = sel.options[sel.selectedIndex] && sel.options[sel.selectedIndex].dataset.id;
-  if (!id) return;
-  const subj = APP.allData.find(d => String(d.__backendId) === String(id));
-  if (!subj) return;
+  const subj = subjectCopyFind(sel.value);
+  if (!subj) return;        // ยังพิมพ์ไม่ครบ หรือไม่ตรงรายการไหน — รอให้เลือกจากรายการก่อน
 
   ['subject_code', 'subject_name', 'department', 'batch', 'room',
    'credits', 'hours_theory', 'hours_lab', 'hours_self'].forEach(k => {
@@ -2949,10 +2977,7 @@ function subjectCopyFrom(sel) {
   // หลักสูตรต้องคัดลอกมาด้วย ไม่งั้นรายวิชาใหม่จะไม่มีหลักสูตรทั้งที่คัดลอกมาจากของเดิม
   const cy = form.querySelector('[name="curriculum_year"]');
   if (cy && norm(subj.curriculum_year)) cy.value = norm(subj.curriculum_year);
-  const yl = form.querySelector('[name="year_level"]');
-  if (yl && norm(subj.year_level)) yl.value = norm(subj.year_level);
-  const sm = form.querySelector('[name="semester"]');
-  if (sm && normSem(subj.semester)) sm.value = normSem(subj.semester);
+  // ชั้นปีและภาคการศึกษา : ตั้งใจไม่คัดลอก ให้ผู้ใช้เลือกเองทุกครั้ง
 
   const c = document.getElementById('addSubjectCoord');
   if (c) c.value = norm(subj.coordinator);
@@ -2961,7 +2986,7 @@ function subjectCopyFrom(sel) {
   if (prev && typeof updateCreditPreview === 'function') updateCreditPreview(prev);
   if (typeof showToast === 'function') {
     showToast('คัดลอกข้อมูลจาก ' + (norm(subj.subject_code) || norm(subj.subject_name))
-      + ' ปีการศึกษา ' + (norm(subj.academic_year) || '-') + ' แล้ว');
+      + ' ปีการศึกษา ' + (norm(subj.academic_year) || '-') + ' แล้ว · อย่าลืมเลือกชั้นปีและภาคการศึกษาใหม่');
   }
 }
 
@@ -7706,14 +7731,43 @@ function showEditAlumniModal(id) {
 
 // ======================== สถานะอาจารย์ ========================
 // "ช่วยราชการ" และ "โอนย้าย" ต้องระบุสถานที่ปฏิบัติงานด้วย (ช่อง work_place)
-const TEACHER_STATUSES = ['ปฏิบัติงานอยู่', 'ลาศึกษาต่อ', 'ช่วยราชการ', 'โอนย้าย', 'ลาออก'];
+const TEACHER_STATUSES = ['ปฏิบัติงานอยู่', 'ลาศึกษาต่อ', 'ช่วยราชการ', 'โอนย้าย', 'เกษียณอายุราชการ', 'ลาออก'];
 const TEACHER_STATUS_NEEDS_PLACE = ['ช่วยราชการ', 'โอนย้าย'];
-// สถานะที่ถือว่า "ไม่อยู่กับวิทยาลัยแล้ว" — ไม่นำไปเสนอเป็นอาจารย์ที่ปรึกษา
-const TEACHER_STATUS_GONE = ['ลาออก', 'โอนย้าย'];
+/* สถานะที่ถือว่า "ไม่อยู่กับวิทยาลัยแล้ว"
+   - ไม่นำไปเสนอเป็นอาจารย์ที่ปรึกษา
+   - ไม่นับรวมในจำนวนอาจารย์
+   - เข้าใช้งานระบบไม่ได้ (ปิดบัญชีให้อัตโนมัติเมื่อบันทึกสถานะ) */
+const TEACHER_STATUS_GONE = ['ลาออก', 'โอนย้าย', 'เกษียณอายุราชการ'];
+
+/* อาจารย์ที่พ้นจากวิทยาลัยแล้ว (ลาออก โอนย้าย เกษียณอายุราชการ)
+   ต้องเข้าใช้งานระบบไม่ได้อีก — ตัวที่กันจริงคือ is_active ในตาราง app_user
+   เพราะ ems.my_roles() ที่ฐานข้อมูลตัดบทบาททั้งหมดเมื่อ is_active เป็น 0/false/ปิด
+   ต่อให้ล็อกอินผ่าน ก็ไม่เหลือสิทธิ์อ่านหรือเขียนอะไรเลย */
+async function syncTeacherAccountStatus(rec) {
+  const st = norm(rec && rec.teacher_status);
+  if (!st || TEACHER_STATUS_GONE.indexOf(st) === -1) return '';
+  const key = v => String(v == null ? '' : v).trim().toLowerCase();
+  const nm = key(rec.name), em = key(rec.email);
+  const hit = getDataByType('user').filter(u => {
+    const act = String(u.is_active == null ? '1' : u.is_active).trim();
+    if (['0', 'false', 'ปิด'].indexOf(act) !== -1) return false;     // ปิดอยู่แล้ว
+    return (em && key(u.email) === em) || (nm && key(u.name) === nm);
+  });
+  if (!hit.length) return '';
+  let done = 0;
+  for (const u of hit) {
+    const before = u.is_active;
+    u.is_active = '0';
+    const r = await GSheetDB.update(u);
+    if (r && r.isOk) done++; else u.is_active = before;
+  }
+  return done ? ' · ปิดบัญชีเข้าระบบของ ' + (rec.name || '') + ' แล้ว (เปิดคืนได้ที่ ตั้งค่าระบบ → จัดการผู้ใช้งาน)' : '';
+}
 
 function teacherStatusColor(st) {
   if (st === 'ปฏิบัติงานอยู่') return 'bg-green-100 text-green-700';
   if (st === 'ลาออก' || st === 'โอนย้าย') return 'bg-red-100 text-red-700';
+  if (st === 'เกษียณอายุราชการ') return 'bg-gray-200 text-gray-700';
   if (st === 'ช่วยราชการ') return 'bg-blue-100 text-blue-700';
   return 'bg-yellow-100 text-yellow-700';
 }
@@ -7779,7 +7833,10 @@ function showAddTeacherModal() {
       const fd = new FormData(e.target);
       const obj = { type: 'teacher', created_at: new Date().toISOString() }; fd.forEach((v, k) => obj[k] = v);
       const r = await GSheetDB.create(obj);
-      if (r.isOk) { showToast('เพิ่มอาจารย์สำเร็จ'); closeModal() } else showToast('เกิดข้อผิดพลาด', 'error');
+      if (r.isOk) {
+        const extra = await syncTeacherAccountStatus(obj);
+        showToast('เพิ่มอาจารย์สำเร็จ' + extra); closeModal();
+      } else showToast('เกิดข้อผิดพลาด', 'error');
     });
   };
 }
@@ -7797,6 +7854,84 @@ function multiValList(val) {
 }
 
 // Helper: dynamic multi-input field
+/* ───── ช่องใหม่ของทำเนียบอาจารย์ เริ่มใช้ปีการศึกษา 2569 ─────
+   เก็บในตาราง teacher_directory เดิม คีย์ที่ยังไม่มีคอลัมน์จริงจะไปอยู่ใน extra ให้เอง
+   จึงไม่ต้องแก้โครงสร้างฐานข้อมูล
+     sort_no          ลำดับที่ผู้ดูแลกำหนดเอง
+     faculty_practice หัวข้อ Faculty practice
+     teaching_courses รายวิชาที่สอน ~ หัวข้อการสอน ~ รูปแบบการสอน  (คั่นรายการด้วย ||) */
+const DIR_YEAR_NEW_FIELDS = '2569';   // ปีที่เริ่มใช้ช่องใหม่
+const TEACH_FORMS = ['ภาคทฤษฎี', 'ภาคทดลอง'];
+
+function tcParse(values) {
+  return (values ? String(values).split('||') : []).map(v => {
+    const p = String(v).split('~');
+    return { subject: (p[0] || '').trim(), topic: (p[1] || '').trim(), form: (p[2] || '').trim() };
+  }).filter(x => x.subject || x.topic || x.form);
+}
+function tcRowHTML(it) {
+  const v = it || { subject: '', topic: '', form: '' };
+  const esc2 = x => String(x == null ? '' : x).replace(/"/g, '&quot;');
+  return `<div class="grid grid-cols-12 gap-2 items-start">
+    <input name="tc_subject" value="${esc2(v.subject)}" list="subjectNameList" class="col-span-4 border rounded-xl px-3 py-2 text-sm" placeholder="รายวิชา">
+    <input name="tc_topic" value="${esc2(v.topic)}" class="col-span-5 border rounded-xl px-3 py-2 text-sm" placeholder="หัวข้อการสอน">
+    <select name="tc_form" class="col-span-2 border rounded-xl px-2 py-2 text-sm">
+      <option value="">รูปแบบ</option>
+      ${TEACH_FORMS.map(f => `<option ${v.form === f ? 'selected' : ''}>${f}</option>`).join('')}
+    </select>
+    <button type="button" onclick="this.parentElement.remove()" class="col-span-1 text-red-400 hover:text-red-600" title="ลบ">✕</button>
+  </div>`;
+}
+function teachingCoursesField(values) {
+  const items = tcParse(values);
+  if (!items.length) items.push({ subject: '', topic: '', form: '' });
+  return `<div>
+    <label class="block text-xs text-gray-600 mb-1">รายวิชาที่สอน · หัวข้อการสอน · รูปแบบการสอน
+      <span class="text-gray-400">(เริ่มใช้ปีการศึกษา ${DIR_YEAR_NEW_FIELDS})</span></label>
+    <p class="text-[11px] text-gray-500 mb-1.5">กรอกเฉพาะรายวิชาทฤษฎี ว่าสอนภาคทฤษฎีหรือภาคทดลอง
+      · รายวิชาที่เป็นภาคปฏิบัติไม่ต้องกรอก</p>
+    <div id="multi_teaching_courses" class="space-y-2">${items.map(tcRowHTML).join('')}</div>
+    <button type="button" onclick="addTeachingCourseRow()" class="mt-1 text-xs text-primary hover:underline flex items-center gap-1"><span>＋</span> เพิ่มรายวิชา</button>
+    ${subjectNameDatalistHTML()}
+  </div>`;
+}
+function addTeachingCourseRow() {
+  const box = document.getElementById('multi_teaching_courses');
+  if (!box) return;
+  const d = document.createElement('div');
+  d.innerHTML = tcRowHTML(null);
+  box.appendChild(d.firstElementChild);
+}
+function collectTeachingCourses(form) {
+  const box = form.querySelector('#multi_teaching_courses');
+  if (!box) return '';
+  return Array.prototype.map.call(box.children, row => {
+    const g = n => { const e = row.querySelector('[name="' + n + '"]'); return e ? norm(e.value) : ''; };
+    const v = [g('tc_subject'), g('tc_topic'), g('tc_form')];
+    return v.some(Boolean) ? v.join(' ~ ') : '';
+  }).filter(Boolean).join(' || ');
+}
+function subjectNameDatalistHTML() {
+  const names = [...new Set(getDataByType('subject').map(x => norm(x.subject_name)).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'th'));
+  return '<datalist id="subjectNameList">' + names.map(x => '<option value="' + x.replace(/"/g, '&quot;') + '">').join('') + '</datalist>';
+}
+// แถวใหม่ของปี 2569 ที่ใช้ร่วมกันทั้งฟอร์มเพิ่มและฟอร์มแก้ไข
+function dirNewFieldsHTML(t) {
+  const d = t || {};
+  const v = k => String(d[k] == null ? '' : d[k]).replace(/"/g, '&quot;');
+  return `<div class="rounded-xl border border-blue-100 bg-blue-50/40 p-3 space-y-3">
+    <p class="text-xs font-semibold text-blue-800">ข้อมูลเพิ่มเติม (เริ่มใช้ปีการศึกษา ${DIR_YEAR_NEW_FIELDS})</p>
+    <div class="grid grid-cols-3 gap-3">
+      <div><label class="block text-xs text-gray-600 mb-1">ลำดับ <span class="text-gray-400">(กำหนดเอง)</span></label>
+        <input name="sort_no" value="${v('sort_no')}" inputmode="numeric" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น 1"></div>
+      <div class="col-span-2"><label class="block text-xs text-gray-600 mb-1">หัวข้อ Faculty practice</label>
+        <input name="faculty_practice" value="${v('faculty_practice')}" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น การพยาบาลผู้ป่วยวิกฤต รพ.ราชวิถี"></div>
+    </div>
+    ${teachingCoursesField(d.teaching_courses || '')}
+  </div>`;
+}
+
 function multiInputField(name, label, placeholder, values) {
   const items = values ? values.split('||').map(v => v.trim()).filter(Boolean) : [''];
   if (!items.length) items.push('');
@@ -8021,6 +8156,21 @@ function maskNationalId(nid) {
   return s;
 }
 
+/* เลขบัตรประชาชนในทำเนียบอาจารย์ — ปกปิด 3 หลักท้ายเป็น xx-x เสมอ
+   ใช้ได้กับทุกบทบาทที่เปิดทำเนียบได้ เพราะค่าที่แสดงไม่ใช่เลขเต็ม
+   เลขเต็มยังดูได้ที่ฟอร์มแก้ไขของผู้ดูแลระบบเท่านั้น
+   หมายเหตุ : หลักสุดท้ายเป็นหลักตรวจสอบที่คำนวณจาก 12 หลักแรก
+   การปิด 3 หลักท้ายจึงเหลือความไม่แน่นอนจริงเพียง 2 หลัก */
+function maskNidTail(nid) {
+  const d = String(nid == null ? '' : nid).replace(/[^0-9]/g, '');
+  if (!d) return '-';
+  if (d.length < 13) {
+    // ข้อมูลไม่ครบ 13 หลัก ปิด 3 ตัวท้ายตามที่มี ไม่เดาเติมให้
+    return d.length <= 3 ? 'xx-x' : d.slice(0, d.length - 3) + '-xx-x';
+  }
+  return d.slice(0, 1) + '-' + d.slice(1, 5) + '-' + d.slice(5, 10) + '-xx-x';
+}
+
 // แสดงระยะเวลาเป็น "X ปี Y เดือน" (รองรับกรณีไม่ถึงปี)
 function expYM(years, months) {
   const y = parseInt(years, 10); const m = parseInt(months, 10);
@@ -8197,10 +8347,10 @@ function renderDirectoryDataSection(paged, total, counts, activeTab, isAdmin) {
   if (isSpecialTab) {
     html += '<thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold">ตำแหน่ง</th><th class="px-4 py-3 font-semibold">หน่วยงาน</th><th class="px-4 py-3 font-semibold">รายวิชาที่สอน</th><th class="px-4 py-3"></th></tr></thead>';
   } else {
-    html += '<thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold">ตำแหน่ง</th><th class="px-4 py-3 font-semibold">ประเภท</th><th class="px-4 py-3"></th></tr></thead>';
+    html += '<thead><tr class="bg-surface text-left"><th class="px-3 py-3 font-semibold w-14">ลำดับ</th><th class="px-4 py-3 font-semibold">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold">ตำแหน่ง</th><th class="px-4 py-3 font-semibold">ประเภท</th><th class="px-4 py-3"></th></tr></thead>';
   }
   html += '<tbody>';
-  const colspan = isSpecialTab ? 5 : 4;
+  const colspan = isSpecialTab ? 5 : 5;
   if (paged.length) {
     paged.forEach(t => {
       const special = isSpecialTeacher(t);
@@ -8208,6 +8358,7 @@ function renderDirectoryDataSection(paged, total, counts, activeTab, isAdmin) {
       const editFn = fromReg ? 'showEditSpecialTeacherRegModal' : (special ? 'showEditSpecialTeacherModal' : 'showEditTeacherDirectoryModal');
       const regBadge = fromReg ? ' <span class="ml-1 px-1.5 py-0.5 rounded-md text-[10px] bg-emerald-50 text-emerald-600 border border-emerald-100" title="ดึงจากระบบทะเบียนอาจารย์พิเศษ">ทะเบียน</span>' : '';
       html += '<tr class="border-t hover:bg-gray-50">';
+      if (!isSpecialTab) html += '<td class="px-3 py-3 text-gray-500">' + (norm(t.sort_no) || '-') + '</td>';
       html += '<td class="px-4 py-3 font-medium">' + (t.name || '') + regBadge + '</td>';
       html += '<td class="px-4 py-3">' + (t.academic_position || '-') + '</td>';
       if (isSpecialTab) {
@@ -8232,6 +8383,88 @@ function renderDirectoryDataSection(paged, total, counts, activeTab, isAdmin) {
   return html;
 }
 
+/* ───── ดึงข้อมูลทำเนียบอาจารย์จากปีการศึกษาก่อนหน้า ─────
+   ทุกปีการศึกษาต้องมีระเบียนของตัวเอง เพราะตัวเลขสรุปอัตรากำลังอิงปีการศึกษา
+   การพิมพ์ใหม่ทั้งหมดทุกปีเสียเวลาและพิมพ์ตกหล่นง่าย จึงให้คัดลอกของปีก่อนมาตั้งต้น
+   คัดลอกแล้วเป็นคนละระเบียน แก้ไขปีใหม่ไม่กระทบข้อมูลปีเก่า */
+window.showDirectoryCopyYearModal = function () {
+  const target = APP.filters._directoryYear || '';
+  if (!target) { showToast('เลือกปีการศึกษาปลายทางก่อน', 'error'); return; }
+  const all = getDataByType('teacher_directory');
+  const years = [...new Set(all.map(d => norm(d.academic_year)).filter(Boolean))]
+    .filter(y => y !== target).sort().reverse();
+  if (!years.length) { showToast('ยังไม่มีข้อมูลปีอื่นให้ดึงมา', 'error'); return; }
+
+  const catRows = TEACHER_CATEGORIES.map(c => `<label class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl border border-gray-200 text-sm">
+    <span class="flex items-center gap-2"><input type="checkbox" class="dirCopyCat accent-primary" value="${htmlEsc(c)}" checked onchange="directoryCopyPreview()">${htmlEsc(c)}</span>
+    <span class="text-xs text-gray-400" data-cat-count="${htmlEsc(c)}">-</span></label>`).join('');
+
+  showModal('ดึงข้อมูลจากปีการศึกษาก่อนหน้า', `
+    <div class="space-y-3">
+      <div class="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-800">
+        คัดลอกมาเป็นระเบียนของ <b>ปีการศึกษา ${htmlEsc(target)}</b>
+        · ข้อมูลปีต้นทางยังอยู่ครบ · คนที่มีชื่ออยู่ในปี ${htmlEsc(target)} แล้วจะถูกข้าม ไม่สร้างซ้ำ
+      </div>
+      <div><label class="block text-xs text-gray-600 mb-1">ดึงจากปีการศึกษา</label>
+        <select id="dirCopyFrom" onchange="directoryCopyPreview()" class="w-full border rounded-xl px-3 py-2 text-sm">
+          ${years.map(y => `<option value="${htmlEsc(y)}">${htmlEsc(y)}</option>`).join('')}
+        </select></div>
+      <div><p class="text-xs text-gray-600 mb-1">เลือกประเภทที่จะดึงมา</p>
+        <div class="grid grid-cols-1 gap-1.5">${catRows}</div></div>
+      <p id="dirCopySummary" class="text-sm text-gray-600"></p>
+      <button type="button" onclick="directoryCopyRun()" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">
+        <i data-lucide="copy" class="w-4 h-4 inline"></i> ดึงข้อมูลมาที่ปี ${htmlEsc(target)}</button>
+    </div>`);
+  directoryCopyPreview();
+};
+
+// ระเบียนที่จะถูกคัดลอกจริง ตามปีต้นทางและประเภทที่ติ๊กไว้ (ตัดคนที่มีอยู่แล้วออก)
+function directoryCopyPlan() {
+  const target = APP.filters._directoryYear || '';
+  const from = (document.getElementById('dirCopyFrom') || {}).value || '';
+  const cats = Array.prototype.map.call(document.querySelectorAll('.dirCopyCat:checked'), el => el.value);
+  const all = getDataByType('teacher_directory');
+  const key = v => String(v == null ? '' : v).trim().toLowerCase();
+  const already = {};
+  all.forEach(d => { if (norm(d.academic_year) === target) already[key(d.name) + '|' + norm(d.teacher_category)] = 1; });
+  const src = all.filter(d => norm(d.academic_year) === from && norm(d.name));
+  const pick = src.filter(d => cats.indexOf(norm(d.teacher_category)) !== -1);
+  const todo = pick.filter(d => !already[key(d.name) + '|' + norm(d.teacher_category)]);
+  return { target, from, src, pick, todo, skipped: pick.length - todo.length };
+}
+window.directoryCopyPreview = function () {
+  const pl = directoryCopyPlan();
+  TEACHER_CATEGORIES.forEach(c => {
+    const el = document.querySelector('[data-cat-count="' + c.replace(/"/g, '&quot;') + '"]');
+    if (el) el.textContent = pl.src.filter(d => norm(d.teacher_category) === c).length + ' คน';
+  });
+  const box = document.getElementById('dirCopySummary');
+  if (!box) return;
+  box.innerHTML = !pl.todo.length
+    ? '<span class="text-amber-600">ไม่มีรายชื่อใหม่ให้ดึงมา' + (pl.skipped ? ' (มีอยู่ในปี ' + htmlEsc(pl.target) + ' แล้ว ' + pl.skipped + ' คน)' : '') + '</span>'
+    : 'จะเพิ่ม <b class="text-gray-800">' + pl.todo.length + '</b> คน'
+      + (pl.skipped ? ' <span class="text-gray-400">· ข้าม ' + pl.skipped + ' คนที่มีอยู่แล้ว</span>' : '');
+};
+window.directoryCopyRun = async function () {
+  const pl = directoryCopyPlan();
+  if (!pl.todo.length) { showToast('ไม่มีรายชื่อใหม่ให้ดึงมา', 'error'); return; }
+  if (!confirm('ดึงข้อมูล ' + pl.todo.length + ' คน จากปี ' + pl.from + ' มาเป็นของปี ' + pl.target + ' ใช่หรือไม่\n\nข้อมูลปี ' + pl.from + ' ยังอยู่ครบเหมือนเดิม')) return;
+  const SKIP = ['__backendId', '__rowIndex', '__fromRegistry', 'id', 'type', 'created_at', 'updated_at'];
+  const objs = pl.todo.map(d => {
+    const o = { type: 'teacher_directory', created_at: new Date().toISOString() };
+    Object.keys(d).forEach(k => { if (SKIP.indexOf(k) === -1) o[k] = d[k]; });
+    o.academic_year = pl.target;
+    return o;
+  });
+  const r = await GSheetDB.createMany(objs);
+  if (r && (r.isOk || r.ok)) {
+    showToast('ดึงข้อมูลมา ' + (r.ok || objs.length) + ' คน แล้ว · ตรวจสอบและแก้ไขให้ตรงกับปี ' + pl.target + ' ได้เลย');
+    closeModal();
+    if (GSheetDB.refreshTab) { try { await GSheetDB.refreshTab('teacher_directory'); } catch (e) { } }
+    renderCurrentPage();
+  } else showToast('ดึงข้อมูลไม่สำเร็จ', 'error');
+};
+
 function teacherDirectoryPage() {
   const isAdmin = isAdminRole();
   let allData = applyFilters(directoryRecords());
@@ -8255,6 +8488,15 @@ function teacherDirectoryPage() {
     if (cat) data = data.filter(d => (d.teacher_category || '') === cat);
   }
 
+  /* ลำดับที่ผู้ดูแลกำหนดเองมาก่อนเสมอ ที่ยังไม่ได้ใส่เลขต่อท้ายเรียงตามชื่อ
+     ไม่งั้นพอใส่เลขบางคน รายชื่อจะสลับไปมาจนหาคนไม่เจอ */
+  data = data.slice().sort((a, b) => {
+    const na = parseInt(norm(a.sort_no), 10), nb = parseInt(norm(b.sort_no), 10);
+    const ha = isFinite(na), hb = isFinite(nb);
+    if (ha && hb && na !== nb) return na - nb;
+    if (ha !== hb) return ha ? -1 : 1;
+    return norm(a.name).localeCompare(norm(b.name), 'th');
+  });
   const total = data.length; const paged = paginate(data);
   const view = APP._directoryView || 'list';
 
@@ -8268,7 +8510,8 @@ function teacherDirectoryPage() {
     <div class="flex flex-wrap gap-2">
       ${view === 'list' ? `<button onclick="exportTeacherDirectoryPDF()" class="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 text-sm"><i data-lucide="file-text" class="w-4 h-4"></i>ส่งออก PDF</button>
       ${isAdmin ? `<button onclick="showAddTeacherDirectoryModal()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มอาจารย์</button>
-      <button onclick="showAddSpecialTeacherModal()" class="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 text-sm"><i data-lucide="user-plus" class="w-4 h-4"></i>เพิ่มอาจารย์พิเศษ</button>${csvUploadBtn('teacher_directory', 'name,national_id,license_no,academic_position,note,nursing_branch,edu_level,edu_field,teaching_type,agency,subjects_taught,education,nursing_teaching_years,nursing_teaching_months,nursing_teaching_exp,nursing_practice_years,nursing_practice_months,nursing_practice_exp,academic_work,academic_year,teacher_category')}` : ''}`
+      <button onclick="showAddSpecialTeacherModal()" class="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 text-sm"><i data-lucide="user-plus" class="w-4 h-4"></i>เพิ่มอาจารย์พิเศษ</button>
+      ${selectedYear ? `<button onclick="showDirectoryCopyYearModal()" class="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-surface text-sm"><i data-lucide="copy" class="w-4 h-4"></i>ดึงจากปีก่อนหน้า</button>` : ''}${csvUploadBtn('teacher_directory', 'name,national_id,license_no,academic_position,note,nursing_branch,edu_level,edu_field,teaching_type,agency,subjects_taught,education,nursing_teaching_years,nursing_teaching_months,nursing_teaching_exp,nursing_practice_years,nursing_practice_months,nursing_practice_exp,academic_work,academic_year,teacher_category,sort_no,faculty_practice,teaching_courses')}` : ''}`
       : view === 'summary' ? (isAdmin && selectedYear ? `<button onclick="showEditDirectorySummaryModal('${selectedYear}')" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="pencil" class="w-4 h-4"></i>แก้ไขตัวเลขสรุป</button>
       <button onclick="printDirectorySummary('${selectedYear}')" class="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 text-sm"><i data-lucide="printer" class="w-4 h-4"></i>พิมพ์</button>` : '')
         : (isAdmin && selectedYear ? `<button onclick="showEditBranchSummaryModal('${selectedYear}')" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="pencil" class="w-4 h-4"></i>แก้ไขตัวเลขตามสาขา</button>
@@ -8297,6 +8540,19 @@ function teacherDirectoryPage() {
       : (view === 'summary' ? directorySummaryView(selectedYear, isAdmin)
         : view === 'branch' ? directoryBranchView(selectedYear, isAdmin)
           : renderDirectoryDataSection(paged, total, counts, activeTab, isAdmin))}`;
+}
+
+// ตารางรายวิชาที่สอนในหน้าดูข้อมูล — ไม่แสดงเลยถ้ายังไม่ได้กรอก
+function teachingCoursesDetailHTML(values) {
+  const items = tcParse(values);
+  if (!items.length) return '';
+  return '<div class="bg-surface rounded-xl p-3"><p class="text-xs text-gray-500 mb-2 font-semibold">รายวิชาที่สอน · หัวข้อการสอน · รูปแบบการสอน</p>'
+    + '<table class="w-full text-sm"><thead><tr class="text-left text-xs text-gray-500">'
+    + '<th class="pb-1">รายวิชา</th><th class="pb-1">หัวข้อการสอน</th><th class="pb-1">รูปแบบ</th></tr></thead><tbody>'
+    + items.map(x => '<tr class="border-t border-gray-100"><td class="py-1 pr-2">' + htmlEsc(x.subject || '-')
+      + '</td><td class="py-1 pr-2">' + htmlEsc(x.topic || '-')
+      + '</td><td class="py-1 whitespace-nowrap">' + htmlEsc(x.form || '-') + '</td></tr>').join('')
+    + '</tbody></table></div>';
 }
 
 function showTeacherDirectoryDetail(id) {
@@ -8335,7 +8591,7 @@ function showTeacherDirectoryDetail(id) {
     <div class="space-y-3">
       <div class="flex items-center gap-3 mb-2"><div class="w-12 h-12 bg-primary rounded-full flex items-center justify-center"><i data-lucide="user" class="w-6 h-6 text-white"></i></div><div><p class="font-bold text-lg">${t.name || '-'}</p><span class="px-2 py-1 rounded-full text-xs ${catColor}">${t.teacher_category || '-'}</span></div></div>
       <div class="grid grid-cols-2 gap-3">
-        ${infoRow('เลขบัตรประชาชน', maskNationalId(t.national_id))}
+        ${infoRow('เลขบัตรประชาชน', maskNidTail(t.national_id))}
         ${infoRow('เลขใบประกอบวิชาชีพ', t.license_no)}
         ${infoRow('ตำแหน่งทางวิชาการ', t.academic_position)}
         ${infoRow('สาขา', t.nursing_branch)}
@@ -8343,6 +8599,8 @@ function showTeacherDirectoryDetail(id) {
         ${infoRow('ปีการศึกษา', t.academic_year)}
       </div>
       ${t.note ? `<div class="bg-amber-50 rounded-xl p-3 border border-amber-100"><p class="text-xs text-gray-500 mb-1 font-semibold">หมายเหตุ</p><p class="text-sm">${t.note}</p></div>` : ''}
+      ${norm(t.faculty_practice) ? `<div class="bg-surface rounded-xl p-3"><p class="text-xs text-gray-500 mb-1 font-semibold">หัวข้อ Faculty practice</p><p class="text-sm">${htmlEsc(t.faculty_practice)}</p></div>` : ''}
+      ${teachingCoursesDetailHTML(t.teaching_courses)}
       <div class="bg-surface rounded-xl p-3"><p class="text-xs text-gray-500 mb-1 font-semibold">วุฒิการศึกษา</p>${detailList(t.education)}</div>
       <div class="bg-surface rounded-xl p-3"><p class="text-xs text-gray-500 mb-1 font-semibold">ประสบการณ์สอนทางการพยาบาล ${expYM(t.nursing_teaching_years, t.nursing_teaching_months) ? '<span class="text-primary font-bold">(รวม ' + expYM(t.nursing_teaching_years, t.nursing_teaching_months) + ')</span>' : ''}</p>${expDetailList(t.nursing_teaching_exp)}</div>
       <div class="bg-surface rounded-xl p-3"><p class="text-xs text-gray-500 mb-1 font-semibold">ประสบการณ์ปฏิบัติการพยาบาล ${expYM(t.nursing_practice_years, t.nursing_practice_months) ? '<span class="text-primary font-bold">(รวม ' + expYM(t.nursing_practice_years, t.nursing_practice_months) + ')</span>' : ''}</p>${expDetailList(t.nursing_practice_exp)}</div>
@@ -8366,8 +8624,9 @@ function showAddTeacherDirectoryModal() {
       ${multiExpField('nursing_teaching_exp', 'ประสบการณ์สอนทางการพยาบาล', 'เช่น สอนวิชาการพยาบาลผู้ใหญ่', '')}
       ${multiExpField('nursing_practice_exp', 'ประสบการณ์ปฏิบัติการพยาบาล', 'เช่น พยาบาลวิชาชีพ รพ.รามาธิบดี', '')}
       ${multiAcademicWorkField('')}
+      ${dirNewFieldsHTML({})}
       <div class="grid grid-cols-2 gap-3">
-        <div><label class="block text-xs text-gray-600 mb-1">ปีการศึกษา *</label><input name="academic_year" required class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น 2568" value="2568"></div>
+        <div><label class="block text-xs text-gray-600 mb-1">ปีการศึกษา *</label><input name="academic_year" required class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น 2569" value="${currentAcademicYearBE()}"></div>
         <div><label class="block text-xs text-gray-600 mb-1">ประเภทอาจารย์ *</label>
           <select name="teacher_category" required class="w-full border rounded-xl px-3 py-2 text-sm">
             <option value="">-- เลือกประเภท --</option>
@@ -8397,6 +8656,9 @@ function showAddTeacherDirectoryModal() {
       const _pe = collectExp(form, 'nursing_practice_exp');
       obj.nursing_practice_exp = _pe.exp; obj.nursing_practice_years = _pe.years; obj.nursing_practice_months = _pe.months;
       obj.academic_work = collectAcademicWork(form);
+      obj.sort_no = norm((form.querySelector('[name="sort_no"]') || {}).value);
+      obj.faculty_practice = norm((form.querySelector('[name="faculty_practice"]') || {}).value);
+      obj.teaching_courses = collectTeachingCourses(form);
       obj.academic_year = form.querySelector('[name="academic_year"]').value;
       obj.teacher_category = form.querySelector('[name="teacher_category"]').value;
       const r = await GSheetDB.create(obj);
@@ -8421,6 +8683,7 @@ function showEditTeacherDirectoryModal(id) {
       ${multiExpField('nursing_teaching_exp', 'ประสบการณ์สอนทางการพยาบาล', 'เช่น สอนวิชาการพยาบาลผู้ใหญ่', t.nursing_teaching_exp || '', t.nursing_teaching_years || '', t.nursing_teaching_months || '')}
       ${multiExpField('nursing_practice_exp', 'ประสบการณ์ปฏิบัติการพยาบาล', 'เช่น พยาบาลวิชาชีพ รพ.รามาธิบดี', t.nursing_practice_exp || '', t.nursing_practice_years || '', t.nursing_practice_months || '')}
       ${multiAcademicWorkField(t.academic_work || '')}
+      ${dirNewFieldsHTML(t)}
       <div class="grid grid-cols-2 gap-3">
         <div><label class="block text-xs text-gray-600 mb-1">ปีการศึกษา</label><input name="academic_year" value="${t.academic_year || ''}" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น 2568"></div>
         <div><label class="block text-xs text-gray-600 mb-1">ประเภทอาจารย์</label>
@@ -8452,6 +8715,9 @@ function showEditTeacherDirectoryModal(id) {
       const _pe = collectExp(form, 'nursing_practice_exp');
       rec.nursing_practice_exp = _pe.exp; rec.nursing_practice_years = _pe.years; rec.nursing_practice_months = _pe.months;
       rec.academic_work = collectAcademicWork(form);
+      rec.sort_no = norm((form.querySelector('[name="sort_no"]') || {}).value);
+      rec.faculty_practice = norm((form.querySelector('[name="faculty_practice"]') || {}).value);
+      rec.teaching_courses = collectTeachingCourses(form);
       rec.academic_year = form.querySelector('[name="academic_year"]').value;
       rec.teacher_category = form.querySelector('[name="teacher_category"]').value;
       const r = await GSheetDB.update(rec);
@@ -13770,7 +14036,14 @@ function showEditTeacherModal(id) {
       <button type="submit" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">บันทึกการแก้ไข</button>
     </form>
   `);
-  document.getElementById('editTeacherForm').onsubmit = (e) => { e.preventDefault(); editRecord(id, 'editTeacherForm') };
+  document.getElementById('editTeacherForm').onsubmit = async (e) => {
+    e.preventDefault();
+    await editRecord(id, 'editTeacherForm');
+    // แก้สถานะเป็น ลาออก/โอนย้าย/เกษียณอายุราชการ แล้วต้องปิดบัญชีเข้าระบบตามไปด้วย
+    const after = APP.allData.find(d => d.__backendId === id);
+    const extra = await syncTeacherAccountStatus(after);
+    if (extra) showToast(extra.replace(/^ · /, ''));
+  };
 }
 
 function showAddAnnouncementModal() {

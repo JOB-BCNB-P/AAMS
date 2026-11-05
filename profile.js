@@ -684,7 +684,10 @@
     var prof = myProfile();
     var d = displayOf(rec, prof);
     var isStudent = APP.currentRole === 'student';
-    var RO = showingSelf() ? '' : ' disabled';   // อ่านอย่างเดียวเมื่อกำลังแสดงคนอื่น
+    /* นักศึกษาแก้ได้เฉพาะรูปของตัวเอง ชื่อและเบอร์โทรมาจากทะเบียนกลาง
+       ถ้าปล่อยให้แก้เอง ชื่อในเอกสารจะไม่ตรงกับทะเบียน และไม่มีใครตรวจสอบได้
+       ลายเซ็นก็ไม่ต้องมี เพราะใบลาของนักศึกษาไม่ได้ใช้ช่องลงนามแบบของอาจารย์ */
+    var RO = (showingSelf() && !isStudent) ? '' : ' disabled';
 
     // ข้อมูลจากทะเบียนกลาง แสดงให้เห็นว่าอะไรแก้เองไม่ได้
     var fixed = [];
@@ -711,7 +714,12 @@
       + '<form id="profileForm" class="bg-white rounded-2xl p-5 border border-blue-100 space-y-4"'
       + ' onsubmit="return profileSubmit(event)">'
       + '<h3 class="font-bold flex items-center gap-2">'
-      + '<i data-lucide="contact" class="w-5 h-5 text-primary"></i>ข้อมูลที่คุณแก้เองได้</h3>'
+      + '<i data-lucide="contact" class="w-5 h-5 text-primary"></i>'
+      + (isStudent ? 'ข้อมูลของคุณ' : 'ข้อมูลที่คุณแก้เองได้') + '</h3>'
+      + (isStudent
+        ? '<p class="text-xs text-gray-500 -mt-2">ข้อมูลทั้งหมดมาจากทะเบียนกลาง แก้ไขเองไม่ได้ '
+          + '· ถ้าข้อมูลไม่ถูกต้อง กรุณาแจ้งงานทะเบียน · คุณเปลี่ยนได้เฉพาะรูปโปรไฟล์</p>'
+        : '')
       + '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">'
       + '<div><label class="block text-xs text-gray-600 mb-1">คำนำหน้า</label>'
       + '<input name="title_prefix" value="' + esc(d.title_prefix) + '" placeholder="เช่น นางสาว"' + RO
@@ -723,8 +731,9 @@
       + '<div><label class="block text-xs text-gray-600 mb-1">เบอร์โทรศัพท์</label>'
       + '<input name="phone" value="' + esc(d.phone) + '" inputmode="tel" placeholder="เช่น 08x-xxx-xxxx"' + RO
       + ' class="w-full border rounded-xl px-3 py-2 text-sm"></div>'
-      + '<p class="text-xs text-gray-400">ชื่อที่แก้ตรงนี้ใช้แสดงในระบบและในเอกสารของคุณ '
-      + 'ทะเบียนกลางที่งานทะเบียนดูแลยังเป็นชื่อเดิม — ถ้าต้องการเปลี่ยนชื่อในทะเบียน กรุณาแจ้งงานทะเบียน</p>'
+      + (isStudent ? ''
+        : '<p class="text-xs text-gray-400">ชื่อที่แก้ตรงนี้ใช้แสดงในระบบและในเอกสารของคุณ '
+          + 'ทะเบียนกลางที่งานทะเบียนดูแลยังเป็นชื่อเดิม — ถ้าต้องการเปลี่ยนชื่อในทะเบียน กรุณาแจ้งงานทะเบียน</p>')
 
       + (fixed.length
         ? '<div class="pt-2 border-t border-gray-100">'
@@ -738,10 +747,11 @@
           + '</div></div>'
         : '')
 
-      + '<button type="submit"' + RO
-      + ' class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark'
-      + ' disabled:opacity-50 flex items-center justify-center gap-2">'
-      + '<i data-lucide="save" class="w-4 h-4"></i>บันทึกข้อมูลส่วนตัว</button>'
+      + (isStudent ? ''
+        : '<button type="submit"' + RO
+          + ' class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark'
+          + ' disabled:opacity-50 flex items-center justify-center gap-2">'
+          + '<i data-lucide="save" class="w-4 h-4"></i>บันทึกข้อมูลส่วนตัว</button>')
       + '</form>'
 
       + '<div class="space-y-4">'
@@ -753,7 +763,8 @@
         + '(อัปโหลดตามเดิม ครอปไม่ได้) — ไม่เกิน 5 MB')
       + '</div>'
 
-      + '<div class="bg-white rounded-2xl p-5 border border-blue-100">'
+      + (isStudent ? '' :
+        '<div class="bg-white rounded-2xl p-5 border border-blue-100">'
       + '<h3 class="font-bold mb-1 flex items-center gap-2">'
       + '<i data-lucide="pen-tool" class="w-5 h-5 text-primary"></i>ลายเซ็น</h3>'
       + '<p class="text-xs text-gray-500 mb-3">ใช้แสดงในใบลาตรงช่องลงนามของบทบาทคุณ '
@@ -773,7 +784,7 @@
       + '<p class="text-xs font-semibold text-gray-600 mb-1">หรืออัปโหลดไฟล์ลายเซ็น</p>'
       + fileBox('signature', d.signature_link, 'ลายเซ็น',
         'รองรับ .png .jpg .jpeg .svg .pdf — ไม่เกิน 5 MB')
-      + '</div>'
+      + '</div>')
       + '</div>'
 
       + '</div>'
@@ -786,6 +797,10 @@
     var f = document.getElementById('profileForm');
     if (!f) return false;
     var g = function (n) { var e = f.querySelector('[name="' + n + '"]'); return e ? s(e.value) : ''; };
+    if ((window.APP && APP.currentRole) === 'student') {
+      toast('นักศึกษาแก้ไขข้อมูลส่วนตัวไม่ได้ · เปลี่ยนได้เฉพาะรูปโปรไฟล์', 'error');
+      return false;
+    }
     var run = async function () {
       var r = await saveProfile({
         title_prefix: g('title_prefix'), full_name: g('full_name'), phone: g('phone')
