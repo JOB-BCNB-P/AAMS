@@ -107,6 +107,37 @@ t('คัดลอกเป็นระเบียนใหม่ ไม่ไ�
   assert.ok(g.includes('GSheetDB.createMany'), 'ไม่ได้สร้างทีเดียว จะยิงทีละคน');
 });
 
+console.log('\n[3.1] ทำเนียบอาจารย์ — สร้างปีการศึกษาใหม่');
+t('มีปุ่มสร้างปีการศึกษา เฉพาะผู้ดูแลระบบ', () => {
+  assert.ok(APP.includes('showDirectoryNewYearModal()'), 'ไม่มีปุ่ม');
+  assert.ok(/isAdmin \? `<button onclick="showDirectoryNewYearModal\(\)/.test(APP), 'บทบาทอื่นก็สร้างปีได้');
+});
+t('ปีที่สร้างใหม่ต้องขึ้นในรายการให้เลือก ทั้งที่ยังไม่มีข้อมูล', () => {
+  // จุดตายของฟีเจอร์นี้ : ถ้าปีใหม่ไม่ขึ้นในรายการ จะเลือกไม่ได้ และกดดึงจากปีก่อนหน้าไม่ได้เลย
+  assert.ok(APP.includes("concat(APP._directoryNewYears || [])"), 'ปีที่สร้างใหม่หายไปจากรายการ');
+});
+t('ตรวจค่าปีก่อนเปิดใช้', () => {
+  const g = grab(APP, 'window.directoryNewYearGo = function ()');
+  assert.ok(g.includes('/^\\d{4}$/'), 'ไม่ได้ตรวจว่าเป็นตัวเลข 4 หลัก');
+  assert.ok(g.includes('n < 2500 || n > 2700'), 'กรอกเป็น ค.ศ. หรือพิมพ์ผิดแล้วผ่าน');
+  assert.ok(g.includes("APP.filters._directoryYear = y"), 'สร้างแล้วไม่ได้พาไปที่ปีนั้น');
+});
+t('ตรรกะการตรวจปีทำงานถูก', () => {
+  const ok = y => /^\d{4}$/.test(y) && parseInt(y, 10) >= 2500 && parseInt(y, 10) <= 2700;
+  ['2570', '2569', '2700'].forEach(y => assert.strictEqual(ok(y), true, y + ' ควรผ่าน'));
+  ['2026', '570', '25700', '', 'ปี2570', '2499'].forEach(y => assert.strictEqual(ok(y), false, y + ' ไม่ควรผ่าน'));
+});
+t('ไม่เขียนอะไรลงฐานข้อมูลตอนสร้างปี', () => {
+  const g = grab(APP, 'window.directoryNewYearGo = function ()');
+  assert.ok(!/GSheetDB\.(create|update|delete)/.test(g), 'สร้างปีแล้วไปเขียนข้อมูลเปล่าลงฐานข้อมูล');
+});
+t('ปีที่ยังไม่มีรายชื่อ ต้องชี้ทางต่อ ไม่ใช่ตารางว่าง', () => {
+  const g = grab(APP, 'function directoryEmptyYearHTML(year, isAdmin)');
+  assert.ok(g.includes('showDirectoryCopyYearModal()'), 'ไม่มีปุ่มดึงจากปีก่อนหน้าในกล่องว่าง');
+  assert.ok(g.includes('showAddTeacherDirectoryModal()'), 'ไม่มีทางเพิ่มทีละคน');
+  assert.ok(APP.includes('!total && view === \'list\' ? directoryEmptyYearHTML'), 'กล่องว่างไม่ได้ถูกเรียกใช้');
+});
+
 console.log('\n[4] ทำเนียบอาจารย์ — ช่องใหม่ปี 2569');
 const tcParse = new Function(grab(APP, 'function tcParse(values)') + ' return tcParse;')();
 t('แปลงรายวิชาที่สอนเป็น 3 ส่วนได้ถูกต้อง', () => {

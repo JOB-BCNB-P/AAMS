@@ -8512,8 +8512,11 @@ function teacherDirectoryPage() {
   // ประธานสาขา: เห็นเฉพาะอาจารย์ในสาขาเดียวกัน (จับคู่ด้วย nursing_branch)
   if (APP.currentRole === 'deptHead') { const _d = currentDept(); allData = allData.filter(x => deptEq(norm(x.nursing_branch), _d)); }
 
-  // Academic year filter
-  const allYears = [...new Set(allData.map(d => d.academic_year).filter(Boolean))].sort().reverse();
+  /* รายการปีมาจากปีที่มีข้อมูลอยู่แล้ว บวกกับปีที่เพิ่งกด "สร้างปีการศึกษา"
+     ปีที่สร้างใหม่ยังไม่มีระเบียนสักแถว ถ้าไม่ใส่ไว้ในรายการจะเลือกไม่ได้
+     และจะกดปุ่มดึงข้อมูลจากปีก่อนหน้าไม่ได้เลย เพราะปุ่มนั้นต้องเลือกปีปลายทางก่อน */
+  const allYears = [...new Set(allData.map(d => norm(d.academic_year)).filter(Boolean)
+    .concat(APP._directoryNewYears || []))].sort().reverse();
   const selectedYear = APP.filters._directoryYear || '';
   if (selectedYear) allData = allData.filter(d => (d.academic_year || '') === selectedYear);
   let data = allData;
@@ -8573,15 +8576,65 @@ function teacherDirectoryPage() {
         <option value="">-- เลือกปีการศึกษา --</option>
         ${allYears.map(y => `<option value="${y}" ${selectedYear === y ? 'selected' : ''}>${y}</option>`).join('')}
       </select>
+      ${isAdmin ? `<button onclick="showDirectoryNewYearModal()" class="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 text-gray-700 text-sm hover:bg-surface"><i data-lucide="calendar-plus" class="w-4 h-4"></i>สร้างปีการศึกษา</button>` : ''}
       ${selectedYear ? `<span class="text-xs text-gray-500">แสดงข้อมูลปีการศึกษา ${selectedYear}</span>` : ''}
     </div>
+    ${isAdmin ? '<p class="text-[11px] text-gray-400 mt-2"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ขึ้นปีการศึกษาใหม่ ให้กด <b>สร้างปีการศึกษา</b> แล้วกด <b>ดึงจากปีก่อนหน้า</b> เพื่อยกรายชื่อของปีที่แล้วมาตั้งต้น</p>' : ''}
   </div>
 
   ${!selectedYear ? noYearSelectedMsg('ทำเนียบอาจารย์')
+    : (!total && view === 'list' ? directoryEmptyYearHTML(selectedYear, isAdmin)
       : (view === 'summary' ? directorySummaryView(selectedYear, isAdmin)
         : view === 'branch' ? directoryBranchView(selectedYear, isAdmin)
-          : renderDirectoryDataSection(paged, total, counts, activeTab, isAdmin))}`;
+          : renderDirectoryDataSection(paged, total, counts, activeTab, isAdmin)))}`;
 }
+
+// ปีที่สร้างใหม่ยังไม่มีรายชื่อ — ชี้ทางต่อให้ชัด ไม่ใช่ปล่อยตารางว่าง
+function directoryEmptyYearHTML(year, isAdmin) {
+  return `<div class="bg-white rounded-2xl border border-blue-100 p-8 text-center">
+    <i data-lucide="users" class="w-8 h-8 mx-auto text-gray-300 mb-2"></i>
+    <p class="font-semibold text-gray-700">ปีการศึกษา ${htmlEsc(year)} ยังไม่มีรายชื่ออาจารย์</p>
+    <p class="text-sm text-gray-500 mt-1">ยกรายชื่อจากปีก่อนหน้ามาตั้งต้น แล้วค่อยแก้เฉพาะที่เปลี่ยน จะเร็วกว่าพิมพ์ใหม่ทั้งหมด</p>
+    ${isAdmin ? `<div class="flex flex-wrap gap-2 justify-center mt-4">
+      <button onclick="showDirectoryCopyYearModal()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="copy" class="w-4 h-4"></i>ดึงจากปีก่อนหน้า</button>
+      <button onclick="showAddTeacherDirectoryModal()" class="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-surface text-sm"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มทีละคน</button>
+    </div>` : ''}
+  </div>`;
+}
+
+/* สร้างปีการศึกษาใหม่ในทำเนียบ
+   ไม่ได้เขียนอะไรลงฐานข้อมูล เป็นแค่การเปิดปีให้เลือกได้ในหน้านี้
+   ข้อมูลจริงจะเกิดตอนกดดึงจากปีก่อนหน้า หรือเพิ่มอาจารย์ทีละคน */
+window.showDirectoryNewYearModal = function () {
+  const have = [...new Set(getDataByType('teacher_directory').map(d => norm(d.academic_year)).filter(Boolean)
+    .concat(APP._directoryNewYears || []))].sort().reverse();
+  const next = String((parseInt(have[0], 10) || parseInt(currentAcademicYearBE(), 10)) + (have.length ? 1 : 0));
+  showModal('สร้างปีการศึกษา', `
+    <div class="space-y-3">
+      <div><label class="block text-xs text-gray-600 mb-1">ปีการศึกษา (พ.ศ.)</label>
+        <input id="dirNewYear" value="${htmlEsc(next)}" inputmode="numeric" maxlength="4" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น 2570"></div>
+      <p class="text-xs text-gray-500">${have.length ? 'ปีที่มีอยู่แล้ว: ' + have.map(htmlEsc).join(' · ') : 'ยังไม่มีปีการศึกษาในทำเนียบ'}</p>
+      <p class="text-[11px] text-gray-400">การสร้างปียังไม่บันทึกอะไรลงฐานข้อมูล เป็นการเปิดปีให้เลือกเท่านั้น
+        ข้อมูลจะเกิดขึ้นเมื่อดึงจากปีก่อนหน้า หรือเพิ่มอาจารย์</p>
+      <button type="button" onclick="directoryNewYearGo()" class="w-full bg-primary text-white py-2.5 rounded-xl hover:bg-primaryDark">สร้างและไปที่ปีนี้</button>
+    </div>`);
+};
+window.directoryNewYearGo = function () {
+  const el = document.getElementById('dirNewYear');
+  const y = norm(el && el.value);
+  if (!/^\d{4}$/.test(y)) { showToast('กรอกปีการศึกษาเป็นตัวเลข 4 หลัก เช่น 2570', 'error'); return; }
+  const n = parseInt(y, 10);
+  // กันพิมพ์เป็น ค.ศ. หรือพิมพ์ผิดจนเป็นปีที่เป็นไปไม่ได้
+  if (n < 2500 || n > 2700) { showToast('ปีการศึกษาต้องเป็น พ.ศ. เช่น 2570', 'error'); return; }
+  if (!APP._directoryNewYears) APP._directoryNewYears = [];
+  if (APP._directoryNewYears.indexOf(y) === -1) APP._directoryNewYears.push(y);
+  APP.filters._directoryYear = y;
+  APP.pagination.page = 1;
+  APP._directoryView = 'list';
+  closeModal();
+  renderCurrentPage();
+  showToast('เปิดปีการศึกษา ' + y + ' แล้ว · กด "ดึงจากปีก่อนหน้า" เพื่อยกรายชื่อมาตั้งต้น');
+};
 
 // ตารางรายวิชาที่สอนในหน้าดูข้อมูล — ไม่แสดงเลยถ้ายังไม่ได้กรอก
 function teachingCoursesDetailHTML(values) {
