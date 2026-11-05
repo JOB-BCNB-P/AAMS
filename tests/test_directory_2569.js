@@ -217,7 +217,7 @@ t('ยังไม่เลือกหลักสูตร ต้องยั�
   assert.strictEqual(CUR2.curCourseOptionsHTML(''), '', 'รายวิชาโผล่ทั้งที่ยังไม่เลือกหลักสูตร');
   assert.ok(CUR2.curCoursePlaceholder('').includes('เลือกหลักสูตรก่อน'), 'ไม่ได้บอกว่าต้องเลือกหลักสูตรก่อน');
   const g = grab(APP, 'function curCoursePickerHTML()');
-  assert.ok(/<input id="curCoursePick"[^>]*disabled/.test(g), 'ช่องยังพิมพ์ได้ทั้งที่ยังไม่เลือกหลักสูตร');
+  assert.ok(/<input id="curCourseInput"[\s\S]*?disabled/.test(g), 'ช่องยังพิมพ์ได้ทั้งที่ยังไม่เลือกหลักสูตร');
 });
 t('เลือกหลักสูตรแล้ว ขึ้นเฉพาะรายวิชาของหลักสูตรนั้น', () => {
   const h = CUR2.curCourseOptionsHTML('2565');
@@ -275,11 +275,37 @@ t('ตัวเลือกเดิมที่ดึงจากรายว�
   ['subjectCopyFrom', 'subjectCopyDatalistHTML', 'subjectCopyLabel', 'subjectCopyFind', 'curriculumNameDatalistHTML']
     .forEach(fn => assert.ok(!APP.includes(fn), 'ยังเหลือโค้ดเดิม ' + fn + ' ที่ไม่มีใครเรียกใช้'));
 });
+t('id ของช่องกรอกต้องไม่ชนกับชื่อฟังก์ชันที่เรียกใน oninput', () => {
+  /* ตัวจัดการเหตุการณ์แบบ inline มองเห็นชื่อ/ไอดีของ element ในฟอร์มก่อนตัวแปรส่วนกลาง
+     ถ้า id ชนกับชื่อฟังก์ชัน จะได้ element แทนฟังก์ชัน แล้วพังเงียบ ๆ
+     ไม่มีอะไรฟ้องบนหน้าจอ นอกจากช่องที่ควรถูกเติมแล้วไม่ถูกเติม */
+  const g = grab(APP, 'function curCoursePickerHTML()');
+  const ids = (g.match(/id="([A-Za-z0-9_]+)"/g) || []).map(x => x.slice(4, -1));
+  const handlers = (g.match(/on[a-z]+="([A-Za-z0-9_]+)\(/g) || []).map(x => x.replace(/^on[a-z]+="/, '').replace(/\($/, ''));
+  const clash = ids.filter(i => handlers.indexOf(i) !== -1);
+  assert.deepStrictEqual(clash, [], 'id ชนกับชื่อฟังก์ชัน: ' + clash.join(', '));
+  assert.ok(ids.indexOf('curCourseInput') !== -1, 'ไม่พบช่องกรอกรายวิชา');
+});
 t('ขั้นตอนในฟอร์มตรงกับโครงใหม่', () => {
   const ST = fs.readFileSync(path.join(ROOT, 'steps.js'), 'utf8');
   assert.ok(ST.includes("['เลือกหลักสูตรและรายวิชา', '[name=\"curriculum_year\"]'"), 'ขั้นที่ 1 ยังเป็นของเดิม');
   assert.ok(ST.includes("STEPS.editSubjectForm = [['หลักสูตรและชื่อรายวิชา'"),
     'ฟอร์มแก้ไขจะมีช่องหลักสูตรหลุดออกนอกขั้นตอน');
+});
+
+t('อาจารย์ที่ยังไม่มีนักศึกษาในความดูแล ขึ้นเฉพาะผู้ที่ปฏิบัติงานอยู่', () => {
+  const f = new Function('norm', grab(APP, 'function isWorkingTeacher(t)') + ' return isWorkingTeacher;')(
+    v => String(v == null ? '' : v).trim());
+  assert.strictEqual(f({ teacher_status: 'ปฏิบัติงานอยู่' }), true);
+  assert.strictEqual(f({}), true, 'ไม่ได้ระบุสถานะ ถือว่าปฏิบัติงานอยู่ตามค่าเริ่มต้นเดิม');
+  ['ลาศึกษาต่อ', 'ช่วยราชการ', 'โอนย้าย', 'ลาออก', 'เกษียณอายุราชการ'].forEach(st =>
+    assert.strictEqual(f({ teacher_status: st }), false, st + ' ไม่ควรขึ้นในรายการ'));
+  assert.ok(APP.includes('isWorkingTeacher(t) && !advisorMap[nameKey(t.name)]'), 'รายการยังใช้ตัวกรองเดิม');
+  assert.ok(APP.includes('(เฉพาะผู้ที่ปฏิบัติงานอยู่)'), 'ไม่ได้บอกบนหน้าจอว่ากรองด้วยอะไร');
+});
+t('หน้าต่างกำหนดอาจารย์ที่ปรึกษา ก็ต้องใช้เกณฑ์เดียวกัน', () => {
+  assert.ok(APP.includes("getDataByType('teacher').filter(t => norm(t.name) && isWorkingTeacher(t))"),
+    'รายการหนึ่งซ่อน อีกรายการยังเลือกได้ จะสับสน');
 });
 
 console.log('\n[7] เพิ่มรายวิชา — ดึงชื่อภาษาอังกฤษจากหลักสูตร');

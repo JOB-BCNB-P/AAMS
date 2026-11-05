@@ -2939,6 +2939,10 @@ function curCoursesOf(curYear) {
 function curCourseLabel(c) {
   return [norm(c.course_code), norm(c.name_th)].filter(Boolean).join(' ');
 }
+/* ข้อควรระวัง : id ของช่องกรอกต้องไม่ซ้ำกับชื่อฟังก์ชันที่เรียกใน oninput
+   เพราะตัวจัดการเหตุการณ์แบบ inline มองเห็น "ชื่อ/ไอดีของ element ในฟอร์ม" ก่อนตัวแปรส่วนกลาง
+   ถ้าตั้ง id="curCoursePick" แล้วเรียก curCoursePick(this) จะได้ element ไม่ใช่ฟังก์ชัน
+   แล้วพังเงียบ ๆ ว่า "curCoursePick is not a function" */
 // รายการสำหรับพิมพ์ค้นหา — ป้ายคือ "รหัสวิชา ชื่อวิชา" ซึ่งไม่ซ้ำกัน จึงย้อนกลับไปหาระเบียนได้
 function curCourseOptionsHTML(curYear) {
   if (!norm(curYear)) return '';      // ยังไม่เลือกหลักสูตร = ไม่มีรายวิชาให้ค้นหา
@@ -2954,7 +2958,7 @@ function curCoursePlaceholder(curYear) {
 function curCoursePickerHTML() {
   return `<div class="bg-blue-50 border border-blue-100 rounded-xl p-3">
     <label class="block text-xs font-medium text-blue-800 mb-1">เลือกรายวิชาจากหลักสูตร <span class="font-normal text-blue-600">(ไม่บังคับ)</span></label>
-    <input id="curCoursePick" list="curCourseList" oninput="curCoursePick(this)" autocomplete="off" disabled
+    <input id="curCourseInput" list="curCourseList" oninput="curCoursePick(this)" autocomplete="off" disabled
       class="w-full border border-blue-200 rounded-xl px-3 py-2 text-sm bg-white disabled:opacity-50"
       placeholder="${htmlEsc(curCoursePlaceholder(''))}">
     <datalist id="curCourseList">${curCourseOptionsHTML('')}</datalist>
@@ -2966,7 +2970,7 @@ function curCoursePickerHTML() {
 // เปลี่ยนหลักสูตร → โหลดรายวิชาของหลักสูตรนั้นใหม่ และล้างค่าที่พิมพ์ไว้
 window.curCourseReload = function (sel) {
   const form = sel && sel.form; if (!form) return;
-  const pick = form.querySelector('#curCoursePick');
+  const pick = form.querySelector('#curCourseInput');
   const list = form.querySelector('#curCourseList');
   if (!pick) return;
   const y = norm(sel.value);
@@ -6918,7 +6922,7 @@ function advisorInfoPage() {
   </details>`;
 
   // ----- พาเนล: อาจารย์ที่ยังไม่มีนักศึกษาในความดูแล (ไม่รวมผู้ที่ลาออก, เคารพตัวกรองสาขา) -----
-  let freeTeachers = teachers.filter(t => norm(t.name) && !TEACHER_STATUS_GONE.includes(norm(t.teacher_status || '')) && !advisorMap[nameKey(t.name)]);
+  let freeTeachers = teachers.filter(t => norm(t.name) && isWorkingTeacher(t) && !advisorMap[nameKey(t.name)]);
   if (selectedDept) freeTeachers = freeTeachers.filter(t => (norm(t.department) || NO_DEPT) === selectedDept);
   freeTeachers.sort((a, b) => norm(a.name).localeCompare(norm(b.name), 'th'));
   const freeTeacherCards = freeTeachers.map(t => {
@@ -6930,7 +6934,7 @@ function advisorInfoPage() {
     </button>`;
   }).join('');
   const freeTeacherPanel = `<details class="bg-gray-50 border border-gray-200 rounded-2xl mb-4">
-    <summary class="cursor-pointer px-4 py-3 text-sm font-semibold text-gray-700 flex items-center gap-2"><i data-lucide="users" class="w-4 h-4"></i>อาจารย์ที่ยังไม่มีนักศึกษาในความดูแล <span class="px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 text-xs">${freeTeachers.length} ท่าน</span></summary>
+    <summary class="cursor-pointer px-4 py-3 text-sm font-semibold text-gray-700 flex items-center gap-2"><i data-lucide="users" class="w-4 h-4"></i>อาจารย์ที่ยังไม่มีนักศึกษาในความดูแล <span class="px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 text-xs">${freeTeachers.length} ท่าน</span> <span class="text-xs font-normal text-gray-400">(เฉพาะผู้ที่ปฏิบัติงานอยู่)</span></summary>
     <div class="px-3 pb-3">
       ${freeTeachers.length ? `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">${freeTeacherCards}</div>${isAdmin ? '<p class="text-xs text-gray-400 mt-2"><i data-lucide="info" class="w-3 h-3 inline"></i> คลิกอาจารย์เพื่อเปิดและเพิ่มนักศึกษาในความดูแล</p>' : ''}` : '<p class="text-sm text-gray-500 px-1 py-2">อาจารย์ทุกท่านตามเงื่อนไขมีนักศึกษาในความดูแลแล้ว</p>'}
     </div>
@@ -6973,7 +6977,7 @@ function advisorGotoEng(sid) { navigateTo('engResults'); APP.filters._engStudent
 function showAssignAdvisorToStudent(id) {
   if (!(GSheetDB.hasWriteAccess && GSheetDB.hasWriteAccess())) { showToast('ระบบอยู่ในโหมดอ่านอย่างเดียว — ตั้งค่า Apps Script URL ก่อน', 'error'); return; }
   const s = APP.allData.find(d => d.__backendId === id); if (!s) return;
-  const tList = getDataByType('teacher').filter(t => norm(t.name) && !TEACHER_STATUS_GONE.includes(norm(t.teacher_status || '')))
+  const tList = getDataByType('teacher').filter(t => norm(t.name) && isWorkingTeacher(t))
     .sort((a, b) => norm(a.name).localeCompare(norm(b.name), 'th'));
   const rows = tList.map(t => {
     const nm = norm(t.name).replace(/'/g, "\\'");
@@ -7769,6 +7773,12 @@ const TEACHER_STATUS_NEEDS_PLACE = ['ช่วยราชการ', 'โอน
    - ไม่นับรวมในจำนวนอาจารย์
    - เข้าใช้งานระบบไม่ได้ (ปิดบัญชีให้อัตโนมัติเมื่อบันทึกสถานะ) */
 const TEACHER_STATUS_GONE = ['ลาออก', 'โอนย้าย', 'เกษียณอายุราชการ'];
+/* งานที่ต้อง "รับผิดชอบนักศึกษาต่อเนื่อง" เช่น อาจารย์ที่ปรึกษา ต้องใช้เฉพาะคนที่ปฏิบัติงานอยู่
+   คนที่ลาศึกษาต่อหรือช่วยราชการยังไม่พ้นสภาพ แต่ไม่อยู่ดูแลนักศึกษาในช่วงนั้น
+   จึงไม่ควรขึ้นในรายการให้มอบหมายงาน */
+function isWorkingTeacher(t) {
+  return (norm(t && t.teacher_status) || 'ปฏิบัติงานอยู่') === 'ปฏิบัติงานอยู่';
+}
 
 /* อาจารย์ที่พ้นจากวิทยาลัยแล้ว (ลาออก โอนย้าย เกษียณอายุราชการ)
    ต้องเข้าใช้งานระบบไม่ได้อีก — ตัวที่กันจริงคือ is_active ในตาราง app_user
