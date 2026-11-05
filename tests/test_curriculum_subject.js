@@ -114,10 +114,15 @@ t('ฟอร์มเพิ่มและแก้ไขมีช่องห�
   assert.ok(APP.includes('${curriculumField({})}'), 'ฟอร์มเพิ่มไม่มีช่องหลักสูตร');
   assert.ok(APP.includes('${curriculumField(s)}'), 'ฟอร์มแก้ไขไม่มีช่องหลักสูตร');
 });
-t('คัดลอกรายวิชาเดิมแล้วหลักสูตรต้องตามมาด้วย', () => {
-  const i = APP.indexOf('function subjectCopyFrom');
-  const seg = APP.slice(i, i + 1400);
-  assert.ok(seg.includes('[name="curriculum_year"]'), 'คัดลอกแล้วหลักสูตรหาย');
+t('รายวิชาที่เลือกต้องมาจากหลักสูตรที่เลือกไว้เสมอ', () => {
+  /* ดีไซน์ใหม่ : เลือกหลักสูตรก่อน แล้วรายการรายวิชาจึงขึ้นตามหลักสูตรนั้น
+     หลักสูตรจึงหายไม่ได้ และได้รายวิชาข้ามหลักสูตรไม่ได้ด้วย */
+  const i = APP.indexOf('function curCoursesOf');
+  assert.ok(i > -1, 'ไม่พบตัวกรองรายวิชาตามหลักสูตร');
+  const seg = APP.slice(i, i + 400);
+  assert.ok(seg.includes("norm(c.curriculum_year) === y"), 'ไม่ได้กรองตามหลักสูตร');
+  const g = APP.slice(APP.indexOf('window.curCoursePick'), APP.indexOf('window.curCoursePick') + 900);
+  assert.ok(g.includes("form.querySelector('[name=\"curriculum_year\"]')"), 'ไม่ได้อ่านหลักสูตรที่เลือกไว้');
 });
 t('หัวตาราง CSV มีคอลัมน์หลักสูตรเป็นคอลัมน์แรก', () => {
   assert.ok(APP.includes("csvUploadBtn('subject', 'curriculum_year,subject_code"), 'นำเข้า CSV แล้วไม่มีหลักสูตร');

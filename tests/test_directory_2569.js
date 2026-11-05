@@ -198,26 +198,72 @@ t('ตารางยังรวมรายวิชาจากทำเน�
   assert.ok(g.includes('seen.has(k)'), 'กรอกทั้งสองที่แล้วจะขึ้นซ้ำ');
 });
 
-console.log('\n[6] รายวิชา — คัดลอกจากที่เคยเปิดสอน');
-t('พิมพ์ค้นหาได้ ไม่ใช่ dropdown ยาว ๆ', () => {
-  assert.ok(APP.includes('list="copySubjectList"'), 'ยังเป็น select');
-  assert.ok(APP.includes('function subjectCopyDatalistHTML('), 'ไม่มีรายการให้ค้นหา');
-  assert.ok(APP.includes('placeholder="พิมพ์ชื่อวิชาหรือรหัสวิชาเพื่อค้นหา"'), 'ไม่ได้บอกว่าพิมพ์ค้นหาได้');
+console.log('\n[6] เพิ่มรายวิชา — เลือกหลักสูตรก่อน แล้วเลือกรายวิชาจากหลักสูตร');
+const curEnv2 = {
+  norm: v => String(v == null ? '' : v).trim(),
+  htmlEsc: v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'),
+  getDataByType: tb => tb === 'curriculum_course' ? [
+    { curriculum_year: '2565', course_code: 'GE 104', name_th: 'ภาษาอังกฤษ', name_en: 'English', credits: '3', h_theory: '2', h_lab: '2', h_self: '5' },
+    { curriculum_year: '2565', course_code: '0101300035', name_th: 'การพัฒนาบุคลิกภาพ', name_en: 'Personality', credits: '2' },
+    { curriculum_year: '2560', course_code: 'OLD 101', name_th: 'วิชาหลักสูตรเก่า', name_en: 'Old' }
+  ] : []
+};
+const CUR2 = new Function(...Object.keys(curEnv2),
+  grab(APP, 'function curCoursesOf(curYear)') + grab(APP, 'function curCourseLabel(c)')
+  + grab(APP, 'function curCourseOptionsHTML(curYear)')
+  + '; return { curCoursesOf, curCourseLabel, curCourseOptionsHTML };')(...Object.values(curEnv2));
+
+t('ยังไม่เลือกหลักสูตร ต้องยังเลือกรายวิชาไม่ได้', () => {
+  const h = CUR2.curCourseOptionsHTML('');
+  assert.ok(h.includes('เลือกหลักสูตรก่อน'), 'ปล่อยให้เลือกรายวิชาข้ามหลักสูตรได้');
+  assert.ok(!h.includes('GE 104'), 'รายวิชาโผล่ทั้งที่ยังไม่เลือกหลักสูตร');
 });
-t('ไม่คัดลอกชั้นปีและภาคการศึกษา', () => {
-  const g = grab(APP, 'function subjectCopyFrom(sel)');
-  assert.ok(!/\[name="year_level"\]/.test(g), 'ยังคัดลอกชั้นปีมา');
-  assert.ok(!/\[name="semester"\]/.test(g), 'ยังคัดลอกภาคการศึกษามา');
-  assert.ok(g.includes('ตั้งใจไม่คัดลอก'), 'ไม่มีคำอธิบายว่าทำไมถึงไม่คัดลอก');
+t('เลือกหลักสูตรแล้ว ขึ้นเฉพาะรายวิชาของหลักสูตรนั้น', () => {
+  const h = CUR2.curCourseOptionsHTML('2565');
+  assert.ok(h.includes('GE 104 ภาษาอังกฤษ'), 'ไม่มีรายวิชาของหลักสูตรที่เลือก');
+  assert.ok(!h.includes('OLD 101'), 'รายวิชาของหลักสูตรอื่นปนมาด้วย');
+  assert.ok(h.includes('(2 วิชา)'), 'ไม่ได้บอกจำนวนรายวิชา');
 });
-t('ยังคัดลอกข้อมูลหลักอื่น ๆ มาครบ', () => {
-  const g = grab(APP, 'function subjectCopyFrom(sel)');
-  ['subject_code', 'subject_name', 'credits', 'department'].forEach(k =>
-    assert.ok(g.includes("'" + k + "'"), 'ไม่ได้คัดลอก ' + k));
-  assert.ok(g.includes('curriculum_year'), 'ไม่ได้คัดลอกหลักสูตร');
+t('แสดงแค่รหัสวิชาและชื่อวิชา ไม่มีปี ภาค ชั้นปี', () => {
+  const lb = CUR2.curCourseLabel({ course_code: 'GE 104', name_th: 'ภาษาอังกฤษ' });
+  assert.strictEqual(lb, 'GE 104 ภาษาอังกฤษ');
+  const h = CUR2.curCourseOptionsHTML('2565');
+  assert.ok(!/ปีการศึกษา|ภาค |ชั้นปี/.test(h), 'ยังมีปี ภาค หรือชั้นปีในรายการ');
 });
-t('เตือนให้เลือกชั้นปีและภาคใหม่หลังคัดลอก', () => {
-  assert.ok(APP.includes('อย่าลืมเลือกชั้นปีและภาคการศึกษาใหม่'), 'ไม่ได้เตือน ผู้ใช้อาจลืมแก้');
+t('หลักสูตรที่ยังไม่มีรายวิชา ต้องบอกให้รู้', () => {
+  assert.ok(CUR2.curCourseOptionsHTML('2599').includes('ยังไม่มีรายวิชา'), 'ขึ้นรายการเปล่าเฉย ๆ');
+});
+t('เรียงตามรหัสวิชา', () => {
+  const codes = CUR2.curCoursesOf('2565').map(c => c.course_code);
+  assert.deepStrictEqual(codes, ['0101300035', 'GE 104']);
+});
+t('เปลี่ยนหลักสูตรแล้วรายการรายวิชาต้องโหลดใหม่', () => {
+  assert.ok(APP.includes('onchange="if(window.curCourseReload)curCourseReload(this)"'),
+    'เปลี่ยนหลักสูตรแล้วยังค้างรายวิชาของหลักสูตรเดิม');
+  const g = grab(APP, 'window.curCourseReload = function (sel)');
+  assert.ok(g.includes("pick.value = ''"), 'ไม่ได้ล้างค่าที่เลือกไว้ จะค้างรายวิชาของหลักสูตรเดิม');
+});
+t('เลือกรายวิชาแล้วเติมข้อมูลจากหลักสูตร และไม่ทับที่พิมพ์เอง', () => {
+  const g = grab(APP, 'window.curCoursePick = function (sel)');
+  ['subject_code', 'subject_name', 'subject_name_en', 'credits', 'hours_theory', 'hours_lab', 'hours_self']
+    .forEach(k => assert.ok(g.includes("set('" + k + "'"), 'ไม่ได้เติม ' + k));
+  assert.ok(g.includes('!norm(f.value)'), 'ทับค่าที่ผู้ใช้พิมพ์เอง');
+});
+t('ไม่เติมปีการศึกษา ภาคการศึกษา และชั้นปีให้', () => {
+  const g = grab(APP, 'window.curCoursePick = function (sel)');
+  ['academic_year', 'semester', 'year_level'].forEach(k =>
+    assert.ok(!g.includes("set('" + k + "'"), 'ไม่ควรเติม ' + k + ' เพราะหลักสูตรไม่ได้ผูกกับปีการศึกษา'));
+  assert.ok(g.includes('อย่าลืมเลือกปีการศึกษา'), 'ไม่ได้เตือนให้เลือกเอง');
+});
+t('ตัวเลือกเดิมที่ดึงจากรายวิชาที่เคยเปิดสอน ถูกถอดออกหมดแล้ว', () => {
+  ['subjectCopyFrom', 'subjectCopyDatalistHTML', 'subjectCopyLabel', 'subjectCopyFind', 'curriculumNameDatalistHTML']
+    .forEach(fn => assert.ok(!APP.includes(fn), 'ยังเหลือโค้ดเดิม ' + fn + ' ที่ไม่มีใครเรียกใช้'));
+});
+t('ขั้นตอนในฟอร์มตรงกับโครงใหม่', () => {
+  const ST = fs.readFileSync(path.join(ROOT, 'steps.js'), 'utf8');
+  assert.ok(ST.includes("['เลือกหลักสูตรและรายวิชา', '[name=\"curriculum_year\"]'"), 'ขั้นที่ 1 ยังเป็นของเดิม');
+  assert.ok(ST.includes("STEPS.editSubjectForm = [['หลักสูตรและชื่อรายวิชา'"),
+    'ฟอร์มแก้ไขจะมีช่องหลักสูตรหลุดออกนอกขั้นตอน');
 });
 
 console.log('\n[7] เพิ่มรายวิชา — ดึงชื่อภาษาอังกฤษจากหลักสูตร');
@@ -271,12 +317,18 @@ t('ช่องชื่อวิชาในฟอร์มเพิ่ม เ�
   assert.ok(i > -1, 'ไม่พบช่องชื่อรายวิชา');
   const seg = APP.slice(i, i + 260);
   assert.ok(seg.includes('curFillFromCurriculum'), 'กรอกชื่อวิชาแล้วไม่เติมให้');
-  assert.ok(seg.includes('list="curSubjectNameList"'), 'ไม่มีรายการชื่อวิชาจากหลักสูตรให้เลือก');
+  // ไม่มี datalist ที่ช่องชื่อแล้ว เพราะเลือกรายวิชาจากหลักสูตรในขั้นที่ 1 แทน
+  assert.ok(APP.includes('curCoursePickerHTML()'), 'ไม่มีตัวเลือกรายวิชาจากหลักสูตร');
 });
-t('คัดลอกรายวิชาเดิม ต้องได้ชื่ออังกฤษมาด้วย', () => {
-  const g = grab(APP, 'function subjectCopyFrom(sel)');
-  assert.ok(g.includes("'subject_name_en'"), 'คัดลอกแล้วชื่ออังกฤษยังว่าง');
-  assert.ok(g.includes('curFillFromCurriculum'), 'ของเดิมที่ไม่มีชื่ออังกฤษ ควรลองเติมจากหลักสูตรให้อีกชั้น');
+t('เลือกรายวิชาจากหลักสูตร ได้ชื่ออังกฤษมาด้วย', () => {
+  const g = grab(APP, 'window.curCoursePick = function (sel)');
+  assert.ok(g.includes("set('subject_name_en', hit.name_en)"), 'เลือกแล้วชื่ออังกฤษยังว่าง');
+});
+t('ผู้ประสานงานและสาขาดึงจากครั้งล่าสุดที่เคยเปิดสอน', () => {
+  const g = grab(APP, 'window.curCoursePick = function (sel)');
+  assert.ok(g.includes("getDataByType('subject')"), 'ไม่ได้ดึงจากรายวิชาที่เคยเปิดสอน');
+  assert.ok(g.includes('addSubjectCoord'), 'ไม่ได้เติมผู้ประสานงาน');
+  assert.ok(/sort\(\(a, b\) => norm\(b\.academic_year\)/.test(g), 'ไม่ได้เลือกครั้งล่าสุด');
 });
 
 console.log('\n────────────────────────────');

@@ -403,9 +403,11 @@
     for (var j = 0; j < axes.length; j++) if (s(axes[j].no) === head) return axes[j].code;
     return '';
   }
-  /* เลือกได้มากสุด 3 ปี — ใยแมงมุมซ้อนเกิน 3 เส้นอ่านไม่ออก เส้นทับกันจนแยกสีไม่ได้
-     ถ้าเลือกเกิน จะปล่อยปีที่เก่าที่สุดออกให้เอง ผู้ใช้จะได้ไม่ต้องมานั่งเอาติ๊กออกก่อน */
-  var RADAR_MAX_YEARS = 3;
+  /* เพดานจำนวนปีที่เทียบพร้อมกัน = จำนวนสีที่เตรียมไว้ (5 สี)
+     เกินกว่านี้จะไม่มีสีให้ใช้ต่อ ต้องวนสีซ้ำ แล้วแยกไม่ออกว่าเส้นไหนคือปีไหน
+     เลือกเกินเพดาน จะปล่อยปีที่เก่าที่สุดออกให้เอง ไม่ต้องมานั่งเอาติ๊กออกก่อน
+     ยิ่งเลือกหลายปี พื้นในเส้นจะยิ่งจาง เพื่อให้เส้นที่ซ้อนกันยังอ่านออก */
+  var RADAR_MAX_YEARS = RADAR_COLORS.length;
   var RADAR_CHIPS = 6;          // จำนวนปีที่โชว์เป็นปุ่ม ที่เหลือไปอยู่ในช่องเลือก
   function radarState() {
     var st = state();
@@ -471,13 +473,14 @@
       var lb = pt(a, R + 24), anchor = lb[0] > CX + 6 ? 'start' : (lb[0] < CX - 6 ? 'end' : 'middle');
       g += '<text x="' + (Math.round(lb[0])) + '" y="' + (Math.round(lb[1]) + 4) + '" text-anchor="' + anchor + '" font-size="11" fill="#6b7280">PLO ' + esc(axes[a].no) + '</text>';
     }
+    var fillOp = series.length <= 2 ? 0.28 : (series.length === 3 ? 0.2 : 0.13);
     series.forEach(function (sr, si) {
       var col = RADAR_COLORS[si % RADAR_COLORS.length], pts = [];
       sr.values.forEach(function (v, i) {
         var q = pt(i, R * (max ? v / max : 0));
         pts.push((Math.round(q[0] * 10) / 10) + ',' + (Math.round(q[1] * 10) / 10));
       });
-      g += '<polygon points="' + pts.join(' ') + '" fill="' + col + '" fill-opacity="0.28" stroke="' + col + '" stroke-width="2" stroke-linejoin="round"></polygon>';
+      g += '<polygon points="' + pts.join(' ') + '" fill="' + col + '" fill-opacity="' + fillOp + '" stroke="' + col + '" stroke-width="2" stroke-linejoin="round"></polygon>';
       sr.values.forEach(function (v, i) {
         var q = pt(i, R * (max ? v / max : 0));
         g += '<circle cx="' + (Math.round(q[0] * 10) / 10) + '" cy="' + (Math.round(q[1] * 10) / 10) + '" r="2.6" fill="' + col + '"></circle>';
@@ -524,8 +527,8 @@
       + (sel.length > 1
         ? '<button type="button" onclick="ploRadarYearClear()" class="text-xs text-gray-400 hover:text-red-500 underline">ล้างที่เลือก</button>'
         : '')
-      + '<span class="text-[11px] text-gray-400 w-full">เลือกได้สูงสุด ' + RADAR_MAX_YEARS + ' ปี '
-      + '· เลือกเกินจะปล่อยปีที่เก่าที่สุดออกให้เอง</span>'
+      + '<span class="text-[11px] text-gray-400 w-full">เทียบพร้อมกันได้สูงสุด ' + RADAR_MAX_YEARS + ' ปี '
+      + '(เท่าจำนวนสีที่แยกออกจากกันได้) · เลือกเกินจะปล่อยปีที่เก่าที่สุดออกให้เอง</span>'
       + '</div>';
   }
 

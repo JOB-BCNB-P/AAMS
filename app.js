@@ -2635,7 +2635,7 @@ function curriculumField(s) {
       + '<input name="curriculum_year" value="' + htmlEsc(cur) + '" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น 2565"></div>';
   }
   return '<div><label class="block text-xs text-gray-600 mb-1">หลักสูตร <span class="text-red-500">*</span></label>'
-    + '<select name="curriculum_year" required class="w-full border rounded-xl px-3 py-2 text-sm">'
+    + '<select name="curriculum_year" required onchange="if(window.curCourseReload)curCourseReload(this)" class="w-full border rounded-xl px-3 py-2 text-sm">'
     + '<option value="">— เลือกหลักสูตร —</option>'
     + opts.map(c => '<option value="' + htmlEsc(c.year) + '"' + (cur === c.year ? ' selected' : '') + '>'
       + htmlEsc(c.title || ('หลักสูตร ' + c.year))
@@ -2890,28 +2890,13 @@ function subjectsPage() {
   ${paginationHTML(total, APP.pagination.perPage, APP.pagination.page, 'changePage')}`;
 }
 
-/* รายชื่อวิชาในหลักสูตรให้เลือกตอนกรอกชื่อรายวิชา
-   เลือกจากรายการแล้วชื่อจะสะกดตรงกับหลักสูตรเป๊ะ ระบบจึงเติมรหัสและชื่ออังกฤษให้ได้ */
-function curriculumNameDatalistHTML() {
-  const names = [...new Set(getDataByType('curriculum_course').map(c => norm(c.name_th)).filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b, 'th'));
-  return '<datalist id="curSubjectNameList">'
-    + names.map(x => '<option value="' + x.replace(/"/g, '&quot;') + '">').join('') + '</datalist>';
-}
-
 function showAddSubjectModal() {
   showModal('เพิ่มรายวิชา', `
     <form id="addSubjectForm" class="space-y-3">
-      <div class="bg-blue-50 border border-blue-100 rounded-xl p-3">
-        <label class="block text-xs font-medium text-blue-800 mb-1">คัดลอกจากรายวิชาที่เคยเปิดสอน <span class="font-normal text-blue-600">(ไม่บังคับ)</span></label>
-        <input id="copyFromSubject" list="copySubjectList" oninput="subjectCopyFrom(this)" autocomplete="off"
-          class="w-full border border-blue-200 rounded-xl px-3 py-2 text-sm bg-white" placeholder="พิมพ์ชื่อวิชาหรือรหัสวิชาเพื่อค้นหา">
-        ${subjectCopyDatalistHTML('copySubjectList')}
-        <p class="text-[11px] text-blue-700 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>พิมพ์ชื่อวิชาเพื่อค้นหา แล้วเลือกจากรายการ ระบบจะดึงข้อมูลมาให้ แล้วแก้เฉพาะที่ต่าง — <b>ปีการศึกษา ภาคการศึกษา และชั้นปี จะไม่ถูกคัดลอกมา</b> ให้เลือกใหม่ทุกครั้ง เผื่อย้ายไปสอนชั้นปีหรือภาคอื่น</p>
-      </div>
       ${curriculumField({})}
+      ${curCoursePickerHTML()}
       <div><label class="block text-xs text-gray-600 mb-1">รหัสวิชา</label><input name="subject_code" oninput="if(window.curFillFromCurriculum)curFillFromCurriculum(this)" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น GE 104"></div>
-      <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *</label><input name="subject_name" required list="curSubjectNameList" oninput="if(window.curFillFromCurriculum)curFillFromCurriculum(this)" class="w-full border rounded-xl px-3 py-2 text-sm">${curriculumNameDatalistHTML()}</div>
+      <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *</label><input name="subject_name" required oninput="if(window.curFillFromCurriculum)curFillFromCurriculum(this)" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
       <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา (ภาษาอังกฤษ) <span class="text-gray-400">(เติมอัตโนมัติจากหลักสูตร เมื่อรหัสวิชาหรือชื่อวิชาตรงกัน)</span></label><input name="subject_name_en" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น English for Academic Purposes"></div>
       <div><label class="block text-xs text-gray-600 mb-1">อาจารย์ผู้ประสานงาน <span class="text-gray-400">(เลือกจากทะเบียนอาจารย์ · หลายคนคั่นด้วย ,)</span></label>${coordComboHTML('addSubjectCoord', '')}</div>
       <div><label class="block text-xs text-gray-600 mb-1">สาขาที่รับผิดชอบ <span class="text-gray-400">(มี 2 สาขา คั่นด้วย ,)</span></label><input name="department" list="subjectDeptList" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เลือก/พิมพ์ เช่น การพยาบาลผู้ใหญ่, การพยาบาลชุมชน">${deptDatalistHTML('subjectDeptList')}</div>
@@ -2940,69 +2925,78 @@ function showAddSubjectModal() {
   };
 }
 
-/* รายการให้พิมพ์ค้นหา "คัดลอกจากรายวิชาที่เคยเปิดสอน"
-   ใช้ datalist เพราะพิมพ์กรองได้ในตัว ไม่ต้องพึ่งไลบรารีภายนอก
-   ป้ายของแต่ละรายการต้องไม่ซ้ำกัน เพราะย้อนกลับไปหาระเบียนด้วยข้อความที่พิมพ์ */
-function subjectCopyLabel(x) {
-  return [norm(x.subject_code), norm(x.subject_name)].filter(Boolean).join(' ')
-    + ' · ปีการศึกษา ' + (norm(x.academic_year) || 'ไม่ระบุ')
-    + (normSem(x.semester) ? ' ภาค ' + semLabel(x.semester) : '')
-    + (norm(x.year_level) ? ' ชั้นปี ' + norm(x.year_level) : '');
+/* ───── เลือกรายวิชาจากหลักสูตร ─────
+   ต้องเลือกหลักสูตรก่อน รายการจึงจะขึ้น เพราะรายวิชาผูกกับฉบับหลักสูตร
+   ถ้าปล่อยให้เลือกข้ามหลักสูตรได้ จะได้รายวิชาที่ไม่มีอยู่ในหลักสูตรที่กำลังเปิดสอน
+   ในรายการแสดงแค่ "รหัสวิชา ชื่อวิชา" ไม่ใส่ปี/ภาค/ชั้นปี เพราะหลักสูตรไม่ได้ผูกกับปีการศึกษา
+   และผู้ใช้เป็นคนเลือกปี ภาค ชั้นปี เองในขั้นตอนถัดไป */
+function curCoursesOf(curYear) {
+  const y = norm(curYear);
+  return getDataByType('curriculum_course')
+    .filter(c => norm(c.name_th) && (!y || norm(c.curriculum_year) === y))
+    .sort((a, b) => norm(a.course_code).localeCompare(norm(b.course_code), 'th', { numeric: true }));
 }
-function subjectCopyDatalistHTML(listId) {
-  const list = getDataByType('subject').filter(x => norm(x.subject_name));
-  const seen = {};
-  const opts = list.sort((a, b) => {
-    const ya = norm(a.academic_year), yb = norm(b.academic_year);
-    if (ya !== yb) return yb.localeCompare(ya, 'th', { numeric: true });
-    return norm(a.subject_name).localeCompare(norm(b.subject_name), 'th');
-  }).map(x => {
-    let lb = subjectCopyLabel(x);
-    if (seen[lb]) lb += ' #' + (++seen[lb]); else seen[lb] = 1;
-    return '<option value="' + String(lb).replace(/"/g, '&quot;') + '">';
-  }).join('');
-  return '<datalist id="' + listId + '">' + opts + '</datalist>';
+function curCourseLabel(c) {
+  return [norm(c.course_code), norm(c.name_th)].filter(Boolean).join(' ');
 }
-function subjectCopyFind(text) {
-  const t = norm(text).replace(/ #\d+$/, '');
-  if (!t) return null;
-  return getDataByType('subject').find(x => norm(x.subject_name) && subjectCopyLabel(x) === t) || null;
+function curCourseOptionsHTML(curYear) {
+  const list = curCoursesOf(curYear);
+  if (!norm(curYear)) return '<option value="">— เลือกหลักสูตรก่อน —</option>';
+  if (!list.length) return '<option value="">— หลักสูตรนี้ยังไม่มีรายวิชา —</option>';
+  return '<option value="">— เลือกรายวิชา (' + list.length + ' วิชา) —</option>'
+    + list.map(c => '<option value="' + htmlEsc(norm(c.course_code)) + '">' + htmlEsc(curCourseLabel(c)) + '</option>').join('');
 }
-
-// คัดลอกข้อมูลรายวิชาที่เคยเปิดสอนมาใส่ในฟอร์ม "เพิ่มรายวิชา"
-// ไม่คัดลอก ปีการศึกษา ภาคการศึกษา และชั้นปี เพราะรายวิชาเดิมอาจย้ายไปสอนชั้นปีหรือภาคอื่น
-// ถ้าคัดลอกมาด้วยแล้วผู้ใช้ลืมแก้ จะได้รายวิชาที่ผูกชั้นปีผิดโดยไม่รู้ตัว
-function subjectCopyFrom(sel) {
-  const form = sel.closest('form');
-  if (!form) return;
-  const subj = subjectCopyFind(sel.value);
-  if (!subj) return;        // ยังพิมพ์ไม่ครบ หรือไม่ตรงรายการไหน — รอให้เลือกจากรายการก่อน
-
-  ['subject_code', 'subject_name', 'subject_name_en', 'department', 'batch', 'room',
-   'credits', 'hours_theory', 'hours_lab', 'hours_self'].forEach(k => {
-    const f = form.querySelector('[name="' + k + '"]');
-    if (f) f.value = norm(subj[k]);
-  });
-  // หลักสูตรต้องคัดลอกมาด้วย ไม่งั้นรายวิชาใหม่จะไม่มีหลักสูตรทั้งที่คัดลอกมาจากของเดิม
-  const cy = form.querySelector('[name="curriculum_year"]');
-  if (cy && norm(subj.curriculum_year)) cy.value = norm(subj.curriculum_year);
-  // ชั้นปีและภาคการศึกษา : ตั้งใจไม่คัดลอก ให้ผู้ใช้เลือกเองทุกครั้ง
-
-  const c = document.getElementById('addSubjectCoord');
-  if (c) c.value = norm(subj.coordinator);
-
-  // รายวิชาเดิมบางรายการยังไม่มีชื่ออังกฤษ ลองเติมจากหลักสูตรให้อีกชั้น
-  if (window.curFillFromCurriculum) {
-    const sc = form.querySelector('[name="subject_code"]');
-    if (sc) curFillFromCurriculum(sc);
+function curCoursePickerHTML() {
+  return `<div class="bg-blue-50 border border-blue-100 rounded-xl p-3">
+    <label class="block text-xs font-medium text-blue-800 mb-1">เลือกรายวิชาจากหลักสูตร <span class="font-normal text-blue-600">(ไม่บังคับ)</span></label>
+    <select id="curCoursePick" onchange="curCoursePick(this)" class="w-full border border-blue-200 rounded-xl px-3 py-2 text-sm bg-white">
+      ${curCourseOptionsHTML('')}
+    </select>
+    <p class="text-[11px] text-blue-700 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>
+      เลือกแล้วระบบเติม รหัสวิชา ชื่อไทย ชื่ออังกฤษ หน่วยกิต และชั่วโมงให้
+      · ส่วน <b>ปีการศึกษา ภาคการศึกษา และชั้นปี</b> ให้เลือกเองทุกครั้ง</p>
+  </div>`;
+}
+// เปลี่ยนหลักสูตร → โหลดรายวิชาของหลักสูตรนั้นใหม่
+window.curCourseReload = function (sel) {
+  const form = sel && sel.form; if (!form) return;
+  const pick = form.querySelector('#curCoursePick');
+  if (!pick) return;
+  pick.innerHTML = curCourseOptionsHTML(sel.value);
+  pick.value = '';
+};
+// เลือกรายวิชา → เติมข้อมูลจากหลักสูตร (เติมเฉพาะช่องที่ยังว่าง ไม่ทับที่พิมพ์เอง)
+window.curCoursePick = function (sel) {
+  const form = sel && sel.form; if (!form) return;
+  const code = norm(sel.value); if (!code) return;
+  const cur = form.querySelector('[name="curriculum_year"]');
+  const hit = curCoursesOf(cur ? cur.value : '').find(c => norm(c.course_code) === code);
+  if (!hit) return;
+  const set = (n, v) => { const f = form.querySelector('[name="' + n + '"]'); if (f && !norm(f.value)) f.value = norm(v); };
+  set('subject_code', hit.course_code);
+  set('subject_name', hit.name_th);
+  set('subject_name_en', hit.name_en);
+  set('credits', hit.credits);
+  set('hours_theory', hit.h_theory);
+  set('hours_lab', hit.h_lab);
+  set('hours_self', hit.h_self);
+  /* ผู้ประสานงานและสาขาไม่ได้อยู่ในหลักสูตร จึงลองดึงจากครั้งล่าสุดที่เคยเปิดสอนวิชานี้
+     ช่วยลดการพิมพ์ซ้ำ และยังแก้ทีหลังได้เพราะเติมเฉพาะช่องที่ยังว่าง */
+  const past = getDataByType('subject')
+    .filter(x => norm(x.subject_code).replace(/\s+/g, '').toLowerCase() === code.replace(/\s+/g, '').toLowerCase())
+    .sort((a, b) => norm(b.academic_year).localeCompare(norm(a.academic_year), 'th', { numeric: true }))[0];
+  if (past) {
+    set('department', past.department);
+    const c = document.getElementById('addSubjectCoord');
+    if (c && !norm(c.value)) c.value = norm(past.coordinator);
   }
-  const prev = form.querySelector('[name="credits"]');
-  if (prev && typeof updateCreditPreview === 'function') updateCreditPreview(prev);
+  const cr = form.querySelector('[name="credits"]');
+  if (cr && typeof updateCreditPreview === 'function') updateCreditPreview(cr);
   if (typeof showToast === 'function') {
-    showToast('คัดลอกข้อมูลจาก ' + (norm(subj.subject_code) || norm(subj.subject_name))
-      + ' ปีการศึกษา ' + (norm(subj.academic_year) || '-') + ' แล้ว · อย่าลืมเลือกชั้นปีและภาคการศึกษาใหม่');
+    showToast('เติมข้อมูลจากหลักสูตรแล้ว' + (past ? ' · ผู้ประสานงานและสาขาดึงจากครั้งล่าสุดที่เปิดสอน' : '')
+      + ' · อย่าลืมเลือกปีการศึกษา ภาคการศึกษา และชั้นปี');
   }
-}
+};
 
 // ======================== IMPORT GRADES FROM SUBJECT ========================
 // สำหรับ admin/academic: นำรายวิชาที่เปิดสอน → สร้างรายการผลการเรียนแบบ "ยังไม่ระบุเกรด"

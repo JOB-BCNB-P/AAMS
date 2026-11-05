@@ -118,7 +118,7 @@ t('มุมมองแผนที่หลักสูตร แยกเส�
 console.log('\n[2.1] ช่องเลือกปีการศึกษา — ต้องไม่รกเมื่อปีเยอะขึ้น');
 const yearPicker = new Function('esc', 's', 'RADAR_COLORS', 'RADAR_MAX_YEARS', 'RADAR_CHIPS',
   grab('function yearPicker(years, rs)') + ' return yearPicker;')(
-  v => String(v == null ? '' : v), s, ['#1', '#2', '#3'], 3, 6);
+  v => String(v == null ? '' : v), s, ['#1', '#2', '#3', '#4', '#5'], 5, 6);
 const YEARS = ['2574', '2573', '2572', '2571', '2570', '2569', '2568', '2567', '2566'];
 function chips(html) {
   const out = [], re = /onclick="ploRadarYear\('(\d+)'/g;
@@ -152,14 +152,23 @@ t('ยังไม่มีข้อมูลปีไหนเลย บอก�
   const h = yearPicker([], { years: [] });
   assert.ok(h.includes('ยังไม่มีปีการศึกษา') && h.includes('กำหนด CLO'), 'ไม่ได้บอกทางไปต่อ');
 });
-t('เลือกเกิน 3 ปี ปล่อยปีเก่าสุดออกให้เอง', () => {
+t('เพดานเท่าจำนวนสีที่เตรียมไว้ ไม่ใช่เลขที่ตั้งลอย ๆ', () => {
+  assert.ok(/RADAR_MAX_YEARS = RADAR_COLORS\.length/.test(PL),
+    'ถ้าเพิ่มสีแล้วเพดานไม่ขยับตาม จะเลือกได้น้อยกว่าที่ระบบรองรับ');
+  assert.ok(/RADAR_COLORS = \[[^\]]*#b4418e/.test(PL), 'จำนวนสีเปลี่ยนไป ต้องทบทวนว่ายังแยกสีออกไหม');
+});
+t('เลือกเกินเพดาน ปล่อยปีเก่าสุดออกให้เอง', () => {
   const g = grab('window.ploRadarYear = function (y, on)');
-  assert.ok(g.includes('while (ys.length > RADAR_MAX_YEARS) ys.shift()'), 'เลือกได้ไม่จำกัด เส้นจะทับกันจนอ่านไม่ออก');
-  // จำลองพฤติกรรมจริง
-  let ys = ['2566', '2568', '2569'];
-  const add = y => { ys = ys.filter(x => x !== y); ys.push(y); ys.sort(); while (ys.length > 3) ys.shift(); };
+  assert.ok(g.includes('while (ys.length > RADAR_MAX_YEARS) ys.shift()'), 'เลือกได้ไม่จำกัด สีจะวนซ้ำจนแยกไม่ออก');
+  let ys = ['2565', '2566', '2567', '2568', '2569'];
+  const add = y => { ys = ys.filter(x => x !== y); ys.push(y); ys.sort(); while (ys.length > 5) ys.shift(); };
   add('2574');
-  assert.deepStrictEqual(ys, ['2568', '2569', '2574'], 'ปีที่เก่าที่สุดควรถูกปล่อยออก');
+  assert.deepStrictEqual(ys, ['2566', '2567', '2568', '2569', '2574'], 'ปีที่เก่าที่สุดควรถูกปล่อยออก');
+});
+t('ยิ่งเลือกหลายปี พื้นในเส้นยิ่งจาง จะได้ยังอ่านออก', () => {
+  const g = grab('function radarSvg(axes, series)');
+  assert.ok(g.includes('var fillOp ='), 'พื้นทึบเท่ากันหมด เส้นล่างจะถูกบัง');
+  assert.ok(g.includes("fill-opacity=\"' + fillOp"), 'คำนวณไว้แต่ไม่ได้ใช้');
 });
 t('ทุกคลาสที่ใช้มีอยู่ใน tailwind.css ที่ build ไว้แล้ว', () => {
   // ไฟล์ CSS ถูก build ไว้ล่วงหน้า คลาสที่ไม่เคยถูกใช้ที่ไหนเลยจะไม่มีในไฟล์ และหน้าจะเพี้ยนเงียบ ๆ

@@ -25,8 +25,8 @@
       ['ข้อมูลสำหรับใบแสดงผลการเรียน', '[name="name_en"]', 'ไม่บังคับ']
     ],
     addSubjectForm: [
-      ['คัดลอกจากรายวิชาที่เคยเปิดสอน', '#copyFromSubject', 'ไม่บังคับ · เลือกแล้วระบบเติมข้อมูลให้'],
-      ['หลักสูตรและชื่อรายวิชา', '[name="curriculum_year"]'],
+      ['เลือกหลักสูตรและรายวิชา', '[name="curriculum_year"]', 'เลือกหลักสูตรก่อน แล้วเลือกรายวิชา ระบบจะเติมข้อมูลให้'],
+      ['ชื่อรายวิชา', '[name="subject_name"]', 'แก้ไขได้ถ้าต่างจากหลักสูตร'],
       ['ผู้ประสานงานและสาขา', '[name="coordinator"]'],
       ['ชั้นปีและกลุ่มผู้เรียน', '[name="year_level"]'],
       ['ประเภทรายวิชาและหน่วยกิต', '[name="theory_practice"]'],
@@ -158,7 +158,10 @@
   };
   // ฟอร์มแก้ไขที่หน้าตาเหมือนฟอร์มเพิ่ม
   STEPS.editStudentForm = STEPS.addStudentForm.slice(0);
-  STEPS.editSubjectForm = STEPS.addSubjectForm.slice(1);
+  /* ฟอร์มแก้ไขไม่มีตัวเลือกรายวิชาจากหลักสูตร (แก้ของที่มีอยู่แล้ว ไม่ได้เลือกใหม่)
+     แต่ยังมีช่องหลักสูตร จึงต้องมีขั้นของตัวเองไม่ให้ช่องนั้นหลุดออกนอกขั้นตอน */
+  STEPS.editSubjectForm = [['หลักสูตรและชื่อรายวิชา', '[name="curriculum_year"]']]
+    .concat(STEPS.addSubjectForm.slice(2));
   STEPS.editScheduleForm = STEPS.addScheduleForm;
   STEPS.editPracticumSiteForm = STEPS.addPracticumSiteForm;
   STEPS.editSpecialTeacherRegForm = STEPS.addSpecialTeacherRegForm;
