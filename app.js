@@ -757,7 +757,18 @@ function buildSidebar() {
   if (p.survey) items.push({ id: 'survey', icon: 'clipboard-check', label: 'แบบประเมินความพึงพอใจ' });
   if (p.surveyManage) items.push({ id: 'surveyManage', icon: 'clipboard-check', label: 'แบบประเมินความพึงพอใจ' });
   if (p.services) items.push({ id: 'services', icon: 'grid', label: 'บริการอื่นๆ' });
-  if ((r === 'admin' || r === 'academic') && p.settings) items.push({ id: 'settings', icon: 'settings', label: 'ตั้งค่าระบบ' });
+  if ((r === 'admin' || r === 'academic') && p.settings) {
+    // แยกเป็นเมนูย่อย เพราะหน้าตั้งค่าเดิมยาวมาก ต้องเลื่อนหาหัวข้อที่ต้องการ
+    items.push({
+      id: 'settings', icon: 'settings', label: 'ตั้งค่าระบบ', sub: [
+        { id: 'settingsUsers', label: 'จัดการผู้ใช้งาน' },
+        { id: 'settingsPerm', label: 'สิทธิ์การเข้าถึงระบบ' },
+        { id: 'settingsEntry', label: 'สิทธิ์บันทึกข้อมูลนักศึกษา' },
+        { id: 'settingsLeave', label: 'ค่าตั้งการคิดร้อยละการลา' },
+        { id: 'settingsLink', label: 'เชื่อมต่อ Drive และ LINE' }
+      ]
+    });
+  }
   if (r === 'admin' && p.loginLog) items.push({ id: 'loginLog', icon: 'log-in', label: 'บันทึกการเข้าใช้ระบบ' });
 
   const nav = document.getElementById('sidebarNav');
@@ -1643,7 +1654,12 @@ function getPageContent(page, role) {
     case 'leaveAdd': APP._leaveTab = 'add'; return leavePage();
     case 'survey': return surveyPage();
     case 'surveyManage': return surveyManagePage();
-    case 'settings': return settingsPage();
+    case 'settings': return settingsUsersPage();     // ลิงก์เดิมยังใช้ได้ พาไปหน้าแรกของกลุ่ม
+    case 'settingsUsers': return settingsUsersPage();
+    case 'settingsPerm': return settingsPermPage();
+    case 'settingsEntry': return settingsEntryPage();
+    case 'settingsLeave': return settingsLeavePage();
+    case 'settingsLink': return settingsLinkPage();
     case 'loginLog': return loginLogPage();
     case 'userGuide': return userGuidePage();
     default: return '<p>ไม่พบหน้าที่ต้องการ</p>';
@@ -11838,19 +11854,24 @@ async function pwOtpConfirm(mode) {
   }
 }
 
-function settingsPage() {
-  const roles = ['admin', 'academic', 'registrar', 'deptHead', 'executive', 'teacher', 'classTeacher', 'otherStaff', 'student'];
-  const modules = ['dashboard', 'curriculum', 'ploAssess', 'students', 'teachers', 'advisors', 'specialTeachers', 'practicumSites', 'alumni', 'schedule', 'subjects', 'grades', 'engResults', 'teacherDirectory', 'services', 'reportExam', 'reportJob', 'tracking', 'resultTracking', 'leave', 'workload', 'survey',
-    'evalCourse', 'evalDo', 'evalSetup', 'evalReport', 'evalMine', 'counsel'];
-  const moduleLabels = { dashboard: 'หน้าหลัก', curriculum: 'ข้อมูลหลักสูตร', ploAssess: 'ประเมินผลหลักสูตร PLOs', students: 'ข้อมูลนักศึกษา', teachers: 'ข้อมูลอาจารย์', advisors: 'ข้อมูลอาจารย์ที่ปรึกษา', specialTeachers: 'ข้อมูลอาจารย์พิเศษ', practicumSites: 'ข้อมูลแหล่งฝึกภาคปฏิบัติ', alumni: 'ข้อมูลศิษย์เก่า', schedule: 'ปฏิทินกิจกรรมวิชาการ', subjects: 'รายวิชาที่เปิดสอน', grades: 'ผลการเรียน', engResults: 'ผลสอบ ENG', teacherDirectory: 'ทำเนียบอาจารย์', services: 'บริการอื่นๆ', reportExam: 'รายงาน — ผลสอบสภาการพยาบาล', reportJob: 'รายงาน — การได้งานทำของศิษย์เก่า', tracking: 'ติดตามการส่งรายละเอียดรายวิชา', resultTracking: 'ติดตามการส่งผลการดำเนินงานรายวิชา', gradeTracking: 'ติดตามการส่งเกรดรายวิชา', fileTracking: 'ติดตามส่งแฟ้มรายวิชา', leave: 'ระบบการลาของนักศึกษา', workload: 'ภาระงานนักศึกษา (Student workload)', survey: 'แบบประเมินความพึงพอใจ',
-    evalCourse: 'ประเมินผลรายวิชา (เห็นกลุ่มเมนู)',
-    evalDo: '— ประเมินรายวิชา (นักศึกษาตอบ)',
-    evalSetup: '— ตั้งค่าแบบประเมิน + คลังข้อคำถาม',
-    evalReport: '— ภาพรวมผลประเมิน (ทุกรายวิชา)',
-    evalMine: '— ผลประเมินของฉัน (อาจารย์)',
-    counsel: 'ระบบให้คำปรึกษานักศึกษา' };
-  const roleLabels = { admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'งานทะเบียน', deptHead: 'ประธานสาขา', executive: 'ผู้บริหาร', teacher: 'อาจารย์', classTeacher: 'อ.ประจำชั้น', otherStaff: 'จนท.งานอื่นๆ', student: 'นักศึกษา' };
+/* ═══════════ ตั้งค่าระบบ — แยกเป็นหน้าย่อยตามหัวข้อ ═══════════
+   เดิมเป็นหน้าเดียวยาวมาก ต้องเลื่อนหาหัวข้อที่ต้องการ
+   ตอนนี้แต่ละหัวข้อเป็นเมนูย่อยของ "ตั้งค่าระบบ" เปิดตรงไปที่เรื่องนั้นได้เลย
+   ลิงก์เดิมที่ชี้มาที่ settings ยังใช้ได้ จะพาไปหน้าจัดการผู้ใช้งาน */
+// ชื่อบทบาทที่ใช้ร่วมกันหลายหน้าย่อย เก็บไว้ที่เดียว จะได้ไม่แก้ที่หนึ่งแล้วลืมอีกที่
+const SETTINGS_ROLE_LABELS = {
+  admin: 'ผู้ดูแลระบบ', academic: 'เจ้าหน้าที่งานวิชาการ', registrar: 'งานทะเบียน',
+  deptHead: 'ประธานสาขา', executive: 'ผู้บริหาร', teacher: 'อาจารย์',
+  classTeacher: 'อ.ประจำชั้น', otherStaff: 'จนท.งานอื่นๆ', student: 'นักศึกษา'
+};
 
+function settingsHead(title, icon, desc) {
+  return `<h2 class="text-xl font-bold text-gray-800 mb-1"><i data-lucide="${icon}" class="w-6 h-6 inline mr-2"></i>${title}</h2>
+    <p class="text-xs text-gray-400 mb-5">ตั้งค่าระบบ${desc ? ' · ' + desc : ''}</p>`;
+}
+
+function settingsUsersPage() {
+  const roleLabels = SETTINGS_ROLE_LABELS;
   const users = applyFilters(getDataByType('user'));
   const total = users.length; const paged = paginate(users);
   const usersTable = paged.map(u => `<tr class="border-t hover:bg-gray-50">
@@ -11860,12 +11881,7 @@ function settingsPage() {
     <td class="px-4 py-3"><div class="flex gap-1">${(typeof emsCanViewAs === 'function' && emsCanViewAs()) ? `<button onclick="emsViewAsUser('${u.__backendId}')" class="text-amber-500 hover:text-amber-700" title="ดูแทนผู้ใช้ (อ่านอย่างเดียว)"><i data-lucide="eye" class="w-4 h-4"></i></button>` : ''}<button onclick="showEditUserModal('${u.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${u.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>
   </tr>`).join('');
 
-  // หน้า "บันทึกการเปลี่ยนรหัสผ่าน" ถอดออกแล้ว — ทุกคนเข้าระบบด้วยอีเมลวิทยาลัย (Google) ไม่มีรหัสผ่านของระบบให้เปลี่ยน
-  const _tabBar = `<h2 class="text-xl font-bold text-gray-800 mb-6"><i data-lucide="settings" class="w-6 h-6 inline mr-2"></i>ตั้งค่าระบบ</h2>`;
-  return _tabBar + `
-  <div id="driveLinkBox" class="mb-6"></div>
-  <div id="lineGroupBox" class="mb-6"></div>
-  
+  return settingsHead('จัดการผู้ใช้งาน', 'users', 'เพิ่ม แก้ไข และลบบัญชีผู้ใช้') + `
   <div class="bg-white rounded-2xl p-5 border border-blue-100 mb-6">
     <div class="flex items-center justify-between mb-4">
       <h3 class="font-bold">จัดการผู้ใช้งาน (${total} คน)</h3>
@@ -11879,8 +11895,41 @@ function settingsPage() {
       </table>
     </div>
     ${paginationHTML(total, APP.pagination.perPage, APP.pagination.page, 'changePage')}
-  </div>
-  
+  </div>`;
+}
+
+function settingsPermPage() {
+
+  const roles = ['admin', 'academic', 'registrar', 'deptHead', 'executive', 'teacher', 'classTeacher', 'otherStaff', 'student'];
+  const modules = ['dashboard', 'curriculum', 'ploAssess', 'students', 'teachers', 'advisors', 'specialTeachers', 'practicumSites', 'alumni', 'schedule', 'subjects', 'grades', 'engResults', 'teacherDirectory', 'services', 'reportExam', 'reportJob', 'tracking', 'resultTracking', 'leave', 'workload', 'survey',
+    'evalCourse', 'evalDo', 'evalSetup', 'evalReport', 'evalMine', 'counsel'];
+  const moduleLabels = { dashboard: 'หน้าหลัก', curriculum: 'ข้อมูลหลักสูตร', ploAssess: 'ประเมินผลหลักสูตร PLOs', students: 'ข้อมูลนักศึกษา', teachers: 'ข้อมูลอาจารย์', advisors: 'ข้อมูลอาจารย์ที่ปรึกษา', specialTeachers: 'ข้อมูลอาจารย์พิเศษ', practicumSites: 'ข้อมูลแหล่งฝึกภาคปฏิบัติ', alumni: 'ข้อมูลศิษย์เก่า', schedule: 'ปฏิทินกิจกรรมวิชาการ', subjects: 'รายวิชาที่เปิดสอน', grades: 'ผลการเรียน', engResults: 'ผลสอบ ENG', teacherDirectory: 'ทำเนียบอาจารย์', services: 'บริการอื่นๆ', reportExam: 'รายงาน — ผลสอบสภาการพยาบาล', reportJob: 'รายงาน — การได้งานทำของศิษย์เก่า', tracking: 'ติดตามการส่งรายละเอียดรายวิชา', resultTracking: 'ติดตามการส่งผลการดำเนินงานรายวิชา', gradeTracking: 'ติดตามการส่งเกรดรายวิชา', fileTracking: 'ติดตามส่งแฟ้มรายวิชา', leave: 'ระบบการลาของนักศึกษา', workload: 'ภาระงานนักศึกษา (Student workload)', survey: 'แบบประเมินความพึงพอใจ',
+    evalCourse: 'ประเมินผลรายวิชา (เห็นกลุ่มเมนู)',
+    evalDo: '— ประเมินรายวิชา (นักศึกษาตอบ)',
+    evalSetup: '— ตั้งค่าแบบประเมิน + คลังข้อคำถาม',
+    evalReport: '— ภาพรวมผลประเมิน (ทุกรายวิชา)',
+    evalMine: '— ผลประเมินของฉัน (อาจารย์)',
+    counsel: 'ระบบให้คำปรึกษานักศึกษา' };
+  const roleLabels = SETTINGS_ROLE_LABELS;
+
+  return settingsHead('สิทธิ์การเข้าถึงระบบ', 'shield-check', 'กำหนดว่าบทบาทใดเห็นเมนูใดได้บ้าง') + `
+  <div class="bg-white rounded-2xl p-5 border border-blue-100">
+    <h3 class="font-bold mb-4">สิทธิ์การเข้าถึงระบบ</h3>
+    <p class="text-xs text-gray-400 mb-3">หมายเหตุ: ช่อง "แบบประเมินความพึงพอใจ" ของผู้ดูแลระบบ = สิทธิ์จัดการ/สรุปผลแบบประเมิน · บทบาทอื่น = สิทธิ์ทำแบบประเมิน</p>
+    <div class="overflow-x-auto"><table class="w-full text-sm" style="min-width:980px">
+      <thead><tr class="bg-surface"><th class="px-3 py-2 text-left font-semibold whitespace-nowrap">โมดูล</th>${roles.map(r => `<th class="px-3 py-2 text-center font-semibold whitespace-nowrap">${roleLabels[r]}</th>`).join('')}</tr></thead>
+      <tbody>${modules.map(m => `<tr class="border-t hover:bg-gray-50"><td class="px-3 py-2 font-medium whitespace-nowrap">${moduleLabels[m]}</td>${roles.map(r => { const mk = (m === 'survey' && r === 'admin') ? 'surveyManage' : m; return `<td class="px-3 py-2 text-center"><label class="inline-flex"><input type="checkbox" ${APP.permissions[r]?.[mk] ? 'checked' : ''} onchange="togglePermission('${r}','${mk}',this.checked)" class="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"></label></td>`; }).join('')}</tr>`).join('')}</tbody>
+    </table></div>
+  </div>`;
+}
+
+function settingsEntryPage() {
+  return settingsHead('สิทธิ์บันทึกข้อมูลนักศึกษา', 'user-check', 'ให้สิทธิ์เป็นรายคน ไม่ใช่รายบทบาท')
+    + dataEntryRightsSection();
+}
+
+function settingsLeavePage() {
+  return settingsHead('ค่าตั้งการคิดร้อยละการลา', 'calendar-off', 'จำนวนสัปดาห์ต่อภาคการศึกษา') + `
   <div class="bg-white rounded-2xl p-5 border border-blue-100 mb-6">
     <h3 class="font-bold mb-1">ค่าตั้งการคิดร้อยละการลา</h3>
     <p class="text-xs text-gray-500 mb-3">ชั่วโมงเรียนรวมของรายวิชา = (ชั่วโมงทฤษฎี + ชั่วโมงปฏิบัติ ต่อสัปดาห์) × จำนวนสัปดาห์
@@ -11894,19 +11943,15 @@ function settingsPage() {
       <button onclick="saveLeaveWeeks()" class="px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm">บันทึก</button>
       <p class="text-xs text-gray-400">ตัวอย่าง วิชา 3(2-1-6) → (2+1) × ${leaveWeeks()} = ${3 * leaveWeeks()} ชม.</p>
     </div>
-  </div>
+  </div>`;
+}
 
-  <div class="bg-white rounded-2xl p-5 border border-blue-100">
-    <h3 class="font-bold mb-4">สิทธิ์การเข้าถึงระบบ</h3>
-    <p class="text-xs text-gray-400 mb-3">หมายเหตุ: ช่อง "แบบประเมินความพึงพอใจ" ของผู้ดูแลระบบ = สิทธิ์จัดการ/สรุปผลแบบประเมิน · บทบาทอื่น = สิทธิ์ทำแบบประเมิน</p>
-    <div class="overflow-x-auto"><table class="w-full text-sm" style="min-width:980px">
-      <thead><tr class="bg-surface"><th class="px-3 py-2 text-left font-semibold whitespace-nowrap">โมดูล</th>${roles.map(r => `<th class="px-3 py-2 text-center font-semibold whitespace-nowrap">${roleLabels[r]}</th>`).join('')}</tr></thead>
-      <tbody>${modules.map(m => `<tr class="border-t hover:bg-gray-50"><td class="px-3 py-2 font-medium whitespace-nowrap">${moduleLabels[m]}</td>${roles.map(r => { const mk = (m === 'survey' && r === 'admin') ? 'surveyManage' : m; return `<td class="px-3 py-2 text-center"><label class="inline-flex"><input type="checkbox" ${APP.permissions[r]?.[mk] ? 'checked' : ''} onchange="togglePermission('${r}','${mk}',this.checked)" class="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"></label></td>`; }).join('')}</tr>`).join('')}</tbody>
-    </table></div>
-  </div>
-
-  ${dataEntryRightsSection()}
-  `;
+function settingsLinkPage() {
+  return settingsHead('เชื่อมต่อ Drive และ LINE', 'link', 'ที่เก็บไฟล์และกลุ่มรับประกาศ') + `
+  <div id="driveLinkBox" class="mb-6"></div>
+  <div id="lineGroupBox" class="mb-6"></div>
+  <p class="text-xs text-gray-400">กล่องด้านบนจะขึ้นเมื่อระบบเชื่อมต่อบริการนั้นได้แล้ว
+    ถ้ายังว่างอยู่ แปลว่ายังไม่ได้ตั้งค่าโทเคนหรือการเชื่อมต่อในฝั่งเซิร์ฟเวอร์</p>`;
 }
 
 /* สิทธิ์บันทึกข้อมูลนักศึกษา — ให้เป็นรายคน ไม่ใช่รายบทบาท
@@ -12800,7 +12845,7 @@ async function lineGroupSet(id, on) {
 
 function initPageScripts(page) {
   if (page === 'dashboard') { renderCalendar('dashCalendar') }
-  if (page === 'settings' && document.getElementById('lineGroupBox')) { renderLineGroupBox(); }
+  if (document.getElementById('lineGroupBox')) { renderLineGroupBox(); }   // อยู่หน้าไหนก็วาดให้ ถ้ามีกล่องนี้
   if (page === 'schedule') { renderCalendar('scheduleCalendar') }
 
   // Student leave form (multi-subject)

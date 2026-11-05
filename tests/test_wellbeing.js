@@ -529,7 +529,8 @@ function setRow(w, sid, fields) {
   });
   t('หน้าตั้งค่าสิทธิ์มีแถวสิทธิ์บันทึกข้อมูลนักศึกษา', () => {
     assert.ok(APPJS.includes('function dataEntryRightsSection()'), 'ไม่มีการ์ดสิทธิ์ในหน้าตั้งค่า');
-    assert.ok(APPJS.includes('${dataEntryRightsSection()}'), 'สร้างไว้แต่ไม่ได้เรียกใช้');
+    assert.ok(/dataEntryRightsSection\(\)/.test(APPJS.replace('function dataEntryRightsSection()', '')),
+      'สร้างไว้แต่ไม่ได้เรียกใช้');   // ย้ายไปเป็นหน้าย่อย settingsEntryPage แล้ว จึงไม่ได้อยู่ในรูปแบบ ${...} อีก
     assert.ok(APPJS.includes('async function toggleDataEntryRight'), 'ติ๊กแล้วไม่มีตัวบันทึก');
   });
   t('ติ๊กพลาดแล้วคืนค่าเดิม ไม่ให้หน้าจอกับฐานข้อมูลไม่ตรงกัน', () => {

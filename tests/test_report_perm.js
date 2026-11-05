@@ -20,7 +20,8 @@ function grab(src, sig) {
 }
 
 console.log('\n[1] ตารางสิทธิ์ในหน้าตั้งค่าระบบ');
-const seg = APP.slice(APP.indexOf('function settingsPage()'), APP.indexOf('function settingsPage()') + 4000);
+// ตารางสิทธิ์ย้ายไปอยู่หน้าย่อย "สิทธิ์การเข้าถึงระบบ" ของเมนูตั้งค่าระบบแล้ว
+const seg = APP.slice(APP.indexOf('function settingsPermPage()'), APP.indexOf('function settingsPermPage()') + 4000);
 t('มีสองโมดูลแยกกัน', () => {
   assert.ok(/const modules = \[[^\]]*'reportExam'/.test(seg), 'ไม่มีแถวผลสอบสภาฯ');
   assert.ok(/const modules = \[[^\]]*'reportJob'/.test(seg), 'ไม่มีแถวการได้งานทำ');
