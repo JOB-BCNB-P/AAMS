@@ -273,7 +273,10 @@
       return;
     }
     st[k] = v;
-    if (['curriculum', 'batch', 'year', 'sem'].indexOf(k) >= 0) { st.summary = null; st.subj = ''; }
+    if (['curriculum', 'batch', 'year', 'sem'].indexOf(k) >= 0) {
+      st.summary = null; st.subj = '';
+      ploAutoLoad();              // เปลี่ยนตัวกรองแล้วคำนวณให้เลย ไม่ต้องกดปุ่ม
+    }
     if (['eYear', 'eSem', 'eLevel'].indexOf(k) >= 0) { st.eSubject = ''; st.scores = null; }
     if (k === 'eSubject') { st.scores = null; st.gridClo = ''; }
     if (['eYear', 'eSem', 'eLevel', 'eSubject'].indexOf(k) >= 0) st._dirty = {};
@@ -300,17 +303,29 @@
       + sel('ปีการศึกษา', 'year', yearsList().map(function (y) { return [y, y]; }), 'ทุกปี')
       + sel('ภาคการศึกษา', 'sem', SEMS.map(function (x) { return [x, x === '3' ? 'ฤดูร้อน' : x]; }), 'ทุกภาค')
       + summarySubjSelect()
-      + '<button onclick="ploLoad()" class="px-4 py-2 bg-primary text-white rounded-xl text-sm flex items-center gap-2 hover:bg-primaryDark">'
-      + '<i data-lucide="refresh-cw" class="w-4 h-4"></i>โหลดข้อมูล</button>'
+      + '<button onclick="ploLoad()" title="ใช้เมื่อเพิ่งบันทึกคะแนนใหม่ แล้วอยากให้คำนวณซ้ำ" class="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm flex items-center gap-2 hover:bg-surface">'
+      + '<i data-lucide="refresh-cw" class="w-4 h-4"></i>คำนวณใหม่</button>'
       + '<button onclick="ploExportPDF()" class="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm flex items-center gap-2 hover:bg-surface">'
       + '<i data-lucide="file-down" class="w-4 h-4"></i>บันทึกเป็น PDF</button>'
       + '</div>';
   }
 
-  window.ploLoad = async function () {
+  /* เรียกคำนวณอัตโนมัติ — หน่วงไว้เล็กน้อยเผื่อผู้ใช้เปลี่ยนหลายช่องติดกัน
+     จะได้ยิงไปฐานข้อมูลครั้งเดียว ไม่ใช่ทุกครั้งที่ขยับ dropdown */
+  function ploAutoLoad() {
+    clearTimeout(window._ploAutoTimer);
+    window._ploAutoTimer = setTimeout(function () {
+      var st = state();
+      if (st.tab === 'entry' || st.loading || st.summary) return;
+      ploLoad(true);
+    }, 280);
+  }
+
+  window.ploLoad = async function (quiet) {
     var st = state();
     st.loading = true;
-    if (typeof showToast === 'function') showToast('กำลังคำนวณผลการบรรลุ...');
+    if (!quiet && typeof showToast === 'function') showToast('กำลังคำนวณผลการบรรลุ...');
+    if (quiet && typeof renderCurrentPage === 'function') renderCurrentPage();   // ให้เห็นว่ากำลังคำนวณ
     try {
       var r = await sb().rpc('ems_plo_summary', {
         p_curriculum: st.curriculum,
@@ -323,7 +338,7 @@
       st.summary = r.data || {}; st._aggMode = null;
       try { await tagSections([].concat(st.summary['ราย CLO'] || [], st.summary['รายวิชาที่ต้องติดตาม'] || [])); } catch (e2) { }
       st.loading = false;
-      if (typeof showToast === 'function') showToast('คำนวณเสร็จแล้ว');
+      if (!quiet && typeof showToast === 'function') showToast('คำนวณเสร็จแล้ว');
     } catch (e) {
       st.loading = false;
       if (typeof showToast === 'function') showToast('โหลดไม่สำเร็จ: ' + e, 'error');
@@ -335,7 +350,8 @@
     var st = state();
     var body;
     if (!st.summary) {
-      body = hint('เลือกตัวกรองด้านบนแล้วกด "โหลดข้อมูล" เพื่อคำนวณผลการบรรลุ');
+      if (!st.loading) ploAutoLoad();          // เปิดหน้ามาครั้งแรกก็คำนวณให้เลย
+      body = hint(st.loading ? 'กำลังคำนวณผลการบรรลุ...' : 'กำลังเตรียมข้อมูลตามตัวกรองที่เลือก...');
     } else {
       var full = st.summary, view = filteredSummary();
       var ov = view['ภาพรวม'] || {};
@@ -355,8 +371,192 @@
         } finally { st.summary = full; }
       }
     }
-    return filterBar() + body;
+    return filterBar() + radarCard() + body;
   }
+
+  /* ================= แผนภูมิใยแมงมุม : PLO ถูกใช้ในกี่รายวิชา =================
+     สองมุมมอง เพราะข้อมูลสองชุดตอบคนละคำถาม
+       รายปีการศึกษา  — นับจากตาราง plo_clo (CLO ที่กำหนดจริงในปีนั้น)
+                        ใช้เทียบว่าปีนี้กับปีก่อนครอบคลุม PLO ต่างกันอย่างไร
+       แผนที่หลักสูตร — นับจากตาราง curriculum_map (ผังรายวิชา × PLO ของหลักสูตร)
+                        ใช้ดูว่าหลักสูตรออกแบบให้แต่ละ PLO ถูกสอนในกี่รายวิชา แยกตามระดับ I R M P
+     นับเป็น "จำนวนรายวิชาที่ไม่ซ้ำ" ไม่ใช่จำนวนแถว เพราะวิชาเดียวผูกหลาย CLO เข้า PLO เดียวกันได้ */
+
+  var MAP_LEVELS = [['I', 'เริ่มเรียนรู้ (I)'], ['R', 'ฝึกซ้ำ (R)'], ['M', 'ชำนาญ (M)'], ['P', 'ปฏิบัติจริง (P)']];
+  var RADAR_COLORS = ['#2c8ced', '#1b2f9c', '#f0b429', '#17a673', '#b4418e'];
+
+  // PLO หลักของหลักสูตรที่เลือก — ใช้เป็นแกนของใยแมงมุม
+  function radarAxes(cur) {
+    return get('curriculum_plo')
+      .filter(function (x) { return s(x.curriculum_year) === s(cur) && !s(x.parent_code); })
+      .sort(function (a, b) { return (n(a.sort_order) - n(b.sort_order)) || (n(a.plo_no) - n(b.plo_no)); })
+      .map(function (x) {
+        return { code: s(x.plo_code), no: s(x.plo_no) || s(x.plo_code), stmt: s(x.statement_th) };
+      });
+  }
+  // รหัสย่อย 1.1 / 1.2 ต้องนับรวมเข้า PLO1 ไม่งั้นแกนจะว่างทั้งที่มีข้อมูล
+  function toParentPlo(code, axes) {
+    var c = s(code);
+    if (!c) return '';
+    for (var i = 0; i < axes.length; i++) if (axes[i].code === c) return c;
+    var head = c.split('.')[0].replace(/[^0-9]/g, '');
+    for (var j = 0; j < axes.length; j++) if (s(axes[j].no) === head) return axes[j].code;
+    return '';
+  }
+  function radarState() {
+    var st = state();
+    if (!st.radar) st.radar = { mode: 'year', years: null };
+    if (!st.radar.years) st.radar.years = radarYears(st.curriculum).slice(0, 2);
+    return st.radar;
+  }
+  function radarYears(cur) {
+    var seen = {}, out = [];
+    get('plo_clo').forEach(function (x) {
+      if (s(x.curriculum_year) && s(x.curriculum_year) !== s(cur)) return;
+      var y = s(x.academic_year); if (y && !seen[y]) { seen[y] = 1; out.push(y); }
+    });
+    return out.sort().reverse();
+  }
+  // ชุดข้อมูลของแต่ละเส้น : { label, values[] } เรียงตามแกน
+  function radarSeries(axes) {
+    var st = state(), rs = radarState(), cur = s(st.curriculum), out = [];
+    if (rs.mode === 'map') {
+      MAP_LEVELS.forEach(function (lv) {
+        var seen = {};
+        get('curriculum_map').forEach(function (m) {
+          if (s(m.curriculum_year) !== cur || s(m.level) !== lv[0]) return;
+          var p = toParentPlo(m.plo_code, axes); if (!p) return;
+          (seen[p] = seen[p] || {})[s(m.course_code)] = 1;
+        });
+        out.push({ label: lv[1], values: axes.map(function (a) { return Object.keys(seen[a.code] || {}).length; }) });
+      });
+    } else {
+      (rs.years || []).forEach(function (y) {
+        var seen = {};
+        get('plo_clo').forEach(function (c) {
+          if (s(c.academic_year) !== s(y)) return;
+          if (s(c.curriculum_year) && s(c.curriculum_year) !== cur) return;
+          var p = toParentPlo(c.plo_code, axes); if (!p) return;
+          (seen[p] = seen[p] || {})[s(c.subject_code) || s(c.subject_name)] = 1;
+        });
+        out.push({ label: 'ปีการศึกษา ' + s(y), values: axes.map(function (a) { return Object.keys(seen[a.code] || {}).length; }) });
+      });
+    }
+    return out;
+  }
+  function radarSvg(axes, series) {
+    var R = 118, CX = 170, CY = 158, k = axes.length;
+    var pt = function (i, r) {
+      var ang = -Math.PI / 2 + (2 * Math.PI * i / k);
+      return [CX + r * Math.cos(ang), CY + r * Math.sin(ang)];
+    };
+    var max = 1;
+    series.forEach(function (sr) { sr.values.forEach(function (v) { if (v > max) max = v; }); });
+    var step = max <= 4 ? 1 : Math.ceil(max / 4);
+    var rings = Math.ceil(max / step); max = rings * step;
+
+    var g = '';
+    for (var r = 1; r <= rings; r++) {
+      var pts = [];
+      for (var i = 0; i < k; i++) pts.push(pt(i, R * r / rings).map(function (x) { return Math.round(x * 10) / 10; }).join(','));
+      g += '<polygon points="' + pts.join(' ') + '" fill="none" stroke="#e5e7eb" stroke-width="1"></polygon>';
+    }
+    for (var a = 0; a < k; a++) {
+      var e = pt(a, R);
+      g += '<line x1="' + CX + '" y1="' + CY + '" x2="' + (Math.round(e[0] * 10) / 10) + '" y2="' + (Math.round(e[1] * 10) / 10) + '" stroke="#e5e7eb" stroke-width="1"></line>';
+      var lb = pt(a, R + 24), anchor = lb[0] > CX + 6 ? 'start' : (lb[0] < CX - 6 ? 'end' : 'middle');
+      g += '<text x="' + (Math.round(lb[0])) + '" y="' + (Math.round(lb[1]) + 4) + '" text-anchor="' + anchor + '" font-size="11" fill="#6b7280">PLO ' + esc(axes[a].no) + '</text>';
+    }
+    series.forEach(function (sr, si) {
+      var col = RADAR_COLORS[si % RADAR_COLORS.length], pts = [];
+      sr.values.forEach(function (v, i) {
+        var q = pt(i, R * (max ? v / max : 0));
+        pts.push((Math.round(q[0] * 10) / 10) + ',' + (Math.round(q[1] * 10) / 10));
+      });
+      g += '<polygon points="' + pts.join(' ') + '" fill="' + col + '" fill-opacity="0.28" stroke="' + col + '" stroke-width="2" stroke-linejoin="round"></polygon>';
+      sr.values.forEach(function (v, i) {
+        var q = pt(i, R * (max ? v / max : 0));
+        g += '<circle cx="' + (Math.round(q[0] * 10) / 10) + '" cy="' + (Math.round(q[1] * 10) / 10) + '" r="2.6" fill="' + col + '"></circle>';
+        if (v > 0) g += '<title>' + esc(sr.label) + ' · PLO ' + esc(axes[i].no) + ' = ' + v + ' รายวิชา</title>';
+      });
+    });
+    return '<svg viewBox="0 0 340 320" class="w-full" style="max-width:380px" role="img" aria-label="แผนภูมิใยแมงมุมจำนวนรายวิชาตาม PLO">' + g + '</svg>';
+  }
+  function radarCard() {
+    var st = state(), rs = radarState(), axes = radarAxes(st.curriculum);
+    if (!axes.length) return '';
+    var series = radarSeries(axes).filter(function (x) {
+      return x.values.some(function (v) { return v > 0; });
+    });
+    var years = radarYears(st.curriculum);
+
+    var modeBtn = function (v, label) {
+      return '<button onclick="ploRadarMode(\'' + v + '\')" class="px-3 py-1.5 rounded-lg text-xs transition '
+        + (rs.mode === v ? 'bg-primary text-white' : 'border border-gray-200 text-gray-600 hover:bg-surface') + '">' + esc(label) + '</button>';
+    };
+    var picker = rs.mode === 'year'
+      ? '<div class="flex flex-wrap items-center gap-2 text-xs text-gray-600">'
+        + '<span class="text-gray-500">เทียบปีการศึกษา</span>'
+        + (years.length ? years.map(function (y) {
+            var on = (rs.years || []).indexOf(y) >= 0;
+            return '<label class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border '
+              + (on ? 'border-primary text-primary bg-blue-50' : 'border-gray-200 text-gray-600') + '">'
+              + '<input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="ploRadarYear(\'' + esc(y) + '\',this.checked)" class="accent-primary">'
+              + esc(y) + '</label>';
+          }).join('') : '<span class="text-amber-600">ยังไม่มีปีการศึกษาที่กำหนด CLO ไว้</span>')
+        + '</div>'
+      : '<p class="text-xs text-gray-500">แยกตามระดับการวัดในผังรายวิชา เริ่มเรียนรู้ (I) · ฝึกซ้ำ (R) · ชำนาญ (M) · ปฏิบัติจริง (P)</p>';
+
+    var legend = '<div class="flex flex-wrap gap-3 text-xs mb-2">'
+      + series.map(function (x, i) {
+          return '<span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background:'
+            + RADAR_COLORS[i % RADAR_COLORS.length] + '"></span>' + esc(x.label) + '</span>';
+        }).join('') + '</div>';
+
+    var table = '<div class="overflow-x-auto"><table class="w-full text-xs">'
+      + '<thead><tr class="bg-surface text-left"><th class="px-2 py-1.5 font-semibold">PLO</th>'
+      + series.map(function (x) { return '<th class="px-2 py-1.5 font-semibold text-center whitespace-nowrap">' + esc(x.label) + '</th>'; }).join('')
+      + '</tr></thead><tbody>'
+      + axes.map(function (a, i) {
+          return '<tr class="border-t border-gray-50"><td class="px-2 py-1.5"><b>PLO ' + esc(a.no) + '</b> '
+            + '<span class="text-gray-400">' + esc(a.stmt.slice(0, 48)) + (a.stmt.length > 48 ? '…' : '') + '</span></td>'
+            + series.map(function (x) {
+                var v = x.values[i];
+                return '<td class="px-2 py-1.5 text-center ' + (v ? 'text-gray-800' : 'text-red-400') + '">' + v + '</td>';
+              }).join('') + '</tr>';
+        }).join('')
+      + '</tbody></table></div>';
+
+    var gap = axes.filter(function (a, i) {
+      return series.length && series.every(function (x) { return !x.values[i]; });
+    });
+
+    return '<div class="rounded-2xl border border-gray-100 p-4 md:p-5 mb-6">'
+      + '<div class="flex flex-wrap items-start justify-between gap-3 mb-3">'
+      + '<div><h3 class="font-bold text-gray-800">จำนวนรายวิชาที่ครอบคลุมแต่ละ PLO</h3>'
+      + '<p class="text-xs text-gray-500 mt-0.5">นับรายวิชาที่ไม่ซ้ำ · รหัสย่อย เช่น 1.1 นับรวมเข้า PLO 1</p></div>'
+      + '<div class="flex gap-2">' + modeBtn('year', 'รายปีการศึกษา') + modeBtn('map', 'แผนที่หลักสูตร') + '</div></div>'
+      + '<div class="mb-3">' + picker + '</div>'
+      + (series.length
+        ? '<div class="grid md:grid-cols-2 gap-5 items-center">'
+          + '<div class="flex justify-center">' + radarSvg(axes, series) + '</div>'
+          + '<div>' + legend + table + '</div></div>'
+          + (gap.length ? '<p class="text-xs text-amber-600 mt-3"><i data-lucide="alert-triangle" class="w-3.5 h-3.5 inline"></i> '
+              + 'ยังไม่มีรายวิชาครอบคลุม ' + gap.map(function (a) { return 'PLO ' + esc(a.no); }).join(' · ')
+              + ' — ตรวจสอบว่าเป็นช่องว่างของหลักสูตรจริง หรือยังกำหนด CLO ไม่ครบ</p>' : '')
+        : '<p class="text-sm text-gray-400 py-8 text-center">ยังไม่มีข้อมูลในมุมมองนี้</p>')
+      + '</div>';
+  }
+  window.ploRadarMode = function (v) {
+    radarState().mode = (v === 'map') ? 'map' : 'year';
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  };
+  window.ploRadarYear = function (y, on) {
+    var rs = radarState(), ys = (rs.years || []).filter(function (x) { return s(x) !== s(y); });
+    if (on) ys.push(s(y));
+    rs.years = ys.sort();
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  };
 
   function hint(msg) {
     return '<div class="text-center py-14 text-gray-400 text-sm">'
@@ -1015,7 +1215,7 @@
   /* ---------- บันทึกเป็น PDF ---------- */
   window.ploExportPDF = function () {
     var st = state();
-    if (!st.summary) { showToast('กรุณากดโหลดข้อมูลก่อน', 'error'); return; }
+    if (!st.summary) { showToast('ยังคำนวณไม่เสร็จ รอสักครู่แล้วลองใหม่', 'error'); return; }
     var node = document.getElementById('mainContent');
     if (!node) return;
     var w = window.open('', '_blank');
