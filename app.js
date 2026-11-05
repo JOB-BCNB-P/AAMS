@@ -2890,6 +2890,15 @@ function subjectsPage() {
   ${paginationHTML(total, APP.pagination.perPage, APP.pagination.page, 'changePage')}`;
 }
 
+/* รายชื่อวิชาในหลักสูตรให้เลือกตอนกรอกชื่อรายวิชา
+   เลือกจากรายการแล้วชื่อจะสะกดตรงกับหลักสูตรเป๊ะ ระบบจึงเติมรหัสและชื่ออังกฤษให้ได้ */
+function curriculumNameDatalistHTML() {
+  const names = [...new Set(getDataByType('curriculum_course').map(c => norm(c.name_th)).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'th'));
+  return '<datalist id="curSubjectNameList">'
+    + names.map(x => '<option value="' + x.replace(/"/g, '&quot;') + '">').join('') + '</datalist>';
+}
+
 function showAddSubjectModal() {
   showModal('เพิ่มรายวิชา', `
     <form id="addSubjectForm" class="space-y-3">
@@ -2902,8 +2911,8 @@ function showAddSubjectModal() {
       </div>
       ${curriculumField({})}
       <div><label class="block text-xs text-gray-600 mb-1">รหัสวิชา</label><input name="subject_code" oninput="if(window.curFillFromCurriculum)curFillFromCurriculum(this)" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น GE 104"></div>
-      <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *</label><input name="subject_name" required class="w-full border rounded-xl px-3 py-2 text-sm"></div>
-      <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา (ภาษาอังกฤษ) <span class="text-gray-400">(เติมอัตโนมัติจากหลักสูตรเมื่อรหัสวิชาตรงกัน)</span></label><input name="subject_name_en" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น English for Academic Purposes"></div>
+      <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา *</label><input name="subject_name" required list="curSubjectNameList" oninput="if(window.curFillFromCurriculum)curFillFromCurriculum(this)" class="w-full border rounded-xl px-3 py-2 text-sm">${curriculumNameDatalistHTML()}</div>
+      <div><label class="block text-xs text-gray-600 mb-1">ชื่อรายวิชา (ภาษาอังกฤษ) <span class="text-gray-400">(เติมอัตโนมัติจากหลักสูตร เมื่อรหัสวิชาหรือชื่อวิชาตรงกัน)</span></label><input name="subject_name_en" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น English for Academic Purposes"></div>
       <div><label class="block text-xs text-gray-600 mb-1">อาจารย์ผู้ประสานงาน <span class="text-gray-400">(เลือกจากทะเบียนอาจารย์ · หลายคนคั่นด้วย ,)</span></label>${coordComboHTML('addSubjectCoord', '')}</div>
       <div><label class="block text-xs text-gray-600 mb-1">สาขาที่รับผิดชอบ <span class="text-gray-400">(มี 2 สาขา คั่นด้วย ,)</span></label><input name="department" list="subjectDeptList" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เลือก/พิมพ์ เช่น การพยาบาลผู้ใหญ่, การพยาบาลชุมชน">${deptDatalistHTML('subjectDeptList')}</div>
       <div class="grid grid-cols-2 gap-3">
@@ -2969,7 +2978,7 @@ function subjectCopyFrom(sel) {
   const subj = subjectCopyFind(sel.value);
   if (!subj) return;        // ยังพิมพ์ไม่ครบ หรือไม่ตรงรายการไหน — รอให้เลือกจากรายการก่อน
 
-  ['subject_code', 'subject_name', 'department', 'batch', 'room',
+  ['subject_code', 'subject_name', 'subject_name_en', 'department', 'batch', 'room',
    'credits', 'hours_theory', 'hours_lab', 'hours_self'].forEach(k => {
     const f = form.querySelector('[name="' + k + '"]');
     if (f) f.value = norm(subj[k]);
@@ -2982,6 +2991,11 @@ function subjectCopyFrom(sel) {
   const c = document.getElementById('addSubjectCoord');
   if (c) c.value = norm(subj.coordinator);
 
+  // รายวิชาเดิมบางรายการยังไม่มีชื่ออังกฤษ ลองเติมจากหลักสูตรให้อีกชั้น
+  if (window.curFillFromCurriculum) {
+    const sc = form.querySelector('[name="subject_code"]');
+    if (sc) curFillFromCurriculum(sc);
+  }
   const prev = form.querySelector('[name="credits"]');
   if (prev && typeof updateCreditPreview === 'function') updateCreditPreview(prev);
   if (typeof showToast === 'function') {
@@ -7397,7 +7411,7 @@ function specialTaughtOf(t) {
 }
 function specialTaughtCell(t) {
   const items = specialTaughtOf(t);
-  if (!items.length) return '<td class="px-4 py-3 align-top text-xs text-gray-400">ยังไม่ระบุ<span class="block text-[10px]">(กรอกได้ที่ทำเนียบอาจารย์ → อาจารย์พิเศษ)</span></td>';
+  if (!items.length) return '<td class="px-4 py-3 align-top text-xs text-gray-400">ยังไม่ระบุ<span class="block text-[10px]">(กดปุ่มแก้ไขเพื่อกรอก หรือกรอกที่ทำเนียบอาจารย์ก็ได้)</span></td>';
   return '<td class="px-4 py-3 align-top">' + items.map(it =>
     '<div class="py-0.5 text-sm">' + (it.code ? '<span class="font-mono text-xs text-gray-500 mr-1">' + htmlEsc(it.code) + '</span>' : '') + htmlEsc(it.name) + '</div>').join('')
     + '<span class="text-[10px] text-gray-400">' + items.length + ' รายวิชา</span></td>';
@@ -7480,6 +7494,12 @@ function specialSubjectCells(t) {
   return `<td class="px-4 py-3 whitespace-nowrap align-top font-mono text-xs text-gray-600">${codeHtml}</td><td class="px-4 py-3 align-top">${nameHtml}</td>`;
 }
 
+/* ช่องกรอกหลายรายการใช้ || คั่น แต่ตาราง special_teacher เก็บเป็นจุลภาคมาแต่เดิม
+   จึงต้องแปลงกลับไปมา ไม่อย่างนั้นข้อมูลเก่าจะมาโผล่รวมกันในช่องเดียว */
+function spRegSubjects(t) {
+  return String((t && t.subjects) || '').split(',').map(x => norm(x)).filter(Boolean).join('||');
+}
+
 function specialTeacherRegFormBody(t) {
   t = t || {};
   const year = norm(t.academic_year) || currentAcademicYearBE();
@@ -7490,7 +7510,9 @@ function specialTeacherRegFormBody(t) {
       <div><label class="block text-xs text-gray-600 mb-1">ตำแหน่ง</label><input name="academic_position" value="${(t.academic_position || '').replace(/"/g, '&quot;')}" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น นายแพทย์ชำนาญการ"></div>
       <div><label class="block text-xs text-gray-600 mb-1">หน่วยงาน</label><input name="agency" value="${(t.agency || '').replace(/"/g, '&quot;')}" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น รพ.ราชวิถี"></div>
     </div>
-    <p class="text-[11px] text-gray-400">การเลือก "รายวิชาที่สอน" ย้ายไปอยู่ที่ระบบทำเนียบอาจารย์ (เมนูเพิ่มอาจารย์พิเศษ)</p>`;
+    ${multiSubjectField('subjects', 'รายวิชาที่สอน', spRegSubjects(t))}
+    <p class="text-[11px] text-gray-400">เลือกจากรายวิชาที่เปิดสอน หรือพิมพ์เองก็ได้
+      · รายวิชาที่กรอกไว้ที่ทำเนียบอาจารย์จะถูกนำมารวมแสดงในตารางด้วย ไม่ต้องกรอกซ้ำ</p>`;
 }
 
 // สร้างตัวเลือกรายวิชา (จากชีต subject) กรองตามปีการศึกษา — ไม่ซ้ำชื่อวิชา
@@ -7559,6 +7581,7 @@ function collectSpecialTeacherReg(form, obj) {
   obj.name = combineName(form);
   obj.academic_position = form.querySelector('[name="academic_position"]').value;
   obj.agency = form.querySelector('[name="agency"]').value;
+  obj.subjects = collectMultiInputs(form, 'subjects').split('||').map(x => norm(x)).filter(Boolean).join(', ');
   return obj;
 }
 

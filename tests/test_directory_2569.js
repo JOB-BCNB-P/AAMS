@@ -173,6 +173,31 @@ t('ยังเปลี่ยนรูปโปรไฟล์ได้', () =>
   assert.ok(!PROF.slice(i - 400, i).includes("isStudent ? ''"), 'กล่องรูปถูกซ่อนจากนักศึกษาด้วย');
 });
 
+console.log('\n[5.1] อาจารย์พิเศษ (ทะเบียน) — กรอกรายวิชาที่สอนได้');
+const spReg = new Function('norm', grab(APP, 'function spRegSubjects(t)') + ' return spRegSubjects;')(
+  v => String(v == null ? '' : v).trim());
+t('ฟอร์มเพิ่ม/แก้ไข มีช่องรายวิชาที่สอน', () => {
+  const g = grab(APP, 'function specialTeacherRegFormBody(t)');
+  assert.ok(g.includes("multiSubjectField('subjects'"), 'ยังไม่มีช่องรายวิชา');
+  assert.ok(!g.includes('ย้ายไปอยู่ที่ระบบทำเนียบอาจารย์'), 'ยังมีข้อความเดิมที่บอกให้ไปกรอกที่อื่น');
+});
+t('แปลงค่าเดิมที่เก็บด้วยจุลภาค มาใส่ช่องกรอกได้', () => {
+  assert.strictEqual(spReg({ subjects: 'ก, ข , ค' }), 'ก||ข||ค');
+  assert.strictEqual(spReg({}), '', 'ไม่มีข้อมูลต้องได้ค่าว่าง ไม่ใช่ช่องเปล่าที่มีขีด');
+  assert.strictEqual(spReg({ subjects: 'ก,,ข' }), 'ก||ข', 'ค่าว่างระหว่างกลางต้องถูกตัด');
+});
+t('บันทึกกลับเป็นจุลภาคตามรูปแบบเดิมของตาราง', () => {
+  const g = grab(APP, 'function collectSpecialTeacherReg(form, obj)');
+  assert.ok(g.includes("collectMultiInputs(form, 'subjects')"), 'ไม่ได้เก็บค่าช่องรายวิชา');
+  assert.ok(g.includes("join(', ')"), 'เก็บผิดรูปแบบ ตารางจะแสดงรวมกันเป็นบรรทัดเดียว');
+});
+t('ตารางยังรวมรายวิชาจากทำเนียบอาจารย์มาแสดงด้วย ไม่ต้องกรอกซ้ำ', () => {
+  const g = grab(APP, 'function specialTaughtOf(t)');
+  assert.ok(g.includes('subjects_taught'), 'ไม่ได้ดึงจากทำเนียบ');
+  assert.ok(g.includes("String(t.subjects || '').split(',')"), 'ไม่ได้อ่านรายวิชาที่กรอกในทะเบียน');
+  assert.ok(g.includes('seen.has(k)'), 'กรอกทั้งสองที่แล้วจะขึ้นซ้ำ');
+});
+
 console.log('\n[6] รายวิชา — คัดลอกจากที่เคยเปิดสอน');
 t('พิมพ์ค้นหาได้ ไม่ใช่ dropdown ยาว ๆ', () => {
   assert.ok(APP.includes('list="copySubjectList"'), 'ยังเป็น select');
@@ -193,6 +218,65 @@ t('ยังคัดลอกข้อมูลหลักอื่น ๆ ม
 });
 t('เตือนให้เลือกชั้นปีและภาคใหม่หลังคัดลอก', () => {
   assert.ok(APP.includes('อย่าลืมเลือกชั้นปีและภาคการศึกษาใหม่'), 'ไม่ได้เตือน ผู้ใช้อาจลืมแก้');
+});
+
+console.log('\n[7] เพิ่มรายวิชา — ดึงชื่อภาษาอังกฤษจากหลักสูตร');
+const CUR = fs.readFileSync(path.join(ROOT, 'curriculum.js'), 'utf8');
+const curSrc = ['function curNormCode(v)', 'function curNormName(v)',
+  'window.curFindCourse = function (code, nameTh)', 'window.curFillFromCurriculum = function (input)']
+  .map(x => grab(CUR, x)).join('\n').replace('window.curFindCourse =', 'var curFindCourse = window.curFindCourse =');
+const COURSES = [
+  { course_code: '0101300035', name_th: 'การพัฒนาบุคลิกภาพ', name_en: 'Personality Development', credits: '2', h_theory: '2', h_lab: '0', h_self: '4' },
+  { course_code: 'GE 104', name_th: 'ภาษาอังกฤษเพื่อการสื่อสาร', name_en: 'English for Communication', credits: '3', h_theory: '2', h_lab: '2', h_self: '5' }
+];
+const curEnv = { s: v => String(v == null ? '' : v).trim(), get: () => COURSES, window: {} };
+const CUR_FN = new Function(...Object.keys(curEnv), curSrc + '; return window.curFillFromCurriculum;')(...Object.values(curEnv));
+function fill(vals, trigger) {
+  const o = {}; Object.keys(vals).forEach(k => o[k] = { value: vals[k] });
+  const form = { querySelector: n => { const m = /name="(.+?)"/.exec(n); return o[m[1]] || null; } };
+  CUR_FN({ value: vals[trigger], form });
+  return Object.keys(o).reduce((a, k) => (a[k] = o[k].value, a), {});
+}
+const BLANK = { subject_code: '', subject_name: '', subject_name_en: '', credits: '', hours_theory: '', hours_lab: '', hours_self: '' };
+
+t('กรอกรหัสวิชา ได้ชื่อไทย ชื่ออังกฤษ และหน่วยกิต', () => {
+  const r = fill(Object.assign({}, BLANK, { subject_code: '0101300035' }), 'subject_code');
+  assert.strictEqual(r.subject_name_en, 'Personality Development');
+  assert.strictEqual(r.subject_name, 'การพัฒนาบุคลิกภาพ');
+  assert.strictEqual(r.credits, '2');
+});
+t('กรอกชื่อวิชาไทยอย่างเดียว ก็ได้ชื่ออังกฤษและรหัสวิชา', () => {
+  // จุดที่พลาดบ่อย : ผู้ใช้หลายคนกรอกชื่อวิชาก่อนรหัส ของเดิมจึงไม่เติมให้
+  const r = fill(Object.assign({}, BLANK, { subject_name: 'ภาษาอังกฤษเพื่อการสื่อสาร' }), 'subject_name');
+  assert.strictEqual(r.subject_name_en, 'English for Communication');
+  assert.strictEqual(r.subject_code, 'GE 104');
+});
+t('รหัสวิชาเว้นวรรคหรือตัวพิมพ์ต่างกัน ยังหาเจอ', () => {
+  assert.strictEqual(fill(Object.assign({}, BLANK, { subject_code: 'ge104' }), 'subject_code').subject_name_en,
+    'English for Communication');
+});
+t('รหัสผิดแต่ชื่อวิชาถูก ยังเติมให้', () => {
+  const r = fill(Object.assign({}, BLANK, { subject_code: 'ZZ', subject_name: 'ภาษาอังกฤษเพื่อการสื่อสาร' }), 'subject_name');
+  assert.strictEqual(r.subject_name_en, 'English for Communication');
+});
+t('ไม่ทับค่าที่ผู้ใช้พิมพ์เอง', () => {
+  const r = fill(Object.assign({}, BLANK, { subject_code: 'GE 104', subject_name_en: 'ชื่อที่พิมพ์เอง' }), 'subject_code');
+  assert.strictEqual(r.subject_name_en, 'ชื่อที่พิมพ์เอง');
+});
+t('ไม่มีในหลักสูตร ต้องไม่เดาใส่ให้', () => {
+  assert.strictEqual(fill(Object.assign({}, BLANK, { subject_code: 'ZZZ999' }), 'subject_code').subject_name_en, '');
+});
+t('ช่องชื่อวิชาในฟอร์มเพิ่ม เรียกตัวเติมอัตโนมัติและมีรายการให้เลือก', () => {
+  const i = APP.indexOf('name="subject_name" required');
+  assert.ok(i > -1, 'ไม่พบช่องชื่อรายวิชา');
+  const seg = APP.slice(i, i + 260);
+  assert.ok(seg.includes('curFillFromCurriculum'), 'กรอกชื่อวิชาแล้วไม่เติมให้');
+  assert.ok(seg.includes('list="curSubjectNameList"'), 'ไม่มีรายการชื่อวิชาจากหลักสูตรให้เลือก');
+});
+t('คัดลอกรายวิชาเดิม ต้องได้ชื่ออังกฤษมาด้วย', () => {
+  const g = grab(APP, 'function subjectCopyFrom(sel)');
+  assert.ok(g.includes("'subject_name_en'"), 'คัดลอกแล้วชื่ออังกฤษยังว่าง');
+  assert.ok(g.includes('curFillFromCurriculum'), 'ของเดิมที่ไม่มีชื่ออังกฤษ ควรลองเติมจากหลักสูตรให้อีกชั้น');
 });
 
 console.log('\n────────────────────────────');

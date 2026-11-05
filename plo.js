@@ -403,6 +403,10 @@
     for (var j = 0; j < axes.length; j++) if (s(axes[j].no) === head) return axes[j].code;
     return '';
   }
+  /* เลือกได้มากสุด 3 ปี — ใยแมงมุมซ้อนเกิน 3 เส้นอ่านไม่ออก เส้นทับกันจนแยกสีไม่ได้
+     ถ้าเลือกเกิน จะปล่อยปีที่เก่าที่สุดออกให้เอง ผู้ใช้จะได้ไม่ต้องมานั่งเอาติ๊กออกก่อน */
+  var RADAR_MAX_YEARS = 3;
+  var RADAR_CHIPS = 6;          // จำนวนปีที่โชว์เป็นปุ่ม ที่เหลือไปอยู่ในช่องเลือก
   function radarState() {
     var st = state();
     if (!st.radar) st.radar = { mode: 'year', years: null };
@@ -482,6 +486,49 @@
     });
     return '<svg viewBox="0 0 340 320" class="w-full" style="max-width:380px" role="img" aria-label="แผนภูมิใยแมงมุมจำนวนรายวิชาตาม PLO">' + g + '</svg>';
   }
+  /* ช่องเลือกปีการศึกษา
+     ปีล่าสุดอยู่ซ้ายสุดและโชว์เป็นปุ่มไม่เกิน 6 ปี ปีที่เก่ากว่านั้นย้ายไปอยู่ในช่องเลือก
+     ปีที่ถูกเลือกไว้จะโชว์เป็นปุ่มเสมอ ถึงจะเก่ากว่า 6 ปีก็ตาม จะได้เห็นว่ากำลังเทียบอะไรอยู่ */
+  function yearPicker(years, rs) {
+    if (!years.length) {
+      return '<p class="text-xs text-amber-600">ยังไม่มีปีการศึกษาที่กำหนด CLO ไว้ '
+        + '— ไปกำหนด CLO ของรายวิชาก่อน แล้วกราฟนี้จะมีข้อมูลให้เทียบ</p>';
+    }
+    var sel = rs.years || [];
+    var shown = years.slice(0, RADAR_CHIPS);
+    sel.forEach(function (y) { if (shown.indexOf(y) === -1 && years.indexOf(y) !== -1) shown.push(y); });
+    shown.sort().reverse();
+    var rest = years.filter(function (y) { return shown.indexOf(y) === -1; });
+
+    var chip = function (y) {
+      var on = sel.indexOf(y) >= 0;
+      var i = sel.indexOf(y);
+      return '<button type="button" onclick="ploRadarYear(\'' + esc(y) + '\',' + (on ? 'false' : 'true') + ')" '
+        + 'class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs transition '
+        + (on ? 'border-transparent text-white shadow-sm' : 'border-gray-200 text-gray-600 hover:bg-surface') + '" '
+        + (on ? 'style="background:' + RADAR_COLORS[i % RADAR_COLORS.length] + '"' : '') + '>'
+        + (on ? '<i data-lucide="check" class="w-3.5 h-3.5"></i>' : '<span class="w-2 h-2 rounded-full bg-gray-300"></span>')
+        + esc(y) + '</button>';
+    };
+
+    return '<div class="flex flex-wrap items-center gap-2">'
+      + '<span class="text-xs text-gray-500 mr-0.5">เทียบปีการศึกษา</span>'
+      + shown.map(chip).join('')
+      + (rest.length
+        ? '<select onchange="ploRadarYear(this.value,true);this.selectedIndex=0" '
+          + 'class="border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-gray-600 bg-white">'
+          + '<option value="">+ ปีก่อนหน้า (' + rest.length + ')</option>'
+          + rest.map(function (y) { return '<option value="' + esc(y) + '">' + esc(y) + '</option>'; }).join('')
+          + '</select>'
+        : '')
+      + (sel.length > 1
+        ? '<button type="button" onclick="ploRadarYearClear()" class="text-xs text-gray-400 hover:text-red-500 underline">ล้างที่เลือก</button>'
+        : '')
+      + '<span class="text-[11px] text-gray-400 w-full">เลือกได้สูงสุด ' + RADAR_MAX_YEARS + ' ปี '
+      + '· เลือกเกินจะปล่อยปีที่เก่าที่สุดออกให้เอง</span>'
+      + '</div>';
+  }
+
   function radarCard() {
     var st = state(), rs = radarState(), axes = radarAxes(st.curriculum);
     if (!axes.length) return '';
@@ -494,17 +541,7 @@
       return '<button onclick="ploRadarMode(\'' + v + '\')" class="px-3 py-1.5 rounded-lg text-xs transition '
         + (rs.mode === v ? 'bg-primary text-white' : 'border border-gray-200 text-gray-600 hover:bg-surface') + '">' + esc(label) + '</button>';
     };
-    var picker = rs.mode === 'year'
-      ? '<div class="flex flex-wrap items-center gap-2 text-xs text-gray-600">'
-        + '<span class="text-gray-500">เทียบปีการศึกษา</span>'
-        + (years.length ? years.map(function (y) {
-            var on = (rs.years || []).indexOf(y) >= 0;
-            return '<label class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border '
-              + (on ? 'border-primary text-primary bg-blue-50' : 'border-gray-200 text-gray-600') + '">'
-              + '<input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="ploRadarYear(\'' + esc(y) + '\',this.checked)" class="accent-primary">'
-              + esc(y) + '</label>';
-          }).join('') : '<span class="text-amber-600">ยังไม่มีปีการศึกษาที่กำหนด CLO ไว้</span>')
-        + '</div>'
+    var picker = rs.mode === 'year' ? yearPicker(years, rs)
       : '<p class="text-xs text-gray-500">แยกตามระดับการวัดในผังรายวิชา เริ่มเรียนรู้ (I) · ฝึกซ้ำ (R) · ชำนาญ (M) · ปฏิบัติจริง (P)</p>';
 
     var legend = '<div class="flex flex-wrap gap-3 text-xs mb-2">'
@@ -552,9 +589,19 @@
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
   };
   window.ploRadarYear = function (y, on) {
+    if (!s(y)) return;
     var rs = radarState(), ys = (rs.years || []).filter(function (x) { return s(x) !== s(y); });
-    if (on) ys.push(s(y));
+    if (on) {
+      ys.push(s(y));
+      ys.sort();
+      // เกินโควตา ปล่อยปีเก่าสุดออก (อยู่หัวแถวหลังเรียงจากน้อยไปมาก)
+      while (ys.length > RADAR_MAX_YEARS) ys.shift();
+    }
     rs.years = ys.sort();
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  };
+  window.ploRadarYearClear = function () {
+    radarState().years = [];
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
   };
 

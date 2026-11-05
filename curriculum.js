@@ -402,17 +402,29 @@
   /* ---------------- เติมข้อมูลรายวิชาจากหลักสูตรอัตโนมัติ ----------------
      ใช้ในฟอร์ม "เพิ่มรายวิชา" ของเมนูรายวิชาที่เปิดสอน
      พิมพ์รหัสวิชาแล้วชื่อไทย/อังกฤษ/หน่วยกิต จะถูกเติมให้ถ้าตรงกับหลักสูตร */
+  /* เติมข้อมูลรายวิชาจากหลักสูตรให้อัตโนมัติ
+     จับคู่ได้สองทาง เพราะผู้ใช้บางคนกรอกรหัสก่อน บางคนกรอกชื่อวิชาก่อน
+       1) รหัสวิชา  — ตัดช่องว่างและไม่สนตัวพิมพ์ เช่น "GE 104" = "ge104"
+       2) ชื่อวิชาภาษาไทย — ใช้เมื่อยังไม่ได้กรอกรหัส หรือกรอกรหัสที่ไม่มีในหลักสูตร
+     เติมเฉพาะช่องที่ยังว่าง จึงไม่ทับสิ่งที่ผู้ใช้พิมพ์เอง */
+  function curNormCode(v) { return s(v).replace(/\s+/g, '').toLowerCase(); }
+  function curNormName(v) { return s(v).replace(/\s+/g, ' ').toLowerCase(); }
+  window.curFindCourse = function (code, nameTh) {
+    var c2 = curNormCode(code), n2 = curNormName(nameTh), list = get('curriculum_course');
+    var hit = null;
+    if (c2.length >= 3) {
+      list.some(function (c) { if (curNormCode(c.course_code) === c2) { hit = c; return true; } return false; });
+    }
+    if (!hit && n2.length >= 3) {
+      list.some(function (c) { if (curNormName(c.name_th) === n2) { hit = c; return true; } return false; });
+    }
+    return hit;
+  };
   window.curFillFromCurriculum = function (input) {
     var form = input && input.form;
     if (!form) return;
-    var code = s(input.value).replace(/\s+/g, '').toLowerCase();
-    if (code.length < 3) return;
-
-    var hit = null;
-    get('curriculum_course').some(function (c) {
-      if (s(c.course_code).replace(/\s+/g, '').toLowerCase() === code) { hit = c; return true; }
-      return false;
-    });
+    var val = function (n) { var f = form.querySelector('[name="' + n + '"]'); return f ? s(f.value) : ''; };
+    var hit = curFindCourse(val('subject_code'), val('subject_name'));
     if (!hit) return;
 
     var set = function (name, val) {
@@ -420,6 +432,7 @@
       if (f && !s(f.value)) f.value = val;
     };
     set('subject_name', s(hit.name_th));
+    set('subject_code', s(hit.course_code));     // กรอกชื่อวิชามาก่อน ก็ได้รหัสวิชากลับไปด้วย
     set('subject_name_en', s(hit.name_en));
     set('credits', s(hit.credits));
     set('hours_theory', s(hit.h_theory));

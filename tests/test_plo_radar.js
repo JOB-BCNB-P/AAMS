@@ -115,6 +115,65 @@ t('มุมมองแผนที่หลักสูตร แยกเส�
   assert.strictEqual(se[1].values[8], 1, 'ระดับ R ของ PLO9 ไม่ถูกนับ');
 });
 
+console.log('\n[2.1] ช่องเลือกปีการศึกษา — ต้องไม่รกเมื่อปีเยอะขึ้น');
+const yearPicker = new Function('esc', 's', 'RADAR_COLORS', 'RADAR_MAX_YEARS', 'RADAR_CHIPS',
+  grab('function yearPicker(years, rs)') + ' return yearPicker;')(
+  v => String(v == null ? '' : v), s, ['#1', '#2', '#3'], 3, 6);
+const YEARS = ['2574', '2573', '2572', '2571', '2570', '2569', '2568', '2567', '2566'];
+function chips(html) {
+  const out = [], re = /onclick="ploRadarYear\('(\d+)'/g;
+  let m; while ((m = re.exec(html))) out.push(m[1]);
+  return out;
+}
+
+t('โชว์เป็นปุ่มไม่เกิน 6 ปี ที่เหลือไปอยู่ในช่องเลือก', () => {
+  const h = yearPicker(YEARS, { years: [] });
+  assert.strictEqual(chips(h).length, 6, 'ปุ่มยาวเป็นพรืด');
+  assert.ok(h.includes('+ ปีก่อนหน้า (3)'), 'ปีที่เหลือหายไปเลย เลือกไม่ได้');
+});
+t('ปีล่าสุดอยู่ก่อน', () => {
+  assert.deepStrictEqual(chips(yearPicker(YEARS, { years: [] })), ['2574', '2573', '2572', '2571', '2570', '2569']);
+});
+t('ปีเก่าที่เลือกไว้ ต้องโชว์เป็นปุ่มเสมอ ไม่ซ่อนในช่องเลือก', () => {
+  const h = yearPicker(YEARS, { years: ['2566'] });
+  assert.ok(chips(h).indexOf('2566') !== -1, 'เลือกไว้แล้วแต่มองไม่เห็นว่าเลือกอะไรอยู่');
+  assert.ok(h.includes('+ ปีก่อนหน้า (2)'), 'จำนวนในช่องเลือกไม่ลดลงตาม');
+});
+t('ปีที่เลือกมีสีตรงกับเส้นในกราฟ', () => {
+  const h = yearPicker(YEARS, { years: ['2569', '2568'] });
+  assert.ok(h.includes('style="background:#1"') && h.includes('style="background:#2"'),
+    'สีปุ่มไม่ตรงกับสีเส้น ผู้ใช้จะเทียบไม่ถูกว่าเส้นไหนคือปีไหน');
+});
+t('ปีเดียวไม่ต้องมีปุ่มล้าง', () => {
+  assert.ok(!yearPicker(YEARS, { years: ['2569'] }).includes('ploRadarYearClear'), 'ปุ่มล้างโผล่ทั้งที่ไม่จำเป็น');
+  assert.ok(yearPicker(YEARS, { years: ['2569', '2568'] }).includes('ploRadarYearClear'), 'เลือกหลายปีแล้วไม่มีทางล้าง');
+});
+t('ยังไม่มีข้อมูลปีไหนเลย บอกว่าต้องทำอะไรต่อ', () => {
+  const h = yearPicker([], { years: [] });
+  assert.ok(h.includes('ยังไม่มีปีการศึกษา') && h.includes('กำหนด CLO'), 'ไม่ได้บอกทางไปต่อ');
+});
+t('เลือกเกิน 3 ปี ปล่อยปีเก่าสุดออกให้เอง', () => {
+  const g = grab('window.ploRadarYear = function (y, on)');
+  assert.ok(g.includes('while (ys.length > RADAR_MAX_YEARS) ys.shift()'), 'เลือกได้ไม่จำกัด เส้นจะทับกันจนอ่านไม่ออก');
+  // จำลองพฤติกรรมจริง
+  let ys = ['2566', '2568', '2569'];
+  const add = y => { ys = ys.filter(x => x !== y); ys.push(y); ys.sort(); while (ys.length > 3) ys.shift(); };
+  add('2574');
+  assert.deepStrictEqual(ys, ['2568', '2569', '2574'], 'ปีที่เก่าที่สุดควรถูกปล่อยออก');
+});
+t('ทุกคลาสที่ใช้มีอยู่ใน tailwind.css ที่ build ไว้แล้ว', () => {
+  // ไฟล์ CSS ถูก build ไว้ล่วงหน้า คลาสที่ไม่เคยถูกใช้ที่ไหนเลยจะไม่มีในไฟล์ และหน้าจะเพี้ยนเงียบ ๆ
+  const CSS = fs.readFileSync(path.join(ROOT, 'tailwind.css'), 'utf8');
+  const seg = grab('function yearPicker(years, rs)');
+  const used = new Set();
+  seg.replace(/class="([^"]+)"/g, (m, g) => g.split(/\s+/).forEach(c => {
+    if (c && /^[a-z0-9:\[\]./_-]+$/i.test(c) && c !== ':') used.add(c);
+  }));
+  const esc = c => '.' + c.replace(/([.:[\]/])/g, '\\$1');
+  const miss = [...used].filter(c => !CSS.includes(esc(c) + '{') && !CSS.includes(esc(c) + ':hover{') && !CSS.includes(esc(c) + ','));
+  assert.deepStrictEqual(miss, [], 'คลาสเหล่านี้ไม่มีในไฟล์ CSS จะไม่มีผลกับหน้าจอ');
+});
+
 console.log('\n[3] การแสดงผล');
 t('วาดเป็น SVG เอง ไม่ต้องพึ่งไลบรารีภายนอก', () => {
   const g = grab('function radarSvg(');
