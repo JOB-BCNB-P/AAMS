@@ -409,9 +409,39 @@
      ยิ่งเลือกหลายปี พื้นในเส้นจะยิ่งจาง เพื่อให้เส้นที่ซ้อนกันยังอ่านออก */
   var RADAR_MAX_YEARS = RADAR_COLORS.length;
   var RADAR_CHIPS = 6;          // จำนวนปีที่โชว์เป็นปุ่ม ที่เหลือไปอยู่ในช่องเลือก
+  /* ───── ร้อยละการบรรลุ PLO (ของจริงจากคะแนน CLO) ─────
+     ที่มา : ems_plo_summary คืน "ราย CLO" ซึ่งแต่ละแถวคือ ร้อยละนักศึกษาที่ผ่านเกณฑ์ของ CLO นั้น
+     วิธีรวมขึ้นเป็น PLO : เฉลี่ยค่าร้อยละของ CLO (mode 'mean') ตามแนวปฏิบัติ OBE สากล
+     ไม่ใช้การกองรวมทุกผลการประเมิน เพราะ CLO ที่มีนักศึกษาเยอะจะครอบงำค่าของ PLO ทั้งข้อ
+     ต้องเรียกสรุปแยกรายปี เพราะ ems_plo_summary คิดตามตัวกรองครั้งละชุด */
+  function scoreCache() {
+    var st = state();
+    if (!st.radarScore) st.radarScore = {};
+    return st.radarScore;
+  }
+  function scoreKey(year) { return s(state().curriculum) + '|' + s(year); }
+  async function loadScoreYear(year) {
+    var cache = scoreCache(), k = scoreKey(year);
+    if (cache[k]) return;
+    cache[k] = { loading: true, map: {}, err: '' };
+    try {
+      var r = await sb().rpc('ems_plo_summary', {
+        p_curriculum: state().curriculum, p_batch: null, p_year: s(year), p_semester: null
+      });
+      if (r.error) throw new Error(r.error.message);
+      var sum = r.data || {}, axes = radarAxes(state().curriculum), map = {};
+      aggRows(sum['ราย CLO'] || [], function (row) { return toParentPlo(cloPloOf(row), axes); }, 'mean')
+        .forEach(function (x) { if (x.k) map[x.k] = x.pct; });
+      cache[k] = { loading: false, map: map, err: '', n: (sum['ราย CLO'] || []).length };
+    } catch (e) {
+      cache[k] = { loading: false, map: {}, err: String(e.message || e) };
+    }
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  }
+
   function radarState() {
     var st = state();
-    if (!st.radar) st.radar = { mode: 'year', years: null };
+    if (!st.radar) st.radar = { mode: 'score', years: null };   // เปิดมาเห็นผลสัมฤทธิ์ก่อน ซึ่งเป็นค่าที่ใช้รายงานจริง
     if (!st.radar.years) st.radar.years = radarYears(st.curriculum).slice(0, 2);
     return st.radar;
   }
@@ -426,6 +456,18 @@
   // ชุดข้อมูลของแต่ละเส้น : { label, values[] } เรียงตามแกน
   function radarSeries(axes) {
     var st = state(), rs = radarState(), cur = s(st.curriculum), out = [];
+    if (rs.mode === 'score') {
+      (rs.years || []).forEach(function (y) {
+        var c = scoreCache()[scoreKey(y)];
+        if (!c || c.loading || c.err) return;
+        out.push({
+          label: 'ปีการศึกษา ' + s(y),
+          values: axes.map(function (a) { return c.map[a.code] == null ? 0 : c.map[a.code]; }),
+          unit: '%'
+        });
+      });
+      return out;
+    }
     if (rs.mode === 'map') {
       MAP_LEVELS.forEach(function (lv) {
         var seen = {};
@@ -450,16 +492,21 @@
     }
     return out;
   }
-  function radarSvg(axes, series) {
+  function radarSvg(axes, series, fixedMax) {
     var R = 118, CX = 170, CY = 158, k = axes.length;
     var pt = function (i, r) {
       var ang = -Math.PI / 2 + (2 * Math.PI * i / k);
       return [CX + r * Math.cos(ang), CY + r * Math.sin(ang)];
     };
-    var max = 1;
-    series.forEach(function (sr) { sr.values.forEach(function (v) { if (v > max) max = v; }); });
-    var step = max <= 4 ? 1 : Math.ceil(max / 4);
-    var rings = Math.ceil(max / step); max = rings * step;
+    var max = 1, rings;
+    if (fixedMax) {
+      // โหมดร้อยละ : ตรึงสเกล 0-100 เสมอ ไม่งั้นปีที่คะแนนต่ำจะดูเต็มวงเท่าปีที่คะแนนสูง
+      max = fixedMax; rings = 4;
+    } else {
+      series.forEach(function (sr) { sr.values.forEach(function (v) { if (v > max) max = v; }); });
+      var step = max <= 4 ? 1 : Math.ceil(max / 4);
+      rings = Math.ceil(max / step); max = rings * step;
+    }
 
     var g = '';
     for (var r = 1; r <= rings; r++) {
@@ -484,7 +531,7 @@
       sr.values.forEach(function (v, i) {
         var q = pt(i, R * (max ? v / max : 0));
         g += '<circle cx="' + (Math.round(q[0] * 10) / 10) + '" cy="' + (Math.round(q[1] * 10) / 10) + '" r="2.6" fill="' + col + '"></circle>';
-        if (v > 0) g += '<title>' + esc(sr.label) + ' · PLO ' + esc(axes[i].no) + ' = ' + v + ' รายวิชา</title>';
+        if (v > 0) g += '<title>' + esc(sr.label) + ' · PLO ' + esc(axes[i].no) + ' = ' + v + ' ' + (sr.unit || 'รายวิชา') + '</title>';
       });
     });
     return '<svg viewBox="0 0 340 320" class="w-full" style="max-width:380px" role="img" aria-label="แผนภูมิใยแมงมุมจำนวนรายวิชาตาม PLO">' + g + '</svg>';
@@ -536,16 +583,25 @@
   function radarCard() {
     var st = state(), rs = radarState(), axes = radarAxes(st.curriculum);
     if (!axes.length) return '';
+    var years = radarYears(st.curriculum);
+    var loading = 0, errs = [];
+    if (rs.mode === 'score') {
+      (rs.years || []).forEach(function (y) {
+        var c = scoreCache()[scoreKey(y)];
+        if (!c) { loadScoreYear(y); loading++; return; }
+        if (c.loading) { loading++; return; }
+        if (c.err) errs.push(s(y) + ': ' + c.err);
+      });
+    }
     var series = radarSeries(axes).filter(function (x) {
       return x.values.some(function (v) { return v > 0; });
     });
-    var years = radarYears(st.curriculum);
 
     var modeBtn = function (v, label) {
       return '<button onclick="ploRadarMode(\'' + v + '\')" class="px-3 py-1.5 rounded-lg text-xs transition '
         + (rs.mode === v ? 'bg-primary text-white' : 'border border-gray-200 text-gray-600 hover:bg-surface') + '">' + esc(label) + '</button>';
     };
-    var picker = rs.mode === 'year' ? yearPicker(years, rs)
+    var picker = (rs.mode === 'year' || rs.mode === 'score') ? yearPicker(years, rs)
       : '<p class="text-xs text-gray-500">แยกตามระดับการวัดในผังรายวิชา เริ่มเรียนรู้ (I) · ฝึกซ้ำ (R) · ชำนาญ (M) · ปฏิบัติจริง (P)</p>';
 
     var legend = '<div class="flex flex-wrap gap-3 text-xs mb-2">'
@@ -562,8 +618,9 @@
           return '<tr class="border-t border-gray-50"><td class="px-2 py-1.5"><b>PLO ' + esc(a.no) + '</b> '
             + '<span class="text-gray-400">' + esc(a.stmt.slice(0, 48)) + (a.stmt.length > 48 ? '…' : '') + '</span></td>'
             + series.map(function (x) {
-                var v = x.values[i];
-                return '<td class="px-2 py-1.5 text-center ' + (v ? 'text-gray-800' : 'text-red-400') + '">' + v + '</td>';
+                var v = x.values[i], pct = x.unit === '%';
+                return '<td class="px-2 py-1.5 text-center ' + (v ? 'text-gray-800' : 'text-red-400') + '">'
+                  + (pct ? (v ? fx(v, 1) + '%' : '-') : v) + '</td>';
               }).join('') + '</tr>';
         }).join('')
       + '</tbody></table></div>';
@@ -574,25 +631,33 @@
 
     return '<div class="rounded-2xl border border-gray-100 p-4 md:p-5 mb-6">'
       + '<div class="flex flex-wrap items-start justify-between gap-3 mb-3">'
-      + '<div><h3 class="font-bold text-gray-800">จำนวนรายวิชาที่ครอบคลุมแต่ละ PLO</h3>'
-      + '<p class="text-xs text-gray-500 mt-0.5">นับรายวิชาที่ไม่ซ้ำ · รหัสย่อย เช่น 1.1 นับรวมเข้า PLO 1</p></div>'
-      + '<div class="flex gap-2">' + modeBtn('year', 'รายปีการศึกษา') + modeBtn('map', 'แผนที่หลักสูตร') + '</div></div>'
+      + '<div><h3 class="font-bold text-gray-800">' + (rs.mode === 'score' ? 'ร้อยละการบรรลุแต่ละ PLO' : 'จำนวนรายวิชาที่ครอบคลุมแต่ละ PLO') + '</h3>'
+      + '<p class="text-xs text-gray-500 mt-0.5">'
+      + (rs.mode === 'score'
+        ? 'คิดจากคะแนน CLO รายคน · ร้อยละนักศึกษาที่ผ่านเกณฑ์ของแต่ละ CLO แล้วเฉลี่ยค่าราย CLO ขึ้นเป็น PLO'
+        : 'นับรายวิชาที่ไม่ซ้ำ · รหัสย่อย เช่น 1.1 นับรวมเข้า PLO 1') + '</p></div>'
+      + '<div class="flex flex-wrap gap-2">' + modeBtn('score', 'ร้อยละการบรรลุ')
+        + modeBtn('year', 'จำนวนรายวิชา') + modeBtn('map', 'แผนที่หลักสูตร') + '</div></div>'
       + '<div class="mb-3">' + picker + '</div>'
+      + (loading ? '<p class="text-sm text-gray-400 py-6 text-center"><span class="ems-spin" style="margin-right:.4em"></span>กำลังคำนวณผลการบรรลุ ' + loading + ' ปี...</p>' : '')
+      + (errs.length ? '<p class="text-xs text-red-500 mb-2">โหลดไม่สำเร็จ · ' + esc(errs.join(' · ')) + '</p>' : '')
       + (series.length
         ? '<div class="grid md:grid-cols-2 gap-5 items-center">'
-          + '<div class="flex justify-center">' + radarSvg(axes, series) + '</div>'
+          + '<div class="flex justify-center">' + radarSvg(axes, series, rs.mode === 'score' ? 100 : 0) + '</div>'
           + '<div>' + legend + table + '</div></div>'
           + (gap.length ? '<p class="text-xs text-amber-600 mt-3"><i data-lucide="alert-triangle" class="w-3.5 h-3.5 inline"></i> '
               + 'ยังไม่มีรายวิชาครอบคลุม ' + gap.map(function (a) { return 'PLO ' + esc(a.no); }).join(' · ')
               + ' — ตรวจสอบว่าเป็นช่องว่างของหลักสูตรจริง หรือยังกำหนด CLO ไม่ครบ</p>' : '')
-        : '<p class="text-sm text-gray-400 py-8 text-center">'
-          + (rs.mode === 'year' && !(rs.years || []).length
+        : (loading ? '' : '<p class="text-sm text-gray-400 py-8 text-center">'
+          + (!(rs.years || []).length && rs.mode !== 'map'
             ? 'ยังไม่ได้เลือกปีการศึกษา — กดปุ่มปีด้านบนเพื่อเริ่มเทียบ'
-            : 'ยังไม่มีข้อมูลในมุมมองนี้') + '</p>')
+            : rs.mode === 'score'
+              ? 'ปีที่เลือกยังไม่มีคะแนน CLO ที่บันทึกไว้ — ไปที่ บันทึกข้อมูล เพื่อกรอกคะแนนก่อน'
+              : 'ยังไม่มีข้อมูลในมุมมองนี้') + '</p>'))
       + '</div>';
   }
   window.ploRadarMode = function (v) {
-    radarState().mode = (v === 'map') ? 'map' : 'year';
+    radarState().mode = (v === 'map' || v === 'score') ? v : 'year';
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
   };
   window.ploRadarYear = function (y, on) {

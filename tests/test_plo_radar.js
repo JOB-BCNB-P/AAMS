@@ -166,7 +166,7 @@ t('เลือกเกินเพดาน ปล่อยปีเก่า�
   assert.deepStrictEqual(ys, ['2566', '2567', '2568', '2569', '2574'], 'ปีที่เก่าที่สุดควรถูกปล่อยออก');
 });
 t('ยิ่งเลือกหลายปี พื้นในเส้นยิ่งจาง จะได้ยังอ่านออก', () => {
-  const g = grab('function radarSvg(axes, series)');
+  const g = grab('function radarSvg(axes, series, fixedMax)');
   assert.ok(g.includes('var fillOp ='), 'พื้นทึบเท่ากันหมด เส้นล่างจะถูกบัง');
   assert.ok(g.includes("fill-opacity=\"' + fillOp"), 'คำนวณไว้แต่ไม่ได้ใช้');
 });
@@ -181,6 +181,62 @@ t('ทุกคลาสที่ใช้มีอยู่ใน tailwind.css 
   const esc = c => '.' + c.replace(/([.:[\]/])/g, '\\$1');
   const miss = [...used].filter(c => !CSS.includes(esc(c) + '{') && !CSS.includes(esc(c) + ':hover{') && !CSS.includes(esc(c) + ','));
   assert.deepStrictEqual(miss, [], 'คลาสเหล่านี้ไม่มีในไฟล์ CSS จะไม่มีผลกับหน้าจอ');
+});
+
+console.log('\n[2.2] มุมมองร้อยละการบรรลุ PLO (จากคะแนน CLO)');
+t('เปิดหน้ามาเห็นผลสัมฤทธิ์ก่อน ไม่ใช่จำนวนรายวิชา', () => {
+  assert.ok(/st\.radar = \{ mode: 'score'/.test(PL), 'ค่าเริ่มต้นยังเป็นมุมมองจำนวนรายวิชา');
+});
+t('รวม CLO ขึ้นเป็น PLO ด้วยการเฉลี่ยค่าราย CLO ไม่ใช่กองรวม', () => {
+  /* จุดสำคัญเชิงวิธีวิทยา : ถ้ากองรวมทุกผลการประเมิน CLO ที่มีนักศึกษาเยอะจะครอบงำค่าของ PLO
+     เช่น CLO หนึ่ง 600 คนผ่าน 100% กับอีก CLO 30 คนผ่าน 40%
+     กองรวมได้ 97.14% แต่เฉลี่ยราย CLO ได้ 70% ซึ่งสะท้อนความจริงกว่า */
+  const g = grab('async function loadScoreYear(year)');
+  assert.ok(g.includes("'mean'"), 'ยังใช้วิธีกองรวม');
+  assert.ok(g.includes("sum['ราย CLO']"), 'ไม่ได้คิดจากคะแนนราย CLO');
+  assert.ok(g.includes('toParentPlo'), 'รหัสย่อย เช่น 1.1 จะไม่ถูกนับเข้า PLO 1');
+});
+t('ตรรกะการเฉลี่ยทำงานถูก', () => {
+  const agg = new Function('n', grab('function cloTot(r)') + grab('function aggRows(rows, keyFn, mode)') + ' return aggRows;')(
+    v => { const x = parseFloat(v); return isFinite(x) ? x : 0; });
+  const rows = [
+    { PLO: 'PLO1', 'ร้อยละบรรลุ': 100, 'ผ่าน': 600, 'ผลการประเมิน': 600 },
+    { PLO: 'PLO1', 'ร้อยละบรรลุ': 40, 'ผ่าน': 12, 'ผลการประเมิน': 30 }
+  ];
+  const kf = r => r.PLO;
+  assert.strictEqual(agg(rows, kf, 'mean')[0].pct, 70, 'เฉลี่ยราย CLO ต้องได้ 70');
+  assert.strictEqual(agg(rows, kf, 'pool')[0].pct, 97.14, 'วิธีกองรวมเดิมได้ 97.14');
+});
+t('เรียกสรุปแยกรายปี และจำผลไว้ไม่เรียกซ้ำ', () => {
+  const g = grab('async function loadScoreYear(year)');
+  assert.ok(g.includes("rpc('ems_plo_summary'"), 'ไม่ได้เรียกตัวคำนวณของฐานข้อมูล');
+  assert.ok(g.includes('p_year: s(year)'), 'ไม่ได้แยกตามปีการศึกษา');
+  assert.ok(g.includes('if (cache[k]) return;'), 'เรียกซ้ำทุกครั้งที่วาดหน้าใหม่');
+  assert.ok(g.includes('scoreKey(') && /scoreKey\(year\) \{[\s\S]*curriculum/.test(PL),
+    'คีย์แคชไม่ได้รวมหลักสูตร สลับหลักสูตรแล้วจะได้ค่าของหลักสูตรเดิม');
+});
+t('โหลดไม่สำเร็จต้องบอก ไม่ใช่เงียบ', () => {
+  const g = grab('async function loadScoreYear(year)');
+  assert.ok(g.includes('err: String(e.message || e)'), 'กลืนข้อผิดพลาด');
+  assert.ok(grab('function radarCard()').includes('โหลดไม่สำเร็จ'), 'ไม่ได้แสดงข้อผิดพลาดบนหน้าจอ');
+});
+t('สเกลตรึง 0-100 ในโหมดร้อยละ', () => {
+  // ถ้าปล่อยให้สเกลยืดตามค่าสูงสุด ปีที่บรรลุ 40% จะดูเต็มวงเท่าปีที่บรรลุ 95%
+  const g = grab('function radarSvg(axes, series, fixedMax)');
+  assert.ok(g.includes('if (fixedMax)'), 'ไม่ได้ตรึงสเกล');
+  assert.ok(grab('function radarCard()').includes("rs.mode === 'score' ? 100 : 0"), 'ไม่ได้ส่งสเกล 100 ให้กราฟ');
+});
+t('ตารางแสดงเป็นร้อยละ ไม่ใช่จำนวนดิบ', () => {
+  assert.ok(grab('function radarCard()').includes("x.unit === '%'"), 'หน่วยในตารางไม่ถูก');
+});
+t('ปีที่ยังไม่มีคะแนน ต้องบอกให้ไปกรอกคะแนนก่อน', () => {
+  assert.ok(grab('function radarCard()').includes('ยังไม่มีคะแนน CLO ที่บันทึกไว้'), 'ขึ้นว่าไม่มีข้อมูลเฉย ๆ');
+});
+t('สลับได้ 3 มุมมอง', () => {
+  const g = grab('function radarCard()');
+  ['ร้อยละการบรรลุ', 'จำนวนรายวิชา', 'แผนที่หลักสูตร'].forEach(x =>
+    assert.ok(g.includes(x), 'ไม่มีปุ่ม ' + x));
+  assert.ok(grab('window.ploRadarMode = function (v)').includes("v === 'score'"), 'สลับไปโหมดร้อยละไม่ได้');
 });
 
 console.log('\n[3] การแสดงผล');
