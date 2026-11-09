@@ -6393,10 +6393,60 @@ function engYearOptions(selected) {
   return years.map(y => `<option value="${y}" ${y === (selected || currentBE) ? 'selected' : ''}>${y}</option>`).join('');
 }
 
+/* ───── เลือกชั้นปีก่อน แล้วค่อยเลือกนักศึกษา ─────
+   รายชื่อนักศึกษาทั้งวิทยาลัยมี 600 กว่าคน พิมพ์หารหัสผิดคนได้ง่าย
+   คัดด้วยชั้นปีก่อนจึงเหลือราว 150 คน และกันการกรอกผลสอบใส่คนละชั้นปีโดยไม่ตั้งใจ
+   ข้อควรระวัง : id ของช่องกรอกต้องไม่ซ้ำกับชื่อฟังก์ชันที่เรียกใน oninput
+   เพราะตัวจัดการเหตุการณ์แบบ inline มองเห็นชื่อ/ไอดีของ element ในฟอร์มก่อนตัวแปรส่วนกลาง */
+function engYearLevels() {
+  const ys = getDataByType('student').filter(isActiveStudent)
+    .map(x => norm(x.year_level)).filter(Boolean);
+  return [...new Set(ys)].sort((a, b) => a.localeCompare(b, 'th', { numeric: true }));
+}
+function engStudentsOf(level) {
+  const y = norm(level);
+  return getDataByType('student')
+    .filter(x => norm(x.student_id) && isActiveStudent(x) && (!y || norm(x.year_level) === y))
+    .sort((a, b) => norm(a.student_id).localeCompare(norm(b.student_id), 'th', { numeric: true }));
+}
+function engStudentOptionsHTML(level) {
+  if (!norm(level)) return '';     // ยังไม่เลือกชั้นปี = ยังไม่มีรายชื่อให้ค้นหา
+  return engStudentsOf(level).map(x =>
+    '<option value="' + htmlEsc(norm(x.student_id)) + '">' + htmlEsc(norm(x.student_id) + ' — ' + (studentDisplayName(x) || norm(x.name))) + '</option>').join('');
+}
+function engStudentPlaceholder(level) {
+  const y = norm(level);
+  if (!y) return 'เลือกชั้นปีก่อน แล้วจึงพิมพ์ค้นหานักศึกษา';
+  const n = engStudentsOf(y).length;
+  return n ? 'พิมพ์รหัสหรือชื่อนักศึกษา (' + n + ' คน)' : 'ชั้นปีนี้ไม่มีนักศึกษาที่กำลังศึกษาอยู่';
+}
+window.engLevelChanged = function (sel) {
+  const form = sel && sel.form; if (!form) return;
+  const inp = form.querySelector('[name="student_id"]');
+  const list = form.querySelector('#addEngStudentList');
+  const y = norm(sel.value);
+  if (list) list.innerHTML = engStudentOptionsHTML(y);
+  if (inp) {
+    inp.value = '';
+    inp.placeholder = engStudentPlaceholder(y);
+    inp.disabled = !y || !engStudentsOf(y).length;
+  }
+  if (typeof updateEngSbchLevelStatus === 'function') updateEngSbchLevelStatus('add');
+};
+
 function showAddEngModal() {
   showModal('เพิ่มผลสอบภาษาอังกฤษ', `
     <form id="addEngForm" class="space-y-3">
-      <div><label class="block text-xs text-gray-600 mb-1">นักศึกษา * (พิมพ์รหัสหรือเลือก)</label><input list="addEngStudentList" name="student_id" required oninput="updateEngSbchLevelStatus('add')" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="พิมพ์รหัสนักศึกษา...">${studentDatalistHTML('addEngStudentList')}</div>
+      <div><label class="block text-xs text-gray-600 mb-1">ชั้นปี <span class="text-red-500">*</span></label>
+        <select id="addEngLevel" onchange="engLevelChanged(this)" class="w-full border rounded-xl px-3 py-2 text-sm">
+          <option value="">— เลือกชั้นปี —</option>
+          ${engYearLevels().map(y => `<option value="${htmlEsc(y)}">ชั้นปีที่ ${htmlEsc(y)}</option>`).join('')}
+        </select></div>
+      <div><label class="block text-xs text-gray-600 mb-1">นักศึกษา * <span class="text-gray-400">(พิมพ์รหัสหรือชื่อเพื่อค้นหา)</span></label>
+        <input list="addEngStudentList" name="student_id" required disabled oninput="updateEngSbchLevelStatus('add')"
+          class="w-full border rounded-xl px-3 py-2 text-sm disabled:opacity-50" placeholder="${htmlEsc(engStudentPlaceholder(''))}">
+        <datalist id="addEngStudentList"></datalist>
+        <p class="text-[11px] text-gray-400 mt-1">แสดงเฉพาะผู้ที่กำลังศึกษาอยู่ · ผู้ที่พ้นสภาพหรือจบแล้วจะไม่อยู่ในรายการ</p></div>
       <div class="grid grid-cols-2 gap-3">
         <div><label class="block text-xs text-gray-600 mb-1">รูปแบบการสอบ *</label>
           <select id="addEngType" onchange="updateEngTypeForm('add')" class="w-full border rounded-xl px-3 py-2 text-sm">${engTypeOptions('')}</select>
