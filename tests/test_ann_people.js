@@ -24,7 +24,9 @@ function grab(sig) {
 
 console.log('\n[1] ปฏิทินกิจกรรมวิชาการ — ประเภท "วิพากษ์"');
 t('มีให้เลือกในช่องประเภท', () => {
-  assert.ok(grab('function scheduleTypeInput(').includes("'วิพากษ์'"), 'ไม่มีในรายการประเภท');
+  // รายการประเภทย้ายไปเป็นค่าตั้งต้นที่ผู้ดูแลแก้ได้เองในหน้าตั้งค่าแล้ว
+  assert.ok(/SCHEDULE_TYPES_DEFAULT = \[[^\]]*'วิพากษ์'/.test(APP), 'ไม่มีในรายการประเภทเริ่มต้น');
+  assert.ok(grab('function scheduleTypeInput(').includes('scheduleTypeList()'), 'ช่องประเภทไม่ได้อ่านรายการจากค่าตั้งค่า');
 });
 t('มีสีป้ายและจุดบนปฏิทินของตัวเอง ไม่ปนกับประเภทอื่น', () => {
   assert.ok(/วิพากษ์[\s\S]{0,80}amber/.test(grab('function scheduleTypeBadge(')), 'ป้ายยังใช้สีรวมกับประเภทอื่น');

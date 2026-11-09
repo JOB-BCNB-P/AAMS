@@ -765,6 +765,8 @@ function buildSidebar() {
         { id: 'settingsPerm', label: 'สิทธิ์การเข้าถึงระบบ' },
         { id: 'settingsEntry', label: 'สิทธิ์บันทึกข้อมูลนักศึกษา' },
         { id: 'settingsLeave', label: 'ค่าตั้งการคิดร้อยละการลา' },
+        { id: 'settingsEngTypes', label: 'ประเภทการสอบภาษาอังกฤษ' },
+        { id: 'settingsSchedTypes', label: 'ประเภทกิจกรรม (ปฏิทิน)' },
         { id: 'settingsLink', label: 'เชื่อมต่อ Drive และ LINE' }
       ]
     });
@@ -1659,6 +1661,8 @@ function getPageContent(page, role) {
     case 'settingsPerm': return settingsPermPage();
     case 'settingsEntry': return settingsEntryPage();
     case 'settingsLeave': return settingsLeavePage();
+    case 'settingsEngTypes': return settingsEngTypesPage();
+    case 'settingsSchedTypes': return settingsSchedTypesPage();
     case 'settingsLink': return settingsLinkPage();
     case 'loginLog': return loginLogPage();
     case 'userGuide': return userGuidePage();
@@ -3221,9 +3225,12 @@ function schedulePage() {
   ${paginationHTML(total, APP.pagination.perPage, APP.pagination.page, 'changePage')}`}`;
 }
 
+const SCHEDULE_TYPES_DEFAULT = ['สอบกลางภาค', 'สอบซ่อมกลางภาค', 'สอบปลายภาค', 'สอบซ่อมปลายภาค', 'สอบย่อย', 'สอบภาษาอังกฤษสบช.', 'สอบ OSCE', 'สอบรวบยอด', 'สอบซ่อมรวบยอด', 'วิพากษ์', 'กิจกรรม', 'วันหยุด'];
+function scheduleTypeList() { return optionList('schedule_types', SCHEDULE_TYPES_DEFAULT); }
+
 function scheduleTypeInput(name, selectedValue) {
   const existing = [...new Set(getDataByType('schedule').map(s => (s.schedule_type || '').trim()).filter(Boolean))];
-  const defaults = ['สอบกลางภาค', 'สอบซ่อมกลางภาค', 'สอบปลายภาค', 'สอบซ่อมปลายภาค', 'สอบย่อย', 'สอบภาษาอังกฤษสบช.', 'สอบ OSCE', 'สอบรวบยอด', 'สอบซ่อมรวบยอด', 'วิพากษ์', 'กิจกรรม', 'วันหยุด'];
+  const defaults = scheduleTypeList();
   const allTypes = [...new Set([...defaults, ...existing])];
   const listId = 'scheduleTypeList_' + Date.now();
   return `<input name="${name}" list="${listId}" value="${selectedValue || ''}" oninput="if(window.onScheduleTypeChange)onScheduleTypeChange(this)" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น สอบกลางภาค, กิจกรรม">
@@ -6355,7 +6362,11 @@ function updateEngSbchLevelStatus(prefix) {
     }
   }
 }
-const ENG_TYPES = ['สบช.', 'TOEIC', 'CU-TEP', 'IELTS', 'TOEIC-ITP', 'TOEFL', 'TU-GET'];
+/* รายการตัวเลือกที่ผู้ดูแลระบบแก้ได้เองในหน้าตั้งค่า
+   เก็บใน app_setting เป็นข้อความคั่นด้วย || ทุกคนจึงเห็นชุดเดียวกัน
+   ค่าด้านล่างเป็นค่าตั้งต้น ใช้เมื่อยังไม่เคยตั้งค่า หรือเผลอบันทึกเป็นค่าว่าง */
+const ENG_TYPES_DEFAULT = ['สบช.', 'TOEIC', 'CU-TEP', 'IELTS', 'TOEIC-ITP', 'TOEFL', 'TU-GET'];
+function engTypeList() { return optionList('eng_types', ENG_TYPES_DEFAULT); }
 function toggleEngAbsent(prefix) {
   const checked = document.getElementById(prefix + 'EngAbsent').checked;
   const sbch = document.getElementById(prefix + 'EngSbch');
@@ -6370,7 +6381,10 @@ function toggleEngAbsent(prefix) {
   }
 }
 function engTypeOptions(selected) {
-  return `<option value="">-- เลือกรูปแบบ --</option>` + ENG_TYPES.map(t => `<option value="${t}" ${selected === t ? 'selected' : ''}>${t}</option>`).join('');
+  // รวมค่าที่บันทึกไว้แล้วในระเบียนนี้ด้วย เผื่อผู้ดูแลถอดประเภทนั้นออกจากรายการภายหลัง
+  const list = engTypeList().slice();
+  if (norm(selected) && list.indexOf(norm(selected)) === -1) list.push(norm(selected));
+  return `<option value="">-- เลือกรูปแบบ --</option>` + list.map(t => `<option value="${htmlEsc(t)}" ${selected === t ? 'selected' : ''}>${htmlEsc(t)}</option>`).join('');
 }
 function engYearOptions(selected) {
   const existing = [...new Set(getDataByType('eng_result').map(e => e.academic_year).filter(Boolean))].sort().reverse();
@@ -12283,6 +12297,120 @@ function settingsPermPage() {
   </div>`;
 }
 
+/* ───── ตัวแก้ไขรายการตัวเลือก (ใช้ร่วมกันหลายหน้า) ─────
+   เก็บใน app_setting คีย์เดียวต่อหนึ่งรายการ ข้อความคั่นด้วย ||
+   ของเดิมที่บันทึกไว้แล้วในข้อมูลจะไม่หายถ้าถอดตัวเลือกออก แต่จะเลือกใหม่ไม่ได้
+   จึงต้องนับการใช้งานจริงมาเตือนก่อนบันทึกทุกครั้ง */
+const OPTION_LISTS = {
+  eng_types: {
+    title: 'ประเภทการสอบภาษาอังกฤษ', icon: 'languages',
+    desc: 'ตัวเลือกในช่อง "รูปแบบการสอบ" ของเมนูผลสอบภาษาอังกฤษ',
+    fallback: () => ENG_TYPES_DEFAULT,
+    usedBy: () => getDataByType('eng_result').map(x => norm(x.eng_type)),
+    locked: ['สบช.'],
+    lockNote: 'สถิติการสอบ สบช. ทั้งระบบอ้างอิงคำว่า "สบช." ตรงตัว ถอดออกแล้วตัวเลขจะเพี้ยน'
+  },
+  schedule_types: {
+    title: 'ประเภทกิจกรรม (ปฏิทินกิจกรรมวิชาการ)', icon: 'calendar',
+    desc: 'ตัวเลือกในช่อง "ประเภท" ของปฏิทินกิจกรรมวิชาการ · ยังพิมพ์ประเภทใหม่เองได้เสมอ',
+    fallback: () => SCHEDULE_TYPES_DEFAULT,
+    usedBy: () => getDataByType('schedule').map(x => norm(x.schedule_type)),
+    locked: [],
+    lockNote: 'ประเภทที่มีคำว่า "สอบ" จะเปิดช่องข้อมูลการสอบให้อัตโนมัติ และ "สอบกลางภาค/ปลายภาค" จะบังคับเลือกรายวิชา'
+  }
+};
+function optionCount(key) {
+  const cfg = OPTION_LISTS[key], c = {};
+  (cfg.usedBy() || []).forEach(v => { if (v) c[v] = (c[v] || 0) + 1; });
+  return c;
+}
+function optionListPage(key) {
+  const cfg = OPTION_LISTS[key];
+  const items = optionList(key, cfg.fallback());
+  const used = optionCount(key);
+  const extra = Object.keys(used).filter(v => items.indexOf(v) === -1);
+  const row = (v) => `<div class="flex gap-2 items-center">
+    <input value="${htmlEsc(v)}" class="opt-item flex-1 border rounded-xl px-3 py-2 text-sm">
+    <span class="text-xs text-gray-400 w-24 text-right">${used[v] ? 'ใช้อยู่ ' + used[v] : ''}</span>
+    <button type="button" onclick="this.parentElement.remove()" class="text-red-400 hover:text-red-600 px-2" title="ลบ">✕</button>
+  </div>`;
+  return settingsHead(cfg.title, cfg.icon, cfg.desc) + `
+  <div class="bg-white rounded-2xl p-5 border border-blue-100 space-y-3" data-opt-key="${htmlEsc(key)}">
+    <p class="text-xs text-gray-500">${htmlEsc(cfg.lockNote)}</p>
+    <div id="optRows" class="space-y-2">${items.map(row).join('')}</div>
+    <button type="button" onclick="optionAddRow()" class="text-xs text-primary hover:underline flex items-center gap-1"><span>＋</span> เพิ่มตัวเลือก</button>
+    ${extra.length ? `<p class="text-xs text-amber-600"><i data-lucide="alert-triangle" class="w-3.5 h-3.5 inline"></i>
+      มีค่าที่ใช้อยู่ในข้อมูลแต่ไม่อยู่ในรายการนี้: ${extra.map(v => htmlEsc(v) + ' (' + used[v] + ')').join(' · ')}
+      — ข้อมูลเดิมยังอยู่ครบ แต่เลือกค่านี้ใหม่ไม่ได้จนกว่าจะเพิ่มกลับเข้ารายการ</p>` : ''}
+    <div class="flex flex-wrap gap-2 pt-1">
+      <button type="button" onclick="optionSave('${htmlEsc(key)}')" class="px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm">บันทึก</button>
+      <button type="button" onclick="optionReset('${htmlEsc(key)}')" class="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm hover:bg-surface">คืนค่าเริ่มต้น</button>
+    </div>
+    <p class="text-[11px] text-gray-400">ลำดับในรายการคือลำดับที่จะขึ้นในช่องให้เลือก · การแก้ไขที่นี่ไม่กระทบข้อมูลที่บันทึกไปแล้ว</p>
+  </div>`;
+}
+window.optionAddRow = function () {
+  const box = document.getElementById('optRows');
+  if (!box) return;
+  const d = document.createElement('div');
+  d.className = 'flex gap-2 items-center';
+  d.innerHTML = '<input class="opt-item flex-1 border rounded-xl px-3 py-2 text-sm" placeholder="พิมพ์ชื่อตัวเลือก">'
+    + '<span class="text-xs text-gray-400 w-24"></span>'
+    + '<button type="button" onclick="this.parentElement.remove()" class="text-red-400 hover:text-red-600 px-2" title="ลบ">✕</button>';
+  box.appendChild(d);
+  const inp = d.querySelector('input'); if (inp) inp.focus();
+};
+function optionCollect() {
+  const out = [], seen = {};
+  Array.prototype.forEach.call(document.querySelectorAll('.opt-item'), el => {
+    const v = norm(el.value);
+    if (v && !seen[v]) { seen[v] = 1; out.push(v); }
+  });
+  return out;
+}
+window.optionSave = async function (key) {
+  const cfg = OPTION_LISTS[key]; if (!cfg) return;
+  const items = optionCollect();
+  if (!items.length) { showToast('ต้องมีอย่างน้อย 1 ตัวเลือก', 'error'); return; }
+  const missLock = (cfg.locked || []).filter(v => items.indexOf(v) === -1);
+  if (missLock.length && !confirm('คุณถอด "' + missLock.join(', ') + '" ออกจากรายการ\n\n'
+    + cfg.lockNote + '\n\nยืนยันหรือไม่')) return;
+  const used = optionCount(key);
+  const dropped = Object.keys(used).filter(v => items.indexOf(v) === -1);
+  if (dropped.length && !confirm('ตัวเลือกที่ถอดออกยังมีข้อมูลใช้อยู่\n'
+    + dropped.map(v => '· ' + v + ' — ' + used[v] + ' รายการ').join('\n')
+    + '\n\nข้อมูลเดิมไม่ถูกลบ แต่จะเลือกค่านี้ใหม่ไม่ได้\nยืนยันหรือไม่')) return;
+  const rec = (getDataByType('app_setting') || []).find(x => norm(x.setting_key) === key);
+  const payload = {
+    type: 'app_setting', setting_key: key, setting_value: items.join('||'),
+    label: cfg.title, note: cfg.desc,
+    updated_by: (APP.currentUser && APP.currentUser.name) || ''
+  };
+  const r = rec ? await GSheetDB.update(Object.assign({}, rec, payload)) : await GSheetDB.create(payload);
+  if (!r || !r.isOk) { showToast('บันทึกไม่สำเร็จ · ' + ((r && r.error) || ''), 'error'); return; }
+  showToast('บันทึก ' + cfg.title + ' แล้ว ' + items.length + ' ตัวเลือก');
+  renderCurrentPage();
+};
+window.optionReset = function (key) {
+  const cfg = OPTION_LISTS[key]; if (!cfg) return;
+  if (!confirm('คืนรายการ "' + cfg.title + '" เป็นค่าเริ่มต้นของระบบ\nยังไม่บันทึกจนกว่าจะกดปุ่มบันทึก')) return;
+  const box = document.getElementById('optRows');
+  if (!box) return;
+  box.innerHTML = '';
+  cfg.fallback().forEach(v => {
+    const d = document.createElement('div');
+    d.className = 'flex gap-2 items-center';
+    d.innerHTML = '<input class="opt-item flex-1 border rounded-xl px-3 py-2 text-sm">'
+      + '<span class="text-xs text-gray-400 w-24"></span>'
+      + '<button type="button" onclick="this.parentElement.remove()" class="text-red-400 hover:text-red-600 px-2" title="ลบ">✕</button>';
+    d.querySelector('input').value = v;
+    box.appendChild(d);
+  });
+  showToast('คืนค่าเริ่มต้นในหน้าจอแล้ว · กดบันทึกเพื่อใช้งานจริง');
+};
+function settingsEngTypesPage() { return optionListPage('eng_types'); }
+function settingsSchedTypesPage() { return optionListPage('schedule_types'); }
+
 function settingsEntryPage() {
   return settingsHead('สิทธิ์บันทึกข้อมูลนักศึกษา', 'user-check', 'ให้สิทธิ์เป็นรายคน ไม่ใช่รายบทบาท')
     + dataEntryRightsSection();
@@ -12602,6 +12730,15 @@ function onLeaveTypeChange(type) {
 
    วิชาที่ยังไม่ได้ระบุชั่วโมงไว้ จะคืน 0 = "คิดให้ไม่ได้"
    ไม่ใช่ "คิดได้เท่ากับศูนย์" ระบบจะบอกตรง ๆ แทนที่จะขึ้นเลขที่ไม่มีที่มา */
+/* อ่านรายการตัวเลือกจาก app_setting — คั่นด้วย || ตัดช่องว่างและค่าซ้ำออกให้
+   ว่างเปล่าหรือยังไม่เคยตั้งค่า จะคืนค่าตั้งต้น ไม่ปล่อยให้ฟอร์มไม่มีตัวเลือกเลย */
+function optionList(key, fallback) {
+  const raw = appSetting(key, '');
+  const out = [], seen = {};
+  String(raw).split('||').forEach(x => { const v = norm(x); if (v && !seen[v]) { seen[v] = 1; out.push(v); } });
+  return out.length ? out : (fallback || []).slice();
+}
+
 function appSetting(key, def) {
   const r = (getDataByType('app_setting') || []).find(x => norm(x.setting_key) === key);
   const v = r ? norm(r.setting_value) : '';
