@@ -6396,8 +6396,12 @@ function engYearOptions(selected) {
 /* ───── เลือกชั้นปีก่อน แล้วค่อยเลือกนักศึกษา ─────
    รายชื่อนักศึกษาทั้งวิทยาลัยมี 600 กว่าคน พิมพ์หารหัสผิดคนได้ง่าย
    คัดด้วยชั้นปีก่อนจึงเหลือราว 150 คน และกันการกรอกผลสอบใส่คนละชั้นปีโดยไม่ตั้งใจ
-   ข้อควรระวัง : id ของช่องกรอกต้องไม่ซ้ำกับชื่อฟังก์ชันที่เรียกใน oninput
-   เพราะตัวจัดการเหตุการณ์แบบ inline มองเห็นชื่อ/ไอดีของ element ในฟอร์มก่อนตัวแปรส่วนกลาง */
+   ข้อควรระวัง 2 ข้อเรื่อง id ในฟอร์มนี้
+     1) id ต้องไม่ซ้ำกับชื่อฟังก์ชันที่เรียกใน oninput เพราะตัวจัดการเหตุการณ์แบบ inline
+        มองเห็นชื่อ/ไอดีของ element ในฟอร์มก่อนตัวแปรส่วนกลาง
+     2) id ต้องไม่ซ้ำกับช่องอื่นในฟอร์มเดียวกัน — ช่อง "ระดับผลการสอบ" ใช้ id addEngLevel อยู่แล้ว
+        ช่องชั้นปีจึงต้องเป็น addEngYearLevel ไม่งั้น updateEngSbchLevelStatus() จะเขียนค่าว่าง
+        ทับช่องชั้นปี ทำให้เลือกชั้นปีแล้วค่าหายทันที */
 function engYearLevels() {
   const ys = getDataByType('student').filter(isActiveStudent)
     .map(x => norm(x.year_level)).filter(Boolean);
@@ -6438,7 +6442,7 @@ function showAddEngModal() {
   showModal('เพิ่มผลสอบภาษาอังกฤษ', `
     <form id="addEngForm" class="space-y-3">
       <div><label class="block text-xs text-gray-600 mb-1">ชั้นปี <span class="text-red-500">*</span></label>
-        <select id="addEngLevel" onchange="engLevelChanged(this)" class="w-full border rounded-xl px-3 py-2 text-sm">
+        <select id="addEngYearLevel" onchange="engLevelChanged(this)" class="w-full border rounded-xl px-3 py-2 text-sm">
           <option value="">— เลือกชั้นปี —</option>
           ${engYearLevels().map(y => `<option value="${htmlEsc(y)}">ชั้นปีที่ ${htmlEsc(y)}</option>`).join('')}
         </select></div>

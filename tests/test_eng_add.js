@@ -85,6 +85,25 @@ t('ยังคำนวณระดับผลสอบ สบช. ต่อ�
     'สลับชั้นปีแล้วค่าระดับที่คำนวณไว้ค้างของคนเดิม');
   assert.ok(grab('function showAddEngModal()').includes("updateEngSbchLevelStatus('add')"), 'ช่องนักศึกษาไม่ได้เรียกตัวคำนวณ');
 });
+t('ไม่มี id ซ้ำกันในฟอร์มเดียวกัน', () => {
+  /* บั๊กจริงที่เคยเกิด : ตั้งช่องชั้นปีเป็น id="addEngLevel" ซึ่งซ้ำกับช่อง "ระดับผลการสอบ"
+     แล้ว updateEngSbchLevelStatus() เขียนค่าว่างทับ ทำให้เลือกชั้นปีแล้วค่าหายทันที
+     ไม่มี error ให้เห็น ต้องกดใช้จริงถึงจะรู้ */
+  const g = grab('function showAddEngModal()');
+  const ids = (g.match(/id="([A-Za-z0-9_]+)"/g) || []).map(x => x.slice(4, -1));
+  const dup = [...new Set(ids.filter((x, i) => ids.indexOf(x) !== i))];
+  assert.deepStrictEqual(dup, [], 'id ซ้ำ: ' + dup.join(', '));
+});
+t('ช่องชั้นปีไม่ถูกตัวคำนวณระดับผลสอบเขียนทับ', () => {
+  const calc = grab('function updateEngSbchLevelStatus(prefix)');
+  const written = (calc.match(/getElementById\(prefix \+ '([A-Za-z]+)'\)/g) || [])
+    .map(x => 'add' + x.replace(/.*'\+? ?'?/, '').replace(/'\)$/, ''));
+  const g = grab('function showAddEngModal()');
+  const m = /<select id="([A-Za-z0-9_]+)" onchange="engLevelChanged/.exec(g);
+  assert.ok(m, 'ไม่พบช่องเลือกชั้นปี');
+  assert.ok(written.indexOf(m[1]) === -1, 'ช่องชั้นปีใช้ id ' + m[1] + ' ซึ่งตัวคำนวณจะเขียนทับ');
+  assert.strictEqual(m[1], 'addEngYearLevel', 'เปลี่ยน id ช่องชั้นปีแล้วต้องไม่ไปชนกับช่องอื่น');
+});
 t('id ของช่องกรอกไม่ชนกับชื่อฟังก์ชันใน oninput/onchange', () => {
   const g = grab('function showAddEngModal()');
   const ids = (g.match(/id="([A-Za-z0-9_]+)"/g) || []).map(x => x.slice(4, -1));
