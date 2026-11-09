@@ -14328,12 +14328,23 @@ function annChannelFieldHTML(a) {
     <div id="annMailPreview" class="hidden ml-7 text-xs text-gray-500 bg-white rounded-lg px-3 py-2"></div>
     <label class="flex items-center gap-2 text-sm text-gray-700 ${lineSent ? 'opacity-60' : 'cursor-pointer'}"><input type="checkbox" id="annChLine" ${lineSent ? 'disabled' : ''} onchange="annChannelChanged()" class="w-4 h-4 accent-primary"> 📢 LINE (ส่งเข้าทุกกลุ่มของวิทยาลัย)${lineSent ? ' <span class="text-xs text-green-700">(ส่งแล้ว ' + htmlEsc(lineSent) + ')</span>' : ''}</label>
     <div id="annLineNote" class="hidden ml-7 text-xs text-gray-500"></div>
+    <label class="flex items-start gap-2 text-sm text-gray-700 ml-7 ${lineSent ? 'opacity-60' : 'cursor-pointer'}">
+      <input type="checkbox" id="annLineBroadcast" ${lineSent ? 'disabled' : ''} onchange="annChannelChanged()" class="w-4 h-4 mt-0.5 accent-primary">
+      <span>ส่งถึง<b>เพื่อนทุกคน</b>ของบัญชี LINE วิทยาลัยด้วย (broadcast)
+        <span class="block text-xs text-amber-700">ใครที่แอดเพื่อนไว้จะเห็นในแชทส่วนตัว โดยไม่ต้องเข้ากลุ่ม
+          · <b>ไม่จำกัดตามบทบาทหรือชั้นปีที่เลือกไว้ด้านบน</b> ทุกคนที่ติดตามจะได้รับเหมือนกันหมด</span></span>
+    </label>
+    <div id="annBroadcastWarn" class="hidden ml-7 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"></div>
   </div>`;
 }
 function annChannelOpts() {
   const get = id => { const el = document.getElementById(id); return !!(el && el.checked && !el.disabled); };
   // จับกลุ่ม LINE ตามผู้รับไว้ตอนกดบันทึก (ก่อนหน้าต่างปิด)
-  return { mail: get('annChMail'), line: get('annChLine'), lineGroups: get('annChLine') ? annAllLineGroupIds() : [] };
+  return {
+    mail: get('annChMail'), line: get('annChLine'),
+    lineGroups: get('annChLine') ? annAllLineGroupIds() : [],
+    broadcast: get('annChLine') && get('annLineBroadcast')
+  };
 }
 // กลุ่ม LINE ที่จะส่ง = ทุกกลุ่มที่เปิดใช้งานและบอทยังติดต่อได้
 function annAllLineGroupIds() {
@@ -14390,10 +14401,23 @@ function annChannelChanged() {
     if (on) {
       const gs = o.lineGroups || [];
       const ok = annLineGroupsFor(annCollectRoles(), annCollectYears());
+      const bc = !!(document.getElementById('annLineBroadcast') || {}).checked;
       ln.innerHTML = !o.isOk ? 'กำลังตรวจรายชื่อกลุ่ม LINE...'
-        : !gs.length ? '<span class="text-amber-600">ยังไม่มีกลุ่ม LINE ที่เปิดใช้งาน</span>'
-        : !ok.length ? '<span class="text-amber-600">ไม่มีกลุ่ม LINE ที่ตรงกับผู้รับที่เลือก จึงจะไม่ส่ง LINE</span>'
+        : !gs.length ? '<span class="' + (bc ? 'text-gray-500' : 'text-amber-600') + '">ยังไม่มีกลุ่ม LINE ที่เปิดใช้งาน' + (bc ? ' — จะส่งแบบ broadcast อย่างเดียว' : '') + '</span>'
+        : !ok.length ? '<span class="' + (bc ? 'text-gray-500' : 'text-amber-600') + '">ไม่มีกลุ่ม LINE ที่ตรงกับผู้รับที่เลือก' + (bc ? ' — จะส่งแบบ broadcast อย่างเดียว' : ' จึงจะไม่ส่ง LINE') + '</span>'
         : 'จะส่งเข้า ' + ok.length + ' กลุ่มที่ตรงกับผู้รับ: ' + ok.map(g => htmlEsc(g.name) + ' <span class="text-gray-400">(' + htmlEsc(annLineGroupInfo(g).label) + ')</span>').join(', ');
+    }
+    const bw = document.getElementById('annBroadcastWarn');
+    if (bw) {
+      const on = !!(l && l.checked) && !!(document.getElementById('annLineBroadcast') || {}).checked;
+      bw.classList.toggle('hidden', !on);
+      if (on) {
+        const rs = annParseRoles(annCollectRoles()), ys = annCollectYears();
+        bw.innerHTML = '<i data-lucide="alert-triangle" class="w-3.5 h-3.5 inline"></i> '
+          + 'ข้อความนี้จะถึงผู้ติดตามบัญชี LINE <b>ทุกคน</b> รวมถึงคนนอกวิทยาลัยที่แอดเพื่อนไว้'
+          + ((rs.length || ys.length) ? ' — การจำกัดบทบาท/ชั้นปีที่เลือกไว้ <b>ไม่มีผลกับ broadcast</b>' : '')
+          + ' · อย่าใช้กับประกาศที่มีข้อมูลส่วนบุคคล และนับโควตาข้อความของบัญชี LINE ด้วย';
+      }
     }
   }
   const m = document.getElementById('annChMail'), pv = document.getElementById('annMailPreview');
@@ -14421,12 +14445,15 @@ async function annSendChannels(id, ch) {
   if (ch.line && !window._annSendOpts) window._annSendOpts = await annSendCall({ mode: 'options' });
   const groups = ch.lineGroups || annAllLineGroupIds();
   const r = await annSendCall({
-    mode: 'send', announcement_id: id, email: !!ch.mail, line: !!ch.line && groups.length > 0,
-    line_groups: groups, broadcast: false, url: window.location.href.split('#')[0]
+    // ติ๊ก broadcast อย่างเดียวโดยไม่มีกลุ่มที่ตรงผู้รับ ก็ยังต้องส่ง
+    mode: 'send', announcement_id: id, email: !!ch.mail, line: !!ch.line && (groups.length > 0 || !!ch.broadcast),
+    line_groups: groups, broadcast: !!ch.broadcast, url: window.location.href.split('#')[0]
   });
   const em = r && r['อีเมล'], ln = r && r['LINE'];
   if (ch.mail) msgs.push(em && em.isOk ? (em.skipped || 'อีเมล ' + (em['ส่งถึง'] || 0) + ' คน') : 'อีเมลไม่สำเร็จ: ' + ((em && em.error) || (r && r.error) || ''));
-  if (ch.line) msgs.push(!groups.length ? 'LINE ไม่ได้ส่ง: ไม่มีกลุ่มที่ตรงกับผู้รับ' : (ln && ln.isOk ? (ln.skipped || 'LINE ' + (ln['ส่งสำเร็จ'] || 0) + ' กลุ่ม') : 'LINE ไม่สำเร็จ: ' + ((ln && ln.error) || (r && r.error) || '')));
+  if (ch.line) msgs.push((!groups.length && !ch.broadcast) ? 'LINE ไม่ได้ส่ง: ไม่มีกลุ่มที่ตรงกับผู้รับ'
+    : (ln && ln.isOk ? (ln.skipped || 'LINE ' + (ln['ส่งสำเร็จ'] || 0) + ' กลุ่ม' + (ch.broadcast ? ' + เพื่อนทุกคน' : ''))
+      : 'LINE ไม่สำเร็จ: ' + ((ln && ln.error) || (r && r.error) || '')));
   return msgs;
 }
 

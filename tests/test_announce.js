@@ -69,10 +69,29 @@ t('ฟอร์มเพิ่ม/แก้ไขมีช่องเลือ�
   [addAnn, edAnn].forEach(f => { assert.ok(f.includes('annRolesFieldHTML(')); assert.ok(f.includes('annYearFieldHTML(')); assert.ok(f.includes('annChannelFieldHTML(')); });
   assert.ok(chf.includes('id="annChMail"') && chf.includes('id="annChLine"'));
 });
-t('LINE ไม่ต้องเลือกกลุ่ม: ส่งเฉพาะกลุ่มที่ตรงกับผู้รับ และไม่ broadcast', () => {
+t('LINE ไม่ต้องเลือกกลุ่ม: ส่งเฉพาะกลุ่มที่ตรงกับผู้รับ', () => {
   const f = grab('async function annSendChannels', 'function showEditAnnouncementModal');
-  assert.ok(f.includes('annAllLineGroupIds()') && f.includes('broadcast: false'));
+  assert.ok(f.includes('annAllLineGroupIds()'), 'ไม่ได้เลือกกลุ่มตามผู้รับให้เอง');
   assert.ok(!chf.includes('sched-line-grp'), 'ไม่ควรมีช่องเลือกกลุ่ม');
+});
+t('broadcast ต้องติ๊กเอง ไม่ใช่ค่าเริ่มต้น', () => {
+  // broadcast ส่งถึงผู้ติดตามทุกคน ข้ามการจำกัดบทบาท/ชั้นปี จึงต้องเป็นการตัดสินใจของผู้ใช้เสมอ
+  assert.ok(chf.includes('id="annLineBroadcast"'), 'ไม่มีช่องให้เลือก broadcast');
+  assert.ok(!/id="annLineBroadcast"[^>]*checked/.test(chf), 'ติ๊ก broadcast ไว้ให้ล่วงหน้า');
+  const f = grab('async function annSendChannels', 'function showEditAnnouncementModal');
+  assert.ok(f.includes('broadcast: !!ch.broadcast'), 'ไม่ได้ส่งค่าที่ผู้ใช้เลือกไปจริง');
+});
+t('ติ๊ก broadcast แล้วต้องส่งได้แม้ไม่มีกลุ่มที่ตรงผู้รับ', () => {
+  const f = grab('async function annSendChannels', 'function showEditAnnouncementModal');
+  assert.ok(f.includes('(groups.length > 0 || !!ch.broadcast)'),
+    'ไม่มีกลุ่มแล้วจะไม่ส่งเลย ทั้งที่ผู้ใช้สั่ง broadcast');
+});
+t('เตือนว่า broadcast ไม่จำกัดตามบทบาทและชั้นปี', () => {
+  assert.ok(chf.includes('ไม่จำกัดตามบทบาทหรือชั้นปี'), 'ไม่ได้เตือนในฟอร์ม');
+  const cc = grab('function annChannelChanged', 'async function annSendChannels');
+  assert.ok(cc.includes('annBroadcastWarn'), 'ไม่มีแถบเตือนตอนติ๊ก');
+  assert.ok(cc.includes('ข้อมูลส่วนบุคคล'), 'ไม่ได้เตือนเรื่องข้อมูลส่วนบุคคล');
+  assert.ok(cc.includes('โควตาข้อความ'), 'ไม่ได้เตือนเรื่องโควตาของบัญชี LINE');
 });
 t('บันทึกประกาศไม่สั่ง LINE แบบเดิมเอง', () => {
   assert.ok(addAnn.includes("obj.line_notify = ''"));

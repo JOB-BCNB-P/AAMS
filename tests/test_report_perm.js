@@ -164,6 +164,61 @@ t('ตารางรายบุคคลและเงินเดือน�
   assert.ok(RP.includes("var DETAIL_ROLES = ['admin', 'academic', 'registrar']"), 'รายชื่อบทบาทเปลี่ยนไป');
 });
 
+
+/* ───── อาจารย์เห็นเฉพาะสาขาที่ตนรับผิดชอบ (เพิ่ม 9 พ.ย. 2569) ───── */
+console.log('\n[4] ขอบเขตสาขาของบทบาทอาจารย์');
+function grabR(sig) {
+  const i = RP.indexOf(sig);
+  assert.ok(i > -1, 'ไม่พบ ' + sig);
+  let d = 0;
+  for (let k = RP.indexOf('{', i); k < RP.length; k++) {
+    if (RP[k] === '{') d++;
+    else if (RP[k] === '}') { d--; if (!d) return RP.slice(i, k + 1); }
+  }
+  throw new Error('อ่านไม่จบ: ' + sig);
+}
+t('ล็อกเฉพาะบทบาทอาจารย์ บทบาทที่สูงกว่ายังเห็นครบ', () => {
+  const g = grabR('function branchLock()');
+  assert.ok(g.includes("BRANCH_LOCK_ROLES"), 'ไม่ได้จำกัดเฉพาะบทบาทอาจารย์');
+  assert.ok(/hasRole\(\['admin', 'academic', 'registrar', 'executive', 'deptHead'\]\)\) return ''/.test(g),
+    'ผู้ที่มีบทบาทอาจารย์ควบกับงานวิชาการหรือประธานสาขา จะถูกล็อกไปด้วย');
+});
+t('ล็อกทั้งตัวกรอง กราฟรายวิชา และกราฟรายสาขา', () => {
+  assert.ok(grabR('function barBySubject(list)').includes('visibleSubjects()'), 'กราฟแท่งยังโชว์ทุกวิชา');
+  assert.ok(grabR('function pieBySubject(list)').includes('visibleSubjects()'), 'กราฟวงกลมรายวิชายังโชว์ทุกวิชา');
+  assert.ok(grabR('function pieByBranch(list)').includes('branchLock()'), 'กราฟรายสาขายังโชว์ทุกสาขา');
+});
+t('ตรรกะการคัดรายวิชาตามสาขา', () => {
+  const cfgData = {
+    subjects: ['ก', 'ข', 'ค'],
+    branches: [{ name: 'สาขาหนึ่ง', subjects: ['ก', 'ข'] }, { name: 'สาขาสอง', subjects: ['ค'] }]
+  };
+  const NO = '\u0000none';
+  const vis = lock => {
+    if (!lock) return cfgData.subjects;
+    if (lock === NO) return [];
+    const b = cfgData.branches.filter(x => x.name === lock)[0];
+    const allow = (b && b.subjects) || [];
+    return cfgData.subjects.filter(s => allow.indexOf(s) !== -1);
+  };
+  assert.deepStrictEqual(vis(''), ['ก', 'ข', 'ค'], 'ไม่ถูกล็อกต้องเห็นครบ');
+  assert.deepStrictEqual(vis('สาขาหนึ่ง'), ['ก', 'ข']);
+  assert.deepStrictEqual(vis('สาขาสอง'), ['ค']);
+  assert.deepStrictEqual(vis(NO), [], 'จับคู่สาขาไม่ได้ ต้องไม่เห็นอะไรเลย');
+});
+t('สาขาจับคู่ไม่ได้ ต้องบอกวิธีแก้ ไม่ใช่หน้าว่าง', () => {
+  const g = grabR('function examPage()');
+  assert.ok(g.includes('ยังจับคู่สาขาของคุณกับสาขาในรายงานไม่ได้'), 'ขึ้นหน้าเปล่า');
+  assert.ok(g.includes('ทะเบียนอาจารย์'), 'ไม่ได้บอกว่าต้องไปแก้ที่ไหน');
+});
+t('บอกบนหน้าจอว่ากำลังดูเฉพาะสาขาของตน', () => {
+  assert.ok(grabR('function examPage()').includes('ที่คุณรับผิดชอบ'), 'ผู้ใช้จะเข้าใจผิดว่าเห็นภาพรวมทั้งวิทยาลัย');
+});
+t('ตัวกรองสาขาถูกล็อก เลือกสาขาอื่นไม่ได้', () => {
+  const g = grabR('function filterBar(withBranch)');
+  assert.ok(g.includes('(สาขาที่คุณรับผิดชอบ)'), 'ยังเลือกสาขาอื่นได้จาก dropdown');
+});
+
 console.log('\n────────────────────────────');
 console.log((fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
 process.exit(fail ? 1 : 0);

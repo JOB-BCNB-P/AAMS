@@ -71,6 +71,34 @@
      เพราะเป็นข้อมูลส่วนบุคคล การเปิดให้ควรเป็นการตัดสินใจที่ตั้งใจ ไม่ใช่ติ๊กผ่าน ๆ */
   function canSeeDetail() { return hasRole(DETAIL_ROLES); }
 
+  /* ───── อาจารย์เห็นเฉพาะสาขาที่ตนรับผิดชอบ ─────
+     สาขาของอาจารย์มาจากทะเบียนอาจารย์ (ช่อง "สาขา") จับคู่กับชื่อสาขาใน council_exam_config
+     ล็อกทั้งตัวกรองและรายวิชาที่นำมาคิด ไม่ใช่แค่ซ่อนตัวเลือกในช่องกรอง
+     ไม่งั้นกราฟรายวิชายังโชว์ทุกสาขาอยู่ดี
+     หมายเหตุ : บทบาทที่สูงกว่า เช่น ประธานสาขาและผู้บริหาร ยังเห็นครบเหมือนเดิม */
+  var BRANCH_LOCK_ROLES = ['teacher', 'classTeacher'];
+  var NO_BRANCH = '\u0000none';
+  function branchLock() {
+    if (!hasRole(BRANCH_LOCK_ROLES)) return '';
+    if (hasRole(['admin', 'academic', 'registrar', 'executive', 'deptHead'])) return '';
+    var d = (typeof currentDept === 'function') ? n(currentDept()) : '';
+    if (!d) return NO_BRANCH;
+    var eq = function (a, b) {
+      return (typeof deptEq === 'function') ? deptEq(a, b) : n(a) === n(b);
+    };
+    var hit = cfg().branches.filter(function (b) { return eq(n(b.name), d); })[0];
+    return hit ? n(hit.name) : NO_BRANCH;
+  }
+  // รายวิชาที่ผู้ใช้คนนี้มีสิทธิ์เห็น — ถูกล็อกแล้วเหลือเฉพาะวิชาในสาขาของตน
+  function visibleSubjects() {
+    var lock = branchLock();
+    if (!lock) return cfg().subjects;
+    if (lock === NO_BRANCH) return [];
+    var b = cfg().branches.filter(function (x) { return n(x.name) === lock; })[0];
+    var allow = (b && b.subjects) || [];
+    return cfg().subjects.filter(function (s) { return allow.indexOf(s) !== -1; });
+  }
+
   /* ---------------- ค่าตั้งรายวิชาและสาขา ---------------- */
   var FALLBACK = {
     subjects: ['การผดุงครรภ์', 'การพยาบาลมารดาและทารก', 'การพยาบาลเด็กและวัยรุ่น',
@@ -167,8 +195,15 @@
       + sel('round', 'ครั้งที่สอบ', [['', 'ทุกรอบ']].concat(rounds.map(function (r) { return [r, r]; })), st.round,
             !st.batch && batches.length > 1 ? false : false);
     if (withBranch) {
-      var bs = cfg().branches.map(function (b) { return [b.name, b.name]; });
-      html += sel('branch', 'สาขา', [['', 'ทุกสาขา']].concat(bs), st.branch);
+      var lock = branchLock();
+      if (lock && lock !== NO_BRANCH) {
+        html += '<div><label class="block text-xs text-gray-600 mb-1">สาขา</label>'
+          + '<div class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 text-gray-600">'
+          + esc(lock) + ' <span class="text-xs text-gray-400">(สาขาที่คุณรับผิดชอบ)</span></div></div>';
+      } else if (!lock) {
+        var bs = cfg().branches.map(function (b) { return [b.name, b.name]; });
+        html += sel('branch', 'สาขา', [['', 'ทุกสาขา']].concat(bs), st.branch);
+      }
     }
     html += '<span class="ml-auto text-xs text-gray-400"><i data-lucide="users" class="w-3 h-3 inline mr-1"></i>'
       + filtered().length + ' รายการ</span></div>';
@@ -190,7 +225,7 @@
 
   /* ---------------- 1) กราฟแท่ง ผ่าน/ไม่ผ่าน รายวิชา ---------------- */
   function barBySubject(list) {
-    var subs = cfg().subjects;
+    var subs = visibleSubjects();
     var rows = [];
     subs.forEach(function (s) {
       var t = tally(list, s);
@@ -206,7 +241,7 @@
 
   /* ---------------- 2) กราฟวงกลม ร้อยละการผ่าน รายวิชา ---------------- */
   function pieBySubject(list) {
-    var subs = cfg().subjects;
+    var subs = visibleSubjects();
     var cells = subs.map(function (s) {
       var t = tally(list, s);
       var donut = (typeof svgDonut === 'function') ? svgDonut([
@@ -231,7 +266,11 @@
   /* ---------------- 3) กราฟวงกลม ร้อยละการผ่าน รายสาขา ---------------- */
   function pieByBranch(list) {
     var st = state();
-    var bs = cfg().branches.filter(function (b) { return !st.branch || b.name === st.branch; });
+    var lock = branchLock();
+    var bs = cfg().branches.filter(function (b) {
+      if (lock) return lock !== NO_BRANCH && b.name === lock;
+      return !st.branch || b.name === st.branch;
+    });
     if (!bs.length) {
       return emptyBox('ยังไม่ได้ตั้งค่าการจัดกลุ่มสาขา',
         'ตั้งค่าได้ที่ตาราง app_setting คีย์ council_exam_config');
@@ -343,6 +382,17 @@
     if (!examRows().length) {
       return head + emptyBox('ยังไม่มีข้อมูลผลสอบในระบบ',
         'นำเข้าจากไฟล์ CSV ที่ดาวน์โหลดจากชีตคำตอบของ Google Form');
+    }
+    var lock = branchLock();
+    if (lock === NO_BRANCH) {
+      return head + emptyBox('ยังจับคู่สาขาของคุณกับสาขาในรายงานไม่ได้',
+        'บทบาทอาจารย์จะเห็นเฉพาะสาขาที่ตนรับผิดชอบ · กรุณาให้งานวิชาการตรวจช่อง "สาขา" ในทะเบียนอาจารย์ '
+        + 'ให้ตรงกับชื่อสาขาที่ตั้งไว้ในรายงานผลสอบสภาฯ');
+    }
+    if (lock) {
+      head += '<div class="rounded-xl border border-blue-100 bg-blue-50 px-4 py-2.5 mb-4 text-xs text-blue-800">'
+        + '<i data-lucide="filter" class="w-3.5 h-3.5 inline"></i> แสดงเฉพาะสาขา <b>' + esc(lock) + '</b> ที่คุณรับผิดชอบ'
+        + ' · ภาพรวมทุกสาขาดูได้ที่ประธานสาขาหรืองานวิชาการ</div>';
     }
     return head + filterBar(true)
       + barBySubject(list) + pieBySubject(list) + pieByBranch(list) + personTable(list);
