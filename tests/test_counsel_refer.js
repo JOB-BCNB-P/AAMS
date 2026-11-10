@@ -93,11 +93,17 @@ function makeEnv(opts) {
 
 (async function () {
   console.log('[1] ด้านที่รับผิดชอบของผู้บริหาร (app.js)');
-  t('มีรายการด้านครบ 4 ด้าน', () => {
+  t('มีตำแหน่งผู้บริหารครบ ผอ. + รองฯ 4 ด้าน', () => {
     const m = APPJS.match(/const EXEC_AREAS = \[([^\]]+)\]/);
     assert.ok(m, 'ไม่พบ EXEC_AREAS');
+    assert.ok(m[1].includes('EXEC_DIRECTOR'), 'ขาดตำแหน่งผู้อำนวยการวิทยาลัย');
     ['วิชาการ', 'กิจการนักศึกษา', 'บริหารและยุทธศาสตร์', 'วิจัยและบริการวิชาการ']
       .forEach(a => assert.ok(m[1].includes("'" + a + "'"), 'ขาดด้าน ' + a));
+  });
+  t('ผู้อำนวยการวิทยาลัยไม่ขึ้นคำว่า "รองผู้อำนวยการด้าน"', () => {
+    const src = APPJS.slice(APPJS.indexOf('function execAreaLabel'), APPJS.indexOf('function isExecutiveUser'));
+    assert.ok(src.includes("'ผู้อำนวยการวิทยาลัย'"), 'ไม่มีป้ายชื่อผู้อำนวยการวิทยาลัย');
+    assert.ok(src.includes('EXEC_DIRECTOR'), 'ไม่ได้แยกกรณีผู้อำนวยการออกจากรองผู้อำนวยการ');
   });
   t('ใส่ช่องด้านไว้ทั้งฟอร์มเพิ่มและฟอร์มแก้ไข', () => {
     assert.ok(APPJS.includes('execAreaFieldHTML({})'), 'ฟอร์มเพิ่มผู้ใช้ไม่มีช่องด้าน');

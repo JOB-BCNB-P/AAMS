@@ -14630,10 +14630,13 @@ const EXTRA_ROLE_CHOICES = [
    รองผู้อำนวยการมีสี่ด้าน ระบบต้องแยกได้ว่าใครดูแลด้านไหน
    เพราะการส่งต่อเคสให้คำปรึกษาจะวิ่งไปหาด้านวิชาการและด้านกิจการนักศึกษาเท่านั้น
    เก็บในคอลัมน์ exec_area ของ app_user (คีย์ที่ยังไม่มีคอลัมน์จริงจะไปอยู่ใน extra ให้เอง) */
-const EXEC_AREAS = ['วิชาการ', 'กิจการนักศึกษา', 'บริหารและยุทธศาสตร์', 'วิจัยและบริการวิชาการ'];
+// 'director' = ผู้อำนวยการวิทยาลัย ไม่ใช่ "ด้าน" จึงแยกป้ายชื่อออกจากรองผู้อำนวยการ
+const EXEC_DIRECTOR = 'director';
+const EXEC_AREAS = [EXEC_DIRECTOR, 'วิชาการ', 'กิจการนักศึกษา', 'บริหารและยุทธศาสตร์', 'วิจัยและบริการวิชาการ'];
 function execAreaLabel(v) {
   const a = norm(v);
-  return a ? 'รองผู้อำนวยการด้าน' + a : '';
+  if (!a) return '';
+  return a === EXEC_DIRECTOR ? 'ผู้อำนวยการวิทยาลัย' : 'รองผู้อำนวยการด้าน' + a;
 }
 function isExecutiveUser(u) {
   const rs = String((u && u.role) || '') + ',' + String((u && u.extra_roles) || '');
@@ -14644,10 +14647,10 @@ function execAreaFieldHTML(u) {
   // แสดงเสมอถ้ามีค่าอยู่แล้ว เผื่อถอดบทบาทผู้บริหารออกแล้วค่ายังค้าง จะได้เห็นและลบได้
   const show = isExecutiveUser(u) || !!cur;
   return `<div id="execAreaWrap" class="${show ? '' : 'hidden'}">
-    <label class="block text-xs text-gray-600 mb-1">ด้านที่รับผิดชอบ <span class="text-gray-400">(เฉพาะผู้บริหาร)</span></label>
+    <label class="block text-xs text-gray-600 mb-1">ตำแหน่งผู้บริหาร <span class="text-gray-400">(เฉพาะผู้บริหาร)</span></label>
     <select name="exec_area" class="w-full border rounded-xl px-3 py-2 text-sm">
-      <option value="">— ไม่ระบุด้าน —</option>
-      ${EXEC_AREAS.map(a => `<option value="${htmlEsc(a)}" ${cur === a ? 'selected' : ''}>รองผู้อำนวยการด้าน${htmlEsc(a)}</option>`).join('')}
+      <option value="">— ไม่ระบุตำแหน่ง —</option>
+      ${EXEC_AREAS.map(a => `<option value="${htmlEsc(a)}" ${cur === a ? 'selected' : ''}>${htmlEsc(execAreaLabel(a))}</option>`).join('')}
     </select>
     <p class="text-[11px] text-gray-400 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ด้าน<b>วิชาการ</b>และ<b>กิจการนักศึกษา</b> จะได้รับเคสที่ส่งต่อจากระบบให้คำปรึกษานักศึกษา</p></div>`;
 }
