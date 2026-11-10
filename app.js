@@ -658,7 +658,7 @@ async function handleLogin() {
       const t = getDataByType('teacher').find(x => (x.name || '').trim().toLowerCase() === (u.name || '').trim().toLowerCase() || (x.email || '') === (u.email || ''));
       APP.currentUser = t ? { name: t.name, role: 'classTeacher', data: t, responsible_year: t.responsible_year || u.responsible_year || '1' } : { name: u.name || identifier, role: 'classTeacher', responsible_year: u.responsible_year || '1', email: u.email || '' };
     } else if (role === 'executive') {
-      APP.currentUser = { name: u.name || identifier, role: 'executive', email: u.email || '' };
+      APP.currentUser = { name: u.name || identifier, role: 'executive', email: u.email || '', exec_area: u.exec_area || '' };
     } else if (role === 'registrar') {
       APP.currentUser = { name: u.name || identifier, role: 'registrar' };
     } else if (role === 'deptHead') {
@@ -12651,6 +12651,7 @@ function showAddUserModal() {
       <div id="userNameBox"><label class="block text-xs text-gray-600 mb-1">ชื่อ-สกุล *</label>
         <input name="name" required class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น นางสาวสมหญิง ใจดี"></div>
       ${extraRolesFieldHTML({})}
+      ${execAreaFieldHTML({})}
 
       ${dataEntryRightsFieldHTML({})}
       ${workloadMissionFieldHTML({})}
@@ -12698,6 +12699,8 @@ function showAddUserModal() {
 
     const extra = collectExtraRoles('addUserForm');
     if (extra) obj.extra_roles = extra;
+    const execArea = String(fd.get('exec_area') || '').trim();
+    if (execArea && isExecutiveUser({ role, extra_roles: extra })) obj.exec_area = execArea;
     const wlm = collectWorkloadMissions('addUserForm');
     if (wlm) obj.workload_missions = wlm;
     if (role !== 'student') Object.assign(obj, collectDataEntryRights('addUserForm'));
@@ -12722,6 +12725,14 @@ function onUserRoleChange(role) {
   if (!fieldsDiv) return;
 
   if (yearBox) yearBox.classList.toggle('hidden', role !== 'classTeacher');
+  // ช่อง "ด้านที่รับผิดชอบ" โผล่เฉพาะผู้บริหาร · เลือกบทบาทอื่นแล้วต้องล้างค่าเดิมด้วย
+  const execWrap = document.getElementById('execAreaWrap');
+  if (execWrap) {
+    const on = role === 'executive';
+    execWrap.classList.toggle('hidden', !on);
+    const sel = execWrap.querySelector('[name="exec_area"]');
+    if (sel && !on) sel.value = '';
+  }
   if (nameBox) nameBox.classList.toggle('hidden', role === 'student');
   const nameInput = nameBox && nameBox.querySelector('[name="name"]');
   if (nameInput) nameInput.required = (role !== 'student' && role !== '');
@@ -14615,6 +14626,32 @@ const EXTRA_ROLE_CHOICES = [
   ['admin', 'ผู้ดูแลระบบ'],
   ['otherStaff', 'เจ้าหน้าที่งานอื่นๆ']
 ];
+/* ───── ด้านที่รับผิดชอบของผู้บริหาร ─────
+   รองผู้อำนวยการมีสี่ด้าน ระบบต้องแยกได้ว่าใครดูแลด้านไหน
+   เพราะการส่งต่อเคสให้คำปรึกษาจะวิ่งไปหาด้านวิชาการและด้านกิจการนักศึกษาเท่านั้น
+   เก็บในคอลัมน์ exec_area ของ app_user (คีย์ที่ยังไม่มีคอลัมน์จริงจะไปอยู่ใน extra ให้เอง) */
+const EXEC_AREAS = ['วิชาการ', 'กิจการนักศึกษา', 'บริหารและยุทธศาสตร์', 'วิจัยและบริการวิชาการ'];
+function execAreaLabel(v) {
+  const a = norm(v);
+  return a ? 'รองผู้อำนวยการด้าน' + a : '';
+}
+function isExecutiveUser(u) {
+  const rs = String((u && u.role) || '') + ',' + String((u && u.extra_roles) || '');
+  return rs.split(',').map(x => x.trim()).indexOf('executive') !== -1;
+}
+function execAreaFieldHTML(u) {
+  const cur = norm(u && u.exec_area);
+  // แสดงเสมอถ้ามีค่าอยู่แล้ว เผื่อถอดบทบาทผู้บริหารออกแล้วค่ายังค้าง จะได้เห็นและลบได้
+  const show = isExecutiveUser(u) || !!cur;
+  return `<div id="execAreaWrap" class="${show ? '' : 'hidden'}">
+    <label class="block text-xs text-gray-600 mb-1">ด้านที่รับผิดชอบ <span class="text-gray-400">(เฉพาะผู้บริหาร)</span></label>
+    <select name="exec_area" class="w-full border rounded-xl px-3 py-2 text-sm">
+      <option value="">— ไม่ระบุด้าน —</option>
+      ${EXEC_AREAS.map(a => `<option value="${htmlEsc(a)}" ${cur === a ? 'selected' : ''}>รองผู้อำนวยการด้าน${htmlEsc(a)}</option>`).join('')}
+    </select>
+    <p class="text-[11px] text-gray-400 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ด้าน<b>วิชาการ</b>และ<b>กิจการนักศึกษา</b> จะได้รับเคสที่ส่งต่อจากระบบให้คำปรึกษานักศึกษา</p></div>`;
+}
+
 function extraRolesFieldHTML(u) {
   const have = String((u && u.extra_roles) || '').split(',').map(x => x.trim()).filter(Boolean);
   const boxes = EXTRA_ROLE_CHOICES.map(([k, label]) => `<label class="flex items-center gap-2 bg-surface rounded-lg px-2.5 py-1.5 cursor-pointer text-sm">
@@ -14699,6 +14736,8 @@ function showEditUserModal(id) {
         <select name="role" class="w-full border rounded-xl px-3 py-2 text-sm">${userRoleOptionsHTML(u.role)}</select></div>
 
       ${extraRolesFieldHTML(u)}
+
+      ${isStudent ? '' : execAreaFieldHTML(u)}
 
       ${isStudent ? '' : workloadMissionFieldHTML(u)}
 

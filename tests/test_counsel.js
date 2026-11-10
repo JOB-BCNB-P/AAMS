@@ -121,7 +121,7 @@ const flush = () => new Promise(r => setTimeout(r, 0));
   t('ไม่เห็นบันทึกของอาจารย์ท่านอื่น', () =>
     assert.ok(!html.includes('ของครูท่านอื่น'), 'บันทึกของอาจารย์ท่านอื่นหลุดมา'));
   t('บอกจำนวนนักศึกษาในที่ปรึกษาของตน', () =>
-    assert.ok(html.includes('ในที่ปรึกษาของคุณ (5 คน)'), 'นับนักศึกษาผิด'));
+    assert.ok(html.includes('ในความดูแลของคุณ (5 คน)'), 'นับนักศึกษาผิด'));
 
   console.log('\n[2] ผู้ดูแลระบบเห็นทั้งหมด · เจ้าหน้าที่เห็นเฉพาะที่ส่งต่อ');
   t('ผู้ดูแลเห็นของทุกคน', () => {
@@ -220,9 +220,11 @@ const flush = () => new Promise(r => setTimeout(r, 0));
     const src = CS.slice(CS.indexOf('function validate(d)'), CS.indexOf('var saving = false'));
     assert.ok(src.includes("d.issues.indexOf('other') >= 0 && !s(d.issue_other)"), 'ไม่ได้บังคับ');
   });
-  t('ส่งต่อแล้วบังคับระบุหน่วยงานและเหตุผล', () => {
-    const src = CS.slice(CS.indexOf('function validate(d)'), CS.indexOf('var saving = false'));
-    assert.ok(src.includes('ระบุหน่วยงาน/ผู้รับผิดชอบที่ส่งต่อ') && src.includes('ระบุเหตุผลการส่งต่อ'), 'ไม่ได้บังคับ');
+  t('ส่งต่อแล้วบังคับระบุเหตุผล', () => {
+    const src = CS.slice(CS.indexOf('function validate(d)'), CS.indexOf('/* แจ้งเตือนการส่งต่อ'));
+    assert.ok(src.includes('ระบุเหตุผลการส่งต่อ'), 'ไม่ได้บังคับเหตุผล');
+    // ผู้รับเคสคงที่ตามระเบียบ จึงไม่ต้องให้พิมพ์หน่วยงานเอง
+    assert.ok(!src.includes('ระบุหน่วยงาน/ผู้รับผิดชอบที่ส่งต่อ'), 'ยังบังคับพิมพ์หน่วยงานอยู่');
   });
   await ta('กรอกไม่ครบแล้วไม่เขียนอะไรลงฐานข้อมูล', async () => {
     const w2 = makeEnv({ role: 'teacher', me: 'อ.สมศรี ใจดี', page: 'counselEdit' });

@@ -50,7 +50,51 @@
   function canUse() { return !!perms().counsel; }
   function isAdvisorRole() { return APP.currentRole === 'teacher' || APP.currentRole === 'classTeacher'; }
   function seesAll() { return ['admin', 'academic', 'registrar'].indexOf(APP.currentRole) >= 0; }
-  function isReferralStaff() { return APP.currentRole === 'otherStaff'; }
+
+  /* ---- ผู้รับเคสที่ส่งต่อ ----
+     "ส่งต่อให้งานให้คำปรึกษา" = ส่งถึงรองผู้อำนวยการด้านกิจการนักศึกษา และด้านวิชาการ
+     ด้านที่รับผิดชอบเก็บในช่อง exec_area ของตาราง user (ตั้งที่เมนูจัดการผู้ใช้)
+     ฝั่งฐานข้อมูลบังคับซ้ำด้วย ems.counsel_is_referral_staff() ไม่ได้กันแค่ที่หน้าจอ */
+  var REFER_AREAS = ['กิจการนักศึกษา', 'วิชาการ'];
+  function isExecRow(u) {
+    var rs = (s(u && u.role) + ',' + s(u && u.extra_roles)).split(',');
+    for (var i = 0; i < rs.length; i++) if (s(rs[i]) === 'executive') return true;
+    return false;
+  }
+  function isActiveUserRow(u) {
+    var a = s(u && u.is_active).toLowerCase();
+    return !(a === '0' || a === 'false' || a === 'no' || a === 'ไม่ใช้งาน' || a === 'ปิด');
+  }
+  // รายชื่อผู้รับเคส เรียงตามลำดับด้านใน REFER_AREAS
+  function referTargets() {
+    var users = get('user').filter(function (u) {
+      return isExecRow(u) && isActiveUserRow(u) && s(u.name) && REFER_AREAS.indexOf(s(u.exec_area)) >= 0;
+    });
+    var out = [];
+    REFER_AREAS.forEach(function (a) {
+      users.forEach(function (u) { if (s(u.exec_area) === a) out.push(u); });
+    });
+    return out;
+  }
+  function referToText() {
+    var t = referTargets();
+    if (!t.length) return REFER_AREAS.map(function (a) { return 'รองผู้อำนวยการด้าน' + a; }).join(' และ ');
+    return t.map(function (u) { return s(u.name) + ' (รองผู้อำนวยการด้าน' + s(u.exec_area) + ')'; }).join(' · ');
+  }
+  // ด้านที่ผู้ใช้ปัจจุบันรับผิดชอบ — อ่านจากบัญชีที่ล็อกอิน ถ้าไม่มีค่อยย้อนไปหาในตาราง user
+  function myExecArea() {
+    var u = APP.currentUser || {};
+    var a = s(u.exec_area);
+    if (a) return a;
+    var k = nameKey(u.name);
+    var row = get('user').filter(function (x) { return isExecRow(x) && nameKey(x.name) === k; })[0];
+    return row ? s(row.exec_area) : '';
+  }
+  function isDeputyForReferral() {
+    if (APP.currentRole !== 'executive' && !isExecRow(APP.currentUser || {})) return false;
+    return REFER_AREAS.indexOf(myExecArea()) >= 0;
+  }
+  function isReferralStaff() { return APP.currentRole === 'otherStaff' || isDeputyForReferral(); }
   // แก้ไขได้เฉพาะเจ้าของบันทึก หรือผู้ที่เห็นทั้งหมด — ตรงกับกติกาใน RLS
   function canEdit(row) {
     if (seesAll()) return true;
@@ -63,8 +107,27 @@
     var all = get('counsel_session');
     if (seesAll()) return all;
     if (isReferralStaff()) return all.filter(function (x) { return s(x.refer_status) === 'ส่งต่อ'; });
+    // อาจารย์ : เห็นเฉพาะบันทึกของตนเอง ซึ่งมีได้แต่นักศึกษาในความดูแลของตน
+    // ตรงกับกติกาใน RLS (cs_read) ไม่ได้ขยายสิทธิ์ที่หน้าจอให้เกินกว่าฐานข้อมูล
     var k = nameKey(me());
     return all.filter(function (x) { return nameKey(x.advisor_name) === k; });
+  }
+  // รหัสนักศึกษาในความดูแลของผู้ใช้ปัจจุบัน
+  function myStudentIdSet() {
+    var m = {};
+    myStudents().forEach(function (x) { m[s(x.student_id)] = 1; });
+    return m;
+  }
+  /* รายชื่อนักศึกษาที่ "แสดงได้" ในบันทึกหนึ่ง
+     อาจารย์ที่ไม่ใช่เจ้าของบันทึก เห็นเฉพาะนักศึกษาในความดูแลของตน
+     เพื่อไม่ให้ข้อมูลนักศึกษาของอาจารย์ท่านอื่นรั่วออกไปจากบันทึกกลุ่ม */
+  function visibleMembersOf(code) {
+    var mem = membersOf(code);
+    if (seesAll() || isReferralStaff()) return mem;
+    var row = get('counsel_session').filter(function (x) { return s(x.session_code) === s(code); })[0];
+    if (row && nameKey(row.advisor_name) === nameKey(me())) return mem;
+    var m = myStudentIdSet();
+    return mem.filter(function (x) { return m[s(x.student_id)]; });
   }
   function sessionByCode(code) {
     var c = s(code);
@@ -81,6 +144,21 @@
     return get('counsel_option')
       .filter(function (x) { return s(x.kind) === kind && s(x.status) !== 'เลิกใช้'; })
       .sort(function (a, b) { return num(a.sort_order) - num(b.sort_order); });
+  }
+  /* ช่องทางการให้คำปรึกษา — เติม "อื่น ๆ โปรดระบุ" ให้เสมอ
+     ไม่ต้องเพิ่มแถวในตาราง counsel_option ให้ซ้ำซ้อน ถ้าในฐานข้อมูลมีอยู่แล้วก็ใช้ของเดิม */
+  var CH_OTHER = 'other';
+  function channelOptions() {
+    var list = options('channel').map(function (o) { return { code: s(o.code), label: s(o.label) }; });
+    var has = list.filter(function (o) { return o.code === CH_OTHER; }).length > 0;
+    if (!has) list.push({ code: CH_OTHER, label: 'อื่น ๆ โปรดระบุ' });
+    return list;
+  }
+  function channelText(row) {
+    var c = s(row && row.channel);
+    if (c === CH_OTHER) return 'อื่น ๆ' + (s(row.channel_other) ? ' : ' + s(row.channel_other) : '');
+    var hit = channelOptions().filter(function (o) { return o.code === c; })[0];
+    return hit ? hit.label : c;
   }
   function optionLabel(kind, code) {
     var hit = options(kind).filter(function (x) { return s(x.code) === s(code); })[0];
@@ -259,7 +337,7 @@
 
     var body = shown.map(function (x, i) {
       var n = (st.page - 1) * per + i + 1;
-      var mem = membersOf(x.session_code);
+      var mem = visibleMembersOf(x.session_code);
       return '<tr class="border-t border-gray-50 hover:bg-gray-50">'
         + '<td class="px-3 py-2 text-center text-gray-400">' + n + '</td>'
         + '<td class="px-3 py-2"><p class="font-medium text-gray-800">' + esc(s(x.topic) || '(ไม่ระบุเรื่อง)') + '</p>'
@@ -320,7 +398,7 @@
       + '<p class="text-sm text-gray-500 mt-1">'
       + (seesAll() ? 'เห็นบันทึกของอาจารย์ทุกท่าน'
         : isReferralStaff() ? 'เห็นเฉพาะรายการที่ส่งต่อมาให้งานให้คำปรึกษา'
-          : 'บันทึกของคุณ · เลือกได้เฉพาะนักศึกษาในที่ปรึกษาของคุณ (' + myStudents().length + ' คน)')
+          : 'เห็นเฉพาะนักศึกษาในความดูแลของคุณ (' + myStudents().length + ' คน) · แก้ไขได้เฉพาะบันทึกของคุณเอง')
       + '</p></div>'
       + '<div class="flex flex-wrap gap-2">'
       + (isAdvisorRole() || seesAll()
@@ -362,6 +440,18 @@
      ----------------------------------------------------------------
      สี่ใบแรกอ่านจากตารางที่ระบบมีอยู่แล้ว ไม่มีการเก็บข้อมูลซ้ำ
      ================================================================ */
+  /* เปิดดูข้อมูลนักศึกษาได้เฉพาะคนในความดูแล — กันไว้ที่ทุกปุ่ม ไม่ใช่แค่ซ่อนปุ่ม
+     (ข้อมูลจริงยังบังคับด้วย RLS ของแต่ละตารางอีกชั้น) */
+  function canSeeStudent(sid) {
+    if (seesAll() || isReferralStaff()) return true;
+    if (!isAdvisorRole()) return false;
+    return !!myStudentIdSet()[s(sid)];
+  }
+  function denyStudent() {
+    showToast('ดูได้เฉพาะนักศึกษาในความดูแลของคุณ', 'error');
+    return false;
+  }
+
   function stuHead(stu, title, icon, color) {
     return '<div class="bg-white rounded-2xl border border-blue-100 p-4 mb-3">'
       + '<p class="text-xs ' + color + ' font-semibold">' + esc(title) + '</p>'
@@ -383,6 +473,7 @@
 
   // ---- ผลการศึกษา : เรียกหน้าต่างใบแสดงผลการเรียนตัวเดิมของระบบ ----
   window.counselStuGrades = function (sid) {
+    if (!canSeeStudent(sid)) return denyStudent();
     var stu = studentById(sid);
     if (!stu) { showToast('ไม่พบข้อมูลนักศึกษา', 'error'); return; }
     if (typeof _renderTranscript === 'function') { _renderTranscript(stu); return; }
@@ -391,6 +482,7 @@
 
   // ---- ความประพฤติ : ตาราง student_conduct ----
   window.counselStuConduct = function (sid) {
+    if (!canSeeStudent(sid)) return denyStudent();
     var stu = studentById(sid); if (!stu) return;
     var rows = get('student_conduct').filter(function (x) { return s(x.student_id) === s(sid); })
       .sort(function (a, b) { return s(b.conduct_date).localeCompare(s(a.conduct_date)); });
@@ -445,6 +537,7 @@
       }).join('') + '</tbody></table>';
   }
   window.counselStuLeave = function (sid) {
+    if (!canSeeStudent(sid)) return denyStudent();
     var stu = studentById(sid); if (!stu) return;
     var rows = leavesOf(sid);
     showModal('ข้อมูลการลา/ขาดเรียน รายบุคคล',
@@ -455,6 +548,7 @@
 
   // ---- การเจ็บป่วย : ตาราง leave เดิม เฉพาะลาป่วย/ลาพบแพทย์ (มีใบรับรองแพทย์แนบอยู่แล้ว) ----
   window.counselStuIllness = function (sid) {
+    if (!canSeeStudent(sid)) return denyStudent();
     var stu = studentById(sid); if (!stu) return;
     var rows = leavesOf(sid).filter(function (x) {
       var t = s(x.leave_type);
@@ -477,6 +571,7 @@
     return Math.round(kg / (hm * hm) * 100) / 100;
   }
   window.counselStuHealth = function (sid) {
+    if (!canSeeStudent(sid)) return denyStudent();
     var stu = studentById(sid); if (!stu) return;
     var rows = get('student_health').filter(function (x) { return s(x.student_id) === s(sid); })
       .sort(function (a, b) { return s(a.record_date).localeCompare(s(b.record_date)); });
@@ -590,7 +685,8 @@
     } catch (e) { }
     return null;
   }
-  function markDirty() { markDirty(); persistDraft(); }
+  // ของเดิมเรียกตัวเองซ้ำ ทำให้ stack ล้นทุกครั้งที่แก้ช่องใดช่องหนึ่ง และร่างไม่ถูกเก็บ
+  function markDirty() { state().dirty = true; persistDraft(); }
 
   function draftOf(code) {
     var st = state();
@@ -604,7 +700,8 @@
       counsel_date: s(row.counsel_date), start_time: s(row.start_time), end_time: s(row.end_time),
       semester: s(row.semester), academic_year: s(row.academic_year), topic: s(row.topic),
       issues: s(row.issue_types).split(',').map(s).filter(Boolean),
-      issue_other: s(row.issue_other), channel: s(row.channel), result_note: s(row.result_note),
+      issue_other: s(row.issue_other), channel: s(row.channel), channel_other: s(row.channel_other),
+      result_note: s(row.result_note),
       refer_status: s(row.refer_status) || 'ไม่ส่งต่อ', refer_to: s(row.refer_to), refer_reason: s(row.refer_reason),
       picked: membersOf(code).map(function (m) {
         return { student_id: s(m.student_id), source: s(m.source) || 'year', private_note: s(m.private_note) };
@@ -614,7 +711,7 @@
       session_code: newCode(),
       counsel_date: todayISO(), start_time: '', end_time: '',
       semester: '1', academic_year: curYearBE(), topic: '',
-      issues: [], issue_other: '', channel: '', result_note: '',
+      issues: [], issue_other: '', channel: '', channel_other: '', result_note: '',
       refer_status: 'ไม่ส่งต่อ', refer_to: '', refer_reason: '',
       picked: []
     };
@@ -745,6 +842,8 @@
     var st = state();
     var d = draftOf(st.editCode);
     if (st.editCode && !sessionByCode(st.editCode)) return noPerm();
+    // เห็นบันทึกของอาจารย์ท่านอื่นได้ (เพราะมีนักศึกษาของเราอยู่) แต่แก้ไม่ได้
+    if (st.editCode && !canEdit(sessionByCode(st.editCode))) return noPerm();
     if (!st.editCode && !(isAdvisorRole() || seesAll())) return noPerm();
 
     var mins = minutesBetween(d.start_time, d.end_time);
@@ -811,10 +910,16 @@
     // ---------- ช่องทาง + ผลการให้คำปรึกษา ----------
     var midBox = '<div class="bg-white rounded-2xl border border-blue-100 p-4 mb-4">'
       + '<div class="grid grid-cols-1 lg:grid-cols-3 gap-3">'
+      + '<div>'
       + selectHTML({
-        label: 'ช่องทางการให้คำปรึกษา', req: true, value: d.channel, on: "counselField('channel',this.value)",
-        width: '', options: [['', '— เลือกช่องทาง —']].concat(options('channel').map(function (o) { return [s(o.code), s(o.label)]; }))
+        label: 'ช่องทางการให้คำปรึกษา', req: true, value: d.channel, on: "counselFieldR('channel',this.value)",
+        width: '', options: [['', '— เลือกช่องทาง —']].concat(channelOptions().map(function (o) { return [o.code, o.label]; }))
       })
+      + (s(d.channel) === CH_OTHER
+        ? '<div class="mt-2"><label class="block text-xs font-medium text-gray-600 mb-1">ระบุช่องทาง <span class="text-red-500">*</span></label>'
+        + '<input value="' + esc(d.channel_other) + '" onchange="counselField(\'channel_other\',this.value)" '
+        + 'class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"></div>' : '')
+      + '</div>'
       + '<div class="lg:col-span-2"><label class="block text-xs font-medium text-gray-600 mb-1">'
       + 'บันทึกผลการให้คำปรึกษา/การช่วยเหลือ <span class="text-red-500">*</span></label>'
       + '<textarea rows="4" onchange="counselField(\'result_note\',this.value)" '
@@ -835,13 +940,16 @@
           + '<span class="text-gray-800">' + (v === 'ส่งต่อ' ? 'ส่งต่อให้งานให้คำปรึกษา' : 'ไม่ส่งต่อ') + '</span></label>';
       }).join('') + '</div>'
       + (referOn
-        ? '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">'
-        + '<div><label class="block text-xs font-medium text-gray-600 mb-1">หน่วยงาน/ผู้รับผิดชอบ <span class="text-red-500">*</span></label>'
-        + '<input value="' + esc(d.refer_to) + '" onchange="counselField(\'refer_to\',this.value)" '
-        + 'placeholder="เช่น งานกิจการนักศึกษา" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"></div>'
-        + '<div><label class="block text-xs font-medium text-gray-600 mb-1">เหตุผลการส่งต่อ <span class="text-red-500">*</span></label>'
+        ? '<div class="mt-3 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">'
+        + '<p class="text-xs text-amber-800"><i data-lucide="send" class="w-3 h-3 inline mr-1"></i>'
+        + 'ส่งถึง <b>' + esc(referToText()) + '</b></p>'
+        + (referTargets().length
+          ? '<p class="text-[11px] text-amber-700 mt-0.5">ระบบจะแจ้งเตือนทางอีเมลของทั้งสองท่าน และเปิดสิทธิ์ให้เข้ามาอ่านรายละเอียดในระบบ</p>'
+          : '<p class="text-[11px] text-red-600 mt-0.5">ยังไม่พบบัญชีผู้บริหารที่กำหนด "ด้านที่รับผิดชอบ" ไว้ · บันทึกได้แต่จะยังไม่มีการแจ้งเตือน</p>')
+        + '</div>'
+        + '<div class="mt-3"><label class="block text-xs font-medium text-gray-600 mb-1">เหตุผลการส่งต่อ <span class="text-red-500">*</span></label>'
         + '<input value="' + esc(d.refer_reason) + '" onchange="counselField(\'refer_reason\',this.value)" '
-        + 'class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"></div></div>' : '')
+        + 'class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"></div>' : '')
       + '</div>';
 
     // ---------- ขั้นที่ 1 เลือกนักศึกษา (ทำก่อน) ----------
@@ -907,18 +1015,52 @@
     if (!d.issues.length) err.push('เลือกประเภทประเด็นปัญหาอย่างน้อยหนึ่งข้อ');
     if (d.issues.indexOf('other') >= 0 && !s(d.issue_other)) err.push('ระบุรายละเอียดของ "อื่น ๆ"');
     if (!s(d.channel)) err.push('เลือกช่องทางการให้คำปรึกษา');
+    if (s(d.channel) === CH_OTHER && !s(d.channel_other)) err.push('ระบุช่องทางการให้คำปรึกษา "อื่น ๆ"');
     if (!s(d.result_note)) err.push('กรอกผลการให้คำปรึกษา');
     if (!s(d.refer_status)) err.push('เลือกสถานะการจัดการปัญหา');
-    if (s(d.refer_status) === 'ส่งต่อ') {
-      if (!s(d.refer_to)) err.push('ระบุหน่วยงาน/ผู้รับผิดชอบที่ส่งต่อ');
-      if (!s(d.refer_reason)) err.push('ระบุเหตุผลการส่งต่อ');
-    }
+    if (s(d.refer_status) === 'ส่งต่อ' && !s(d.refer_reason)) err.push('ระบุเหตุผลการส่งต่อ');
     if (!d.picked.length) err.push('เลือกนักศึกษาอย่างน้อยหนึ่งคน');
     // กันชื่อซ้ำอีกชั้น เผื่อร่างถูกแก้จากหลายทาง
     var seen = {}, dup = 0;
     d.picked.forEach(function (p) { if (seen[p.student_id]) dup++; seen[p.student_id] = 1; });
     if (dup) err.push('มีรายชื่อนักศึกษาซ้ำ ' + dup + ' รายการ');
     return err;
+  }
+
+  /* แจ้งเตือนการส่งต่อ
+     สร้างแถวในตาราง announcement โดยระบุรายชื่อผู้รับเจาะจง (บทบาทว่าง = ส่งเฉพาะคนในรายชื่อ)
+     แล้วเรียก annSendChannels ส่งอีเมล ผู้รับจะเห็นการแจ้งเตือนในระบบด้วย
+     เนื้อหาไม่ใส่ชื่อนักศึกษาและรายละเอียดปัญหา เพราะแถว announcement ไม่ได้ปิดกั้นระดับฐานข้อมูล
+     ให้เข้ามาอ่านรายละเอียดในเมนูระบบให้คำปรึกษาแทน */
+  async function notifyReferral(d) {
+    var people = referTargets();
+    if (!people.length) return 'ยังไม่ได้แจ้งเตือน: ไม่พบบัญชีรองผู้อำนวยการที่กำหนดด้านที่รับผิดชอบ';
+    var names = people.map(function (u) { return s(u.name); });
+    try {
+      var r = await GSheetDB.create({
+        type: 'announcement',
+        announcement_title: 'ส่งต่อเคสให้คำปรึกษา · รหัสบันทึก ' + s(d.session_code),
+        announcement_content: 'มีการส่งต่อเคสให้งานให้คำปรึกษา ' + (d.picked.length) + ' ราย'
+          + ' · ผู้บันทึก ' + me()
+          + ' · กรุณาเข้าระบบ เมนู "ระบบให้คำปรึกษา" เพื่ออ่านรายละเอียด'
+          + ' (ไม่ระบุรายละเอียดในอีเมลเพื่อคุ้มครองข้อมูลนักศึกษา)',
+        announcement_date: todayISO(),
+        event_type: 'ทั่วไป',
+        roles: '',
+        target_names: names.join(', '),
+        yr: '', line_notify: '',
+        created_at: new Date().toISOString()
+      }, { noRefresh: true });
+      if (!r || !r.isOk) return 'แจ้งเตือนไม่สำเร็จ: ' + ((r && r.error) || '');
+      var msgs = [];
+      if (typeof annSendChannels === 'function') {
+        msgs = await annSendChannels(r.rowIndex, { mail: true });
+      }
+      try { if (GSheetDB.refreshTab) await GSheetDB.refreshTab('announcement'); } catch (e) { }
+      return 'แจ้ง ' + names.join(' และ ') + (msgs.length ? ' · ' + msgs.join(' · ') : '');
+    } catch (e) {
+      return 'แจ้งเตือนไม่สำเร็จ: ' + ((e && e.message) || e);
+    }
   }
 
   var saving = false;
@@ -948,12 +1090,17 @@
         duration_min: String(mins),
         semester: d.semester, academic_year: d.academic_year, topic: d.topic,
         issue_types: d.issues.join(','), issue_other: d.issue_other,
-        channel: d.channel, result_note: d.result_note,
-        refer_status: d.refer_status, refer_to: d.refer_to, refer_reason: d.refer_reason,
+        channel: d.channel, channel_other: (s(d.channel) === CH_OTHER ? d.channel_other : ''),
+        result_note: d.result_note,
+        refer_status: d.refer_status,
+        // ผู้รับเคสคงที่ตามระเบียบ ไม่ให้พิมพ์เอง จะได้ตรงกับสิทธิ์ที่เปิดให้อ่านในระบบ
+        refer_to: (s(d.refer_status) === 'ส่งต่อ' ? referToText() : ''),
+        refer_reason: d.refer_reason,
         advisor_name: me(), updated_by: me()
       };
 
       var existing = d.__new ? null : sessionByCode(d.__code);
+      var wasReferred = existing && s(existing.refer_status) === 'ส่งต่อ';
       var r;
       if (existing) {
         r = await GSheetDB.update(Object.assign({}, existing, payload), { noRefresh: true });
@@ -996,11 +1143,17 @@
         }, { noRefresh: true });
       } catch (e) { /* บันทึกประวัติไม่สำเร็จ ไม่ให้ล้มการบันทึกหลัก */ }
 
+      // แจ้งเตือนเฉพาะตอนที่เพิ่งเปลี่ยนเป็น "ส่งต่อ" จะได้ไม่ส่งซ้ำทุกครั้งที่แก้ไข
+      var noteMsg = '';
+      if (s(d.refer_status) === 'ส่งต่อ' && !wasReferred) {
+        noteMsg = await notifyReferral(d);
+      }
+
       await GSheetDB.refreshTab('counsel_session');
       await GSheetDB.refreshTab('counsel_student');
 
       st.draft = null; st.dirty = false; st.editCode = ''; st.restoredAt = 0; dropDraft();
-      showToast(existing ? 'บันทึกการแก้ไขเรียบร้อย' : 'บันทึกการให้คำปรึกษาเรียบร้อย');
+      showToast((existing ? 'บันทึกการแก้ไขเรียบร้อย' : 'บันทึกการให้คำปรึกษาเรียบร้อย') + (noteMsg ? ' · ' + noteMsg : ''));
       navigateTo('counselList');
     } catch (e) {
       // ล้มเหลวต้องคงข้อมูลที่กรอกไว้ — ไม่ล้างร่างทิ้ง
@@ -1033,7 +1186,7 @@
   window.counselShow = function (code) {
     var x = sessionByCode(code);
     if (!x) { showToast('ไม่พบรายการ หรือบัญชีของคุณไม่มีสิทธิ์ดู', 'error'); return; }
-    var mem = membersOf(code);
+    var mem = visibleMembersOf(code);
     function row(k, v) {
       return '<div class="flex gap-2 py-1.5 border-b border-gray-50 last:border-0">'
         + '<span class="text-xs text-gray-500 w-40 flex-shrink-0">' + esc(k) + '</span>'
@@ -1076,7 +1229,7 @@
         + ' <span class="text-gray-400">(' + hoursText(x.duration_min) + ' ชั่วโมง)</span>')
       + row('ภาค/ปีการศึกษา', esc(s(x.semester)) + ' / ' + esc(s(x.academic_year)))
       + row('ประเภทประเด็นปัญหา', issues.map(function (t) { return badge(t, 'bg-blue-50 text-blue-700'); }).join(' '))
-      + row('ช่องทาง', esc(optionLabel('channel', x.channel)))
+      + row('ช่องทาง', esc(channelText(x)))
       + row('ผู้บันทึก', esc(s(x.advisor_name)))
       + '</div>'
       + '<div class="bg-white rounded-2xl border border-blue-100 p-4 mb-3">'
