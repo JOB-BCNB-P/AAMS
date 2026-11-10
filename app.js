@@ -5633,10 +5633,13 @@ function engSummaryScope() {
 
 /* คลิกการ์ด "สอบผ่าน" / "ยังไม่ผ่าน" แล้วดูว่ามีใครบ้าง
    kind = 'pass' | 'fail' */
-function showEngStudentList(kind) {
+function showEngStudentList(kind, yearLevel) {
   const sc = engSummaryScope();
   const isPass = kind === 'pass';
+  const yr = norm(yearLevel);
+  // เปิดจากการ์ดรายชั้นปี = กรองต่อจากขอบเขตเดิมอีกชั้น ตัวเลขบนการ์ดกับรายชื่อจึงตรงกันเสมอ
   const list = (isPass ? sc.passed : sc.notPassed).slice()
+    .filter(s => !yr || norm(s.year_level) === yr)
     .sort((a, b) => norm(a.student_id).localeCompare(norm(b.student_id)));
 
   // ผลที่ผ่าน ครั้งล่าสุดของแต่ละคน (ไว้แสดงคะแนน/วันที่)
@@ -5679,6 +5682,7 @@ function showEngStudentList(kind) {
 
   showModal(
     (isPass ? 'รายชื่อนักศึกษาที่สอบผ่านภาษาอังกฤษ' : 'รายชื่อนักศึกษาที่ยังไม่ผ่านภาษาอังกฤษ')
+      + (yr ? ' — ชั้นปีที่ ' + htmlEsc(yr) : '')
       + (sc.scopeLabel ? ' — ' + sc.scopeLabel : '')
       + ' <span class="text-sm font-normal text-gray-500">(' + list.length + ' คน)</span>',
     body, null, 'max-w-3xl');
@@ -5878,17 +5882,26 @@ function engResultsPage() {
     // การ์ดสรุปแยกรายชั้นปี (แสดงเมื่อยังไม่เลือกชั้นปีเจาะจง สำหรับ admin/ผู้บริหาร)
     let perYearCardsHtml = '';
     if (canFilterByAdvisor && !sumYrLevel) {
-      const baseAll = activeStudents(getDataByType('student'));
+      /* นับจากชุดเดียวกับการ์ดใหญ่ (_sc) ไม่ใช่จากนักศึกษาทั้งวิทยาลัย
+         ไม่งั้นเมื่อผู้ใช้กรองด้วยอาจารย์ที่ปรึกษาหรือรุ่น ตัวเลขรายชั้นปีจะไม่ตรงกับการ์ดใหญ่
+         และไม่ตรงกับรายชื่อที่เปิดดูจากตัวมันเองด้วย */
+      const yrOf = s => norm(s.year_level);
       const yrCards = [1, 2, 3, 4].map(yr => {
-        const ys = baseAll.filter(s => norm(s.year_level) === String(yr));
-        const p = ys.filter(s => passedIds.has(norm(s.student_id))).length;
-        const f = ys.length - p;
+        const y = String(yr);
+        const p = _sc.passed.filter(s => yrOf(s) === y).length;
+        const f = _sc.notPassed.filter(s => yrOf(s) === y).length;
+        const tot = p + f;
+        // ใช้เฉพาะคลาสที่มีอยู่จริงใน tailwind.css ที่ build ไว้ ไม่งั้นจะไม่มีผลกับหน้าจอ
+        const chip = (kind, label, n, cls, hov) => n
+          ? `<button type="button" onclick="showEngStudentList('${kind}','${y}')" title="คลิกเพื่อดูรายชื่อ${label} ชั้นปี ${y}"
+              class="px-2 py-0.5 rounded-lg ${cls} ${hov} hover:underline transition cursor-pointer">${label} <b>${n}</b></button>`
+          : `<span class="px-2 py-0.5 rounded-lg ${cls} opacity-50">${label} <b>0</b></span>`;
         return `<div class="bg-gray-50 rounded-xl p-3 border border-gray-100">
-          <p class="text-sm font-semibold text-gray-700 mb-1">ชั้นปี ${yr} <span class="font-normal text-gray-400">(${ys.length} คน)</span></p>
-          <div class="flex gap-2 text-sm"><span class="px-2 py-0.5 bg-green-50 text-green-700 rounded-lg">ผ่าน <b>${p}</b></span><span class="px-2 py-0.5 bg-red-50 text-red-700 rounded-lg">ไม่ผ่าน <b>${f}</b></span></div>
+          <p class="text-sm font-semibold text-gray-700 mb-1">ชั้นปี ${yr} <span class="font-normal text-gray-400">(${tot} คน)</span></p>
+          <div class="flex gap-2 text-sm">${chip('pass', 'ผ่าน', p, 'bg-green-50 text-green-700', 'hover:bg-green-100')}${chip('fail', 'ไม่ผ่าน', f, 'bg-red-50 text-red-700', 'hover:bg-red-100')}</div>
         </div>`;
       }).join('');
-      perYearCardsHtml = `<div class="mt-4 pt-4 border-t border-gray-100"><p class="text-xs font-semibold text-gray-500 mb-2"><i data-lucide="layers" class="w-3.5 h-3.5 inline mr-1"></i>แยกรายชั้นปี</p><div class="grid grid-cols-2 lg:grid-cols-4 gap-2">${yrCards}</div></div>`;
+      perYearCardsHtml = `<div class="mt-4 pt-4 border-t border-gray-100"><p class="text-xs font-semibold text-gray-500 mb-2"><i data-lucide="layers" class="w-3.5 h-3.5 inline mr-1"></i>แยกรายชั้นปี <span class="font-normal text-gray-400">— คลิกตัวเลขเพื่อดูรายชื่อ</span></p><div class="grid grid-cols-2 lg:grid-cols-4 gap-2">${yrCards}</div></div>`;
     }
 
     // Breakdown for tooltip — classTeacher: by room, others: by year level
