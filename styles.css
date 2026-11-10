@@ -1449,6 +1449,85 @@ form.ems-stepped > * + * { margin-top: 0; }
    ผู้ใช้บางคนตั้งระบบปฏิบัติการไว้ว่าลดการเคลื่อนไหว
    เพราะเวียนศีรษะหรือไวต่อภาพเคลื่อนไหว ต้องปิดให้หมด
    สีที่เปลี่ยนตอนชี้ยังอยู่ครบ เพียงแต่ไม่ขยับและไม่หน่วงเวลา */
+/* ═══════════ อนิเมชันของกราฟและการ์ดตัวเลข ═══════════
+   ใส่ไว้ที่ตัวช่วยกลาง (svgDonut · animBarRows · statCard · radarSvg) ทุกเมนูจึงได้ผลพร้อมกัน
+   หลักที่ยึด
+     • สั้นและจบไว ไม่เกิน .6 วินาที เพราะหน้าพวกนี้ถูกวาดใหม่บ่อยเวลากดตัวกรอง
+     • เคลื่อนไหวเฉพาะตอนปรากฏครั้งแรก ไม่วนซ้ำ ไม่ดึงความสนใจระหว่างอ่าน
+     • ไล่ทีละใบเล็กน้อย (stagger) ให้รู้สึกมีจังหวะ แต่ใบสุดท้ายต้องไม่รอนาน
+   บล็อกลดการเคลื่อนไหวรวมด้านล่างคุมทั้งหมดนี้อยู่แล้ว จึงไม่ต้องเขียนซ้ำ */
+
+/* ---- วงกลมโดนัท : เส้นค่อย ๆ ลากจนเต็มส่วนของตัวเอง ---- */
+@keyframes donutDraw {
+  from { stroke-dasharray: 0 var(--dc, 264); opacity: .25; }
+  to   { stroke-dasharray: var(--dash); opacity: 1; }
+}
+
+.donut-seg {
+  transition: stroke-width .18s ease, opacity .18s ease;
+  cursor: default;
+}
+
+/* ใช้อนิเมชันเฉพาะเส้นที่รู้ค่าความยาวของตัวเอง (ตัวช่วยกลางใส่ --dash มาให้)
+   เส้นที่ไม่มีค่าจะแสดงเต็มทันทีเหมือนเดิม ไม่หายไปไหน */
+.donut-seg[style*="--dash"] {
+  animation: donutDraw .75s cubic-bezier(.22, 1, .36, 1) both;
+}
+
+.donut-seg:nth-child(2) { animation-delay: .08s; }
+.donut-seg:nth-child(3) { animation-delay: .16s; }
+.donut-seg:nth-child(4) { animation-delay: .24s; }
+.donut-seg:nth-child(n+5) { animation-delay: .3s; }
+
+/* ---- กราฟแท่ง : ไล่โตทีละแถว ---- */
+.grow-bar { animation: growBar .85s cubic-bezier(.22, 1, .36, 1) both; }
+.bar-row:nth-child(2) .grow-bar { animation-delay: .05s; }
+.bar-row:nth-child(3) .grow-bar { animation-delay: .1s; }
+.bar-row:nth-child(4) .grow-bar { animation-delay: .15s; }
+.bar-row:nth-child(5) .grow-bar { animation-delay: .2s; }
+.bar-row:nth-child(n+6) .grow-bar { animation-delay: .25s; }
+
+/* ---- ใยแมงมุม : วงแหวนจางเข้า เส้นข้อมูลขยายจากจุดกึ่งกลาง ---- */
+@keyframes radarPop {
+  from { transform: scale(.72); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+.radar-poly {
+  transform-origin: var(--cx, 170px) var(--cy, 158px);
+  animation: radarPop .6s cubic-bezier(.34, 1.26, .64, 1) both;
+}
+
+.radar-poly:nth-of-type(2) { animation-delay: .07s; }
+.radar-poly:nth-of-type(3) { animation-delay: .14s; }
+.radar-poly:nth-of-type(n+4) { animation-delay: .2s; }
+
+@keyframes radarDot { from { opacity: 0; } to { opacity: 1; } }
+.radar-dot { animation: radarDot .5s ease .3s both; }
+
+/* ---- การ์ดตัวเลข : ยกขึ้นพร้อมจางเข้า ไล่ทีละใบ ---- */
+@keyframes cardRise {
+  from { transform: translateY(10px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+.card-stat { animation: cardRise .42s cubic-bezier(.22, 1, .36, 1) both; }
+.card-stat:nth-child(2) { animation-delay: .05s; }
+.card-stat:nth-child(3) { animation-delay: .1s; }
+.card-stat:nth-child(4) { animation-delay: .15s; }
+.card-stat:nth-child(5) { animation-delay: .2s; }
+.card-stat:nth-child(6) { animation-delay: .25s; }
+.card-stat:nth-child(n+7) { animation-delay: .3s; }
+
+/* ตอนเอาเมาส์ชี้ ต้องไม่ให้อนิเมชันตอนปรากฏมาค้างทับ transform ของ hover */
+@media (hover: hover) {
+  .card-stat:hover,
+  .card-stat:active { animation: none; }
+}
+
+/* ---- ตัวเลขที่นับขึ้น ---- */
+.count-up { font-variant-numeric: tabular-nums; }
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

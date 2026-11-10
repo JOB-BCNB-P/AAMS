@@ -1916,7 +1916,7 @@ function filterSelectHTML(o) {
 }
 
 function statCard(icon, label, value, unit, color) {
-  return `<div class="card-stat bg-white rounded-2xl p-5 border border-blue-100"><div class="flex items-center gap-4"><div class="w-12 h-12 ${color} rounded-xl flex items-center justify-center"><i data-lucide="${icon}" class="w-6 h-6 text-white"></i></div><div><p class="text-sm text-gray-500">${label}</p><p class="text-2xl font-bold text-gray-800">${value} <span class="text-sm font-normal text-gray-500">${unit}</span></p></div></div></div>`;
+  return `<div class="card-stat bg-white rounded-2xl p-5 border border-blue-100"><div class="flex items-center gap-4"><div class="w-12 h-12 ${color} rounded-xl flex items-center justify-center"><i data-lucide="${icon}" class="w-6 h-6 text-white"></i></div><div><p class="text-sm text-gray-500">${label}</p><p class="text-2xl font-bold text-gray-800"><span class="count-up" data-count-up="${String(value).replace(/[^0-9.-]/g, '')}">${value}</span> <span class="text-sm font-normal text-gray-500">${unit}</span></p></div></div></div>`;
 }
 
 // ======================== ANALYTICS HELPERS (เพิ่มเติม) ========================
@@ -1994,13 +1994,15 @@ function svgDonut(segments, centerLabel) {
   const ring = total ? segments.filter(s => (parseFloat(s.value) || 0) > 0).map(s => {
     const v = parseFloat(s.value) || 0; const len = v / total * C; const off = -acc; acc += len;
     const pct = Math.round(v / total * 100);
-    return `<circle class="donut-seg" cx="60" cy="60" r="${r}" fill="none" stroke="${s.color}" stroke-width="20" stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${off.toFixed(2)}"><title>${s.label}: ${v} คน (${pct}%)</title></circle>`;
+    // --dash คือความยาวเส้นสุดท้าย · --dc คือเส้นรอบวง CSS ใช้สองค่านี้ลากเส้นจาก 0 จนเต็ม
+    const dash = `${len.toFixed(2)} ${(C - len).toFixed(2)}`;
+    return `<circle class="donut-seg" cx="60" cy="60" r="${r}" fill="none" stroke="${s.color}" stroke-width="20" stroke-dasharray="${dash}" stroke-dashoffset="${off.toFixed(2)}" style="--dash:${dash};--dc:${C.toFixed(2)}"><title>${s.label}: ${v} คน (${pct}%)</title></circle>`;
   }).join('') : `<circle cx="60" cy="60" r="${r}" fill="none" stroke="#e5e7eb" stroke-width="20"></circle>`;
   const legend = segments.map(s => { const v = parseFloat(s.value) || 0; const pct = total ? Math.round(v / total * 100) : 0; return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px"><span style="width:13px;height:13px;border-radius:3px;background:${s.color};flex-shrink:0"></span><span class="dnt-label" style="flex:1;color:#475569">${s.label}</span><b class="dnt-val" style="color:#1e293b">${v}</b><span class="dnt-pct" style="color:#94a3b8;width:40px;text-align:right">${pct}%</span></div>`; }).join('');
   return `<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
     <div class="donut-wrap pie-spin" style="width:150px;height:150px;flex-shrink:0;position:relative">
       <svg viewBox="0 0 120 120" width="150" height="150" style="transform:rotate(-90deg)">${ring}</svg>
-      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none"><span class="dnt-center" style="font-size:26px;font-weight:700;color:#1e6fba">${total || 0}</span><span class="dnt-sub" style="font-size:11px;color:#94a3b8">${centerLabel || 'รวม'}</span></div>
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none"><span class="dnt-center count-up" data-count-up="${total || 0}" style="font-size:26px;font-weight:700;color:#1e6fba">${total || 0}</span><span class="dnt-sub" style="font-size:11px;color:#94a3b8">${centerLabel || 'รวม'}</span></div>
     </div>
     <div style="flex:1;min-width:180px">${legend}</div>
   </div>`;
@@ -2011,8 +2013,9 @@ function animBarRows(items) {
   const max = Math.max(1, ...items.map(i => parseFloat(i.value) || 0));
   return items.map(i => {
     const w = Math.round((parseFloat(i.value) || 0) / max * 100);
-    return `<div>
-      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span class="dnt-label" style="color:#475569">${i.label}</span><b class="dnt-val" style="color:#1e293b">${i.value || 0}</b></div>
+    const num = parseFloat(i.value);
+    return `<div class="bar-row">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span class="dnt-label" style="color:#475569">${i.label}</span><b class="dnt-val${isFinite(num) ? ' count-up' : ''}"${isFinite(num) ? ' data-count-up="' + num + '"' : ''} style="color:#1e293b">${i.value || 0}</b></div>
       <div class="bar-track" style="background:#eef2f7;border-radius:7px;height:18px;overflow:hidden"><div class="grow-bar" style="--tw:${w}%;height:100%;background:${i.color || '#1e6fba'};border-radius:7px"></div></div>
     </div>`;
   }).join('');

@@ -154,3 +154,68 @@
   }
   if (document.readyState !== 'loading') start(); else document.addEventListener('DOMContentLoaded', start);
 })();
+
+/* ================================================================
+   ตัวเลขนับขึ้นในการ์ดและกราฟ
+   ----------------------------------------------------------------
+   ใส่ data-count-up="<ตัวเลขปลายทาง>" ไว้ที่ element แล้วไฟล์นี้จัดการให้
+   ตัวช่วยกลางที่ใส่ให้แล้ว : statCard() · svgDonut() ตัวเลขกลางวง · animBarRows()
+
+   หลักที่ยึด
+     • ข้อความเดิมต้องเป็นค่าสุดท้ายเสมอ ถ้าสคริปต์นี้ไม่ทำงาน ตัวเลขก็ยังถูกต้อง
+     • นับเฉพาะครั้งแรกที่ element นั้นปรากฏ ไม่นับซ้ำทุกครั้งที่หน้าถูกวาดใหม่
+     • เลขไม่เกิน 3 ไม่ต้องนับ เพราะกระพริบแล้วไม่ได้อะไร
+     • เคารพการตั้งค่าลดการเคลื่อนไหวของเครื่อง
+   ================================================================ */
+(function () {
+  'use strict';
+  if (typeof document === 'undefined') return;
+
+  function reducedMotion() {
+    try { return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+    catch (e) { return false; }
+  }
+  function fmt(v, decimals) {
+    return decimals ? v.toFixed(decimals) : String(Math.round(v));
+  }
+  function run(el) {
+    if (el.__cuDone) return;
+    el.__cuDone = 1;
+    var target = parseFloat(el.getAttribute('data-count-up'));
+    if (!isFinite(target)) return;
+    // มี element ลูกอยู่ข้างใน = ไม่ใช่ตัวเลขล้วน แตะไม่ได้ เพราะจะลบ HTML ข้างในทิ้ง
+    if (el.children && el.children.length) return;
+    var finalText = el.textContent;
+    if (reducedMotion() || Math.abs(target) <= 3) return;   // ปล่อยเป็นค่าสุดท้ายทันที
+    var raw = el.getAttribute('data-count-up') || '';
+    var dot = raw.indexOf('.');
+    var decimals = dot === -1 ? 0 : Math.min(2, raw.length - dot - 1);
+    var dur = 700, t0 = 0;
+    function step(ts) {
+      if (!t0) t0 = ts;
+      var k = Math.min(1, (ts - t0) / dur);
+      var eased = 1 - Math.pow(1 - k, 3);          // ออกตัวเร็ว แล้วค่อย ๆ หยุด
+      el.textContent = fmt(target * eased, decimals);
+      if (k < 1 && el.isConnected) requestAnimationFrame(step);
+      else el.textContent = finalText;             // จบที่ข้อความเดิมเสมอ รวมทั้งหน่วยและเครื่องหมาย
+    }
+    el.textContent = fmt(0, decimals);
+    requestAnimationFrame(step);
+  }
+  function scan(root) {
+    var list = (root || document).querySelectorAll('[data-count-up]');
+    for (var i = 0; i < list.length; i++) run(list[i]);
+  }
+
+  // หน้าถูกวาดใหม่บ่อย ใช้ตัวเฝ้าดู DOM แทนการไปแก้ทุกหน้าที่เรียก renderCurrentPage()
+  if (window.MutationObserver) {
+    var pending = null;
+    new MutationObserver(function () {
+      if (pending) return;
+      pending = requestAnimationFrame(function () { pending = null; scan(document); });
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { scan(document); });
+  } else scan(document);
+})();

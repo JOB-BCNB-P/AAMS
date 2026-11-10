@@ -527,10 +527,10 @@
         var q = pt(i, R * (max ? v / max : 0));
         pts.push((Math.round(q[0] * 10) / 10) + ',' + (Math.round(q[1] * 10) / 10));
       });
-      g += '<polygon points="' + pts.join(' ') + '" fill="' + col + '" fill-opacity="' + fillOp + '" stroke="' + col + '" stroke-width="2" stroke-linejoin="round"></polygon>';
+      g += '<polygon class="radar-poly" style="--cx:' + CX + 'px;--cy:' + CY + 'px" points="' + pts.join(' ') + '" fill="' + col + '" fill-opacity="' + fillOp + '" stroke="' + col + '" stroke-width="2" stroke-linejoin="round"></polygon>';
       sr.values.forEach(function (v, i) {
         var q = pt(i, R * (max ? v / max : 0));
-        g += '<circle cx="' + (Math.round(q[0] * 10) / 10) + '" cy="' + (Math.round(q[1] * 10) / 10) + '" r="2.6" fill="' + col + '"></circle>';
+        g += '<circle class="radar-dot" cx="' + (Math.round(q[0] * 10) / 10) + '" cy="' + (Math.round(q[1] * 10) / 10) + '" r="2.6" fill="' + col + '"></circle>';
         if (v > 0) g += '<title>' + esc(sr.label) + ' · PLO ' + esc(axes[i].no) + ' = ' + v + ' ' + (sr.unit || 'รายวิชา') + '</title>';
       });
     });
