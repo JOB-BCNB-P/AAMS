@@ -719,6 +719,25 @@
     return st.draft;
   }
 
+  /* ข้อความในรายการค้นหา — ขึ้นต้นด้วยรหัสเสมอ เพื่อให้ตัดกลับเป็นรหัสได้ตอนกดเพิ่ม */
+  function csStuOptionText(x) {
+    return s(x.student_id) + ' · ' + s(x.name) + ' (ชั้นปี ' + (s(x.year_level) || '-') + ')';
+  }
+  /* แปลงสิ่งที่พิมพ์เป็นรหัสนักศึกษา
+     รับได้ทั้งข้อความที่เลือกจากรายการ รหัสล้วน และชื่อล้วน (ถ้าชื่อตรงคนเดียว) */
+  function csResolveStudent(text, pool) {
+    var v = s(text);
+    if (!v) return null;
+    var byText = pool.filter(function (x) { return csStuOptionText(x) === v; })[0];
+    if (byText) return byText;
+    var id = (v.split('·')[0] || '').trim();
+    var byId = pool.filter(function (x) { return s(x.student_id) === id; })[0];
+    if (byId) return byId;
+    var key = v.replace(/\s+/g, '').toLowerCase();
+    var byName = pool.filter(function (x) { return s(x.name).replace(/\s+/g, '').toLowerCase() === key; });
+    return byName.length === 1 ? byName[0] : null;
+  }
+
   function pickedIds(d) { return d.picked.map(function (x) { return x.student_id; }); }
   function isPicked(d, sid) { return pickedIds(d).indexOf(s(sid)) >= 0; }
 
@@ -779,11 +798,12 @@
   // เพิ่มเฉพาะราย — กันชื่อซ้ำทั้งกับที่เลือกจากชั้นปีและในรายการเฉพาะรายเอง
   window.counselAddOne = function () {
     var d = state().draft; if (!d) return;
-    var inp = document.getElementById('csAddStudent');
-    var sid = s(inp && inp.value);
-    if (!sid) { showToast('กรุณาเลือกนักศึกษาก่อน', 'error'); return; }
-    var stu = myStudents().filter(function (x) { return s(x.student_id) === sid; })[0];
-    if (!stu) { showToast('ไม่พบนักศึกษารหัสนี้ในรายชื่อที่คุณเป็นที่ปรึกษา', 'error'); return; }
+    var inp = document.getElementById('csAddStudentInput');
+    var typed = s(inp && inp.value);
+    if (!typed) { showToast('พิมพ์รหัสหรือชื่อนักศึกษาก่อน', 'error'); return; }
+    var stu = csResolveStudent(typed, myStudents());
+    if (!stu) { showToast('ไม่พบนักศึกษาที่ตรงกับ "' + typed + '" ในรายชื่อที่คุณเป็นที่ปรึกษา', 'error'); return; }
+    var sid = s(stu.student_id);
     if (isPicked(d, sid)) { showToast('นักศึกษารายนี้ถูกเลือกไว้แล้ว', 'error'); return; }
     d.picked.push({ student_id: sid, source: 'specific', private_note: '' });
     markDirty();
@@ -968,11 +988,16 @@
       + '<div class="flex flex-wrap items-center justify-between gap-2 mb-2">'
       + '<p class="text-sm text-gray-700">เลือกแล้ว <span id="csTotalPicked" class="text-primary font-bold text-base">' + d.picked.length + '</span> คน</p></div>'
       + '<div class="flex flex-wrap gap-2">'
-      + '<select id="csAddStudent" class="flex-1 min-w-[16rem] border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">'
-      + '<option value="">— ค้นหาด้วยรหัสหรือชื่อ แล้วกดเพิ่ม —</option>'
+      // พิมพ์ค้นหาได้ทั้งรหัสและชื่อ · ใช้ input + datalist แทน select เพราะ select พิมพ์ค้นหาไม่ได้
+      // ห้ามตั้ง id ของช่องนี้ให้ชื่อตรงกับฟังก์ชัน counselAddOne เพราะ inline handler จะอ่าน element แทนฟังก์ชัน
+      + '<input id="csAddStudentInput" list="csAddStudentList" autocomplete="off"'
+      + ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();counselAddOne();}"'
+      + ' placeholder="พิมพ์รหัสหรือชื่อนักศึกษา แล้วกดเพิ่มรายชื่อ"'
+      + ' class="flex-1 min-w-[16rem] border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">'
+      + '<datalist id="csAddStudentList">'
       + addable.map(function (x) {
-        return '<option value="' + esc(s(x.student_id)) + '">' + esc(s(x.student_id) + ' · ' + s(x.name) + ' (ชั้นปี ' + (s(x.year_level) || '-') + ')') + '</option>';
-      }).join('') + '</select>'
+        return '<option value="' + esc(csStuOptionText(x)) + '"></option>';
+      }).join('') + '</datalist>'
       + '<button type="button" onclick="counselAddOne()" class="px-4 py-2 rounded-xl bg-primary text-white text-sm hover:bg-primaryDark">เพิ่มรายชื่อ</button>'
       + '</div></div>'
       + YEARS.map(function (y) { return yearBlock(d, y); }).join('');

@@ -188,7 +188,7 @@ const flush = () => new Promise(r => setTimeout(r, 0));
   t('เพิ่มเฉพาะรายซ้ำกับที่เลือกจากชั้นปีไม่ได้', () => {
     const d = w.APP._counsel.draft;
     d.picked.push({ student_id: '6611030101', source: 'year', private_note: '' });
-    w.__els = { csAddStudent: { value: '6611030101' } };
+    w.__els = { csAddStudentInput: { value: '6611030101' } };
     writes.length = 0;
     w.counselAddOne();
     assert.ok(writes.some(x => x[0] === 'toast' && /ถูกเลือกไว้แล้ว/.test(x[1])), 'ไม่ได้เตือนว่าซ้ำ');
@@ -196,11 +196,36 @@ const flush = () => new Promise(r => setTimeout(r, 0));
   });
   t('เพิ่มนักศึกษาที่ไม่ใช่ของตนไม่ได้', () => {
     const d = w.APP._counsel.draft;
-    w.__els = { csAddStudent: { value: '6611030199' } };
+    w.__els = { csAddStudentInput: { value: '6611030199 · ของครูท่านอื่น (ชั้นปี 4)' } };
     writes.length = 0;
     w.counselAddOne();
     assert.ok(writes.some(x => x[0] === 'toast' && /ไม่พบนักศึกษา/.test(x[1])), 'ยอมให้เพิ่มนักศึกษาของครูท่านอื่น');
     assert.ok(!d.picked.some(p => p.student_id === '6611030199'), 'เพิ่มเข้าไปแล้ว');
+  });
+  t('พิมพ์ชื่อแล้วเพิ่มรายชื่อได้', () => {
+    const w2 = makeEnv({ role: 'teacher', me: 'อ.สมศรี ใจดี', page: 'counselEdit' });
+    w2.counselEdit(''); w2.counselPages.counselEdit();
+    w2.__els = { csAddStudentInput: { value: 'ปรีชา ขยัน' } };
+    writes.length = 0;
+    w2.counselAddOne();
+    assert.ok(!writes.some(x => x[0] === 'toast'), 'พิมพ์ชื่อแล้วเพิ่มไม่ได้');
+    assert.ok(w2.APP._counsel.draft.picked.some(p => p.student_id === '6611030102'), 'ไม่ได้เพิ่มเข้ารายการ');
+  });
+  t('พิมพ์ข้อความที่เลือกจากรายการค้นหาแล้วเพิ่มได้', () => {
+    const w2 = makeEnv({ role: 'teacher', me: 'อ.สมศรี ใจดี', page: 'counselEdit' });
+    w2.counselEdit(''); w2.counselPages.counselEdit();
+    w2.__els = { csAddStudentInput: { value: '6611030103 · มาลี สุขใจ (ชั้นปี 3)' } };
+    writes.length = 0;
+    w2.counselAddOne();
+    assert.ok(w2.APP._counsel.draft.picked.some(p => p.student_id === '6611030103'), 'ไม่ได้เพิ่มเข้ารายการ');
+  });
+  t('ช่องค้นหาเป็นช่องพิมพ์ได้ ไม่ใช่ select', () => {
+    const w2 = makeEnv({ role: 'teacher', me: 'อ.สมศรี ใจดี', page: 'counselEdit' });
+    w2.counselEdit('');
+    const h = w2.counselPages.counselEdit();
+    assert.ok(h.includes('id="csAddStudentInput"') && h.includes('list="csAddStudentList"'), 'ยังไม่ใช่ช่องพิมพ์ค้นหา');
+    assert.ok(h.includes('<datalist id="csAddStudentList">'), 'ไม่มีรายการให้เลือก');
+    assert.ok(!/id="csAddStudent"/.test(h), 'ยังมี select ตัวเดิมค้างอยู่');
   });
   t('ตัวตรวจก่อนบันทึกจับชื่อซ้ำได้อีกชั้น', () => {
     const src = CS.slice(CS.indexOf('function validate(d)'), CS.indexOf('var saving = false'));
