@@ -2288,7 +2288,49 @@
     var g = Array.isArray(cfg.grades) && cfg.grades.length ? cfg.grades : DEF_CFG.grades;
     g = g.map(function (x) { return [s(x[0]), n(x[1])]; }).filter(function (x) { return x[0]; })
          .sort(function (a, b) { return b[1] - a[1]; });
-    return { passPct: cfg.passPct == null ? DEF_CFG.passPct : s(cfg.passPct), grades: g, saved: !!raw };
+    var sm = (cfg.secMult && typeof cfg.secMult === 'object') ? cfg.secMult : {};
+    return { passPct: cfg.passPct == null ? DEF_CFG.passPct : s(cfg.passPct), grades: g, secMult: sm, saved: !!raw };
+  }
+
+  /* ================= ตัวคูณถ่วงน้ำหนักรายส่วน (ทฤษฎี / ทดลอง / ปฏิบัติ) =================
+     รายวิชาทฤษฎีและทดลอง คิดคะแนนแต่ละส่วนเป็นร้อยละ 100 แยกกัน แล้วถ่วงตามหน่วยกิตของส่วนนั้น
+       3(2-2-5) → ทฤษฎี 2 หน่วยกิต ทดลอง 1 หน่วยกิต → (ทฤษฎี%×2 + ทดลอง%×1) ÷ 3
+       3(1-4-4) → ทฤษฎี 1 หน่วยกิต ทดลอง 2 หน่วยกิต → (ทฤษฎี%×1 + ทดลอง%×2) ÷ 3
+     ไม่ตั้งค่า = ตัวคูณ 1 ทุกส่วน ซึ่งให้ผลเท่ากับของเดิมทุกประการ (จึงไม่กระทบรายวิชาที่ตัดเกรดไปแล้ว)
+     เก็บใน course_cfg.secMult = { "ทฤษฎี": 2, "ทดลอง": 1 } */
+  function secMultOf(cfg, sec) {
+    var m = (cfg && cfg.secMult) || {}, v = m[sec || ''];
+    if (v == null || s(v) === '') return 1;
+    var x = n(v);
+    return x > 0 ? x : 1;
+  }
+  function hasSecMult(cfg, secs) {
+    return (secs || []).some(function (x) { return Math.abs(secMultOf(cfg, x) - 1) > 1e-9; });
+  }
+  /* ตัวคูณที่แนะนำจากหน่วยกิตของรายวิชา
+     ทฤษฎี = จำนวนชั่วโมงทฤษฎี (1 ชม.ทฤษฎี = 1 หน่วยกิต)
+     ทดลอง/ปฏิบัติ = หน่วยกิตรวม − ชั่วโมงทฤษฎี (ไม่ต้องเดาอัตราส่วน ชม.ทดลอง:หน่วยกิต)
+     อ่านค่าไม่ได้ → ใช้เกณฑ์ปกติ ทฤษฎี 2 ส่วนอื่น 1 */
+  function suggestSecMult(subj, secs) {
+    var cr = n(subj && subj.credits), ht = n(subj && subj.hours_theory);
+    var ok = cr > 0 && ht > 0 && cr > ht;
+    var out = {};
+    (secs || []).forEach(function (x) {
+      var v = !ok ? (x === 'ทฤษฎี' ? 2 : 1) : (x === 'ทฤษฎี' ? ht : cr - ht);
+      out[x] = v > 0 ? v : 1;
+    });
+    return out;
+  }
+  function creditText(subj) {
+    var cr = s(subj && subj.credits), a = s(subj && subj.hours_theory), b = s(subj && subj.hours_lab), c = s(subj && subj.hours_self);
+    if (!cr) return '';
+    return (a || b || c) ? cr + '(' + (a || '0') + '-' + (b || '0') + '-' + (c || '0') + ')' : cr;
+  }
+  // รายวิชาที่กำลังทำงานอยู่ในหน้ากรอกคะแนน
+  function curSubjRec() {
+    var st = state();
+    return subjectsOf(st.eYear, st.eSem, st.eLevel)
+      .filter(function (x) { return s(x.subject_code) === s(st.eSubject); })[0] || null;
   }
   function curCourseCfg() { var st = state(); return courseCfg(closOf(st.eYear, st.eSem, st.eSubject)); }
   // เกณฑ์ผ่านเริ่มต้นของการประเมินหนึ่งรายการ = ร้อยละที่ตั้งไว้ × คะแนนเต็ม
@@ -2357,7 +2399,10 @@
   window.ploCourseCfgEdit = function () {
     var cfg = curCourseCfg();
     var st = state();
-    st._cfgDraft = { passPct: cfg.passPct, grades: cfg.grades.map(function (g) { return [g[0], g[1]]; }) };
+    var subj = curSubjRec(), secs = sectionsOf(subj);
+    var sm = {};
+    secs.forEach(function (x) { sm[x] = String(secMultOf(cfg, x)); });
+    st._cfgDraft = { passPct: cfg.passPct, grades: cfg.grades.map(function (g) { return [g[0], g[1]]; }), secs: secs, secMult: sm, subj: subj };
     showModal('ตั้งค่ารายวิชา ' + esc(st.eSubject), '<div id="ploCfgBox"></div>', null, 'max-w-lg');
     cfgDraw();
   };
@@ -2369,6 +2414,7 @@
       + '<div class="flex items-center gap-2"><input type="number" min="0" max="100" step="0.01" value="' + esc(d.passPct) + '" oninput="ploCfgSet(\'passPct\',this.value)" data-nodraft="1" class="w-24 border rounded-lg px-2 py-1.5 text-sm">'
       + '<span class="text-sm text-gray-600">% ของคะแนนเต็ม</span></div>'
       + '<p class="text-[11px] text-gray-500 mt-1">เช่น 60% → สอบกลางภาคเต็ม 40 ผ่าน 24 · Role play เต็ม 24 ผ่าน 14.4 — ระบบเติมให้เองเมื่อช่องเกณฑ์ผ่านเว้นว่าง (แก้รายการได้) · เว้นว่าง = ไม่ตั้งเกณฑ์อัตโนมัติ</p></div>'
+      + secMultFieldHTML(d)
       + '<div><label class="block text-sm font-semibold text-gray-800 mb-1">ช่วงคะแนนเกรด (คะแนนรวมรายวิชา %)</label>'
       + '<table class="w-full text-sm"><thead><tr class="text-left text-xs text-gray-500"><th class="py-1">เกรด</th><th class="py-1">ตั้งแต่ (%)</th><th></th></tr></thead><tbody>'
       + d.grades.map(function (g, i) {
@@ -2388,7 +2434,41 @@
       + '</div>';
     if (window.lucide) lucide.createIcons();
   }
-  window.ploCfgSet = function (k, v) { var d = state()._cfgDraft; if (d) d[k] = v; };
+  /* ช่องตั้งตัวคูณรายส่วน — ขึ้นเฉพาะรายวิชาที่แยกส่วน (ทฤษฎีและทดลอง / ทฤษฎีและปฏิบัติ) */
+  function secMultFieldHTML(d) {
+    var secs = d.secs || [];
+    if (secs.length < 2) return '';
+    var sug = suggestSecMult(d.subj, secs);
+    var den = secs.reduce(function (t, x) { return t + (n(d.secMult[x]) > 0 ? n(d.secMult[x]) : 1); }, 0);
+    return '<div><label class="block text-sm font-semibold text-gray-800 mb-1">ตัวคูณถ่วงน้ำหนักรายส่วน</label>'
+      + '<p class="text-[11px] text-gray-500 mb-2">แต่ละส่วนคิดเป็นร้อยละ 100 แยกกัน แล้วถ่วงตามหน่วยกิตของส่วนนั้น'
+      + (s(creditText(d.subj)) ? ' · รายวิชานี้ ' + esc(creditText(d.subj)) : '') + '</p>'
+      + '<div class="flex flex-wrap gap-2">'
+      + secs.map(function (x) {
+          return '<label class="flex items-center gap-1.5 text-sm"><span class="text-gray-700">' + esc(x) + ' ×</span>'
+            + '<input type="number" min="0" step="0.5" value="' + esc(d.secMult[x]) + '" onchange="ploCfgMult(\'' + esc(x) + '\',this.value)" data-nodraft="1" class="w-20 border rounded-lg px-2 py-1 text-sm"></label>';
+        }).join('')
+      + '</div>'
+      + '<p class="text-[11px] text-gray-600 mt-1">สูตร: ('
+      + secs.map(function (x) { return esc(x) + '% × ' + f2(n(d.secMult[x]) > 0 ? n(d.secMult[x]) : 1); }).join(' + ')
+      + ') ÷ ' + f2(den) + '</p>'
+      + '<div class="flex flex-wrap gap-2 mt-2">'
+      + '<button type="button" onclick="ploCfgMultPreset(\'credit\')" class="px-2.5 py-1 border rounded-lg text-xs">ใช้ตามหน่วยกิต ('
+      + secs.map(function (x) { return esc(x) + '×' + f2(sug[x]); }).join(' · ') + ')</button>'
+      + '<button type="button" onclick="ploCfgMultPreset(\'equal\')" class="px-2.5 py-1 border rounded-lg text-xs">เท่ากันทุกส่วน (×1)</button></div>'
+      + '<p class="text-[11px] text-amber-700 mt-1">เปลี่ยนค่านี้แล้วร้อยละและเกรดของทุกคนในรายวิชานี้จะเปลี่ยนตาม — ถ้าส่งเกรดเข้าหน้าผลการเรียนไปแล้ว ต้องส่งใหม่</p></div>';
+  }
+  window.ploCfgMult = function (sec, v) {
+    var d = state()._cfgDraft; if (!d) return;
+    d.secMult[sec] = s(v);
+    cfgDraw();
+  };
+  window.ploCfgMultPreset = function (k) {
+    var d = state()._cfgDraft; if (!d) return;
+    var sug = suggestSecMult(d.subj, d.secs);
+    (d.secs || []).forEach(function (x) { d.secMult[x] = String(k === 'equal' ? 1 : sug[x]); });
+    cfgDraw();
+  };
   window.ploCfgGrade = function (i, k, v) { var d = state()._cfgDraft; if (d && d.grades[i]) d.grades[i][k] = k ? v : s(v); };
   window.ploCfgGradeDel = function (i) { var d = state()._cfgDraft; if (!d) return; d.grades.splice(i, 1); cfgDraw(); };
   window.ploCfgGradeAdd = function () { var d = state()._cfgDraft; if (!d) return; d.grades.push(['', 0]); cfgDraw(); };
@@ -2405,7 +2485,9 @@
     var grades = d.grades.filter(function (g) { return s(g[0]); }).map(function (g) { return [s(g[0]), n(g[1])]; })
       .sort(function (a, b) { return b[1] - a[1]; });
     if (!grades.length) { showToast('ต้องมีเกรดอย่างน้อย 1 ระดับ', 'error'); return; }
-    var cfg = JSON.stringify({ passPct: s(d.passPct), grades: grades });
+    var sm = {};
+    (d.secs || []).forEach(function (x) { var v = n(d.secMult[x]); sm[x] = v > 0 ? v : 1; });
+    var cfg = JSON.stringify({ passPct: s(d.passPct), grades: grades, secMult: sm });
     var clos = closOf(st.eYear, st.eSem, st.eSubject);
     if (!clos.length) { showToast('รายวิชานี้ยังไม่มี CLO — เพิ่ม CLO ก่อน', 'error'); return; }
     showToast('กำลังบันทึกค่าตั้งรายวิชา...');
@@ -2426,6 +2508,30 @@
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
   };
 
+  /* แถบอธิบายวิธีถ่วงน้ำหนักรายส่วน พร้อมปุ่มปรับ */
+  function secMultBar(subj, secs, secW, mult, useMult) {
+    var sug = suggestSecMult(subj, secs);
+    var same = secs.every(function (x) { return Math.abs(secMultOf({ secMult: mult }, x) - sug[x]) < 1e-9; });
+    var formula = secs.map(function (x) { return esc(x) + '%' + (useMult ? ' × ' + f2(mult[x]) : ''); }).join(' + ');
+    var denom = secs.reduce(function (t, x) { return t + (useMult ? mult[x] : 1); }, 0);
+    return '<div class="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 mb-3">'
+      + '<div class="flex flex-wrap items-center justify-between gap-2">'
+      + '<p class="text-xs text-gray-700"><i data-lucide="scale" class="w-3.5 h-3.5 inline mr-1 text-primary"></i>'
+      + (useMult
+          ? 'ถ่วงน้ำหนักตามหน่วยกิต: <b>(' + formula + ') ÷ ' + f2(denom) + '</b>'
+          : 'คิดทุกส่วนเท่ากัน: <b>(' + formula + ') ÷ ' + f2(denom) + '</b>')
+      + (s(creditText(subj)) ? ' <span class="text-gray-500">· หน่วยกิต ' + esc(creditText(subj)) + '</span>' : '')
+      + '</p>'
+      + (canEdit() || mySubject(subj)
+          ? '<button type="button" onclick="ploCourseCfgEdit()" class="px-2.5 py-1 border border-primary text-primary rounded-lg text-xs bg-white hover:bg-blue-50 whitespace-nowrap">ปรับตัวคูณ</button>' : '')
+      + '</div>'
+      + (!same
+          ? '<p class="text-[11px] text-amber-700 mt-1">ตามหน่วยกิตของรายวิชานี้ควรเป็น '
+            + secs.map(function (x) { return esc(x) + ' ×' + f2(sug[x]); }).join(' · ')
+            + ' — กด "ปรับตัวคูณ" แล้วเลือก "ใช้ตามหน่วยกิต"</p>' : '')
+      + '</div>';
+  }
+
   /* ---------- สรุปคะแนนรายวิชาและเกรด (ขั้นที่ 5) ---------- */
   function courseGradeTable(subj) {
     var st = state();
@@ -2443,6 +2549,13 @@
     var secW = {}, W = 0;
     secs.forEach(function (x) { secW[x] = 0; });
     clos.forEach(function (c) { var w = compWeight(comps(c)); secW[secOf(c)] += w; W += w; });
+    // ถ่วงน้ำหนักรายส่วนตามหน่วยกิต · ไม่ตั้งค่า = 1 ทุกส่วน ผลลัพธ์เท่าของเดิม
+    var mult = {}, mSum = 0;
+    secs.forEach(function (x) { mult[x] = secMultOf(cfg, x); mSum += mult[x]; });
+    var useMult = hasSecMult(cfg, secs);
+    // ถ่วงน้ำหนัก = คิดแต่ละส่วนเป็นร้อยละ 100 ก่อน แล้วคูณตัวคูณ หารด้วยผลรวมตัวคูณ
+    // ไม่ถ่วงน้ำหนัก = ใช้สูตรเดิม (คะแนนรวม ÷ น้ำหนักรวม) เพื่อไม่ให้ผลของรายวิชาเดิมเปลี่ยน
+    var Weff = useMult ? mSum * 100 : W;
     var dist = {}, incomplete = 0;
     cfg.grades.forEach(function (g) { dist[g[0]] = 0; });
     var res = studs.map(function (u) {
@@ -2453,12 +2566,18 @@
         if (!calc.complete) complete = false;
         bySec[secOf(c)] += calc.total; tot += calc.total;
       });
-      var pct = W > 0 ? Math.round(tot / W * 10000) / 100 : null;
+      var totEff = 0;
+      secs.forEach(function (x) {
+        totEff += (secW[x] > 0 ? bySec[x] / secW[x] * 100 : 0) * mult[x];
+      });
+      var pct = useMult
+        ? (Weff > 0 ? Math.round(totEff / Weff * 10000) / 100 : null)
+        : (W > 0 ? Math.round(tot / W * 10000) / 100 : null);
       var g = complete ? gradeOf(pct, cfg) : '';
       if (complete) dist[g] = (dist[g] || 0) + 1; else incomplete++;
-      return { u: u, bySec: bySec, tot: tot, pct: pct, g: g, complete: complete };
+      return { u: u, bySec: bySec, tot: tot, totEff: totEff, pct: pct, g: g, complete: complete };
     });
-    st._gradeRes = { secs: secs, secW: secW, W: W, res: res, cfg: cfg };
+    st._gradeRes = { secs: secs, secW: secW, W: W, mult: mult, Weff: Weff, useMult: useMult, res: res, cfg: cfg, subj: subj };
     var nDone = studs.length - incomplete;
     var gCls = function (g) { return g === 'F' ? 'bg-red-50 text-red-700' : /^A/.test(g) ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-primary'; };
     var summary = '<div class="overflow-x-auto mb-3"><table class="text-sm border border-gray-100 rounded-xl"><thead><tr class="bg-surface">'
@@ -2473,13 +2592,18 @@
       + '<tr class="border-t bg-gray-50 font-semibold"><td class="px-3 py-1" colspan="2">รวม (คิดเกรดแล้ว)</td><td class="px-3 py-1 text-center">' + nDone + '</td><td class="px-3 py-1 text-center">100</td></tr>'
       + '</tbody></table></div>'
       + (incomplete ? '<p class="text-xs text-amber-700 mb-2">ยังกรอกคะแนนไม่ครบทุกการประเมิน ' + incomplete + ' คน — ยังไม่ตัดเกรดให้</p>' : '')
-      + (Math.abs(W - 100) >= 0.01 ? '<p class="text-xs text-amber-700 mb-2">น้ำหนักรวมของ CLO ที่มีองค์ประกอบ = ' + f2(W) + '% (ไม่ใช่ 100%) — คะแนนรวมแปลงเป็นร้อยละของ ' + f2(W) + ' ก่อนตัดเกรด</p>' : '');
+      + ((!useMult && Math.abs(W - 100) >= 0.01 && secs.length < 2) ? '<p class="text-xs text-amber-700 mb-2">น้ำหนักรวมของ CLO ที่มีองค์ประกอบ = ' + f2(W) + '% (ไม่ใช่ 100%) — คะแนนรวมแปลงเป็นร้อยละของ ' + f2(W) + ' ก่อนตัดเกรด</p>' : '')
+      + (secs.length > 1 ? secMultBar(subj, secs, secW, mult, useMult) : '');
     var qk = s(st.gridQ).toLowerCase();
     var table = '<div class="ems-tablewrap border border-gray-100 rounded-xl" style="overflow:auto;max-height:60vh"><table data-ems-cards="skip" class="text-sm" style="min-width:100%;width:max-content">'
       + '<thead class="sticky top-0 z-20"><tr class="bg-surface text-left">'
       + '<th class="px-2 py-2 text-center w-10 bg-surface">#</th><th class="px-2 py-2 bg-surface sticky left-0 z-30 min-w-[13rem]">นักศึกษา</th>'
-      + secs.map(function (x) { return '<th class="px-3 py-2 text-center bg-surface whitespace-nowrap">' + esc(x || 'คะแนน') + '<div class="text-[10px] font-normal text-gray-400">(' + f2(secW[x]) + '%)</div></th>'; }).join('')
-      + '<th class="px-3 py-2 text-center bg-gray-100 whitespace-nowrap">รวม<div class="text-[10px] font-normal text-gray-400">(' + f2(W) + '%)</div></th>'
+      + secs.map(function (x) {
+          return '<th class="px-3 py-2 text-center bg-surface whitespace-nowrap">' + esc(x || 'คะแนน')
+            + '<div class="text-[10px] font-normal text-gray-400">(' + f2(secW[x]) + '%)'
+            + (useMult ? ' <span class="text-primary font-semibold">×' + f2(mult[x]) + '</span>' : '') + '</div></th>';
+        }).join('')
+      + '<th class="px-3 py-2 text-center bg-gray-100 whitespace-nowrap">' + (useMult ? 'รวมถ่วงน้ำหนัก' : 'รวม') + '<div class="text-[10px] font-normal text-gray-400">(' + f2(useMult ? Weff : W) + '%)</div></th>'
       + '<th class="px-3 py-2 text-center bg-gray-100">ร้อยละ</th><th class="px-3 py-2 text-center bg-gray-100">เกรด</th></tr></thead><tbody>'
       + res.map(function (r, i) {
           var hid = qk && (r.u.student_id + ' ' + r.u.name).toLowerCase().indexOf(qk) < 0 ? ' style="display:none"' : '';
@@ -2487,7 +2611,7 @@
             + '<td class="px-2 py-1 text-center text-xs text-gray-400">' + (i + 1) + '</td>'
             + '<td class="px-2 py-1 sticky left-0 bg-white z-10 whitespace-nowrap"><span class="font-mono text-xs text-gray-400">' + esc(r.u.student_id) + '</span> ' + esc(r.u.name) + '</td>'
             + secs.map(function (x) { return '<td class="px-3 py-1 text-center tabular-nums">' + f2(r.bySec[x]) + '</td>'; }).join('')
-            + '<td class="px-3 py-1 text-center tabular-nums font-semibold bg-gray-50">' + f2(r.tot) + '</td>'
+            + '<td class="px-3 py-1 text-center tabular-nums font-semibold bg-gray-50">' + f2(useMult ? r.totEff : r.tot) + '</td>'
             + '<td class="px-3 py-1 text-center tabular-nums bg-gray-50">' + (r.complete ? f2(r.pct) + '%' : '<span class="text-[11px] text-amber-600">ยังไม่ครบ</span>') + '</td>'
             + '<td class="px-3 py-1 text-center bg-gray-50">' + (r.g ? '<span class="px-2 py-0.5 rounded-full text-xs font-bold ' + gCls(r.g) + '">' + esc(r.g) + '</span>' : '') + '</td></tr>';
         }).join('') + '</tbody></table></div>';
@@ -2502,11 +2626,13 @@
   window.ploGradeCsv = function () {
     var st = state(), g = st._gradeRes;
     if (!g) { showToast('ยังไม่มีข้อมูลสรุป', 'error'); return; }
-    var head = ['student_id', 'name'].concat(g.secs.map(function (x) { return (x || 'คะแนน') + ' (' + f2(g.secW[x]) + '%)'; }))
-      .concat(['รวม (' + f2(g.W) + '%)', 'ร้อยละ', 'เกรด']);
+    var head = ['student_id', 'name'].concat(g.secs.map(function (x) {
+        return (x || 'คะแนน') + ' (' + f2(g.secW[x]) + '%' + (g.useMult ? ' ×' + f2(g.mult[x]) : '') + ')';
+      }))
+      .concat([(g.useMult ? 'รวมถ่วงน้ำหนัก (' : 'รวม (') + f2(g.useMult ? g.Weff : g.W) + '%)', 'ร้อยละ', 'เกรด']);
     var rows = [head].concat(g.res.map(function (r) {
       return [r.u.student_id, r.u.name].concat(g.secs.map(function (x) { return f2(r.bySec[x]); }))
-        .concat([f2(r.tot), r.complete ? f2(r.pct) : '', r.g]);
+        .concat([f2(g.useMult ? r.totEff : r.tot), r.complete ? f2(r.pct) : '', r.g]);
     }));
     csvDownload('เกรด_' + s(st.eSubject) + '_' + s(st.eYear) + '_' + s(st.eSem) + '.csv', rows);
   };
@@ -2872,9 +2998,18 @@
     });
     // คอลัมน์สรุป (สูตร)
     var sumStart = col, W = secCols.reduce(function (t, x) { return t + x.w; }, 0);
-    secCols.forEach(function (x) { x.c = col++; head(4, x.c, 5, x.c, (x.sec || 'คะแนน') + '\n(' + f2(x.w) + '%)', 5); put(6, x.c, { v: 'sum', s: 6 }); widths[x.c - 1] = 11; });
+    // ตัวคูณถ่วงน้ำหนักรายส่วน — ใช้ค่าเดียวกับหน้าจอ เพื่อให้ไฟล์ Excel คิดเลขตรงกัน
+    var useMult = secCols.some(function (x) { return Math.abs(secMultOf(cfg, x.sec) - 1) > 1e-9; });
+    secCols.forEach(function (x) { x.m = secMultOf(cfg, x.sec); });
+    var mSum = secCols.reduce(function (t, x) { return t + x.m; }, 0);
+    var Weff = mSum * 100;   // แต่ละส่วนคิดเป็นร้อยละ 100 ก่อนถ่วงน้ำหนัก
+    secCols.forEach(function (x) {
+      x.c = col++;
+      head(4, x.c, 5, x.c, (x.sec || 'คะแนน') + '\n(' + f2(x.w) + '%' + (useMult ? ' ×' + f2(x.m) : '') + ')', 5);
+      put(6, x.c, { v: 'sum', s: 6 }); widths[x.c - 1] = 11;
+    });
     var cT = col++, cP = col++, cOk = col++, cG = col++;
-    head(4, cT, 5, cT, 'รวม\n(' + f2(W) + '%)', 5); head(4, cP, 5, cP, 'ร้อยละ', 5);
+    head(4, cT, 5, cT, (useMult ? 'รวมถ่วงน้ำหนัก' : 'รวม') + '\n(' + f2(useMult ? Weff : W) + '%)', 5); head(4, cP, 5, cP, 'ร้อยละ', 5);
     head(4, cOk, 5, cOk, 'กรอกครบ', 5); head(4, cG, 5, cG, 'เกรด', 5);
     [cT, cP, cOk, cG].forEach(function (c) { put(6, c, { v: 'sum', s: 6 }); widths[c - 1] = 10; });
     head(3, sumStart, 3, cG, 'สรุปคะแนน (คำนวณอัตโนมัติ)', 5);
@@ -2887,6 +3022,7 @@
     head(1, 1, 1, cG, title, 1);
     head(2, 1, 2, cG, 'ปีการศึกษา ' + m.year + ' · ภาคการศึกษา ' + (m.sem === '3' ? 'ฤดูร้อน' : m.sem) + ' · ชั้นปีที่ ' + m.level
       + ' · เกณฑ์ผ่านเริ่มต้น ' + (s(cfg.passPct) === '' ? '-' : cfg.passPct + '% ของคะแนนเต็ม')
+      + (useMult ? ' · ถ่วงน้ำหนักรายส่วน (' + secCols.map(function (x) { return (x.sec || 'คะแนน') + ' ร้อยละ 100 ×' + f2(x.m); }).join(' + ') + ') ÷ ' + f2(mSum) : '')
       + ' · กรอกเฉพาะช่องคะแนน ห้ามแทรก/ลบคอลัมน์หรือแก้หัวตาราง', 11);
     rows[0].h = 30; rows[1].h = 24; rows[2].h = 26; rows[3].h = 30; rows[4].h = 46; rows[5].hidden = true;
     var req = inputs.filter(function (x) { return x.req; });
@@ -2902,8 +3038,10 @@
       secCols.forEach(function (x) {
         cells[x.c - 1] = { f: x.terms.length ? 'ROUND(' + x.terms.join('+').replace(/\{r\}/g, r) + ',2)' : '0', s: 9 };
       });
-      cells[cT - 1] = { f: 'ROUND(' + secCols.map(function (x) { return C(x.c) + r; }).join('+') + ',2)', s: 9 };
-      cells[cP - 1] = { f: W > 0 ? 'ROUND(' + C(cT) + r + '/' + W + '*100,2)' : '0', s: 9 };
+      cells[cT - 1] = { f: 'ROUND(' + secCols.map(function (x) {
+          return useMult ? (x.w > 0 ? C(x.c) + r + '/' + f2(x.w) + '*100*' + f2(x.m) : '0') : C(x.c) + r;
+        }).join('+') + ',2)', s: 9 };
+      cells[cP - 1] = { f: (useMult ? Weff : W) > 0 ? 'ROUND(' + C(cT) + r + '/' + f2(useMult ? Weff : W) + '*100,2)' : '0', s: 9 };
       var blanks = req.map(function (x) { return '(' + C(x.c) + r + '="")'; }).join('+') || '0';
       cells[cOk - 1] = { f: 'IF(' + blanks + '=0,"ครบ","ขาด "&(' + blanks + '))', s: 12, str: true };
       cells[cG - 1] = { f: 'IF(' + C(cOk) + r + '<>"ครบ","",' + gradeF(C(cP) + r) + ')', s: 12, str: true };
@@ -3388,7 +3526,7 @@
       + '<th rowspan="2" class="px-2 py-2 bg-surface sticky left-0 z-30 min-w-[13rem] text-left">นักศึกษา</th>'
       + list.map(function (c) {
           var span = c.retake ? 4 : 3;
-          return '<th colspan="' + span + '" class="px-2 py-1.5 text-center border-l border-gray-200 bg-blue-50/60">'
+          return '<th colspan="' + span + '" class="px-2 py-1.5 text-center border-l border-gray-200 bg-blue-50">'
             + esc(c.name) + '<div class="text-[10px] font-normal text-gray-500">เต็ม ' + esc(c.full) + ' · คิด ' + esc(c.weight) + '%'
             + (s(c.pass) !== '' ? ' · ผ่าน ' + esc(c.pass) : '') + '</div></th>';
         }).join('')
@@ -3399,7 +3537,7 @@
       return '<th class="px-1 py-1 text-[11px] font-normal text-gray-600 border-l border-gray-200 bg-surface">คะแนน</th>'
         + (c.retake ? '<th class="px-1 py-1 text-[11px] font-normal text-amber-700 bg-surface">สอบซ่อม</th>' : '')
         + '<th class="px-1 py-1 text-[11px] font-normal text-gray-600 bg-surface">ที่ได้</th>'
-        + '<th class="px-1 py-1 text-[11px] font-normal text-primary bg-blue-50/60">คิด ' + esc(c.weight) + '%</th>';
+        + '<th class="px-1 py-1 text-[11px] font-normal text-primary bg-blue-50">คิด ' + esc(c.weight) + '%</th>';
     }).join('');
     var inp = function (key, c, part, v) {
       return '<input type="number" step="0.01" min="0" max="' + esc(c.full) + '" value="' + esc(v == null ? '' : v) + '"'
