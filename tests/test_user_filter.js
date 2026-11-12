@@ -26,7 +26,8 @@ const USERS = [
   { name: 'อ.หนึ่ง', role: 'teacher' },
   { name: 'อ.สอง', role: 'teacher' },
   { name: 'อ.รองวิชาการ', role: 'teacher', extra_roles: 'executive', exec_area: 'วิชาการ' },
-  { name: 'อ.ประธานสาขา', role: 'teacher', extra_roles: 'classTeacher,deptHead' },
+  { name: 'อ.ประธานสาขาเด็ก', role: 'teacher', extra_roles: 'classTeacher,deptHead', department: 'การพยาบาลเด็ก' },
+  { name: 'อ.ประธานสาขาชุมชน', role: 'teacher', extra_roles: 'deptHead', department: 'การพยาบาลชุมชน' },
   { name: 'นศ.หนึ่ง', role: 'student' }
 ];
 
@@ -43,7 +44,14 @@ function box() {
   vm.createContext(sb);
   new vm.Script(
     SRC.match(/const SETTINGS_ROLE_LABELS = \{[\s\S]*?\};/)[0] + '\n'
+    + SRC.match(/const DEPT_BRANCHES = \[[\s\S]*?\];/)[0] + '\n'
+    + SRC.match(/const ROLE_SUBKEY = \{[^}]*\};/)[0] + '\n'
+    + SRC.match(/const EXEC_DIRECTOR = '[^']*';/)[0] + '\n'
+    + grab('function deptHeadLabel(v)') + '\n'
+    + grab('function execAreaLabel(v)') + '\n'
     + grab('function userRolesOf(u)') + '\n'
+    + grab('function userRoleKeys(u)') + '\n'
+    + grab('function roleKeyLabel(key)') + '\n'
     + grab('function applyFilters(data)') + '\n'
     + grab('function filterBar(opts = {})')
   ).runInContext(sb);
@@ -82,8 +90,38 @@ function box() {
     ['teacher', 'classTeacher', 'deptHead'].forEach(r => {
       const w2 = box();
       w2.APP.filters.userRole = r;
-      assert.ok(w2.applyFilters(USERS).some(x => x.name === 'อ.ประธานสาขา'), 'ไม่เจอในบทบาท ' + r);
+      assert.ok(w2.applyFilters(USERS).some(x => x.name === 'อ.ประธานสาขาเด็ก'), 'ไม่เจอในบทบาท ' + r);
     });
+  });
+  t('กรองประธานสาขาแยกรายสาขาได้', () => {
+    const w2 = box();
+    w2.APP.filters.userRole = 'deptHead:การพยาบาลเด็ก';
+    const r = w2.applyFilters(USERS);
+    assert.strictEqual(r.length, 1, 'ควรได้ประธานสาขาเด็กคนเดียว');
+    assert.strictEqual(r[0].name, 'อ.ประธานสาขาเด็ก');
+  });
+  t('กรองผู้บริหารแยกรายด้านได้', () => {
+    const w2 = box();
+    w2.APP.filters.userRole = 'executive:วิชาการ';
+    const r = w2.applyFilters(USERS);
+    assert.strictEqual(r.length, 1);
+    assert.strictEqual(r[0].name, 'อ.รองวิชาการ');
+  });
+  t('เลือกบทบาทรวม ยังเห็นทุกสาขา', () => {
+    const w2 = box();
+    w2.APP.filters.userRole = 'deptHead';
+    assert.strictEqual(w2.applyFilters(USERS).length, 2);
+  });
+  t('สาขาของคนอื่นไม่ปนมา', () => {
+    const w2 = box();
+    w2.APP.filters.userRole = 'deptHead:การพยาบาลชุมชน';
+    const r = w2.applyFilters(USERS);
+    assert.ok(!r.some(x => x.name === 'อ.ประธานสาขาเด็ก'), 'ปนสาขาอื่น');
+  });
+  t('อาจารย์ธรรมดาที่มีสาขา ไม่ถูกนับเป็นประธานสาขา', () => {
+    const w2 = box();
+    w2.APP.filters.userRole = 'deptHead';
+    assert.ok(!w2.applyFilters([{ name: 'อ.ไม่ใช่ประธาน', role: 'teacher', department: 'การพยาบาลเด็ก' }]).length, 'นับผิด');
   });
   t('ไม่เลือกบทบาท = เห็นทุกคน', () => {
     const w2 = box();
@@ -104,10 +142,17 @@ function box() {
     ['ผู้ดูแลระบบ', 'งานทะเบียน', 'อาจารย์', 'ผู้บริหาร', 'ประธานสาขา', 'นักศึกษา']
       .forEach(x => assert.ok(h.includes(x), 'ไม่มีตัวเลือก ' + x));
   });
+  t('แยกประธานสาขาเป็นรายสาขาในช่องเลือก', () => {
+    assert.ok(h.includes('ประธานสาขาการพยาบาลเด็ก'), 'ไม่มีตัวเลือกรายสาขา');
+    assert.ok(h.includes('ประธานสาขาการพยาบาลชุมชน'), 'ไม่มีตัวเลือกรายสาขา');
+    assert.ok(h.includes('value="deptHead:การพยาบาลเด็ก"'), 'ค่าในช่องเลือกไม่ถูกต้อง');
+  });
+  t('แยกผู้บริหารเป็นรายด้าน', () =>
+    assert.ok(h.includes('รองผู้อำนวยการด้านวิชาการ'), 'ไม่มีตัวเลือกรายด้าน'));
   t('บอกจำนวนคนในแต่ละบทบาท', () => {
-    assert.ok(/อาจารย์ \(4\)/.test(h), 'นับอาจารย์ผิด (ต้องนับคนที่ role=teacher ทั้งหมด)');
+    assert.ok(/อาจารย์ \(5\)/.test(h), 'นับอาจารย์ผิด (ต้องนับคนที่ role=teacher ทั้งหมด)');
     assert.ok(/ผู้บริหาร \(1\)/.test(h), 'นับผู้บริหารผิด');
-    assert.ok(/ทุกบทบาท \(7 คน\)/.test(h), 'ไม่ได้บอกจำนวนรวม');
+    assert.ok(/ทุกบทบาท \(8 คน\)/.test(h), 'ไม่ได้บอกจำนวนรวม');
   });
   t('ไม่ขึ้นบทบาทที่ไม่มีคนเลย', () =>
     assert.ok(!h.includes('จนท.งานอื่นๆ'), 'ขึ้นบทบาทที่ไม่มีผู้ใช้'));
@@ -126,8 +171,23 @@ function box() {
     assert.ok(pg.includes("filtered ? total + ' จาก ' + allUsers.length"), 'ไม่ได้บอกว่ากรองอยู่');
     assert.ok(pg.includes('ไม่มีผู้ใช้ที่ตรงกับตัวกรอง'), 'กรองแล้วไม่เจอ ยังบอกว่า "ยังไม่มีผู้ใช้"');
   });
-  t('แสดงตำแหน่งผู้บริหารในคอลัมน์บทบาท', () =>
-    assert.ok(pg.includes('execAreaLabel(u.exec_area)'), 'ไม่เห็นว่าใครเป็นรองฯ ด้านไหน'));
+  t('แสดงตำแหน่งผู้บริหารและสาขาของประธานสาขาในคอลัมน์บทบาท', () => {
+    assert.ok(pg.includes('execAreaLabel(u.exec_area)'), 'ไม่เห็นว่าใครเป็นรองฯ ด้านไหน');
+    assert.ok(pg.includes('deptHeadLabel(u.department)'), 'ไม่เห็นว่าใครเป็นประธานสาขาไหน');
+  });
+  t('ช่องสาขาในฟอร์มผู้ใช้เป็นตัวเลือก ไม่ใช่พิมพ์เอง', () => {
+    const f = grab('function deptFieldHTML(u)');
+    assert.ok(f.includes('DEPT_BRANCHES.map'), 'ยังเป็นช่องพิมพ์อิสระ');
+    assert.ok(f.includes('ไม่อยู่ในรายการสาขา'), 'ค่าเดิมที่ไม่ตรงรายการจะหายไปเงียบ ๆ');
+    assert.ok(f.includes('id="deptHeadWrap"'), 'ไม่มีกล่องให้ซ่อน/แสดงตามบทบาท');
+    assert.ok(SRC.includes("getElementById('deptHeadWrap')"), 'เปลี่ยนบทบาทแล้วไม่สลับการแสดง');
+  });
+  t('ครบทั้ง 5 สาขา และสะกดตรงกับข้อมูลรายวิชา', () => {
+    const m = SRC.match(/const DEPT_BRANCHES = \[([\s\S]*?)\]/)[1];
+    ['การพยาบาลชุมชน', 'การพยาบาลเด็ก', 'การพยาบาลมารดาทารกและผดุงครรภ์',
+     'การพยาบาลจิตเวชและสุขภาพจิต', 'การพยาบาลผู้ใหญ่และผู้สูงอายุ']
+      .forEach(d => assert.ok(m.includes("'" + d + "'"), 'ขาดสาขา ' + d));
+  });
 
   console.log('\n[5] ไม่ค้างไปกวนหน้าอื่น');
   t('ตั้งค่าเริ่มต้นไว้ใน APP.filters', () =>

@@ -238,17 +238,21 @@
         : { name: profile.name || email, role: role, email: email,
             responsible_year: profile.responsible_year || '1' };
     } else if (role === 'deptHead') {
-      t = getDataByType('teacher').find(function (x) {
-        return (x.name || '').trim().toLowerCase() === nameL || (x.email || '').trim().toLowerCase() === email;
-      });
-      dept = t ? norm(t.department) : '';
+      /* สาขาที่ผู้ดูแลกำหนดไว้ในบัญชีผู้ใช้มาก่อน เพราะเป็นค่าที่ตั้งใจระบุ
+         ถ้าไม่ได้ตั้งไว้ จึงค่อยอิงสาขาในข้อมูลอาจารย์ แล้วจึงทำเนียบอาจารย์ */
+      dept = norm(profile.department);
+      if (!dept) {
+        t = getDataByType('teacher').find(function (x) {
+          return (x.name || '').trim().toLowerCase() === nameL || (x.email || '').trim().toLowerCase() === email;
+        });
+        dept = t ? norm(t.department) : '';
+      }
       if (!dept) {
         var td = getDataByType('teacher_directory').find(function (x) {
           return (x.name || '').trim().toLowerCase() === nameL;
         });
         if (td) dept = norm(td.nursing_branch);
       }
-      if (!dept) dept = norm(profile.department);
       APP.currentUser = { name: profile.name || email, role: 'deptHead', department: dept, email: email };
     } else {
       APP.currentUser = { name: profile.name || email || ROLE_LABEL[role] || 'ผู้ใช้', role: role, email: email };

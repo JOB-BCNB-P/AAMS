@@ -1519,12 +1519,15 @@ function filterBar(opts = {}) {
     const cur = APP.filters.userRole || '';
     const src = Array.isArray(opts.userRole) ? opts.userRole : getDataByType('user');
     const cnt = {};
-    src.forEach(u => {
-      userRolesOf(u).forEach(r => { cnt[r] = (cnt[r] || 0) + 1; });
+    src.forEach(u => { userRoleKeys(u).forEach(k => { cnt[k] = (cnt[k] || 0) + 1; }); });
+    // เรียงตามลำดับบทบาทในตาราง แล้วให้รายการย่อยของบทบาทนั้นตามมาทันที
+    const order = [];
+    Object.keys(SETTINGS_ROLE_LABELS).forEach(r => {
+      if (cnt[r]) order.push(r);
+      Object.keys(cnt).filter(k => k.indexOf(r + ':') === 0).sort().forEach(k => order.push(k));
     });
-    const order = Object.keys(SETTINGS_ROLE_LABELS).filter(r => cnt[r]);
-    Object.keys(cnt).forEach(r => { if (order.indexOf(r) === -1) order.push(r); });
-    h += `<select onchange="APP.filters.userRole=this.value;APP.pagination.page=1;renderCurrentPage()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm"><option value="">ทุกบทบาท (${src.length} คน)</option>${order.map(r => `<option value="${htmlEsc(r)}" ${cur === r ? 'selected' : ''}>${htmlEsc(SETTINGS_ROLE_LABELS[r] || r)} (${cnt[r]})</option>`).join('')}</select>`;
+    Object.keys(cnt).forEach(k => { if (order.indexOf(k) === -1) order.push(k); });
+    h += `<select onchange="APP.filters.userRole=this.value;APP.pagination.page=1;renderCurrentPage()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm"><option value="">ทุกบทบาท (${src.length} คน)</option>${order.map(k => `<option value="${htmlEsc(k)}" ${cur === k ? 'selected' : ''}>${k.indexOf(':') > 0 ? '　• ' : ''}${htmlEsc(roleKeyLabel(k))} (${cnt[k]})</option>`).join('')}</select>`;
   }
   if (opts.yearLevel) {
     const yl = APP.filters.yearLevel || '';
@@ -1562,6 +1565,27 @@ function userRolesOf(u) {
     .map(x => x.trim()).filter(Boolean)
     .filter((x, i, a) => a.indexOf(x) === i);
 }
+/* บทบาทที่แยกย่อยได้ — ประธานสาขาแยกตามสาขา ผู้บริหารแยกตามด้านที่รับผิดชอบ
+   กุญแจกรองเขียนเป็น "deptHead:การพยาบาลเด็ก" หรือ "executive:วิชาการ" */
+const ROLE_SUBKEY = { deptHead: 'department', executive: 'exec_area' };
+function userRoleKeys(u) {
+  const out = [];
+  userRolesOf(u).forEach(r => {
+    out.push(r);
+    const f = ROLE_SUBKEY[r];
+    const v = f ? norm(u && u[f]) : '';
+    if (v) out.push(r + ':' + v);
+  });
+  return out;
+}
+function roleKeyLabel(key) {
+  const i = String(key).indexOf(':');
+  if (i < 0) return SETTINGS_ROLE_LABELS[key] || key;
+  const r = key.slice(0, i), v = key.slice(i + 1);
+  if (r === 'deptHead') return deptHeadLabel(v);
+  if (r === 'executive') return execAreaLabel(v) || ((SETTINGS_ROLE_LABELS[r] || r) + ' · ' + v);
+  return (SETTINGS_ROLE_LABELS[r] || r) + ' · ' + v;
+}
 
 function applyFilters(data) {
   let d = data;
@@ -1570,7 +1594,7 @@ function applyFilters(data) {
   if (APP.filters.semester) d = d.filter(x => normSem(x.semester) === APP.filters.semester);
   if (APP.filters.academicYear) d = d.filter(x => norm(x.academic_year) === APP.filters.academicYear);
   if (APP.filters.yearLevel) d = d.filter(x => norm(x.year_level) === APP.filters.yearLevel);
-  if (APP.filters.userRole) d = d.filter(x => userRolesOf(x).indexOf(APP.filters.userRole) !== -1);
+  if (APP.filters.userRole) d = d.filter(x => userRoleKeys(x).indexOf(APP.filters.userRole) !== -1);
   return d;
 }
 
@@ -12346,7 +12370,7 @@ function settingsUsersPage() {
   const usersTable = paged.map(u => `<tr class="border-t hover:bg-gray-50">
     <td class="px-4 py-3">${u.name || ''}</td>
     <td class="px-4 py-3">${u.email || u.student_id || u.username || u.national_id || ''}</td>
-    <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs bg-surface">${roleLabels[u.role] || u.role}</span>${String(u.extra_roles || '').split(',').map(x => x.trim()).filter(Boolean).map(r => `<span class="ml-1 px-2 py-1 rounded-full text-xs bg-blue-50 text-blue-700" title="ภาระงานเพิ่มเติม">+ ${roleLabels[r] || r}</span>`).join('')}${norm(u.exec_area) ? `<span class="ml-1 px-2 py-1 rounded-full text-xs bg-amber-50 text-amber-700" title="ตำแหน่งผู้บริหาร">${htmlEsc(execAreaLabel(u.exec_area))}</span>` : ''}</td>
+    <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs bg-surface">${roleLabels[u.role] || u.role}</span>${String(u.extra_roles || '').split(',').map(x => x.trim()).filter(Boolean).map(r => `<span class="ml-1 px-2 py-1 rounded-full text-xs bg-blue-50 text-blue-700" title="ภาระงานเพิ่มเติม">+ ${roleLabels[r] || r}</span>`).join('')}${norm(u.exec_area) ? `<span class="ml-1 px-2 py-1 rounded-full text-xs bg-amber-50 text-amber-700" title="ตำแหน่งผู้บริหาร">${htmlEsc(execAreaLabel(u.exec_area))}</span>` : ''}${(isDeptHeadUser(u) && norm(u.department)) ? `<span class="ml-1 px-2 py-1 rounded-full text-xs bg-emerald-50 text-emerald-700" title="สาขาที่เป็นประธาน">${htmlEsc(deptHeadLabel(u.department))}</span>` : ''}</td>
     <td class="px-4 py-3"><div class="flex gap-1">${(typeof emsCanViewAs === 'function' && emsCanViewAs()) ? `<button onclick="emsViewAsUser('${u.__backendId}')" class="text-amber-500 hover:text-amber-700" title="ดูแทนผู้ใช้ (อ่านอย่างเดียว)"><i data-lucide="eye" class="w-4 h-4"></i></button>` : ''}<button onclick="showEditUserModal('${u.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${u.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>
   </tr>`).join('');
 
@@ -12677,6 +12701,7 @@ function showAddUserModal() {
         <input name="name" required class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น นางสาวสมหญิง ใจดี"></div>
       ${extraRolesFieldHTML({})}
       ${execAreaFieldHTML({})}
+      ${deptFieldHTML({})}
 
       ${dataEntryRightsFieldHTML({})}
       ${workloadMissionFieldHTML({})}
@@ -12718,7 +12743,7 @@ function showAddUserModal() {
       if (userEmailTaken(email)) { showToast('อีเมลนี้ถูกใช้กับผู้ใช้รายอื่นแล้ว', 'error'); return; }
       obj.name = name;
       obj.email = email;
-      if (role === 'deptHead' && fd.get('department')) obj.department = String(fd.get('department')).trim();
+
       if (role === 'classTeacher' && fd.get('responsible_year')) obj.responsible_year = fd.get('responsible_year');
     }
 
@@ -12726,6 +12751,8 @@ function showAddUserModal() {
     if (extra) obj.extra_roles = extra;
     const execArea = String(fd.get('exec_area') || '').trim();
     if (execArea && isExecutiveUser({ role, extra_roles: extra })) obj.exec_area = execArea;
+    const deptPick = String(fd.get('department') || '').trim();
+    if (deptPick && isDeptHeadUser({ role, extra_roles: extra })) obj.department = deptPick;
     const wlm = collectWorkloadMissions('addUserForm');
     if (wlm) obj.workload_missions = wlm;
     if (role !== 'student') Object.assign(obj, collectDataEntryRights('addUserForm'));
@@ -12758,6 +12785,13 @@ function onUserRoleChange(role) {
     const sel = execWrap.querySelector('[name="exec_area"]');
     if (sel && !on) sel.value = '';
   }
+  const deptWrap = document.getElementById('deptHeadWrap');
+  if (deptWrap) {
+    const onD = role === 'deptHead';
+    deptWrap.classList.toggle('hidden', !onD);
+    const sd = deptWrap.querySelector('[name="department"]');
+    if (sd && !onD) sd.value = '';
+  }
   if (nameBox) nameBox.classList.toggle('hidden', role === 'student');
   const nameInput = nameBox && nameBox.querySelector('[name="name"]');
   if (nameInput) nameInput.required = (role !== 'student' && role !== '');
@@ -12770,8 +12804,7 @@ function onUserRoleChange(role) {
     fieldsDiv.innerHTML = `<div><label class="block text-xs text-gray-600 mb-1">อีเมลของวิทยาลัย *</label>
       <input name="email" type="email" required class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="ชื่อผู้ใช้@${emsLoginDomain()}">
       <p class="text-[11px] text-gray-400 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ต้องตรงกับบัญชี Google ของวิทยาลัยที่ผู้ใช้ใช้จริง จึงจะเข้าสู่ระบบได้</p></div>
-      ${role === 'deptHead' ? `<div><label class="block text-xs text-gray-600 mb-1">สาขา <span class="text-gray-400">(เว้นว่างได้ ระบบจะอิงชื่อ-สกุลให้ตรงกับข้อมูลอาจารย์)</span></label>
-      <input name="department" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="เช่น การพยาบาลผู้ใหญ่"></div>` : ''}`;
+`;
   } else {
     fieldsDiv.innerHTML = '';
   }
@@ -14663,6 +14696,35 @@ function execAreaLabel(v) {
   if (!a) return '';
   return a === EXEC_DIRECTOR ? 'ผู้อำนวยการวิทยาลัย' : 'รองผู้อำนวยการด้าน' + a;
 }
+/* สาขาของวิทยาลัย — ประธานสาขาผูกกับหนึ่งสาขาเสมอ
+   ชื่อที่ใช้ต้องตรงกับช่อง department ของรายวิชาและข้อมูลอาจารย์ ไม่งั้นการกรองจะไม่เจอกัน */
+const DEPT_BRANCHES = [
+  'การพยาบาลชุมชน',
+  'การพยาบาลเด็ก',
+  'การพยาบาลมารดาทารกและผดุงครรภ์',
+  'การพยาบาลจิตเวชและสุขภาพจิต',
+  'การพยาบาลผู้ใหญ่และผู้สูงอายุ'
+];
+function deptHeadLabel(v) { const d = norm(v); return d ? 'ประธานสาขา' + d : ''; }
+function isDeptHeadUser(u) {
+  const rs = String((u && u.role) || '') + ',' + String((u && u.extra_roles) || '');
+  return rs.split(',').map(x => x.trim()).indexOf('deptHead') !== -1;
+}
+function deptFieldHTML(u) {
+  const cur = norm(u && u.department);
+  // แสดงเสมอถ้ามีค่าอยู่แล้ว เผื่อถอดบทบาทออกแล้วค่ายังค้าง จะได้เห็นและลบได้
+  const show = isDeptHeadUser(u) || !!cur;
+  const known = DEPT_BRANCHES.indexOf(cur) !== -1;
+  return `<div id="deptHeadWrap" class="${show ? '' : 'hidden'}">
+    <label class="block text-xs text-gray-600 mb-1">สาขาที่เป็นประธาน <span class="text-gray-400">(เฉพาะประธานสาขา)</span></label>
+    <select name="department" class="w-full border rounded-xl px-3 py-2 text-sm">
+      <option value="">— ไม่ระบุสาขา —</option>
+      ${DEPT_BRANCHES.map(d => `<option value="${htmlEsc(d)}" ${cur === d ? 'selected' : ''}>${htmlEsc(deptHeadLabel(d))}</option>`).join('')}
+      ${(cur && !known) ? `<option value="${htmlEsc(cur)}" selected>${htmlEsc(cur)} (ไม่อยู่ในรายการสาขา)</option>` : ''}
+    </select>
+    <p class="text-[11px] text-gray-400 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ประธานสาขาดูข้อมูลรายวิชาในสาขานี้ได้ทุกวิชา แต่กรอกและแก้ไขไม่ได้</p></div>`;
+}
+
 function isExecutiveUser(u) {
   const rs = String((u && u.role) || '') + ',' + String((u && u.extra_roles) || '');
   return rs.split(',').map(x => x.trim()).indexOf('executive') !== -1;
@@ -14779,8 +14841,7 @@ function showEditUserModal(id) {
         <input name="email" value="${u.email || ''}" type="email" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="ชื่อผู้ใช้@${emsLoginDomain()}">
         <p class="text-[11px] text-gray-400 mt-1"><i data-lucide="info" class="w-3 h-3 inline mr-0.5"></i>ต้องตรงกับบัญชี Google ของวิทยาลัยที่ผู้ใช้ใช้จริง มิฉะนั้นจะเข้าสู่ระบบไม่ได้</p></div>
 
-      <div><label class="block text-xs text-gray-600 mb-1">สาขา <span class="text-gray-400">(ประธานสาขา)</span></label>
-        <input name="department" value="${u.department || ''}" class="w-full border rounded-xl px-3 py-2 text-sm"></div>
+      ${deptFieldHTML(u)}
 
       <div><label class="block text-xs text-gray-600 mb-1">ชั้นปีที่รับผิดชอบ <span class="text-gray-400">(อาจารย์ประจำชั้น)</span></label>
         <select name="responsible_year" class="w-full border rounded-xl px-3 py-2 text-sm"><option value="">ไม่ระบุ</option>${[1, 2, 3, 4].map(y => `<option ${norm(u.responsible_year) === String(y) ? 'selected' : ''}>${y}</option>`).join('')}</select></div>`}
