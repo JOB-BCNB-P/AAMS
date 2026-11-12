@@ -216,6 +216,14 @@ function env(role, me, extra) {
     assert.ok(grab('function noScores(rec)').includes("k !== 'course_acl'"), 'course_acl ถูกส่งกลับไปทับได้'));
   t('ล้างแคชสิทธิ์ทุกรอบการวาดหน้า', () =>
     assert.ok(/window\.ploPage = function ploPage\(\) \{\s*\n\s*aclReset\(\);/.test(SRC), 'แคชค้าง สิทธิ์ที่เพิ่งเปลี่ยนจะไม่มีผล'));
+  t('โหมดดูแทนผู้ใช้ ต้องไม่หยิบด้านของผู้ดูแลระบบมาใช้', () => {
+    const g = grab('function myExecArea()');
+    assert.ok(g.includes('window.__emsProfile'), 'ยังอ่านโปรไฟล์ตัวจริงก่อน');
+    assert.ok(/pr\.viewAs\) return ''/.test(g), 'ดูแทนคนที่ไม่มีด้าน แล้วยังตกไปใช้ค่าของผู้ดูแล');
+    const code = g.replace(/\/\*[\s\S]*?\*\//g, '');   // ตัดคำอธิบายออก เทียบเฉพาะโค้ดจริง
+    const i = code.indexOf('window.__emsProfile'), j = code.indexOf('GSheetDB.profile()');
+    assert.ok(i >= 0 && (j < 0 || i < j), 'ลำดับการอ่านผิด');
+  });
   t('ไฟล์ทั้งไฟล์ยังแปลผ่าน', () => { new vm.Script(SRC); });
 
   console.log('\n' + (fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');

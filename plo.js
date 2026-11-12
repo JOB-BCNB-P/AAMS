@@ -266,10 +266,13 @@
     var u = APP.currentUser || {};
     var a = s(u.exec_area);
     if (a) return a;
-    // ems_whoami() ส่งด้านของผู้ใช้เองมาด้วย — ตาราง user อ่านไม่ได้ทุกบทบาท
+    /* ems_whoami() ส่งด้านของผู้ใช้เองมาด้วย — ตาราง user อ่านไม่ได้ทุกบทบาท
+       ต้องอ่าน __emsProfile ก่อน เพราะในโหมด "ดูแทนผู้ใช้" ค่านี้คือโปรไฟล์ของคนที่กำลังดูแทน
+       ถ้าไปอ่าน GSheetDB.profile() จะได้ด้านของผู้ดูแลระบบตัวจริง ภาพที่เห็นจะไม่ตรงกับของผู้ใช้ */
     try {
-      var pr = (GSheetDB && GSheetDB.profile) ? GSheetDB.profile() : null;
+      var pr = window.__emsProfile || ((GSheetDB && GSheetDB.profile) ? GSheetDB.profile() : null);
       if (pr && s(pr.exec_area)) return s(pr.exec_area);
+      if (pr && pr.viewAs) return '';   // ดูแทนคนที่ไม่มีด้าน = ต้องไม่ตกไปใช้ค่าของผู้ดูแล
     } catch (e) { }
     var k = nameKeyOf(u.name);
     var row = get('user').filter(function (x) { return nameKeyOf(x.name) === k; })[0];
