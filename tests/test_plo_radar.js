@@ -155,7 +155,36 @@ t('ยังไม่มีข้อมูลปีไหนเลย บอก�
 t('เพดานเท่าจำนวนสีที่เตรียมไว้ ไม่ใช่เลขที่ตั้งลอย ๆ', () => {
   assert.ok(/RADAR_MAX_YEARS = RADAR_COLORS\.length/.test(PL),
     'ถ้าเพิ่มสีแล้วเพดานไม่ขยับตาม จะเลือกได้น้อยกว่าที่ระบบรองรับ');
-  assert.ok(/RADAR_COLORS = \[[^\]]*#b4418e/.test(PL), 'จำนวนสีเปลี่ยนไป ต้องทบทวนว่ายังแยกสีออกไหม');
+});
+t('สีของแต่ละปีต่างกันพอให้แยกออกจริง', () => {
+  const m = PL.match(/RADAR_COLORS = \[([^\]]+)\]/);
+  assert.ok(m, 'ไม่พบชุดสี');
+  const cols = m[1].match(/#[0-9a-f]{6}/gi) || [];
+  assert.ok(cols.length >= 3, 'สีน้อยเกินไป');
+  assert.strictEqual(new Set(cols.map(c => c.toLowerCase())).size, cols.length, 'มีสีซ้ำกัน');
+  const rgb = c => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16));
+  // ระยะสีแบบถ่วงน้ำหนักสายตา — จับกรณี "น้ำเงินสองเฉด" ที่ของเดิมแยกไม่ออก
+  const dist = (a, b) => {
+    const [r1, g1, b1] = rgb(a), [r2, g2, b2] = rgb(b), rm = (r1 + r2) / 2;
+    return Math.sqrt((2 + rm / 256) * (r1 - r2) ** 2 + 4 * (g1 - g2) ** 2 + (2 + (255 - rm) / 256) * (b1 - b2) ** 2);
+  };
+  for (let i = 0; i < cols.length; i++)
+    for (let j = i + 1; j < cols.length; j++)
+      assert.ok(dist(cols[i], cols[j]) > 150, 'สี ' + cols[i] + ' กับ ' + cols[j] + ' ใกล้กันเกินไป (' + Math.round(dist(cols[i], cols[j])) + ')');
+});
+t('มีลายเส้นต่างกันรายปี เผื่อแยกสีไม่ได้หรือพิมพ์ขาวดำ', () => {
+  const d = PL.match(/RADAR_DASH = \[([^\]]+)\]/);
+  const c = PL.match(/RADAR_COLORS = \[([^\]]+)\]/);
+  assert.ok(d, 'ไม่มีลายเส้นประ');
+  const dashes = d[1].split(',').map(x => x.trim());
+  const cols = (c[1].match(/#[0-9a-f]{6}/gi) || []);
+  assert.strictEqual(dashes.length, cols.length, 'จำนวนลายเส้นไม่เท่าจำนวนสี');
+  assert.strictEqual(new Set(dashes).size, dashes.length, 'มีลายเส้นซ้ำกัน');
+  assert.ok(PL.includes('stroke-dasharray="' + "' + dash + '" + '"'), 'กราฟไม่ได้ใช้ลายเส้น');
+});
+t('ป้ายกำกับและหัวตารางใช้ตัวอย่างเส้นชุดเดียวกับกราฟ', () => {
+  assert.ok(/function radarSwatch\(i\)/.test(PL), 'ไม่มีตัวอย่างเส้น');
+  assert.ok((PL.match(/radarSwatch\(i\)/g) || []).length >= 3, 'ใช้ไม่ครบทั้งป้ายกำกับและหัวตาราง');
 });
 t('เลือกเกินเพดาน ปล่อยปีเก่าสุดออกให้เอง', () => {
   const g = grab('window.ploRadarYear = function (y, on)');

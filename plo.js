@@ -383,7 +383,12 @@
      นับเป็น "จำนวนรายวิชาที่ไม่ซ้ำ" ไม่ใช่จำนวนแถว เพราะวิชาเดียวผูกหลาย CLO เข้า PLO เดียวกันได้ */
 
   var MAP_LEVELS = [['I', 'เริ่มเรียนรู้ (I)'], ['R', 'ฝึกซ้ำ (R)'], ['M', 'ชำนาญ (M)'], ['P', 'ปฏิบัติจริง (P)']];
-  var RADAR_COLORS = ['#2c8ced', '#1b2f9c', '#f0b429', '#17a673', '#b4418e'];
+  /* สีของแต่ละปีในใยแมงมุม
+     ของเดิมสองสีแรกเป็นน้ำเงินทั้งคู่ (#2c8ced กับ #1b2f9c) ซึ่งแยกไม่ออกบนกราฟเล็ก
+     ชุดนี้ไล่คนละเฉดสีให้ห่างกันมากที่สุด และอิงชุดสีที่คนตาบอดสียังแยกออก (Okabe–Ito)
+     เสริมด้วยลายเส้นประต่างกันรายปี เผื่อพิมพ์ขาวดำหรือผู้ใช้แยกสีไม่ได้ */
+  var RADAR_COLORS = ['#2c8ced', '#d55e00', '#009e73', '#cc79a7', '#f0b429'];
+  var RADAR_DASH = ['', '7 4', '2 3', '10 3 2 3', '5 2 1 2'];
 
   // PLO หลักของหลักสูตรที่เลือก — ใช้เป็นแกนของใยแมงมุม
   function radarAxes(cur) {
@@ -492,6 +497,15 @@
     }
     return out;
   }
+  /* ตัวอย่างเส้นของปีที่ i — สีและลายเส้นตรงกับในกราฟ ใช้ทั้งในป้ายกำกับและหัวตาราง */
+  function radarSwatch(i) {
+    var col = RADAR_COLORS[i % RADAR_COLORS.length], dash = RADAR_DASH[i % RADAR_DASH.length];
+    return '<svg width="22" height="10" viewBox="0 0 22 10" aria-hidden="true" class="inline-block align-middle">'
+      + '<line x1="1" y1="5" x2="21" y2="5" stroke="' + col + '" stroke-width="2.5" stroke-linecap="round"'
+      + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '></line>'
+      + '<circle cx="11" cy="5" r="2.6" fill="' + col + '"></circle></svg>';
+  }
+
   function radarSvg(axes, series, fixedMax) {
     var R = 118, CX = 170, CY = 158, k = axes.length;
     var pt = function (i, r) {
@@ -522,12 +536,15 @@
     }
     var fillOp = series.length <= 2 ? 0.28 : (series.length === 3 ? 0.2 : 0.13);
     series.forEach(function (sr, si) {
-      var col = RADAR_COLORS[si % RADAR_COLORS.length], pts = [];
+      var col = RADAR_COLORS[si % RADAR_COLORS.length];
+      var dash = RADAR_DASH[si % RADAR_DASH.length];
+      var pts = [];
       sr.values.forEach(function (v, i) {
         var q = pt(i, R * (max ? v / max : 0));
         pts.push((Math.round(q[0] * 10) / 10) + ',' + (Math.round(q[1] * 10) / 10));
       });
-      g += '<polygon class="radar-poly" style="--cx:' + CX + 'px;--cy:' + CY + 'px" points="' + pts.join(' ') + '" fill="' + col + '" fill-opacity="' + fillOp + '" stroke="' + col + '" stroke-width="2" stroke-linejoin="round"></polygon>';
+      g += '<polygon class="radar-poly" style="--cx:' + CX + 'px;--cy:' + CY + 'px" points="' + pts.join(' ') + '" fill="' + col + '" fill-opacity="' + fillOp + '" stroke="' + col + '" stroke-width="2.2" stroke-linejoin="round"'
+        + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '></polygon>';
       sr.values.forEach(function (v, i) {
         var q = pt(i, R * (max ? v / max : 0));
         g += '<circle class="radar-dot" cx="' + (Math.round(q[0] * 10) / 10) + '" cy="' + (Math.round(q[1] * 10) / 10) + '" r="2.6" fill="' + col + '"></circle>';
@@ -604,15 +621,17 @@
     var picker = (rs.mode === 'year' || rs.mode === 'score') ? yearPicker(years, rs)
       : '<p class="text-xs text-gray-500">แยกตามระดับการวัดในผังรายวิชา เริ่มเรียนรู้ (I) · ฝึกซ้ำ (R) · ชำนาญ (M) · ปฏิบัติจริง (P)</p>';
 
+    // ป้ายกำกับใช้ "ตัวอย่างเส้นจริง" ทั้งสีและลายเส้น จะได้เทียบกับกราฟได้ตรงตัว
     var legend = '<div class="flex flex-wrap gap-3 text-xs mb-2">'
-      + series.map(function (x, i) {
-          return '<span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full" style="background:'
-            + RADAR_COLORS[i % RADAR_COLORS.length] + '"></span>' + esc(x.label) + '</span>';
-        }).join('') + '</div>';
+      + series.map(function (x, i) { return '<span class="inline-flex items-center gap-1.5">' + radarSwatch(i) + esc(x.label) + '</span>'; }).join('')
+      + '</div>';
 
     var table = '<div class="overflow-x-auto"><table class="w-full text-xs">'
       + '<thead><tr class="bg-surface text-left"><th class="px-2 py-1.5 font-semibold">PLO</th>'
-      + series.map(function (x) { return '<th class="px-2 py-1.5 font-semibold text-center whitespace-nowrap">' + esc(x.label) + '</th>'; }).join('')
+      + series.map(function (x, i) {
+          return '<th class="px-2 py-1.5 font-semibold text-center whitespace-nowrap">'
+            + '<span class="inline-flex items-center gap-1">' + radarSwatch(i) + esc(x.label) + '</span></th>';
+        }).join('')
       + '</tr></thead><tbody>'
       + axes.map(function (a, i) {
           return '<tr class="border-t border-gray-50"><td class="px-2 py-1.5"><b>PLO ' + esc(a.no) + '</b> '
