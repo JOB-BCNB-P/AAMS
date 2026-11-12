@@ -106,7 +106,7 @@
   // ไม่งั้นค่าเก่าที่ค้างในเบราว์เซอร์จะไปทับคะแนนที่อาจารย์อีกท่านเพิ่งบันทึก
   function noScores(rec) {
     var o = {};
-    Object.keys(rec || {}).forEach(function (k) { if (k.indexOf('sc:') !== 0 && k !== 'course_cfg') o[k] = rec[k]; });
+    Object.keys(rec || {}).forEach(function (k) { if (k.indexOf('sc:') !== 0 && k !== 'course_cfg' && k !== 'course_acl') o[k] = rec[k]; });
     return o;
   }
 
@@ -175,20 +175,105 @@
   function meName() { return s(APP.currentUser && APP.currentUser.name); }
   function isCoord(subj) { return typeof subjectHasCoordinator === 'function' && !!meName() && subjectHasCoordinator(subj || {}, meName()); }
   function mySubject(subj) { return isAllEdit() || isCoord(subj); }
+  /* เห็นรายวิชาเพื่อ "ดู" ได้กว้างกว่าสิทธิ์ "กรอก"
+       ผู้ดูแล/งานวิชาการ/งานทะเบียน/ผู้บริหาร  ทุกรายวิชา
+       ประธานสาขา                              ทุกรายวิชาในสาขาของตน (ดูอย่างเดียว)
+       อาจารย์                                  เฉพาะรายวิชาที่ตนเป็นผู้ประสานงาน */
+  function canViewSubject(subj) {
+    if (isAllView()) return true;
+    if (isCoord(subj)) return true;
+    if (hasRole(['deptHead'])) {
+      var dept = typeof currentDept === 'function' ? currentDept() : s(APP.currentUser && APP.currentUser.department);
+      return typeof subjectHasDept === 'function' && subjectHasDept(subj || {}, dept);
+    }
+    return false;
+  }
+  // เข้าหน้าบันทึกข้อมูลได้ไหม — บางบทบาทเข้าได้เพื่อ "ดู" และ "ส่งเกรด" เท่านั้น
+  function canOpenEntry() { return canEdit() || canPushGrade() || hasRole(['deptHead']); }
   function cloSubject(c) {
     return get('subject').filter(function (x) {
       return s(x.subject_code) === s(c.subject_code) && s(x.academic_year) === s(c.academic_year) && s(x.semester) === s(c.semester);
     })[0] || get('subject').filter(function (x) { return s(x.subject_code) === s(c.subject_code); })[0] || { subject_code: c.subject_code };
   }
   function cloOwner(c) { return s(c && c.created_by); }
+
+  /* ================= สิทธิ์ระดับรายวิชา (ผู้ประสานงานหลายคน) =================
+     รายวิชาหนึ่งมีผู้ประสานงานได้หลายคน แต่เมื่อมีคนใดคนหนึ่งเริ่มกรอกแล้ว
+     คนนั้นเป็น "เจ้าของรายวิชา" คนอื่นดูได้แต่กรอก/แก้/ลบไม่ได้
+     จนกว่าเจ้าของจะเปิดสิทธิ์ให้ (เก็บรายชื่อใน course_acl ของ CLO ทุกข้อในรายวิชานั้น)
+
+     เจ้าของ = ผู้กรอก CLO ข้อแรกสุดของรายวิชา (ดูจาก created_at แล้วจึง sort_order)
+     ผู้ที่เคยกรอก CLO ไว้ก่อนหน้านี้ ยังแก้ของตนต่อได้ ไม่ให้ข้อมูลเดิมถูกล็อกกะทันหัน
+     ตัวช่วยนี้ถูกเรียกต่อช่องคะแนนหลายพันครั้ง จึงพักผลไว้หนึ่งรอบการวาดหน้า */
+  var _aclCache = {};
+  function aclReset() { _aclCache = {}; }
+  function nameKeyOf(v) { return s(v).replace(/\s+/g, '').toLowerCase(); }
+  function aclKey(code, year, sem) { return s(code) + '|' + s(year) + '|' + s(sem); }
+  function subjAcl(code, year, sem) {
+    var k = aclKey(code, year, sem);
+    if (_aclCache[k]) return _aclCache[k];
+    var list = get('plo_clo').filter(function (x) {
+      return s(x.subject_code) === s(code) && s(x.academic_year) === s(year) && s(x.semester) === s(sem);
+    }).sort(function (a, b) {
+      return s(a.created_at).localeCompare(s(b.created_at)) || (n(a.sort_order) - n(b.sort_order));
+    });
+    var owner = '', editors = {}, shared = [];
+    list.forEach(function (x) {
+      var o = cloOwner(x);
+      if (o) { if (!owner) owner = o; editors[nameKeyOf(o)] = o; }
+      var raw = x.course_acl;
+      if (raw && !shared.length) {
+        try {
+          var a = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          if (Array.isArray(a)) shared = a.map(s).filter(Boolean);
+          else if (a && Array.isArray(a.shared)) shared = a.shared.map(s).filter(Boolean);
+        } catch (e) { }
+      }
+    });
+    shared.forEach(function (x) { editors[nameKeyOf(x)] = x; });
+    _aclCache[k] = { owner: owner, editors: editors, shared: shared, count: list.length };
+    return _aclCache[k];
+  }
+  function aclOfClo(c) { return subjAcl(c && c.subject_code, c && c.academic_year, c && c.semester); }
+  // กรอก/แก้รายวิชานี้ได้ไหม (ใช้ทั้งตอนเพิ่ม CLO ใหม่ และตอนนำเข้าไฟล์)
+  function canEditSubjectAt(subj, code, year, sem) {
+    if (!canEdit()) return false;
+    if (isAllEdit()) return true;
+    if (!isCoord(subj || { subject_code: code })) return false;
+    var a = subjAcl(code, year, sem);
+    if (!a.owner) return true;                       // ยังไม่มีใครเริ่มกรอก
+    return !!a.editors[nameKeyOf(meName())];
+  }
+  function subjLockMsg(code, year, sem) {
+    var a = subjAcl(code, year, sem);
+    return 'รายวิชา ' + s(code) + ' เริ่มกรอกโดย ' + (a.owner || 'ผู้อื่น')
+      + ' — ผู้ประสานงานท่านอื่นกรอก/แก้ไม่ได้ จนกว่าเจ้าของจะเปิดสิทธิ์ให้';
+  }
   function canEditClo(c) {
     if (!c || !canEdit()) return false;
     if (isAllEdit()) return true;
     if (!isCoord(cloSubject(c))) return false;
-    var o = cloOwner(c);
-    return !o || o === meName();
+    var a = aclOfClo(c);
+    if (!a.owner) return true;
+    return !!a.editors[nameKeyOf(meName())];
   }
-  function lockMsg(c) { return cloRef(c) + ' กรอกโดย ' + (cloOwner(c) || 'ผู้อื่น') + ' — แก้ไข/ลบได้เฉพาะผู้กรอก'; }
+  function lockMsg(c) { return cloRef(c) + ' · ' + subjLockMsg(c && c.subject_code, c && c.academic_year, c && c.semester); }
+
+  /* ================= ส่งเกรดเข้าหน้าผลการเรียน =================
+     เฉพาะผู้ดูแลระบบ · งานทะเบียน · รองผู้อำนวยการด้านวิชาการ
+     อาจารย์ผู้ประสานงานกรอกและตัดเกรดดูได้ แต่กดส่งเข้าระเบียนผลการเรียนไม่ได้ */
+  function myExecArea() {
+    var u = APP.currentUser || {};
+    var a = s(u.exec_area);
+    if (a) return a;
+    var k = nameKeyOf(u.name);
+    var row = get('user').filter(function (x) { return nameKeyOf(x.name) === k; })[0];
+    return row ? s(row.exec_area) : '';
+  }
+  function canPushGrade() {
+    if (hasRole(['admin', 'registrar'])) return true;
+    return hasRole(['executive']) && myExecArea() === 'วิชาการ';
+  }
   // ประธานสาขา (ที่ไม่ได้มีบทบาทดูทั้งหมด) เห็นเฉพาะสาขาตน · null = ไม่จำกัด
   function viewSubjectFilter() {
     if (isAllView()) return null;
@@ -240,6 +325,7 @@
 
   /* ================= หน้าหลัก ================= */
   window.ploPage = function ploPage() {
+    aclReset();   // สิทธิ์รายวิชาเปลี่ยนได้ระหว่างใช้งาน จึงคิดใหม่ทุกรอบการวาดหน้า
     var st = state();
     var head = '<div class="flex flex-wrap items-start justify-between gap-3 mb-5">'
       + '<div><h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">'
@@ -249,12 +335,12 @@
 
     /* เมนูย่อยอยู่ที่แถบเมนูด้านซ้ายแล้ว (สรุปผลรวม · บันทึกข้อมูล)
        ในหน้าแสดงแค่ป้ายบอกว่ากำลังอยู่ส่วนไหน */
-    var isEntry = st.tab === 'entry' && canEdit();
+    var isEntry = st.tab === 'entry' && canOpenEntry();
     var tabs = '<div class="flex items-center gap-2 mb-5 border-b border-gray-100 pb-3 text-sm">'
       + '<span class="px-3 py-1.5 rounded-xl bg-primary text-white flex items-center gap-2">'
       + '<i data-lucide="' + (isEntry ? 'pencil-line' : 'bar-chart-3') + '" class="w-4 h-4"></i>'
       + (isEntry ? 'บันทึกข้อมูล' : 'สรุปผลรวม') + '</span>'
-      + (canEdit() ? '<button onclick="navigateTo(\'' + (isEntry ? 'ploSummary' : 'ploEntry') + '\')" class="text-xs text-gray-500 hover:text-primary">'
+      + (canOpenEntry() ? '<button onclick="navigateTo(\'' + (isEntry ? 'ploSummary' : 'ploEntry') + '\')" class="text-xs text-gray-500 hover:text-primary">'
         + (isEntry ? 'ไปที่สรุปผลรวม →' : 'ไปที่บันทึกข้อมูล →') + '</button>' : '')
       + '</div>';
 
@@ -1379,7 +1465,7 @@
   function subjectsOf(year, sem, level) {
     return get('subject').filter(function (x) {
       return s(x.academic_year) === s(year) && s(x.semester) === s(sem)
-        && (!level || s(x.year_level) === s(level)) && mySubject(x);
+        && (!level || s(x.year_level) === s(level)) && canViewSubject(x);
     }).sort(function (a, b) { return s(a.subject_code).localeCompare(s(b.subject_code)); });
   }
   /* รายชื่อนักศึกษาของรุ่นที่กำลังกรอกอยู่ (รหัส 2 ตัวแรกตรงกับรหัสรุ่นของชั้นปีนั้น)
@@ -1503,7 +1589,7 @@
       + step(5, 'สรุปคะแนนรายวิชาและเกรด', nClo ? 'รวมคะแนนทุก CLO ตามสัดส่วน · ตัดเกรดตามช่วงคะแนนของรายวิชา' : 'ทำหลังกำหนด CLO แล้ว',
           (subj && nClo) ? courseGradeTable(subj) : waitMsg(!subj ? 'เลือกรายวิชาในขั้นที่ 2 ก่อน' : 'เพิ่ม CLO ในขั้นที่ 3 ก่อน'),
           (subj && nClo) ? 'active' : 'wait')
-      + step(6, 'นำเข้าผ่านไฟล์ CSV / Excel', 'ไม่บังคับ · ทางลัดแทนขั้นที่ 3–4 เมื่อมีข้อมูลหลายรายวิชา', csvPanel(), 'opt')
+      + (canEdit() ? step(6, 'นำเข้าผ่านไฟล์ CSV / Excel', 'ไม่บังคับ · ทางลัดแทนขั้นที่ 3–4 เมื่อมีข้อมูลหลายรายวิชา', csvPanel(), 'opt') : '')
       + '</div>';
   }
 
@@ -2404,15 +2490,96 @@
       + '<div class="flex flex-wrap items-center justify-between gap-2 mb-3">'
       + '<p class="text-sm font-semibold text-gray-800"><i data-lucide="pie-chart" class="w-4 h-4 inline mr-1 text-primary"></i>ภาพรวมน้ำหนักคะแนนรายวิชา</p>'
       + '<div class="flex items-center gap-2"><span class="text-sm">รวม <b class="tabular-nums ' + (ok ? 'text-emerald-700' : 'text-amber-700') + '">' + f2(total) + '%</b></span>'
-      + '<button type="button" onclick="ploCourseCfgEdit()" class="px-3 py-1.5 border border-primary text-primary rounded-lg text-xs bg-white hover:bg-blue-50">'
-      + '<i data-lucide="settings-2" class="w-3.5 h-3.5 inline"></i> ตั้งค่ารายวิชา</button></div></div>'
+      + (canEditSubjectAt(subj, state().eSubject, state().eYear, state().eSem)
+          ? '<button type="button" onclick="ploCourseCfgEdit()" class="px-3 py-1.5 border border-primary text-primary rounded-lg text-xs bg-white hover:bg-blue-50">'
+            + '<i data-lucide="settings-2" class="w-3.5 h-3.5 inline"></i> ตั้งค่ารายวิชา</button>' : '')
+      + '</div></div>'
       + '<div class="grid md:grid-cols-' + Math.min(groups.filter(function (g) { return g.clos.length; }).length, 3) + ' gap-3">' + rowsHtml + '</div>'
       + warn
       + (noComp ? '<p class="text-[11px] text-gray-500 mt-1">CLO ที่ยังไม่กำหนดองค์ประกอบคะแนน ' + noComp + ' ข้อ จะไม่ถูกนับในคะแนนรายวิชาและการตัดเกรด</p>' : '')
+      + coordAclBox(subj)
       + '<p class="text-[11px] text-gray-500 mt-1">เกณฑ์ผ่านเริ่มต้นของแต่ละการประเมิน: <b>' + (s(cfg.passPct) === '' ? 'ไม่ตั้ง' : esc(cfg.passPct) + '% ของคะแนนเต็ม') + '</b>'
       + ' · เกรด: ' + cfg.grades.map(function (g) { return esc(g[0]) + (g[1] > 0 ? ' ≥' + g[1] : ''); }).join(' · ') + '</p>'
       + '</div>';
   }
+
+  /* แถบบอกเหตุผลเมื่อเข้าถึงได้แต่กรอกไม่ได้ */
+  function roBanner(subj) {
+    var st = state(), why;
+    if (!canEdit()) {
+      why = hasRole(['deptHead'])
+        ? 'ประธานสาขาดูข้อมูลของรายวิชาในสาขาได้ แต่กรอกและแก้ไขไม่ได้'
+        : 'บทบาทของคุณดูข้อมูลได้อย่างเดียว';
+    } else if (!isCoord(subj)) {
+      why = 'คุณไม่ได้เป็นผู้ประสานงานรายวิชานี้ จึงกรอกและแก้ไขไม่ได้';
+    } else {
+      why = subjLockMsg(st.eSubject, st.eYear, st.eSem);
+    }
+    return '<div class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 mb-4">'
+      + '<p class="text-xs text-amber-800"><i data-lucide="eye" class="w-3.5 h-3.5 inline mr-1"></i>' + esc(why) + '</p></div>';
+  }
+
+  /* ---------- ผู้ประสานงานรายวิชาและการเปิดสิทธิ์ ---------- */
+  function coordsOf(subj) {
+    return String((subj && subj.coordinator) || '').split(/[,\/]/).map(s).filter(Boolean);
+  }
+  function coordAclBox(subj) {
+    var st = state();
+    var list = coordsOf(subj);
+    var a = subjAcl(st.eSubject, st.eYear, st.eSem);
+    if (!a.owner && list.length < 2) return '';
+    var meK = nameKeyOf(meName());
+    var amOwner = !!a.owner && nameKeyOf(a.owner) === meK;
+    var canGrant = isAllEdit() || amOwner;
+    var others = list.filter(function (x) { return nameKeyOf(x) !== nameKeyOf(a.owner); });
+    var rows = others.map(function (nm) {
+      var on = !!a.editors[nameKeyOf(nm)];
+      return '<div class="flex items-center justify-between gap-2 py-1">'
+        + '<span class="text-sm text-gray-800">' + esc(nm) + '</span>'
+        + (canGrant
+            ? '<button type="button" onclick="ploAclToggle(' + JSON.stringify(nm).replace(/"/g, '&quot;') + ')" '
+              + 'class="px-2.5 py-1 rounded-lg text-xs border ' + (on ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-gray-200 text-gray-600 hover:bg-surface') + '">'
+              + (on ? 'เปิดสิทธิ์ให้กรอกแล้ว · กดเพื่อปิด' : 'เปิดสิทธิ์ให้กรอก') + '</button>'
+            : '<span class="px-2.5 py-1 rounded-lg text-xs ' + (on ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500') + '">'
+              + (on ? 'กรอกได้' : 'ดูได้อย่างเดียว') + '</span>')
+        + '</div>';
+    }).join('');
+    return '<div class="rounded-xl border border-gray-100 bg-white p-3 mt-3">'
+      + '<p class="text-sm font-semibold text-gray-800 mb-1"><i data-lucide="users" class="w-4 h-4 inline mr-1 text-primary"></i>ผู้ประสานงานรายวิชา</p>'
+      + (a.owner
+          ? '<p class="text-xs text-gray-600 mb-2">เริ่มกรอกโดย <b>' + esc(a.owner) + '</b>' + (amOwner ? ' (คุณ)' : '') + ' — ท่านอื่นดูได้ แต่กรอก/แก้ได้เมื่อเจ้าของเปิดสิทธิ์ให้</p>'
+          : '<p class="text-xs text-gray-600 mb-2">ยังไม่มีใครเริ่มกรอก — ผู้ประสานงานทุกท่านกรอกได้ ใครกรอกก่อนจะเป็นเจ้าของรายวิชานี้</p>')
+      + (rows || '<p class="text-xs text-gray-400">ไม่มีผู้ประสานงานท่านอื่นในรายวิชานี้</p>')
+      + '</div>';
+  }
+  window.ploAclToggle = async function (nm) {
+    var st = state();
+    var a = subjAcl(st.eSubject, st.eYear, st.eSem);
+    if (!(isAllEdit() || (a.owner && nameKeyOf(a.owner) === nameKeyOf(meName())))) {
+      showToast('เปิดสิทธิ์ได้เฉพาะเจ้าของรายวิชา', 'error'); return;
+    }
+    var clos = closOf(st.eYear, st.eSem, st.eSubject);
+    if (!clos.length) { showToast('รายวิชานี้ยังไม่มี CLO', 'error'); return; }
+    var cur = a.shared.filter(function (x) { return nameKeyOf(x) !== nameKeyOf(nm); });
+    var adding = cur.length === a.shared.length;   // ไม่ได้อยู่ในรายการเดิม = กำลังเปิดสิทธิ์
+    if (adding) cur.push(s(nm));
+    var json = JSON.stringify(cur);
+    showToast('กำลังบันทึกสิทธิ์...');
+    for (var i = 0; i < clos.length; i++) {
+      var cid = cloNum(clos[i]);
+      var row = await sb().from('plo_clo').select('extra').eq('id', cid).maybeSingle();
+      if (row && row.error) { showToast('อ่านข้อมูล CLO ไม่สำเร็จ: ' + row.error.message, 'error'); return; }
+      var ex = (row && row.data && row.data.extra) || {};
+      ex.course_acl = json;
+      var up = await sb().from('plo_clo').update({ extra: ex }).eq('id', cid);
+      if (up.error) { showToast('บันทึกสิทธิ์ไม่สำเร็จ: ' + up.error.message, 'error'); return; }
+      clos[i].course_acl = json;
+    }
+    var t = document.getElementById('loadingToast'); if (t) t.remove();
+    aclReset();
+    showToast(adding ? 'เปิดสิทธิ์ให้ ' + s(nm) + ' กรอกข้อมูลรายวิชานี้แล้ว' : 'ปิดสิทธิ์ของ ' + s(nm) + ' แล้ว');
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  };
 
   /* ---------- หน้าต่างตั้งค่ารายวิชา ---------- */
   window.ploCourseCfgEdit = function () {
@@ -2498,6 +2665,9 @@
   };
   window.ploCfgSave = async function () {
     var st = state(), d = st._cfgDraft; if (!d) return;
+    if (!canEditSubjectAt(curSubjRec(), st.eSubject, st.eYear, st.eSem)) {
+      showToast(subjLockMsg(st.eSubject, st.eYear, st.eSem), 'error'); return;
+    }
     if (s(d.passPct) !== '' && (!isFinite(Number(d.passPct)) || Number(d.passPct) < 0 || Number(d.passPct) > 100)) {
       showToast('เกณฑ์ผ่านเริ่มต้นต้องอยู่ระหว่าง 0–100', 'error'); return;
     }
@@ -2636,7 +2806,9 @@
         }).join('') + '</tbody></table></div>';
     return summary + table
       + '<div class="flex flex-wrap items-center gap-2 mt-3">'
-      + (canEdit() ? '<button type="button" onclick="ploGradePush()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-white text-sm hover:bg-primaryDark"><i data-lucide="send" class="w-4 h-4"></i>ส่งเกรดเข้าหน้าผลการเรียน (' + nDone + ' คน)</button>' : '')
+      + (canPushGrade()
+          ? '<button type="button" onclick="ploGradePush()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-white text-sm hover:bg-primaryDark"><i data-lucide="send" class="w-4 h-4"></i>ส่งเกรดเข้าหน้าผลการเรียน (' + nDone + ' คน)</button>'
+          : '<span class="text-[11px] text-gray-500 inline-flex items-center gap-1"><i data-lucide="lock" class="w-3.5 h-3.5"></i>ส่งเกรดเข้าหน้าผลการเรียนได้เฉพาะผู้ดูแลระบบ · งานทะเบียน · รองผู้อำนวยการด้านวิชาการ</span>')
       + '<button type="button" onclick="ploXlsxTemplate()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-600 text-emerald-700 text-sm bg-white hover:bg-emerald-50"><i data-lucide="file-spreadsheet" class="w-4 h-4"></i>แบบบันทึกคะแนน Excel</button>'
       + '<button type="button" onclick="ploGradeCsv()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-600 text-emerald-700 text-sm bg-white hover:bg-emerald-50"><i data-lucide="download" class="w-4 h-4"></i>ดาวน์โหลดสรุปคะแนนและเกรด (CSV)</button>'
       + '<button type="button" onclick="ploCourseCfgEdit()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm bg-white hover:bg-gray-50"><i data-lucide="settings-2" class="w-4 h-4"></i>แก้ช่วงคะแนนเกรด</button>'
@@ -2671,7 +2843,7 @@
 
   window.ploGradePush = async function () {
     var st = state(), g = st._gradeRes;
-    if (!canEdit()) { showToast('ไม่มีสิทธิ์ส่งเกรด', 'error'); return; }
+    if (!canPushGrade()) { showToast('ส่งเกรดเข้าหน้าผลการเรียนได้เฉพาะผู้ดูแลระบบ งานทะเบียน และรองผู้อำนวยการด้านวิชาการ', 'error'); return; }
     if (!g) { showToast('ยังไม่มีผลสรุปเกรด — โหลดคะแนนในขั้นที่ 5 ก่อน', 'error'); return; }
     var ready = g.res.filter(function (r) { return r.complete && r.g; });
     if (!ready.length) { showToast('ยังไม่มีนักศึกษาที่คะแนนครบและตัดเกรดได้', 'error'); return; }
@@ -3151,6 +3323,10 @@
     var p = APP._ploCsv;
     if (!p) return;
     var st = state();
+    // ด่านสุดท้ายก่อนเขียนจริง — เผื่อเจ้าของปิดสิทธิ์ระหว่างที่หน้าต่างตรวจทานเปิดค้างอยู่
+    if (!isAllEdit() && s(st.eSubject) && !canEditSubjectAt(curSubjRec(), st.eSubject, st.eYear, st.eSem)) {
+      showToast(subjLockMsg(st.eSubject, st.eYear, st.eSem), 'error'); return;
+    }
     if (p.kind === 'comp') return ploCsvApplyComp(p);
     if (p.kind === 'raw') return ploCsvApplyRaw(p);
 
@@ -3329,7 +3505,8 @@
         + '</tbody></table></div>';
 
     var secs = sectionsOf(subj);
-    var form = '<div class="border border-gray-100 rounded-xl p-4 bg-surface/50 mb-4">'
+    var mayEdit = canEditSubjectAt(subj, st.eSubject, st.eYear, st.eSem);
+    var form = !mayEdit ? roBanner(subj) : '<div class="border border-gray-100 rounded-xl p-4 bg-surface/50 mb-4">'
       + '<p class="text-xs font-semibold text-gray-600 mb-2">เพิ่ม CLO'
       + (secs.length ? ' <span class="font-normal text-gray-500">— รายวิชานี้เป็น' + esc(s(subj.theory_practice)) + ' เลือกส่วนของ CLO ได้ (รหัสเดียวกันอยู่ได้ทั้งสองส่วน)</span>' : '') + '</p>'
       + '<div class="grid md:grid-cols-12 gap-2 items-end">'
@@ -3378,6 +3555,12 @@
       ? subjectsOf(st.eYear, st.eSem, st.eLevel)
       : subjectsOf(st.eYear, st.eSem, st.eLevel).filter(function (x) { return s(x.subject_code) === s(st.eSubject); });
     if (!targets.length) { showToast('ไม่พบรายวิชาปลายทาง', 'error'); return; }
+    var blocked = targets.filter(function (x) { return !canEditSubjectAt(x, x.subject_code, st.eYear, st.eSem); });
+    targets = targets.filter(function (x) { return canEditSubjectAt(x, x.subject_code, st.eYear, st.eSem); });
+    if (!targets.length) {
+      showToast(blocked.length === 1 ? subjLockMsg(blocked[0].subject_code, st.eYear, st.eSem) : 'ไม่มีรายวิชาที่คุณกรอกได้', 'error');
+      return;
+    }
 
     var batch = cohortPrefix(st.eYear, st.eLevel);
     var who = (APP.currentUser && APP.currentUser.name) || '';
@@ -3722,6 +3905,7 @@
   };
   window.ploCompClear = async function () {
     var d = state()._compDraft; if (!d) return;
+    { var _rg = (APP.allData || []).filter(function (x) { return String(x.__backendId) === String(d.id); })[0]; if (_rg && !canEditClo(_rg)) { showToast(lockMsg(_rg), 'error'); return; } }
     if (!confirm('ยกเลิกองค์ประกอบคะแนนของ CLO นี้?\nคะแนนร้อยละรวมที่บันทึกไว้แล้วยังอยู่ แต่จะกรอกเป็นร้อยละตรง ๆ แทน')) return;
     if (await compStore(d.id, [])) {
       closeModal(); state()._compDraft = null; state().scores = null;
@@ -3981,7 +4165,7 @@
     window.getPageContent = function (page) {
       // เมนูย่อย: สรุปผลรวม / บันทึกข้อมูล — ploAssess คงไว้ให้ลิงก์เดิมยังเปิดได้ (= สรุปผลรวม)
       if (page === 'ploSummary' || page === 'ploAssess') { state().tab = 'summary'; return window.ploPage(); }
-      if (page === 'ploEntry') { state().tab = canEdit() ? 'entry' : 'summary'; return window.ploPage(); }
+      if (page === 'ploEntry') { state().tab = canOpenEntry() ? 'entry' : 'summary'; return window.ploPage(); }
       return orig.apply(this, arguments);
     };
   })();
@@ -4009,7 +4193,7 @@
       if (!perms.ploAssess) return;
       var nav = document.getElementById('sidebarNav');
       if (!nav || nav.querySelector('[data-plo-menu]')) return;
-      var subs = [['ploSummary', 'สรุปผลรวม']].concat(canEdit() ? [['ploEntry', 'บันทึกข้อมูล']] : []);
+      var subs = [['ploSummary', 'สรุปผลรวม']].concat(canOpenEntry() ? [['ploEntry', 'บันทึกข้อมูล']] : []);
       var here = APP.currentPage;
       var btn;
       if (subs.length === 1) {
