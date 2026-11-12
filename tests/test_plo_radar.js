@@ -182,6 +182,14 @@ t('มีลายเส้นต่างกันรายปี เผื่�
   assert.strictEqual(new Set(dashes).size, dashes.length, 'มีลายเส้นซ้ำกัน');
   assert.ok(PL.includes('stroke-dasharray="' + "' + dash + '" + '"'), 'กราฟไม่ได้ใช้ลายเส้น');
 });
+t('ข้อความชี้จุดอยู่ "ใน" วงกลมของจุดนั้น ไม่ใช่วางข้าง ๆ', () => {
+  const g = grab('function radarSvg(axes, series, fixedMax)');
+  // <title> ที่เป็นพี่น้องกับ <circle> จะกลายเป็นชื่อของ <svg> ทั้งอัน
+  // ชี้จุดไหนก็ขึ้นข้อความของจุดแรกเสมอ
+  assert.ok(/r="2\.6" fill="' \+ col \+ '">' \+ tip/.test(g.replace(/\s+/g, ' ')), 'ข้อความชี้จุดยังไม่ได้อยู่ในวงกลม');
+  assert.ok(!/><\/circle>';\s*\n\s*if \(v > 0\) g \+= '<title>/.test(g), 'ยังวาง <title> ไว้ข้างนอก');
+  assert.ok(g.includes('r="9" fill="transparent"'), 'ไม่มีพื้นที่รับเมาส์ จุดรัศมี 2.6 เล็กเกินกว่าจะชี้โดน');
+});
 t('ป้ายกำกับและหัวตารางใช้ตัวอย่างเส้นชุดเดียวกับกราฟ', () => {
   assert.ok(/function radarSwatch\(i\)/.test(PL), 'ไม่มีตัวอย่างเส้น');
   assert.ok((PL.match(/radarSwatch\(i\)/g) || []).length >= 3, 'ใช้ไม่ครบทั้งป้ายกำกับและหัวตาราง');

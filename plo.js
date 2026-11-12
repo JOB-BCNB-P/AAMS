@@ -631,13 +631,22 @@
       });
       g += '<polygon class="radar-poly" style="--cx:' + CX + 'px;--cy:' + CY + 'px" points="' + pts.join(' ') + '" fill="' + col + '" fill-opacity="' + fillOp + '" stroke="' + col + '" stroke-width="2.2" stroke-linejoin="round"'
         + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '></polygon>';
+      /* <title> ต้องเป็น "ลูก" ของรูปที่มันอธิบาย
+         ของเดิมวางไว้ข้าง ๆ วงกลม จึงกลายเป็นชื่อของ <svg> ทั้งอัน
+         ชี้ตรงไหนก็ขึ้นข้อความของจุดแรกเสมอ (ชี้ PLO 3 แล้วขึ้น PLO 1)
+         และเพิ่มวงใสรัศมี 9 ไว้รับเมาส์ เพราะจุดจริงรัศมี 2.6 เล็กเกินกว่าจะชี้โดน */
       sr.values.forEach(function (v, i) {
         var q = pt(i, R * (max ? v / max : 0));
-        g += '<circle class="radar-dot" cx="' + (Math.round(q[0] * 10) / 10) + '" cy="' + (Math.round(q[1] * 10) / 10) + '" r="2.6" fill="' + col + '"></circle>';
-        if (v > 0) g += '<title>' + esc(sr.label) + ' · PLO ' + esc(axes[i].no) + ' = ' + v + ' ' + (sr.unit || 'รายวิชา') + '</title>';
+        var cx = Math.round(q[0] * 10) / 10, cy = Math.round(q[1] * 10) / 10;
+        var tip = v > 0
+          ? '<title>' + esc(sr.label) + ' · PLO ' + esc(axes[i].no) + ' = ' + v + ' ' + esc(sr.unit || 'รายวิชา') + '</title>'
+          : '';
+        g += '<circle class="radar-dot" cx="' + cx + '" cy="' + cy + '" r="2.6" fill="' + col + '">' + tip + '</circle>';
+        if (tip) g += '<circle cx="' + cx + '" cy="' + cy + '" r="9" fill="transparent">' + tip + '</circle>';
       });
     });
-    return '<svg viewBox="0 0 340 320" class="w-full" style="max-width:380px" role="img" aria-label="แผนภูมิใยแมงมุมจำนวนรายวิชาตาม PLO">' + g + '</svg>';
+    var unit = (series[0] && series[0].unit) || 'รายวิชา';
+    return '<svg viewBox="0 0 340 320" class="w-full" style="max-width:380px" role="img" aria-label="' + esc('แผนภูมิใยแมงมุม' + unit + 'ตาม PLO') + '">' + g + '</svg>';
   }
   /* ช่องเลือกปีการศึกษา
      ปีล่าสุดอยู่ซ้ายสุดและโชว์เป็นปุ่มไม่เกิน 6 ปี ปีที่เก่ากว่านั้นย้ายไปอยู่ในช่องเลือก
