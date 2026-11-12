@@ -4,7 +4,7 @@ let APP = {
   allData: [],
   config: { system_title: 'ระบบบริหารจัดการงานวิชาการ (AAMs)', college_name: 'วิทยาลัยพยาบาลบรมราชชนนี กรุงเทพ' },
   permissions: { admin: { dashboard: 1, ploAssess: 1, curriculum: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, practicumSites: 1, alumni: 1, teacherDirectory: 1, services: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, settings: 1, loginLog: 1, advisors: 1, surveyManage: 1, workload: 1, reportExam: 1, reportJob: 1, evalCourse: 1, evalSetup: 1, evalReport: 1, evalMine: 1, counsel: 1 }, academic: { dashboard: 1, ploAssess: 1, curriculum: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, practicumSites: 1, alumni: 1, teacherDirectory: 1, services: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, settings: 1, advisors: 1, survey: 1, workload: 1, reportExam: 1, reportJob: 1, evalCourse: 1, evalSetup: 1, evalReport: 1, evalMine: 1 }, registrar: { dashboard: 1, ploAssess: 1, curriculum: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, practicumSites: 1, alumni: 1, teacherDirectory: 1, services: 1, leave: 1, advisors: 1, survey: 1, reportExam: 1, reportJob: 1, evalCourse: 1, evalSetup: 1, evalReport: 1, evalMine: 1 }, deptHead: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, teacherDirectory: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, survey: 1, reportExam: 1, reportJob: 1, evalCourse: 1, evalReport: 1 }, teacher: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, tracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, survey: 1, evalCourse: 1, evalMine: 1, counsel: 1 }, classTeacher: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, tracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, survey: 1, evalCourse: 1, evalMine: 1, counsel: 1 }, student: { dashboard: 1, curriculum: 1, services: 1, students: 1, subjects: 1, grades: 1, engResults: 1, leave: 1, survey: 1, evalCourse: 1, evalDo: 1, workload: 1 }, otherStaff: { dashboard: 1, curriculum: 1, services: 1, workload: 1, survey: 1, counsel: 1 }, executive: { dashboard: 1, ploAssess: 1, curriculum: 1, services: 1, students: 1, subjects: 1, schedule: 1, grades: 1, engResults: 1, teachers: 1, specialTeachers: 1, practicumSites: 1, alumni: 1, teacherDirectory: 1, tracking: 1, resultTracking: 1, gradeTracking: 1, fileTracking: 1, leave: 1, advisors: 1, survey: 1, workload: 1, reportExam: 1, reportJob: 1, evalCourse: 1, evalReport: 1 } },
-  filters: { semester: '', academicYear: '', search: '', yearLevel: '' },
+  filters: { semester: '', academicYear: '', search: '', yearLevel: '', userRole: '' },
   pagination: { page: 1, perPage: 10 }
 };
 
@@ -814,6 +814,7 @@ function navigateTo(page) {
   APP.filters.semester = '';
   APP.filters.academicYear = '';
   APP.filters.yearLevel = '';
+  APP.filters.userRole = '';
   APP.filters._gradeStudent = '';
   APP.filters._engStudent = '';
   APP.filters._gradeSearch = '';
@@ -1512,6 +1513,19 @@ function filterBar(opts = {}) {
     const yrOptions = [...yrSet].sort();
     h += `<select onchange="APP.filters.academicYear=this.value;APP.pagination.page=1;renderCurrentPage()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm"><option value="">ทุกปีการศึกษา</option>${yrOptions.map(y => `<option value="${y}" ${yr === y ? 'selected' : ''}>${y}</option>`).join('')}</select>`;
   }
+  if (opts.userRole) {
+    // กรองจากบทบาท — นับทั้งบทบาทหลักและภาระงานเพิ่มเติม จะได้ไม่ตกหล่น
+    // (ผู้บริหารและประธานสาขาส่วนใหญ่เก็บเป็น role=teacher + extra_roles)
+    const cur = APP.filters.userRole || '';
+    const src = Array.isArray(opts.userRole) ? opts.userRole : getDataByType('user');
+    const cnt = {};
+    src.forEach(u => {
+      userRolesOf(u).forEach(r => { cnt[r] = (cnt[r] || 0) + 1; });
+    });
+    const order = Object.keys(SETTINGS_ROLE_LABELS).filter(r => cnt[r]);
+    Object.keys(cnt).forEach(r => { if (order.indexOf(r) === -1) order.push(r); });
+    h += `<select onchange="APP.filters.userRole=this.value;APP.pagination.page=1;renderCurrentPage()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm"><option value="">ทุกบทบาท (${src.length} คน)</option>${order.map(r => `<option value="${htmlEsc(r)}" ${cur === r ? 'selected' : ''}>${htmlEsc(SETTINGS_ROLE_LABELS[r] || r)} (${cnt[r]})</option>`).join('')}</select>`;
+  }
   if (opts.yearLevel) {
     const yl = APP.filters.yearLevel || '';
     h += `<select onchange="APP.filters.yearLevel=this.value;APP.pagination.page=1;renderCurrentPage()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm"><option value="">ทุกชั้นปี</option><option value="1" ${yl === '1' ? 'selected' : ''}>ชั้นปี 1</option><option value="2" ${yl === '2' ? 'selected' : ''}>ชั้นปี 2</option><option value="3" ${yl === '3' ? 'selected' : ''}>ชั้นปี 3</option><option value="4" ${yl === '4' ? 'selected' : ''}>ชั้นปี 4</option></select>`;
@@ -1541,6 +1555,14 @@ function noYearSelectedMsg(pageName) {
   return '<div class="bg-blue-50 rounded-2xl p-8 text-center text-blue-600 mt-4"><i data-lucide="info" class="w-6 h-6 inline mr-2"></i>กรุณาเลือกปีการศึกษาเพื่อดูข้อมูล' + pageName + '</div>';
 }
 
+// บทบาททั้งหมดของบัญชีหนึ่ง = บทบาทหลัก + ภาระงานเพิ่มเติม (ไม่ซ้ำ)
+function userRolesOf(u) {
+  return String((u && u.role) || '').split(',')
+    .concat(String((u && u.extra_roles) || '').split(','))
+    .map(x => x.trim()).filter(Boolean)
+    .filter((x, i, a) => a.indexOf(x) === i);
+}
+
 function applyFilters(data) {
   let d = data;
 
@@ -1548,6 +1570,7 @@ function applyFilters(data) {
   if (APP.filters.semester) d = d.filter(x => normSem(x.semester) === APP.filters.semester);
   if (APP.filters.academicYear) d = d.filter(x => norm(x.academic_year) === APP.filters.academicYear);
   if (APP.filters.yearLevel) d = d.filter(x => norm(x.year_level) === APP.filters.yearLevel);
+  if (APP.filters.userRole) d = d.filter(x => userRolesOf(x).indexOf(APP.filters.userRole) !== -1);
   return d;
 }
 
@@ -12316,26 +12339,28 @@ function settingsHead(title, icon, desc) {
 
 function settingsUsersPage() {
   const roleLabels = SETTINGS_ROLE_LABELS;
-  const users = applyFilters(getDataByType('user'));
+  const allUsers = getDataByType('user');
+  const users = applyFilters(allUsers);
   const total = users.length; const paged = paginate(users);
+  const filtered = total !== allUsers.length;
   const usersTable = paged.map(u => `<tr class="border-t hover:bg-gray-50">
     <td class="px-4 py-3">${u.name || ''}</td>
     <td class="px-4 py-3">${u.email || u.student_id || u.username || u.national_id || ''}</td>
-    <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs bg-surface">${roleLabels[u.role] || u.role}</span>${String(u.extra_roles || '').split(',').map(x => x.trim()).filter(Boolean).map(r => `<span class="ml-1 px-2 py-1 rounded-full text-xs bg-blue-50 text-blue-700" title="ภาระงานเพิ่มเติม">+ ${roleLabels[r] || r}</span>`).join('')}</td>
+    <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs bg-surface">${roleLabels[u.role] || u.role}</span>${String(u.extra_roles || '').split(',').map(x => x.trim()).filter(Boolean).map(r => `<span class="ml-1 px-2 py-1 rounded-full text-xs bg-blue-50 text-blue-700" title="ภาระงานเพิ่มเติม">+ ${roleLabels[r] || r}</span>`).join('')}${norm(u.exec_area) ? `<span class="ml-1 px-2 py-1 rounded-full text-xs bg-amber-50 text-amber-700" title="ตำแหน่งผู้บริหาร">${htmlEsc(execAreaLabel(u.exec_area))}</span>` : ''}</td>
     <td class="px-4 py-3"><div class="flex gap-1">${(typeof emsCanViewAs === 'function' && emsCanViewAs()) ? `<button onclick="emsViewAsUser('${u.__backendId}')" class="text-amber-500 hover:text-amber-700" title="ดูแทนผู้ใช้ (อ่านอย่างเดียว)"><i data-lucide="eye" class="w-4 h-4"></i></button>` : ''}<button onclick="showEditUserModal('${u.__backendId}')" class="text-blue-400 hover:text-blue-600" title="แก้ไข"><i data-lucide="pencil" class="w-4 h-4"></i></button><button onclick="deleteRecord('${u.__backendId}')" class="text-red-400 hover:text-red-600" title="ลบ"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>
   </tr>`).join('');
 
   return settingsHead('จัดการผู้ใช้งาน', 'users', 'เพิ่ม แก้ไข และลบบัญชีผู้ใช้') + `
   <div class="bg-white rounded-2xl p-5 border border-blue-100 mb-6">
     <div class="flex items-center justify-between mb-4">
-      <h3 class="font-bold">จัดการผู้ใช้งาน (${total} คน)</h3>
+      <h3 class="font-bold">จัดการผู้ใช้งาน (${filtered ? total + ' จาก ' + allUsers.length : total} คน)</h3>
       <button onclick="showAddUserModal()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primaryDark text-sm"><i data-lucide="plus" class="w-4 h-4"></i>เพิ่มผู้ใช้</button>
     </div>
-    ${filterBar({ semester: false, year: false })}
+    ${filterBar({ semester: false, year: false, userRole: allUsers })}
     <div class="overflow-x-auto">
       <table class="w-full text-sm table-fixed">
         <thead><tr class="bg-surface text-left"><th class="px-4 py-3 font-semibold" style="width: 30%;">ชื่อ-สกุล</th><th class="px-4 py-3 font-semibold" style="width: 35%;">ชื่อผู้ใช้/Email/รหัสประชาชน</th><th class="px-4 py-3 font-semibold" style="width: 25%;">บทบาท</th><th class="px-4 py-3" style="width: 10%;"></th></tr></thead>
-        <tbody>${usersTable || '<tr><td colspan="4" class="px-4 py-8 text-center text-gray-400">ยังไม่มีผู้ใช้</td></tr>'}</tbody>
+        <tbody>${usersTable || `<tr><td colspan="4" class="px-4 py-8 text-center text-gray-400">${filtered ? 'ไม่มีผู้ใช้ที่ตรงกับตัวกรอง' : 'ยังไม่มีผู้ใช้'}</td></tr>`}</tbody>
       </table>
     </div>
     ${paginationHTML(total, APP.pagination.perPage, APP.pagination.page, 'changePage')}
