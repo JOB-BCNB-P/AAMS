@@ -4,6 +4,7 @@
    2) รหัสย่อย 1.1 ต้องนับรวมเข้า PLO 1 ไม่งั้นแกนจะว่างทั้งที่มีข้อมูล
    3) นับเป็นจำนวนรายวิชาที่ไม่ซ้ำ ไม่ใช่จำนวนแถว */
 const fs = require('fs');
+const vm = require('vm');
 const path = require('path');
 const assert = require('assert');
 const ROOT = path.join(__dirname, '..');
@@ -182,6 +183,34 @@ t('มีลายเส้นต่างกันรายปี เผื่�
   assert.strictEqual(new Set(dashes).size, dashes.length, 'มีลายเส้นซ้ำกัน');
   assert.ok(PL.includes('stroke-dasharray="' + "' + dash + '" + '"'), 'กราฟไม่ได้ใช้ลายเส้น');
 });
+t('ลองใหม่เองเมื่อเจอข้อผิดพลาดชั่วคราว', () => {
+  const sb = {};
+  vm.createContext(sb);
+  new vm.Script(grab('function transientErr(msg)') + '\n' + grab('function friendlyErr(msg)')).runInContext(sb);
+  // เคสจริงที่เจอ : นาฬิกาเครื่องกับเซิร์ฟเวอร์คลาดกันเสี้ยววินาที
+  ['JWT issued at future', 'Failed to fetch', 'NetworkError when attempting to fetch', '503 Service Unavailable']
+    .forEach(m => assert.ok(sb.transientErr(m), 'ไม่ถือว่า "' + m + '" เป็นข้อผิดพลาดชั่วคราว'));
+  // ข้อผิดพลาดจริงต้องไม่วนลองซ้ำ
+  ['permission denied for table plo_score', 'column x does not exist']
+    .forEach(m => assert.ok(!sb.transientErr(m), 'ลองซ้ำกับ "' + m + '" ซึ่งลองกี่ครั้งก็ไม่ผ่าน'));
+  assert.ok(/เวลาของเครื่องกับเซิร์ฟเวอร์ไม่ตรงกัน/.test(sb.friendlyErr('JWT issued at future')),
+    'ยังโชว์ข้อความดิบที่ผู้ใช้อ่านไม่รู้เรื่อง');
+});
+t('เรียก RPC ผ่านตัวช่วยที่ลองซ้ำได้ ไม่เรียกตรง', () => {
+  const g = grab('async function rpcTry(name, args)');
+  assert.ok(/for \(var i = 0; i < 3/.test(g), 'ไม่ได้จำกัดจำนวนครั้ง หรือลองน้อยไป');
+  assert.ok(g.includes('transientErr'), 'ลองซ้ำกับทุกข้อผิดพลาด');
+  assert.ok(g.includes('auth.getSession()'), 'ไม่ได้ขอเซสชันใหม่ก่อนลองรอบถัดไป');
+  const load = grab('async function loadScoreYear(year)');
+  assert.ok(load.includes("rpcTry('ems_plo_summary'"), 'ใยแมงมุมยังเรียก RPC ตรง');
+  const main = grab('window.ploLoad = async function (quiet)');
+  assert.ok(main.includes("rpcTry('ems_plo_summary'"), 'หน้าสรุปผลยังเรียก RPC ตรง');
+});
+t('มีปุ่มลองใหม่ให้กดเอง และลบเฉพาะปีที่พลาด', () => {
+  assert.ok(PL.includes('ploRadarRetry()'), 'ไม่มีปุ่มลองใหม่');
+  const g = grab('window.ploRadarRetry = function ()');
+  assert.ok(g.includes('cache[k].err'), 'ลบผลที่โหลดสำเร็จแล้วทิ้งไปด้วย ทำให้ต้องโหลดใหม่ทั้งหมด');
+});
 t('ข้อความชี้จุดอยู่ "ใน" วงกลมของจุดนั้น ไม่ใช่วางข้าง ๆ', () => {
   const g = grab('function radarSvg(axes, series, fixedMax)');
   // <title> ที่เป็นพี่น้องกับ <circle> จะกลายเป็นชื่อของ <svg> ทั้งอัน
@@ -246,7 +275,7 @@ t('ตรรกะการเฉลี่ยทำงานถูก', () => {
 });
 t('เรียกสรุปแยกรายปี และจำผลไว้ไม่เรียกซ้ำ', () => {
   const g = grab('async function loadScoreYear(year)');
-  assert.ok(g.includes("rpc('ems_plo_summary'"), 'ไม่ได้เรียกตัวคำนวณของฐานข้อมูล');
+  assert.ok(g.includes("rpcTry('ems_plo_summary'"), 'ไม่ได้เรียกตัวคำนวณของฐานข้อมูล');
   assert.ok(g.includes('p_year: s(year)'), 'ไม่ได้แยกตามปีการศึกษา');
   assert.ok(g.includes('if (cache[k]) return;'), 'เรียกซ้ำทุกครั้งที่วาดหน้าใหม่');
   assert.ok(g.includes('scoreKey(') && /scoreKey\(year\) \{[\s\S]*curriculum/.test(PL),
@@ -254,7 +283,7 @@ t('เรียกสรุปแยกรายปี และจำผลไ�
 });
 t('โหลดไม่สำเร็จต้องบอก ไม่ใช่เงียบ', () => {
   const g = grab('async function loadScoreYear(year)');
-  assert.ok(g.includes('err: String(e.message || e)'), 'กลืนข้อผิดพลาด');
+  assert.ok(g.includes('err: friendlyErr(e.message || e)'), 'กลืนข้อผิดพลาด');
   assert.ok(grab('function radarCard()').includes('โหลดไม่สำเร็จ'), 'ไม่ได้แสดงข้อผิดพลาดบนหน้าจอ');
 });
 t('สเกลตรึง 0-100 ในโหมดร้อยละ', () => {

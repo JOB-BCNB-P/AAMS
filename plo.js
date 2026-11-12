@@ -421,21 +421,21 @@
     if (!quiet && typeof showToast === 'function') showToast('กำลังคำนวณผลการบรรลุ...');
     if (quiet && typeof renderCurrentPage === 'function') renderCurrentPage();   // ให้เห็นว่ากำลังคำนวณ
     try {
-      var r = await sb().rpc('ems_plo_summary', {
+      var r = await rpcTry('ems_plo_summary', {
         p_curriculum: st.curriculum,
         p_batch: st.batch || null,
         p_year: st.year || null,
         p_semester: st.sem || null
       });
       var t = document.getElementById('loadingToast'); if (t) t.remove();
-      if (r.error) { showToast('โหลดไม่สำเร็จ: ' + r.error.message, 'error'); st.loading = false; return; }
+      if (r.error) { showToast('โหลดไม่สำเร็จ: ' + friendlyErr(r.error.message), 'error'); st.loading = false; return; }
       st.summary = r.data || {}; st._aggMode = null;
       try { await tagSections([].concat(st.summary['ราย CLO'] || [], st.summary['รายวิชาที่ต้องติดตาม'] || [])); } catch (e2) { }
       st.loading = false;
       if (!quiet && typeof showToast === 'function') showToast('คำนวณเสร็จแล้ว');
     } catch (e) {
       st.loading = false;
-      if (typeof showToast === 'function') showToast('โหลดไม่สำเร็จ: ' + e, 'error');
+      if (typeof showToast === 'function') showToast('โหลดไม่สำเร็จ: ' + friendlyErr(e && e.message || e), 'error');
     }
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
   };
@@ -513,6 +513,42 @@
      วิธีรวมขึ้นเป็น PLO : เฉลี่ยค่าร้อยละของ CLO (mode 'mean') ตามแนวปฏิบัติ OBE สากล
      ไม่ใช้การกองรวมทุกผลการประเมิน เพราะ CLO ที่มีนักศึกษาเยอะจะครอบงำค่าของ PLO ทั้งข้อ
      ต้องเรียกสรุปแยกรายปี เพราะ ems_plo_summary คิดตามตัวกรองครั้งละชุด */
+  /* ================= เรียก RPC แบบทนสะดุด =================
+     "JWT issued at future" เกิดเมื่อเวลาของเครื่องที่ออกโทเคนกับเครื่องที่ตรวจโทเคน
+     คลาดกันเสี้ยววินาที มักเกิดตอนโทเคนถูกต่ออายุพอดีระหว่างเรียกหลายรายการต่อกัน
+     ลองใหม่อีกครั้งมักผ่าน · ถ้าไม่ผ่านจริงค่อยบอกผู้ใช้ด้วยข้อความที่เข้าใจได้ */
+  function transientErr(msg) {
+    return /issued at future|jwt expired|invalid jwt|failed to fetch|networkerror|load failed|50[234]/i.test(String(msg || ''));
+  }
+  function friendlyErr(msg) {
+    var m = String(msg || '');
+    if (/issued at future|jwt/i.test(m)) {
+      return 'เวลาของเครื่องกับเซิร์ฟเวอร์ไม่ตรงกัน — ลองใหม่อีกครั้ง หรือตั้งเวลาเครื่องให้ซิงก์อัตโนมัติ';
+    }
+    if (/failed to fetch|networkerror|load failed/i.test(m)) return 'เชื่อมต่อไม่ได้ — ตรวจสัญญาณอินเทอร์เน็ตแล้วลองใหม่';
+    return m;
+  }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  // เรียก RPC แล้วลองซ้ำได้สูงสุด 3 ครั้ง เฉพาะข้อผิดพลาดชั่วคราว
+  async function rpcTry(name, args) {
+    var last = null;
+    for (var i = 0; i < 3; i++) {
+      if (i) await wait(i * 900);
+      try {
+        var r = await sb().rpc(name, args);
+        if (!r.error) return r;
+        last = r.error.message;
+        if (!transientErr(last)) return r;
+      } catch (e) {
+        last = (e && e.message) || String(e);
+        if (!transientErr(last)) throw e;
+      }
+      // โทเคนเพิ่งต่ออายุแล้วเวลาคลาดกัน — ขอเซสชันใหม่ก่อนลองอีกรอบ
+      try { if (/jwt/i.test(String(last))) await sb().auth.getSession(); } catch (e2) { }
+    }
+    return { error: { message: last || 'เรียกข้อมูลไม่สำเร็จ' }, data: null };
+  }
+
   function scoreCache() {
     var st = state();
     if (!st.radarScore) st.radarScore = {};
@@ -524,7 +560,7 @@
     if (cache[k]) return;
     cache[k] = { loading: true, map: {}, err: '' };
     try {
-      var r = await sb().rpc('ems_plo_summary', {
+      var r = await rpcTry('ems_plo_summary', {
         p_curriculum: state().curriculum, p_batch: null, p_year: s(year), p_semester: null
       });
       if (r.error) throw new Error(r.error.message);
@@ -533,7 +569,7 @@
         .forEach(function (x) { if (x.k) map[x.k] = x.pct; });
       cache[k] = { loading: false, map: map, err: '', n: (sum['ราย CLO'] || []).length };
     } catch (e) {
-      cache[k] = { loading: false, map: {}, err: String(e.message || e) };
+      cache[k] = { loading: false, map: {}, err: friendlyErr(e.message || e), retry: transientErr(e.message || e) };
     }
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
   }
@@ -762,7 +798,10 @@
         + modeBtn('year', 'จำนวนรายวิชา') + modeBtn('map', 'แผนที่หลักสูตร') + '</div></div>'
       + '<div class="mb-3">' + picker + '</div>'
       + (loading ? '<p class="text-sm text-gray-400 py-6 text-center"><span class="ems-spin" style="margin-right:.4em"></span>กำลังคำนวณผลการบรรลุ ' + loading + ' ปี...</p>' : '')
-      + (errs.length ? '<p class="text-xs text-red-500 mb-2">โหลดไม่สำเร็จ · ' + esc(errs.join(' · ')) + '</p>' : '')
+      + (errs.length
+          ? '<p class="text-xs text-red-500 mb-2">โหลดไม่สำเร็จ · ' + esc(errs.join(' · '))
+            + ' <button type="button" onclick="ploRadarRetry()" class="ml-1 px-2 py-0.5 rounded-lg border border-red-200 text-red-600 bg-white hover:bg-red-50">ลองใหม่</button></p>'
+          : '')
       + (series.length
         ? '<div class="grid md:grid-cols-2 gap-5 items-center">'
           + '<div class="flex justify-center">' + radarSvg(axes, series, rs.mode === 'score' ? 100 : 0) + '</div>'
@@ -792,6 +831,12 @@
       while (ys.length > RADAR_MAX_YEARS) ys.shift();
     }
     rs.years = ys.sort();
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  };
+  // ลบผลที่โหลดไม่สำเร็จทิ้ง แล้วให้โหลดใหม่รอบหน้า (ของที่โหลดสำเร็จแล้วไม่ต้องโหลดซ้ำ)
+  window.ploRadarRetry = function () {
+    var cache = scoreCache();
+    Object.keys(cache).forEach(function (k) { if (cache[k] && cache[k].err) delete cache[k]; });
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
   };
   window.ploRadarYearClear = function () {
