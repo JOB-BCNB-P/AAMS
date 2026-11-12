@@ -266,6 +266,11 @@
     var u = APP.currentUser || {};
     var a = s(u.exec_area);
     if (a) return a;
+    // ems_whoami() ส่งด้านของผู้ใช้เองมาด้วย — ตาราง user อ่านไม่ได้ทุกบทบาท
+    try {
+      var pr = (GSheetDB && GSheetDB.profile) ? GSheetDB.profile() : null;
+      if (pr && s(pr.exec_area)) return s(pr.exec_area);
+    } catch (e) { }
     var k = nameKeyOf(u.name);
     var row = get('user').filter(function (x) { return nameKeyOf(x.name) === k; })[0];
     return row ? s(row.exec_area) : '';

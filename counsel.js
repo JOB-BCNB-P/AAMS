@@ -65,16 +65,37 @@
     var a = s(u && u.is_active).toLowerCase();
     return !(a === '0' || a === 'false' || a === 'no' || a === 'ไม่ใช้งาน' || a === 'ปิด');
   }
-  // รายชื่อผู้รับเคส เรียงตามลำดับด้านใน REFER_AREAS
+  /* รายชื่อผู้รับเคส เรียงตามลำดับด้านใน REFER_AREAS
+     ตาราง app_user เปิดให้อ่านเฉพาะผู้ดูแล/งานวิชาการ/งานทะเบียน กับแถวของตัวเอง
+     อาจารย์จึงหาเองไม่ได้ ต้องถามผ่าน ems_exec_names() ซึ่งคืนแค่ชื่อกับด้าน
+     ผลที่ได้พักไว้ในหน่วยความจำ ไม่ต้องถามซ้ำทุกครั้งที่วาดหน้า */
+  var _execCache = null;
   function referTargets() {
-    var users = get('user').filter(function (u) {
+    var users = (_execCache || []).concat(get('user').filter(function (u) {
       return isExecRow(u) && isActiveUserRow(u) && s(u.name) && REFER_AREAS.indexOf(s(u.exec_area)) >= 0;
-    });
-    var out = [];
+    }));
+    var out = [], seen = {};
     REFER_AREAS.forEach(function (a) {
-      users.forEach(function (u) { if (s(u.exec_area) === a) out.push(u); });
+      users.forEach(function (u) {
+        var k = nameKey(u.name);
+        if (s(u.exec_area) === a && !seen[k]) { seen[k] = 1; out.push(u); }
+      });
     });
     return out;
+  }
+  // ถามรายชื่อผู้บริหารจากฐานข้อมูลครั้งเดียวต่อการเปิดหน้า แล้ววาดใหม่เมื่อได้ผล
+  var _execAsked = false;
+  function loadExecNames() {
+    if (_execAsked || !window.GSheetDB || !GSheetDB.client) return;
+    _execAsked = true;
+    try {
+      GSheetDB.client().rpc('ems_exec_names', { p_areas: REFER_AREAS }).then(function (r) {
+        if (r && !r.error && Array.isArray(r.data) && r.data.length) {
+          _execCache = r.data.map(function (x) { return { name: s(x.name), exec_area: s(x.exec_area), is_active: '1', role: 'executive' }; });
+          if (typeof renderCurrentPage === 'function') renderCurrentPage();
+        }
+      }, function () { });
+    } catch (e) { }
   }
   function referToText() {
     var t = referTargets();
@@ -861,6 +882,7 @@
     if (!canUse()) return noPerm();
     var st = state();
     var d = draftOf(st.editCode);
+    loadExecNames();
     if (st.editCode && !sessionByCode(st.editCode)) return noPerm();
     // เห็นบันทึกของอาจารย์ท่านอื่นได้ (เพราะมีนักศึกษาของเราอยู่) แต่แก้ไม่ได้
     if (st.editCode && !canEdit(sessionByCode(st.editCode))) return noPerm();

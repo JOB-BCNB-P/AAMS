@@ -254,6 +254,9 @@
       APP.currentUser = { name: profile.name || email || ROLE_LABEL[role] || 'ผู้ใช้', role: role, email: email };
     }
 
+    // ด้านที่รับผิดชอบของผู้บริหาร — มาจาก ems_whoami()
+    // ตาราง app_user อ่านได้เฉพาะผู้ดูแล/งานวิชาการ/งานทะเบียน หน้าเว็บจึงหาเองไม่ได้
+    APP.currentUser.exec_area = (profile && profile.exec_area) || '';
     APP.currentRole = APP.currentUser.role;
   }
 
@@ -1311,6 +1314,7 @@
       name: u.name || '', email: u.email || '', username: u.username || '',
       department: u.department || '', responsible_year: u.responsible_year || '',
       student_id: u.student_id || '',
+      exec_area: String(u.exec_area || '').trim(),
       // พันธกิจภาระงานนักศึกษาที่บัญชีนี้ได้รับมอบหมาย
       // ถ้าไม่ส่งต่อไป หน้าภาระงานจะเข้าใจว่า "ไม่จำกัด" แล้วเปิดให้แก้ทุกพันธกิจ
       workload_missions: String(u.workload_missions || '').trim()

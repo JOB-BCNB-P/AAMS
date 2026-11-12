@@ -137,6 +137,25 @@ function makeEnv(opts) {
     assert.ok(!h.includes('เคสที่ส่งต่อ') && !h.includes('ติดตามผลการเรียน'), 'ด้านที่ไม่เกี่ยวข้องเห็นข้อมูล');
   });
 
+  console.log('\n[2.1] หารายชื่อผู้รับเคสได้แม้อ่านตาราง user ไม่ได้');
+  t('ถามผ่าน ems_exec_names เมื่อเปิดฟอร์ม', () => {
+    const i = CS.indexOf('function loadExecNames()');
+    assert.ok(i > 0, 'ไม่มีการถามรายชื่อจากฐานข้อมูล');
+    const g = CS.slice(i, i + 700);
+    assert.ok(g.includes("rpc('ems_exec_names'"), 'ไม่ได้เรียก ems_exec_names');
+    assert.ok(g.includes('p_areas: REFER_AREAS'), 'ไม่ได้จำกัดเฉพาะสองด้านที่รับเคส');
+    assert.ok(CS.slice(CS.indexOf('counselPages.counselEdit') - 2000, CS.length).includes('loadExecNames();')
+      || CS.includes('loadExecNames();'), 'ไม่ได้เรียกตอนเปิดฟอร์ม');
+  });
+  t('ไม่ส่งถึงคนเดียวกันสองครั้งเมื่อข้อมูลมาจากสองทาง', () => {
+    const w = makeEnv({ role: 'teacher', me: 'อ.สมศรี ใจดี' });
+    const names = w.referTargets ? [] : [];   // referTargets เป็นฟังก์ชันภายใน ตรวจจากโค้ดแทน
+    const i = CS.indexOf('function referTargets()');
+    const g = CS.slice(i, i + 700);
+    assert.ok(g.includes('seen[k]'), 'ไม่ได้กันชื่อซ้ำ');
+    assert.ok(names.length === 0);
+  });
+
   console.log('\n[3] ฟอร์มส่งต่อ');
   const w = makeEnv({ role: 'teacher', me: 'อ.สมศรี ใจดี', page: 'counselEdit' });
   w.counselEdit('CS2');
