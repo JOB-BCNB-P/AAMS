@@ -1051,6 +1051,175 @@
       + '</div>';
   }
 
+  /* ================= นักศึกษาที่ควรกำกับติดตาม =================
+     รวมผลราย CLO ของทุกคนในขอบเขตที่เลือก แล้วเรียงคนที่ผ่านน้อยที่สุดขึ้นก่อน
+     เกณฑ์ : ร้อยละ CLO ที่ผ่าน ต่ำกว่าเส้นที่ตั้งไว้ (ค่าเริ่มต้น 60% เท่าเกณฑ์ผ่านรายวิชา)
+     คิดที่ฝั่งเครื่องจากข้อมูลที่มีสิทธิ์ดูอยู่แล้ว ไม่ต้องเพิ่มฟังก์ชันในฐานข้อมูล */
+  var WATCH_LEVELS = [
+    { max: 50, key: 'urgent', label: 'เร่งด่วน', cls: 'bg-red-50 text-red-700 border-red-200', bar: '#ef4444' },
+    { max: 101, key: 'watch', label: 'ควรติดตาม', cls: 'bg-amber-50 text-amber-700 border-amber-200', bar: '#f59e0b' }
+  ];
+  function watchLevel(pct) {
+    for (var i = 0; i < WATCH_LEVELS.length; i++) if (pct < WATCH_LEVELS[i].max) return WATCH_LEVELS[i];
+    return WATCH_LEVELS[WATCH_LEVELS.length - 1];
+  }
+  function watchCut() { var v = n(state().stuWatchPct); return v > 0 ? v : 60; }
+  // CLO ที่อยู่ในขอบเขตที่เลือก และผู้ใช้มีสิทธิ์ดู
+  function watchClos() {
+    var st = state(), y = s(st.stuYear), sem = s(st.stuSem), code = s(st.stuSubj);
+    var okSubj = {};
+    get('subject').forEach(function (x) { if (canViewSubject(x)) okSubj[s(x.subject_code)] = 1; });
+    return get('plo_clo').filter(function (c) {
+      if (s(c.curriculum_year) !== s(st.curriculum)) return false;
+      if (y && s(c.academic_year) !== y) return false;
+      if (sem && normSemKey(c.semester) !== normSemKey(sem)) return false;
+      if (code && s(c.subject_code) !== code) return false;
+      return !!okSubj[s(c.subject_code)];
+    });
+  }
+  var _watch = {};
+  function watchKey() {
+    var st = state();
+    return [st.curriculum, st.stuYear, st.stuSem, st.stuSubj, st.stuLevel].join('|');
+  }
+  async function loadWatch(key, clos) {
+    _watch[key] = { loading: true };
+    try {
+      var ids = clos.map(function (c) { return cloNum(c); }).filter(Boolean);
+      if (!ids.length) { _watch[key] = { loading: false, rows: [], none: true }; }
+      else {
+        var r = await rpcTry('ems_plo_scores', { clo_ids: ids });
+        if (r.error) throw new Error(r.error.message);
+        _watch[key] = { loading: false, raw: r.data || [] };
+      }
+    } catch (e) {
+      _watch[key] = { loading: false, err: friendlyErr(e && e.message || e) };
+    }
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  }
+  // รวมคะแนนดิบเป็นผลรายคน (ทำตอนวาด เพราะเส้นเกณฑ์และตัวกรองชั้นปีเปลี่ยนได้โดยไม่ต้องโหลดใหม่)
+  function watchRows(raw, clos) {
+    var axes = radarAxes(state().curriculum);
+    var byId = {};
+    clos.forEach(function (c) { byId[String(cloNum(c))] = c; });
+    var stuById = {};
+    get('student').forEach(function (x) { stuById[s(x.student_id)] = x; });
+    var lv = s(state().stuLevel);
+    var agg = {};
+    (raw || []).forEach(function (row) {
+      var c = byId[String(row.clo_id)]; if (!c) return;
+      var sid = s(row.student_id); if (!sid) return;
+      var stu = stuById[sid];
+      if (lv && s(stu && stu.year_level) !== lv) return;
+      if (stu && typeof isActiveStudent === 'function' && !isActiveStudent(stu)) return;
+      var passCut = s(c.pass_score) === '' ? null : n(c.pass_score);
+      var sc = (row.score === null || row.score === undefined || s(row.score) === '') ? null : n(row.score);
+      if (sc === null || passCut === null) return;             // ยังไม่มีคะแนน = ไม่นำมาตัดสิน
+      var a = agg[sid] || (agg[sid] = { sid: sid, name: s(stu && stu.name), level: s(stu && stu.year_level), tot: 0, pass: 0, plo: {} });
+      var pk = toParentPlo(s(c.plo_code), axes) || s(c.plo_code);
+      var g = a.plo[pk] || (a.plo[pk] = { tot: 0, pass: 0 });
+      a.tot++; g.tot++;
+      if (sc >= passCut) { a.pass++; g.pass++; }
+    });
+    var cut = watchCut();
+    return Object.keys(agg).map(function (k) {
+      var a = agg[k];
+      a.pct = a.tot ? Math.round(a.pass / a.tot * 10000) / 100 : 0;
+      a.badPlo = Object.keys(a.plo).filter(function (pk) {
+        var g = a.plo[pk];
+        return g.tot && (g.pass / g.tot * 100) < cut;
+      }).sort(function (x, y) { var p = ploNo(x), q = ploNo(y); return (p[0] - q[0]) || (p[1] - q[1]); });
+      return a;
+    }).sort(function (x, y) { return x.pct - y.pct || s(x.sid).localeCompare(s(y.sid)); });
+  }
+
+  function watchPanel() {
+    var st = state();
+    var clos = watchClos();
+    var key = watchKey();
+    var c = _watch[key];
+    if (!c) { loadWatch(key, clos); c = { loading: true }; }
+
+    var cut = watchCut();
+    var cutSel = '<select onchange="ploWatchCut(this.value)" class="border border-gray-200 rounded-lg px-2 py-1 text-xs">'
+      + [50, 60, 70, 80].map(function (v) { return '<option value="' + v + '"' + (cut === v ? ' selected' : '') + '>ต่ำกว่า ' + v + '%</option>'; }).join('')
+      + '</select>';
+    var head = '<div class="flex flex-wrap items-center justify-between gap-2 mb-1">'
+      + '<p class="font-semibold text-gray-800 text-sm"><i data-lucide="user-x" class="w-4 h-4 inline mr-1 text-red-500"></i>นักศึกษาที่ควรกำกับติดตาม</p>'
+      + '<div class="flex items-center gap-2"><span class="text-xs text-gray-500">เกณฑ์</span>' + cutSel + '</div></div>';
+
+    if (c.loading) return panel(head + hint('กำลังรวบรวมผลของนักศึกษาในขอบเขตที่เลือก...'));
+    if (c.err) return panel(head + '<p class="text-xs text-red-500">โหลดไม่สำเร็จ · ' + esc(c.err)
+      + ' <button type="button" onclick="ploWatchRetry()" class="ml-1 px-2 py-0.5 rounded-lg border border-red-200 text-red-600 bg-white hover:bg-red-50">ลองใหม่</button></p>');
+    if (c.none) return panel(head + hint('ยังไม่มี CLO ที่กำหนดคะแนนในขอบเขตที่เลือก'));
+
+    var all = watchRows(c.raw, clos);
+    if (!all.length) return panel(head + hint('ยังไม่มีผลการประเมินของนักศึกษาในขอบเขตที่เลือก'));
+    var bad = all.filter(function (x) { return x.pct < cut; });
+    var urgent = bad.filter(function (x) { return x.pct < 50; }).length;
+
+    var sum = '<div class="grid grid-cols-3 gap-2 mb-3">'
+      + [['นักศึกษาที่มีผล', all.length + ' คน', 'border-gray-100 bg-surface', 'text-gray-800'],
+         ['ควรกำกับติดตาม', bad.length + ' คน', 'border-amber-200 bg-amber-50', 'text-amber-700'],
+         ['เร่งด่วน (ต่ำกว่า 50%)', urgent + ' คน', 'border-red-200 bg-red-50', 'text-red-700']]
+        .map(function (x) {
+          return '<div class="rounded-xl border p-3 ' + x[2] + '"><p class="text-xs text-gray-500">' + esc(x[0]) + '</p>'
+            + '<p class="text-xl font-bold ' + x[3] + ' mt-0.5">' + esc(x[1]) + '</p></div>';
+        }).join('') + '</div>';
+
+    if (!bad.length) {
+      return panel(head + sum + '<p class="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">'
+        + 'ไม่มีนักศึกษาที่ต่ำกว่าเกณฑ์ ' + cut + '% ในขอบเขตที่เลือก</p>');
+    }
+
+    var show = st.stuWatchAll ? bad : bad.slice(0, 10);
+    var rowsHtml = show.map(function (x, i) {
+      var lvl = watchLevel(x.pct);
+      var chips = x.badPlo.slice(0, 3).map(function (pk) {
+        return '<span class="inline-block px-1.5 py-0.5 rounded-md bg-red-50 text-red-600 text-[11px] mr-1">' + esc(pk) + '</span>';
+      }).join('') + (x.badPlo.length > 3 ? '<span class="text-[11px] text-gray-400">+' + (x.badPlo.length - 3) + '</span>' : '');
+      return '<tr class="border-t border-gray-50 hover:bg-surface">'
+        + '<td class="px-2 py-2 text-center text-xs text-gray-400">' + (i + 1) + '</td>'
+        + '<td class="px-2 py-2"><p class="text-sm text-gray-800">' + esc(x.name || '-') + '</p>'
+        + '<p class="font-mono text-[11px] text-gray-400">' + esc(x.sid) + ' · ชั้นปี ' + esc(x.level || '-') + '</p></td>'
+        + '<td class="px-2 py-2 w-40"><div class="flex items-center gap-2">'
+        + '<div class="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden"><div style="width:' + Math.max(2, Math.min(100, x.pct)) + '%;background:' + lvl.bar + '" class="h-2 rounded-full"></div></div>'
+        + '<span class="text-sm font-semibold tabular-nums">' + fx(x.pct, 0) + '%</span></div></td>'
+        + '<td class="px-2 py-2 text-center text-xs text-gray-600 whitespace-nowrap">' + (x.tot - x.pass) + ' / ' + x.tot + '</td>'
+        + '<td class="px-2 py-2">' + (chips || '<span class="text-[11px] text-gray-400">-</span>') + '</td>'
+        + '<td class="px-2 py-2 text-center"><span class="px-2 py-0.5 rounded-full border text-[11px] ' + lvl.cls + '">' + esc(lvl.label) + '</span></td>'
+        + '<td class="px-2 py-2 text-center"><button type="button" onclick="ploWatchOpen(\'' + esc(x.sid) + '\')" class="px-2 py-1 rounded-lg bg-primaryLight text-primary text-xs">ดูรายคน</button></td>'
+        + '</tr>';
+    }).join('');
+
+    var table = '<div class="overflow-x-auto"><table class="w-full text-sm">'
+      + '<thead><tr class="bg-surface text-left">'
+      + '<th class="px-2 py-2 font-semibold text-center w-10">#</th>'
+      + '<th class="px-2 py-2 font-semibold">นักศึกษา</th>'
+      + '<th class="px-2 py-2 font-semibold">ร้อยละ CLO ที่ผ่าน</th>'
+      + '<th class="px-2 py-2 font-semibold text-center whitespace-nowrap">CLO ไม่ผ่าน</th>'
+      + '<th class="px-2 py-2 font-semibold">PLO ที่ยังไม่บรรลุ</th>'
+      + '<th class="px-2 py-2 font-semibold text-center">ระดับ</th>'
+      + '<th class="px-2 py-2"></th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>'
+      + (bad.length > show.length
+          ? '<button type="button" onclick="ploSet(\'stuWatchAll\',true)" class="mt-2 text-xs text-primary hover:underline">ดูทั้งหมด ' + bad.length + ' คน</button>'
+          : (st.stuWatchAll && bad.length > 10 ? '<button type="button" onclick="ploSet(\'stuWatchAll\',false)" class="mt-2 text-xs text-gray-500 hover:underline">ย่อรายการ</button>' : ''));
+
+    return panel(head + sum + table
+      + '<p class="text-[11px] text-gray-400 mt-2">นับเฉพาะ CLO ที่กรอกคะแนนแล้วและมีเกณฑ์ผ่าน · '
+      + '"PLO ที่ยังไม่บรรลุ" คือ PLO ที่ผ่าน CLO ในข้อนั้นต่ำกว่าเกณฑ์ ' + cut + '%</p>');
+  }
+  function panel(inner) {
+    return '<div class="rounded-2xl border border-blue-100 bg-white p-4 mb-5">' + inner + '</div>';
+  }
+  window.ploWatchCut = function (v) { state().stuWatchPct = n(v) || 60; if (typeof renderCurrentPage === 'function') renderCurrentPage(); };
+  window.ploWatchRetry = function () { _watch = {}; if (typeof renderCurrentPage === 'function') renderCurrentPage(); };
+  window.ploWatchOpen = function (sid) {
+    var st = state();
+    st.stuQuery = s(sid);
+    window.ploFindStudent(s(sid));
+  };
+
   function personTab() { return studentBox(true); }
 
   function studentBox(standalone) {
@@ -1103,7 +1272,8 @@
     var wrap = function (inner) {
       return standalone ? '<div class="mb-6">' + inner + '</div>' : section('ผลการบรรลุรายบุคคล', inner);
     };
-    if (!res) return wrap(box + '<p class="text-xs text-gray-400">เลือกรายวิชาและชั้นปี แล้วเลือกนักศึกษา เพื่อดูร้อยละการบรรลุแต่ละ PLO ของคนนั้น</p>');
+    var watch = standalone ? watchPanel() : '';
+    if (!res) return wrap(box + watch + '<p class="text-xs text-gray-400">เลือกนักศึกษาจากตารางด้านบน หรือเลือกเองในขั้นที่ 5 เพื่อดูร้อยละการบรรลุแต่ละ PLO รายคน</p>');
 
     // กรองรายวิชา (ฝั่งเครื่อง) แล้วคำนวณภาพรวม / ราย PLO ใหม่จากแถว CLO ที่เหลือ
     var all = res['ราย CLO'] || [];
@@ -1138,7 +1308,7 @@
     var head = '<div class="flex flex-wrap items-baseline gap-x-3 mb-3"><p class="font-semibold text-gray-800">' + esc(res['ชื่อ'] || '-')
       + ' <span class="font-mono text-xs text-gray-500">' + esc(res['รหัสนักศึกษา']) + '</span></p>'
       + '<p class="text-xs text-gray-500">' + scope + '</p></div>';
-    if (!rows.length) return wrap(box + head + hint('ไม่มีผลการประเมินในช่วงที่เลือก'));
+    if (!rows.length) return wrap(box + watch + head + hint('ไม่มีผลการประเมินในช่วงที่เลือก'));
     var cards = '<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">'
       + card('ร้อยละผ่านภาพรวม', '<span class="' + b.text + '">' + fx(pct) + '%</span>', '<span class="' + b.text + ' font-medium">ระดับ ' + esc(lv.label || '-') + '</span>', b.bg + ' ' + b.ring)
       + card('ผลการประเมินทั้งหมด', rows.length, 'ผ่าน ' + pass + ' · ไม่ผ่าน ' + (rows.length - pass))
@@ -1214,7 +1384,7 @@
           + '<button type="button" onclick="ploSet(\'stuOpenAll\',false)" class="text-primary hover:underline">ปิดทั้งหมด</button></div>')
         + '<style>details[open] > summary .ems-chev{transform:rotate(90deg)} details > summary::-webkit-details-marker{display:none}</style>' + body;
     }
-    return wrap(box + head + cards + personRadar(rows) + tg + body);
+    return wrap(box + watch + head + cards + personRadar(rows) + tg + body);
   }
   // เปลี่ยนปี/ภาค = ดึงผลใหม่จากเซิร์ฟเวอร์ · เปลี่ยนรายวิชา = กรองในเครื่อง
   window.ploStuSet = function (k, v) {
