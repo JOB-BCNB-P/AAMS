@@ -128,6 +128,13 @@
     return st;
   }
 
+  // มุมมองในหน้าผลการบรรลุ : 'all' = ภาพรวมทั้งหลักสูตร · 'person' = รายบุคคล
+  function sumView() { var st = state(); return st.sumView === 'person' ? 'person' : 'all'; }
+  window.ploSumView = function (v) {
+    state().sumView = (v === 'person') ? 'person' : 'all';
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  };
+
   function yearsList() {
     var ys = get('subject').map(function (x) { return s(x.academic_year); })
       .concat(get('plo_clo').map(function (x) { return s(x.academic_year); }))
@@ -341,18 +348,25 @@
       + '<p class="text-sm text-gray-500 mt-0.5">อัตราการบรรลุผลลัพธ์การเรียนรู้ระดับรายวิชา หลักสูตร และชั้นปี</p></div>'
       + '</div>';
 
-    /* เมนูย่อยอยู่ที่แถบเมนูด้านซ้ายแล้ว (สรุปผลรวม · บันทึกข้อมูล)
-       ในหน้าแสดงแค่ป้ายบอกว่ากำลังอยู่ส่วนไหน */
+    /* "บันทึกข้อมูล" เป็นเมนูย่อยในแถบเมนูด้านซ้ายแล้ว
+       แท็บในหน้านี้จึงเหลือสองมุมมองของผลการบรรลุ : ภาพรวมทั้งหลักสูตร กับ รายบุคคล */
     var isEntry = st.tab === 'entry' && canOpenEntry();
-    var tabs = '<div class="flex items-center gap-2 mb-5 border-b border-gray-100 pb-3 text-sm">'
-      + '<span class="px-3 py-1.5 rounded-xl bg-primary text-white flex items-center gap-2">'
-      + '<i data-lucide="' + (isEntry ? 'pencil-line' : 'bar-chart-3') + '" class="w-4 h-4"></i>'
-      + (isEntry ? 'บันทึกข้อมูล' : 'สรุปผลรวม') + '</span>'
-      + (canOpenEntry() ? '<button onclick="navigateTo(\'' + (isEntry ? 'ploSummary' : 'ploEntry') + '\')" class="text-xs text-gray-500 hover:text-primary">'
-        + (isEntry ? 'ไปที่สรุปผลรวม →' : 'ไปที่บันทึกข้อมูล →') + '</button>' : '')
+    var sv = sumView();
+    var tab = function (v, icon, label) {
+      var on = sv === v;
+      return '<button onclick="ploSumView(\'' + v + '\')" class="px-3 py-1.5 rounded-xl flex items-center gap-2 transition '
+        + (on ? 'bg-primary text-white' : 'border border-gray-200 text-gray-600 hover:bg-surface') + '">'
+        + '<i data-lucide="' + icon + '" class="w-4 h-4"></i>' + label + '</button>';
+    };
+    var tabs = '<div class="flex flex-wrap items-center gap-2 mb-5 border-b border-gray-100 pb-3 text-sm">'
+      + (isEntry
+          ? '<span class="px-3 py-1.5 rounded-xl bg-primary text-white flex items-center gap-2">'
+            + '<i data-lucide="pencil-line" class="w-4 h-4"></i>บันทึกข้อมูล</span>'
+            + '<button onclick="navigateTo(\'ploSummary\')" class="text-xs text-gray-500 hover:text-primary">ไปที่ผลการบรรลุ →</button>'
+          : tab('all', 'bar-chart-3', 'ผลการบรรลุรวม') + tab('person', 'user-check', 'ผลการบรรลุรายบุคคล'))
       + '</div>';
 
-    var body = isEntry ? entryTab() : summaryTab();
+    var body = isEntry ? entryTab() : (sv === 'person' ? personTab() : summaryTab());
     return '<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 md:p-6">'
       + head + tabs + body + '</div>';
   };
@@ -461,7 +475,7 @@
                   + ' · ผลรวมคำนวณจาก CLO ของรายวิชาเหล่านี้</p>' : '')
             + (s(st.subj) ? '<p class="text-xs text-primary mb-3"><i data-lucide="filter" class="w-3.5 h-3.5 inline"></i> แสดงเฉพาะรายวิชา ' + esc(st.subj)
                   + ' · ผลรวมคำนวณจาก CLO ของรายวิชานี้ · ค้นหารายบุคคลยังแสดงทุกรายวิชา</p>' : '')
-            + cards(ov) + chartBlock() + watchTable() + studentBox();
+            + cards(ov) + chartBlock() + watchTable();
         } finally { st.summary = full; }
       }
     }
@@ -967,7 +981,69 @@
   }
 
   /* ---------- ค้นหารายชื่อนักศึกษา ---------- */
-  function studentBox() {
+  /* ================= ผลการบรรลุรายบุคคล =================
+     ลำดับการเลือก : ปีการศึกษา · ภาคการศึกษา → รายวิชา → ชั้นปี → นักศึกษา
+     เดิมต้องค้นหานักศึกษาก่อนจึงจะมีรายวิชาให้เลือก ซึ่งกลับลำดับกับวิธีทำงานจริง
+     (อาจารย์รู้ว่าจะดูรายวิชาไหน แต่ยังไม่รู้ว่าจะดูใคร) */
+  function personSubjects() {
+    var st = state();
+    var y = s(st.stuYear), sem = s(st.stuSem);
+    var seen = {}, out = [];
+    get('subject').forEach(function (x) {
+      if (y && s(x.academic_year) !== y) return;
+      if (sem && normSemKey(x.semester) !== normSemKey(sem)) return;
+      if (!canViewSubject(x)) return;
+      var k = s(x.subject_code) || s(x.subject_name);
+      if (!k || seen[k]) return;
+      seen[k] = 1;
+      out.push([k, (s(x.subject_code) ? s(x.subject_code) + ' ' : '') + s(x.subject_name)]);
+    });
+    return out.sort(function (a, b) { return a[1].localeCompare(b[1], 'th'); });
+  }
+  function normSemKey(v) { var x = s(v); return (x.indexOf('ร้อน') >= 0 || x === '3') ? '3' : x.replace(/\D/g, '') || x; }
+  // นักศึกษาที่ยังเรียนอยู่ กรองตามชั้นปีที่เลือก
+  function personStudents() {
+    var st = state(), lv = s(st.stuLevel);
+    return get('student').filter(function (x) {
+      if (typeof isActiveStudent === 'function' ? !isActiveStudent(x) : s(x.status) !== 'กำลังศึกษา') return false;
+      return !lv || s(x.year_level) === lv;
+    }).sort(function (a, b) { return s(a.student_id).localeCompare(s(b.student_id)); });
+  }
+  function personStuText(x) { return s(x.student_id) + ' · ' + s(x.name) + ' (ชั้นปี ' + (s(x.year_level) || '-') + ')'; }
+
+  /* ใยแมงมุมร้อยละการบรรลุรายคน — แกนเดียวกับภาพรวม
+     ค่าต่อแกน = ร้อยละของ CLO ใน PLO นั้นที่นักศึกษาคนนี้ผ่านเกณฑ์ */
+  function personRadar(rows) {
+    var axes = radarAxes(state().curriculum);
+    if (!axes.length || !rows.length) return '';
+    var agg = {};
+    rows.forEach(function (r) {
+      var k = toParentPlo(s(r['PLO']), axes);
+      if (!k) return;
+      if (!agg[k]) agg[k] = { pass: 0, tot: 0 };
+      agg[k].tot++; if (r['ผ่าน']) agg[k].pass++;
+    });
+    var covered = 0;
+    var values = axes.map(function (a) {
+      var g = agg[a.code];
+      if (!g || !g.tot) return 0;
+      covered++;
+      return Math.round(g.pass / g.tot * 10000) / 100;
+    });
+    if (!covered) return '';
+    var series = [{ label: s(state().stuResult && state().stuResult['ชื่อ']) || 'นักศึกษา', values: values, unit: '%' }];
+    var miss = axes.filter(function (a, i) { return !agg[a.code]; }).map(function (a) { return 'PLO ' + a.no; });
+    return '<div class="rounded-2xl border border-blue-100 p-4 mb-4">'
+      + '<p class="font-semibold text-gray-800 text-sm">ร้อยละการบรรลุแต่ละ PLO ของนักศึกษารายนี้</p>'
+      + '<p class="text-xs text-gray-500 mb-2">ร้อยละของ CLO ใน PLO นั้นที่ผ่านเกณฑ์ · สเกล 0–100</p>'
+      + '<div class="flex flex-wrap items-center gap-4">' + radarSvg(axes, series, 100) + '</div>'
+      + (miss.length ? '<p class="text-[11px] text-gray-400 mt-1">ยังไม่มีผลการประเมินใน ' + esc(miss.join(' · ')) + '</p>' : '')
+      + '</div>';
+  }
+
+  function personTab() { return studentBox(true); }
+
+  function studentBox(standalone) {
     var st = state();
     var res = st.stuResult;
     if (st.stuYear === undefined) st.stuYear = st.year;
@@ -980,34 +1056,47 @@
         + '</select></div>';
     };
     var ready = s(st.stuYear) && s(st.stuSem);
-    var subjOpts = [];
-    if (ready) {
-      var seen = {}, allow = viewSubjectFilter();
-      ((res && res['ราย CLO']) || []).forEach(function (r) {
-        if (s(r['ปีการศึกษา']) !== s(st.stuYear) || s(r['ภาคเรียน']) !== s(st.stuSem)) return;
-        var k = s(r['รหัสวิชา']) || s(r['รายวิชา']);
-        if (!k || seen[k]) return;
-        if (allow && !allow(r)) return;
-        seen[k] = 1; subjOpts.push([k, (s(r['รหัสวิชา']) ? s(r['รหัสวิชา']) + ' ' : '') + s(r['รายวิชา'])]);
-      });
-    }
-    var box = '<div class="flex flex-wrap items-end gap-3 mb-4">'
-      + '<div class="flex-1 min-w-[240px]"><label class="block text-xs text-gray-600 mb-1">นักศึกษา</label><div class="relative">'
-      + '<i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-400"></i>'
-      + '<input id="ploStuSearch" type="text" value="' + esc(st.stuQuery) + '" list="ploStuList" '
-      + 'placeholder="พิมพ์รหัสนักศึกษาหรือชื่อ แล้วกด Enter..." '
-      + 'class="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm" '
-      + 'onchange="ploFindStudent(this.value)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();ploFindStudent(this.value)}">'
-      + studentDatalist() + '</div></div>'
+    var subjOpts = personSubjects();
+    var studs = personStudents();
+    // เลขขั้นอยู่ในบรรทัดชื่อช่อง ไม่แยกเป็นคอลัมน์ ไม่งั้นจะดูเหมือนติดอยู่กับช่องก่อนหน้า
+    var step = function (no, label, inner, hintTxt) {
+      return '<div><label class="flex items-center gap-1.5 text-xs text-gray-600 mb-1">'
+        + '<span class="w-4 h-4 rounded-full bg-primaryLight text-primary flex items-center justify-center text-[10px] font-bold">' + no + '</span>'
+        + esc(label) + '</label>' + inner
+        + (hintTxt ? '<p class="text-[11px] text-gray-400 mt-1">' + esc(hintTxt) + '</p>' : '') + '</div>';
+    };
+    var box = '<div class="flex flex-wrap items-start gap-x-4 gap-y-3 mb-4">'
       + sel('ปีการศึกษา', 'stuYear', yearsList().map(function (y) { return [y, y]; }), 'ทุกปี')
       + sel('ภาคการศึกษา', 'stuSem', SEMS.map(function (x) { return [x, x === '3' ? 'ฤดูร้อน' : x]; }), 'ทุกภาค')
-      + sel('รายวิชา', 'stuSubj', subjOpts, ready ? (res ? 'ทุกรายวิชา' : 'ค้นหานักศึกษาก่อน') : 'เลือกปี/ภาคก่อน', !ready)
+      + step(1, 'รายวิชา',
+          '<select onchange="ploStuSet(\'stuSubj\',this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm min-w-[18rem] max-w-[26rem]">'
+          + '<option value="">ทุกรายวิชา</option>'
+          + subjOpts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (s(st.stuSubj) === s(o[0]) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('')
+          + '</select>', subjOpts.length ? '' : 'ไม่พบรายวิชาในปี/ภาคที่เลือก')
+      + step(2, 'ชั้นปี',
+          '<select onchange="ploStuSet(\'stuLevel\',this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm">'
+          + ['', '1', '2', '3', '4'].map(function (y) {
+              return '<option value="' + y + '"' + (s(st.stuLevel) === y ? ' selected' : '') + '>' + (y ? 'ชั้นปีที่ ' + y : 'ทุกชั้นปี') + '</option>';
+            }).join('') + '</select>')
+      + step(3, 'นักศึกษา',
+          '<div class="relative"><i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-400"></i>'
+          + '<input id="ploStuSearch" type="text" value="' + esc(st.stuQuery) + '" list="ploStuPick" autocomplete="off" '
+          + 'placeholder="พิมพ์รหัสหรือชื่อ แล้วกด Enter" '
+          + 'class="w-full min-w-[20rem] pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm" '
+          + 'onchange="ploFindStudent(this.value)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();ploFindStudent(this.value)}">'
+          + '<datalist id="ploStuPick">'
+          + studs.slice(0, 900).map(function (x) { return '<option value="' + esc(personStuText(x)) + '"></option>'; }).join('')
+          + '</datalist></div>', studs.length + ' คนในรายชื่อ')
+      + '<div class="flex items-center gap-2 mt-5">'
       + '<button onclick="ploFindStudent(document.getElementById(\'ploStuSearch\').value)" '
-      + 'class="px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-surface">ค้นหา</button>'
+      + 'class="px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-surface">ดูผล</button>'
       + (res ? '<button onclick="ploSet(\'stuResult\',null)" class="px-3 py-2 rounded-xl text-sm text-gray-400 hover:text-gray-600">ล้าง</button>' : '')
-      + '</div>';
+      + '</div></div>';
 
-    if (!res) return section('ผลการบรรลุรายบุคคล', box + '<p class="text-xs text-gray-400">ค้นหาเพื่อดูผลการบรรลุของนักศึกษาแต่ละคน · เลือกปี/ภาค/รายวิชาเพื่อจำกัดช่วงข้อมูลได้</p>');
+    var wrap = function (inner) {
+      return standalone ? '<div class="mb-6">' + inner + '</div>' : section('ผลการบรรลุรายบุคคล', inner);
+    };
+    if (!res) return wrap(box + '<p class="text-xs text-gray-400">เลือกรายวิชาและชั้นปี แล้วเลือกนักศึกษา เพื่อดูร้อยละการบรรลุแต่ละ PLO ของคนนั้น</p>');
 
     // กรองรายวิชา (ฝั่งเครื่อง) แล้วคำนวณภาพรวม / ราย PLO ใหม่จากแถว CLO ที่เหลือ
     var all = res['ราย CLO'] || [];
@@ -1042,7 +1131,7 @@
     var head = '<div class="flex flex-wrap items-baseline gap-x-3 mb-3"><p class="font-semibold text-gray-800">' + esc(res['ชื่อ'] || '-')
       + ' <span class="font-mono text-xs text-gray-500">' + esc(res['รหัสนักศึกษา']) + '</span></p>'
       + '<p class="text-xs text-gray-500">' + scope + '</p></div>';
-    if (!rows.length) return section('ผลการบรรลุรายบุคคล', box + head + hint('ไม่มีผลการประเมินในช่วงที่เลือก'));
+    if (!rows.length) return wrap(box + head + hint('ไม่มีผลการประเมินในช่วงที่เลือก'));
     var cards = '<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">'
       + card('ร้อยละผ่านภาพรวม', '<span class="' + b.text + '">' + fx(pct) + '%</span>', '<span class="' + b.text + ' font-medium">ระดับ ' + esc(lv.label || '-') + '</span>', b.bg + ' ' + b.ring)
       + card('ผลการประเมินทั้งหมด', rows.length, 'ผ่าน ' + pass + ' · ไม่ผ่าน ' + (rows.length - pass))
@@ -1118,12 +1207,13 @@
           + '<button type="button" onclick="ploSet(\'stuOpenAll\',false)" class="text-primary hover:underline">ปิดทั้งหมด</button></div>')
         + '<style>details[open] > summary .ems-chev{transform:rotate(90deg)} details > summary::-webkit-details-marker{display:none}</style>' + body;
     }
-    return section('ผลการบรรลุรายบุคคล', box + head + cards + tg + body);
+    return wrap(box + head + cards + personRadar(rows) + tg + body);
   }
   // เปลี่ยนปี/ภาค = ดึงผลใหม่จากเซิร์ฟเวอร์ · เปลี่ยนรายวิชา = กรองในเครื่อง
   window.ploStuSet = function (k, v) {
     var st = state();
     st[k] = v;
+    if (k === 'stuLevel') { if (typeof renderCurrentPage === 'function') renderCurrentPage(); return; }
     if (k === 'stuYear' || k === 'stuSem') {
       st.stuSubj = '';
       if (st.stuResult && s(st.stuQuery)) { window.ploFindStudent(st.stuQuery); return; }
@@ -1131,16 +1221,6 @@
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
   };
 
-  function studentDatalist() {
-    var st = state();
-    var list = get('student').filter(function (x) {
-      return !st.batch || s(x.student_id).slice(0, 2) === s(st.batch);
-    }).slice(0, 900);
-    return '<datalist id="ploStuList">'
-      + list.map(function (x) {
-          return '<option value="' + esc(x.student_id) + '">' + esc(x.name) + '</option>';
-        }).join('') + '</datalist>';
-  }
 
   window.ploFindStudent = async function (q) {
     var st = state();
@@ -1150,10 +1230,15 @@
     // ผู้ใช้อาจพิมพ์ชื่อ — แปลงเป็นรหัสนักศึกษาก่อน
     var sid = q;
     if (!/^\d{6,}$/.test(q)) {
-      var hit = get('student').filter(function (x) {
-        return s(x.name).indexOf(q) >= 0 || s(x.student_id) === q;
-      })[0];
-      if (hit) sid = s(hit.student_id);
+      // ข้อความที่เลือกจากรายการขึ้นต้นด้วยรหัสเสมอ — ตัดเอาเฉพาะรหัสก่อน
+      var lead = (q.split('·')[0] || '').trim();
+      if (/^\d{6,}$/.test(lead)) sid = lead;
+      else {
+        var hit = get('student').filter(function (x) {
+          return s(x.name).indexOf(q) >= 0 || s(x.student_id) === q;
+        })[0];
+        if (hit) sid = s(hit.student_id);
+      }
     }
     try {
       var r = await sb().rpc('ems_plo_student', {
@@ -4255,7 +4340,8 @@
       if (!perms.ploAssess) return;
       var nav = document.getElementById('sidebarNav');
       if (!nav || nav.querySelector('[data-plo-menu]')) return;
-      var subs = [['ploSummary', 'สรุปผลรวม']].concat(canOpenEntry() ? [['ploEntry', 'บันทึกข้อมูล']] : []);
+      // เมนูย่อยนี้ครอบทั้งผลการบรรลุรวมและรายบุคคล จึงไม่เรียกว่า "สรุปผลรวม" อีก
+      var subs = [['ploSummary', 'ผลการบรรลุ']].concat(canOpenEntry() ? [['ploEntry', 'บันทึกข้อมูล']] : []);
       var here = APP.currentPage;
       var btn;
       if (subs.length === 1) {
