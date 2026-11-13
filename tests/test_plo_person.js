@@ -165,10 +165,31 @@ const PLOS = [1, 2, 3].map(i => ({ curriculum_year: '2565', plo_code: 'PLO' + i,
   });
 
   console.log('\n[5] ลำดับขั้นบนหน้าจอ');
-  t('มีเลขขั้น 1-2-3 กำกับ รายวิชา → ชั้นปี → นักศึกษา', () => {
+  t('เลขขั้นเรียง ปี → ภาค → รายวิชา → ชั้นปี → นักศึกษา', () => {
     const g = grab('function studentBox(standalone)');
-    const a = g.indexOf("step(1, 'รายวิชา'"), b = g.indexOf("step(2, 'ชั้นปี'"), c = g.indexOf("step(3, 'นักศึกษา'");
-    assert.ok(a > 0 && b > a && c > b, 'ลำดับขั้นไม่ถูกต้อง');
+    const seq = ["'stuYear'", "'stuSem'", "step(3, 'รายวิชา'", "step(4, 'ชั้นปี'", "step(5, 'นักศึกษา'"];
+    let at = -1;
+    seq.forEach(x => { const i = g.indexOf(x); assert.ok(i > at, 'ลำดับผิดที่ ' + x); at = i; });
+    assert.ok(/sel\('ปีการศึกษา', 'stuYear',[\s\S]*?'ทุกปี', 1\)/.test(g), 'ปีการศึกษาไม่ใช่ขั้นที่ 1');
+    assert.ok(/sel\('ภาคการศึกษา', 'stuSem',[\s\S]*?'ทุกภาค', 2\)/.test(g), 'ภาคการศึกษาไม่ใช่ขั้นที่ 2');
+  });
+  t('แท็บผลการบรรลุรวมก็มีเลขขั้นชุดเดียวกัน', () => {
+    const g = grab('function filterBar()');
+    assert.ok(g.includes('stepLabel'), 'ไม่ได้ใช้ป้ายเลขขั้นชุดเดียวกัน');
+    assert.ok(/'หลักสูตร', 'curriculum',[\s\S]*?, '', 1\)/.test(g), 'หลักสูตรไม่ใช่ขั้นที่ 1');
+    assert.ok(/'ปีการศึกษา', 'year',[\s\S]*?'ทุกปี', 2\)/.test(g), 'ปีการศึกษาไม่ใช่ขั้นที่ 2');
+    assert.ok(/'ภาคการศึกษา', 'sem',[\s\S]*?'ทุกภาค', 3\)/.test(g), 'ภาคการศึกษาไม่ใช่ขั้นที่ 3');
+    assert.ok(grab('function summarySubjSelect()').includes("stepLabel(4, 'รายวิชา')"), 'รายวิชาไม่ใช่ขั้นที่ 4');
+  });
+  t('ช่องที่ไม่บังคับไม่ใส่เลข จะได้ไม่เข้าใจผิดว่าต้องเลือก', () => {
+    const g = grab('function filterBar()');
+    assert.ok(/'รุ่นนักศึกษา'[\s\S]*?'ทุกรุ่น', 0, '\(ไม่บังคับ\)'\)/.test(g), 'รุ่นนักศึกษายังถูกนับเป็นขั้น');
+    assert.ok(g.indexOf("'รุ่นนักศึกษา'") > g.indexOf('summarySubjSelect()'), 'ควรอยู่ท้ายสุด ไม่แทรกกลางเลขขั้น');
+  });
+  t('ป้ายเลขขั้นใช้ฟังก์ชันเดียว ไม่เขียนซ้ำสองที่', () => {
+    const g = grab('function stepLabel(no, label, note)');
+    assert.ok(g.includes('no ?'), 'ไม่รองรับช่องที่ไม่มีเลข');
+    assert.ok((SRC.match(/stepLabel\(/g) || []).length >= 4, 'ยังมีที่เขียนป้ายเองอยู่');
   });
   t('ไม่บังคับให้ค้นหานักศึกษาก่อนจึงจะเลือกรายวิชาได้', () => {
     const g = grab('function studentBox(standalone)');

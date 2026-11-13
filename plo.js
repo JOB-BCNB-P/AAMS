@@ -392,10 +392,19 @@
   };
 
   /* ================= แท็บ 1 : สรุปผลรวม ================= */
+  /* ป้ายชื่อช่องกรอง พร้อมเลขบอกลำดับว่าต้องเลือกอันไหนก่อน
+     ใช้ชุดเดียวกันทั้งแท็บผลการบรรลุรวมและรายบุคคล จะได้อ่านแบบเดียวกัน
+     ช่องที่ไม่มีเลข = เลือกหรือไม่เลือกก็ได้ ไม่ได้บังคับลำดับ */
+  function stepLabel(no, label, note) {
+    return '<label class="flex items-center gap-1.5 text-xs text-gray-600 mb-1">'
+      + (no ? '<span class="w-4 h-4 rounded-full bg-primaryLight text-primary flex items-center justify-center text-[10px] font-bold">' + no + '</span>' : '')
+      + esc(label) + (note ? ' <span class="text-gray-400">' + esc(note) + '</span>' : '') + '</label>';
+  }
+
   function filterBar() {
     var st = state();
-    var sel = function (label, key, opts, blank) {
-      return '<div><label class="block text-xs text-gray-600 mb-1">' + esc(label) + '</label>'
+    var sel = function (label, key, opts, blank, no, note) {
+      return '<div>' + stepLabel(no, label, note)
         + '<select onchange="ploSet(\'' + key + '\',this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm">'
         + (blank ? '<option value="">' + esc(blank) + '</option>' : '')
         + opts.map(function (o) {
@@ -404,13 +413,14 @@
           }).join('')
         + '</select></div>';
     };
+    // เรียงตามลำดับที่ต้องเลือกจริง · "รุ่นนักศึกษา" ไม่บังคับจึงย้ายไปท้ายสุด ไม่ให้แทรกกลางเลขขั้น
     return '<div class="flex flex-wrap items-end gap-3 mb-5">'
       + sel('หลักสูตร', 'curriculum',
-          get('curriculum').map(function (c) { return [c.curriculum_year, 'ฉบับปรับปรุง ' + c.curriculum_year]; }))
-      + sel('รุ่นนักศึกษา', 'batch', batchList().map(function (b) { return [b, 'รหัส ' + b]; }), 'ทุกรุ่น')
-      + sel('ปีการศึกษา', 'year', yearsList().map(function (y) { return [y, y]; }), 'ทุกปี')
-      + sel('ภาคการศึกษา', 'sem', SEMS.map(function (x) { return [x, x === '3' ? 'ฤดูร้อน' : x]; }), 'ทุกภาค')
+          get('curriculum').map(function (c) { return [c.curriculum_year, 'ฉบับปรับปรุง ' + c.curriculum_year]; }), '', 1)
+      + sel('ปีการศึกษา', 'year', yearsList().map(function (y) { return [y, y]; }), 'ทุกปี', 2)
+      + sel('ภาคการศึกษา', 'sem', SEMS.map(function (x) { return [x, x === '3' ? 'ฤดูร้อน' : x]; }), 'ทุกภาค', 3)
       + summarySubjSelect()
+      + sel('รุ่นนักศึกษา', 'batch', batchList().map(function (b) { return [b, 'รหัส ' + b]; }), 'ทุกรุ่น', 0, '(ไม่บังคับ)')
       + '<button onclick="ploLoad()" title="ใช้เมื่อเพิ่งบันทึกคะแนนใหม่ แล้วอยากให้คำนวณซ้ำ" class="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm flex items-center gap-2 hover:bg-surface">'
       + '<i data-lucide="refresh-cw" class="w-4 h-4"></i>คำนวณใหม่</button>'
       + '<button onclick="ploExportPDF()" class="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm flex items-center gap-2 hover:bg-surface">'
@@ -1048,9 +1058,9 @@
     var res = st.stuResult;
     if (st.stuYear === undefined) st.stuYear = st.year;
     if (st.stuSem === undefined) st.stuSem = st.sem;
-    var sel = function (label, key, opts, blank, dis) {
-      return '<div><label class="block text-xs text-gray-600 mb-1">' + esc(label) + '</label>'
-        + '<select ' + (dis ? 'disabled title="เลือกปีการศึกษาและภาคการศึกษาก่อน" ' : '') + 'onchange="ploStuSet(\'' + key + '\',this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm max-w-[16rem]' + (dis ? ' bg-gray-50 text-gray-400' : '') + '">'
+    var sel = function (label, key, opts, blank, no) {
+      return '<div>' + stepLabel(no, label)
+        + '<select onchange="ploStuSet(\'' + key + '\',this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm max-w-[16rem]">'
         + '<option value="">' + esc(blank) + '</option>'
         + opts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (s(st[key]) === s(o[0]) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('')
         + '</select></div>';
@@ -1058,27 +1068,24 @@
     var ready = s(st.stuYear) && s(st.stuSem);
     var subjOpts = personSubjects();
     var studs = personStudents();
-    // เลขขั้นอยู่ในบรรทัดชื่อช่อง ไม่แยกเป็นคอลัมน์ ไม่งั้นจะดูเหมือนติดอยู่กับช่องก่อนหน้า
     var step = function (no, label, inner, hintTxt) {
-      return '<div><label class="flex items-center gap-1.5 text-xs text-gray-600 mb-1">'
-        + '<span class="w-4 h-4 rounded-full bg-primaryLight text-primary flex items-center justify-center text-[10px] font-bold">' + no + '</span>'
-        + esc(label) + '</label>' + inner
+      return '<div>' + stepLabel(no, label) + inner
         + (hintTxt ? '<p class="text-[11px] text-gray-400 mt-1">' + esc(hintTxt) + '</p>' : '') + '</div>';
     };
     var box = '<div class="flex flex-wrap items-start gap-x-4 gap-y-3 mb-4">'
-      + sel('ปีการศึกษา', 'stuYear', yearsList().map(function (y) { return [y, y]; }), 'ทุกปี')
-      + sel('ภาคการศึกษา', 'stuSem', SEMS.map(function (x) { return [x, x === '3' ? 'ฤดูร้อน' : x]; }), 'ทุกภาค')
-      + step(1, 'รายวิชา',
+      + sel('ปีการศึกษา', 'stuYear', yearsList().map(function (y) { return [y, y]; }), 'ทุกปี', 1)
+      + sel('ภาคการศึกษา', 'stuSem', SEMS.map(function (x) { return [x, x === '3' ? 'ฤดูร้อน' : x]; }), 'ทุกภาค', 2)
+      + step(3, 'รายวิชา',
           '<select onchange="ploStuSet(\'stuSubj\',this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm min-w-[18rem] max-w-[26rem]">'
           + '<option value="">ทุกรายวิชา</option>'
           + subjOpts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (s(st.stuSubj) === s(o[0]) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('')
           + '</select>', subjOpts.length ? '' : 'ไม่พบรายวิชาในปี/ภาคที่เลือก')
-      + step(2, 'ชั้นปี',
+      + step(4, 'ชั้นปี',
           '<select onchange="ploStuSet(\'stuLevel\',this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm">'
           + ['', '1', '2', '3', '4'].map(function (y) {
               return '<option value="' + y + '"' + (s(st.stuLevel) === y ? ' selected' : '') + '>' + (y ? 'ชั้นปีที่ ' + y : 'ทุกชั้นปี') + '</option>';
             }).join('') + '</select>')
-      + step(3, 'นักศึกษา',
+      + step(5, 'นักศึกษา',
           '<div class="relative"><i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-400"></i>'
           + '<input id="ploStuSearch" type="text" value="' + esc(st.stuQuery) + '" list="ploStuPick" autocomplete="off" '
           + 'placeholder="พิมพ์รหัสหรือชื่อ แล้วกด Enter" '
@@ -1369,7 +1376,7 @@
   function summarySubjSelect() {
     var st = state(), ready = s(st.year) && s(st.sem);
     var list = ready ? summarySubjects() : [];
-    return '<div><label class="block text-xs text-gray-600 mb-1">รายวิชา</label>'
+    return '<div>' + stepLabel(4, 'รายวิชา')
       + '<select ' + (ready ? '' : 'disabled title="เลือกปีการศึกษาและภาคการศึกษาก่อน" ')
       + 'onchange="ploSetSubj(this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm max-w-[18rem]' + (ready ? '' : ' bg-gray-50 text-gray-400') + '">'
       + '<option value="">' + (ready ? 'ทุกรายวิชา' : 'เลือกปี/ภาคก่อน') + '</option>'
