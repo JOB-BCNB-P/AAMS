@@ -1483,10 +1483,7 @@
             + (view === v[0] ? 'bg-primary text-white' : 'border border-gray-200 text-gray-600 hover:bg-surface') + '">' + v[1] + '</button>';
         }).join('') + '</div>';
     var bar = function (p, crit, bb, w) {
-      return '<div class="relative h-2 rounded-full bg-gray-100 ' + (w || 'w-full') + '">'
-        + '<div class="h-2 rounded-full" style="width:' + Math.max(0, Math.min(100, p)) + '%;background:' + bb.bar + '"></div>'
-        + (crit != null ? '<div class="absolute border-l-2 border-gray-500" style="top:-3px;height:14px;left:' + Math.min(100, crit) + '%" title="เกณฑ์ผ่าน ' + fx(crit, 0) + '%"></div>' : '')
-        + '</div>';
+      return barHTML(p, crit, bb, w, 'เกณฑ์ผ่าน');
     };
     var body;
     if (view === 'plo') {
@@ -1496,7 +1493,8 @@
           + '<span class="text-xs text-gray-700 flex-1">' + esc(k.replace('PLO', 'PLO ')) + '</span>'
           + '<span class="text-xs font-semibold text-gray-800 tabular-nums">' + fx(p) + '%</span>'
           + '<span class="text-[11px] ' + bb.text + '">' + esc(l.label || '') + '</span></div>'
-          + bar(p, null, bb) + '<p class="text-[11px] text-gray-400 mt-0.5">ผ่าน ' + g.pass + ' จาก ' + g.tot + ' CLO</p></div>';
+          + bar(p, null, bb) + '<p class="text-[11px] ' + (g.pass ? 'text-gray-400' : 'text-red-500') + ' mt-0.5">ผ่าน ' + g.pass + ' จาก ' + g.tot + ' CLO'
+          + (g.pass ? '' : ' — ไม่ผ่านทุกข้อ') + '</p></div>';
       }).join('');
     } else {
       var groups = {}, order = [];
@@ -1609,6 +1607,19 @@
          ถ้าตัวเลขเท่ากันทุกประการ แถวเหล่านั้นแสดงผลเหมือนกัน จึงสลับป้ายกันได้โดยไม่ผิดความหมาย */
   /* ป้ายบอกว่าแถวนี้เป็นผลรวมของหลายส่วน (ทฤษฎี + ทดลอง)
      ต้องบอกให้เห็น ไม่งั้นผู้อ่านจะนึกว่าเป็นคะแนนของส่วนใดส่วนหนึ่ง */
+  /* แถบร้อยละ — 0% ต้องยังเห็นหัวแถบอยู่
+     ของเดิมความกว้างเป็น 0 แถบจึงหายไปทั้งเส้น อ่านได้ว่า "ไม่มีข้อมูล"
+     ทั้งที่ความจริงคือ "มีข้อมูลแต่ไม่ผ่านเลย" ซึ่งเป็นคนละเรื่องกัน */
+  function barHTML(p, crit, b, w, critLabel) {
+    var v = Math.max(0, Math.min(100, n(p)));
+    return '<div class="relative h-2 rounded-full bg-gray-100 ' + (w || 'w-full') + '">'
+      + (v > 0
+          ? '<div class="h-2 rounded-full" style="width:' + v + '%;min-width:6px;background:' + b.bar + '"></div>'
+          : '<div class="h-2 rounded-full" style="width:6px;background:' + b.bar + ';opacity:.45" title="มีผลการประเมินแล้ว แต่ยังไม่ผ่านเลย (0%)"></div>')
+      + (crit != null ? '<div class="absolute border-l-2 border-gray-500" style="top:-3px;height:14px;left:' + Math.min(100, n(crit)) + '%" title="' + esc(critLabel || 'เกณฑ์') + ' ' + fx(crit, 0) + '%"></div>' : '')
+      + '</div>';
+  }
+
   function secBadge(r) {
     if (r && r.__merged) {
       return '<span class="inline-block px-1.5 py-0 rounded-md border border-gray-200 bg-gray-50 text-gray-600 text-[10px] font-medium align-middle ml-1" title="รวมผลของ '
@@ -1874,10 +1885,7 @@
     if (!list.length) return tools + '<div class="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 text-sm text-emerald-700">'
       + '<i data-lucide="check-circle-2" class="w-4 h-4 inline"></i> ไม่มี CLO ที่ตรงกับเงื่อนไขนี้</div>';
     var bar = function (pct, crit, b, w) {
-      return '<div class="relative h-2 rounded-full bg-gray-100 ' + (w || 'w-full') + '">'
-        + '<div class="h-2 rounded-full" style="width:' + Math.max(0, Math.min(100, pct)) + '%;background:' + b.bar + '"></div>'
-        + (crit != null ? '<div class="absolute border-l-2 border-gray-500" style="top:-3px;height:14px;left:' + Math.min(100, crit) + '%" title="เกณฑ์บรรลุ ' + fx(crit, 0) + '%"></div>' : '')
-        + '</div>';
+      return barHTML(pct, crit, b, w, 'เกณฑ์บรรลุ');
     };
     window._ploCloKeys = list.map(function (g) { return g.k; });
     var cards = list.map(function (g, gi) {

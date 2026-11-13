@@ -158,6 +158,37 @@ const row = (clo, sec, plo, score, cut) => ({
     assert.ok(g.includes('__merged'), 'ไม่ได้แสดงว่าเป็นผลรวม');
     assert.ok((SRC.match(/secBadge\(r\)/g) || []).length >= 3, 'ยังมีตารางที่ใช้ป้ายเดิมอยู่');
   });
+  console.log('\n[4] แถบร้อยละที่ 0% ต้องไม่หายไป');
+  const w2 = (() => {
+    const sb = { Math, String };
+    vm.createContext(sb);
+    new vm.Script(`
+      function n(v){var x=parseFloat(v);return isFinite(x)?x:0;}
+      function fx(v,d){return n(v).toFixed(d==null?2:d);}
+      function esc(v){return String(v==null?'':v);}
+      ${grab('function barHTML(p, crit, b, w, critLabel)')}
+    `).runInContext(sb);
+    return sb;
+  })();
+  const B = { bar: '#ef4444' };
+  t('0% ยังเห็นหัวแถบ ไม่ใช่เส้นว่าง', () => {
+    const h = w2.barHTML(0, null, B, null, 'เกณฑ์ผ่าน');
+    assert.ok(h.includes('width:6px'), 'แถบหายไปทั้งเส้นเมื่อได้ 0%');
+    assert.ok(h.includes('มีผลการประเมินแล้ว แต่ยังไม่ผ่านเลย'), 'ไม่ได้อธิบายว่า 0% ต่างจากไม่มีข้อมูล');
+  });
+  t('ค่าน้อย ๆ ก็ยังมองเห็น', () =>
+    assert.ok(w2.barHTML(0.4, null, B).includes('min-width:6px'), 'ค่า 0.4% มองไม่เห็น'));
+  t('ค่าปกติยังกว้างตามจริง', () => {
+    const h = w2.barHTML(70, null, B);
+    assert.ok(h.includes('width:70%'), 'ความกว้างเพี้ยน');
+  });
+  t('เกินขอบเขตถูกตัดให้อยู่ใน 0–100', () => {
+    assert.ok(w2.barHTML(150, null, B).includes('width:100%'));
+    assert.ok(w2.barHTML(-5, null, B).includes('width:6px'), 'ค่าติดลบต้องถือเป็น 0');
+  });
+  t('ทั้งสองตารางใช้แถบชุดเดียวกัน', () =>
+    assert.ok((SRC.match(/barHTML\(/g) || []).length >= 3, 'ยังมีที่วาดแถบเองอยู่'));
+
   t('ไฟล์ทั้งไฟล์ยังแปลผ่าน', () => { new vm.Script(SRC); });
 
   console.log('\n' + (fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
