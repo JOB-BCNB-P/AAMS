@@ -359,10 +359,10 @@
         + '<i data-lucide="' + icon + '" class="w-4 h-4"></i>' + label + '</button>';
     };
     var tabs = '<div class="flex flex-wrap items-center gap-2 mb-5 border-b border-gray-100 pb-3 text-sm">'
+      // หน้าบันทึกข้อมูลไม่ต้องมีลิงก์กลับไปผลการบรรลุ — อยู่ในเมนูย่อยด้านซ้ายแล้ว
       + (isEntry
           ? '<span class="px-3 py-1.5 rounded-xl bg-primary text-white flex items-center gap-2">'
             + '<i data-lucide="pencil-line" class="w-4 h-4"></i>บันทึกข้อมูล</span>'
-            + '<button onclick="navigateTo(\'ploSummary\')" class="text-xs text-gray-500 hover:text-primary">ไปที่ผลการบรรลุ →</button>'
           : tab('all', 'bar-chart-3', 'ผลการบรรลุรวม') + tab('person', 'user-check', 'ผลการบรรลุรายบุคคล'))
       + '</div>';
 

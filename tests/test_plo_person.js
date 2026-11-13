@@ -79,9 +79,12 @@ const PLOS = [1, 2, 3].map(i => ({ curriculum_year: '2565', plo_code: 'PLO' + i,
     w.APP._plo.sumView = 'อะไรก็ไม่รู้';
     assert.strictEqual(w.sumView(), 'all', 'ค่าแปลก ๆ ต้องตกกลับเป็นภาพรวม');
   });
-  t('หน้าบันทึกข้อมูลยังเข้าได้ แต่ไม่โชว์แท็บสองอันนี้', () => {
+  t('หน้าบันทึกข้อมูลไม่มีลิงก์ไปผลการบรรลุ (อยู่ในเมนูย่อยแล้ว)', () => {
     const g = grab('window.ploPage = function ploPage()');
-    assert.ok(g.includes('isEntry') && /navigateTo\(\\'ploSummary\\'\)/.test(g), 'กลับจากหน้าบันทึกข้อมูลไม่ได้');
+    assert.ok(g.includes('isEntry'), 'ไม่ได้แยกหน้าบันทึกข้อมูล');
+    assert.ok(!/navigateTo\(\\'ploSummary\\'\)/.test(g), 'ยังมีลิงก์ไปผลการบรรลุซ้ำกับเมนูย่อย');
+    assert.ok(!g.includes('ไปที่ผลการบรรลุ'), 'ยังมีข้อความลิงก์ค้างอยู่');
+    assert.ok(g.includes('บันทึกข้อมูล'), 'ควรเหลือป้ายบอกว่าอยู่หน้าไหน');
   });
   t('กล่องรายบุคคลออกจากหน้าภาพรวมแล้ว ไม่แสดงซ้ำสองที่', () => {
     const g = grab('function summaryTab()');
