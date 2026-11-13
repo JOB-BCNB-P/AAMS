@@ -455,6 +455,11 @@
       if (r.error) { showToast('โหลดไม่สำเร็จ: ' + friendlyErr(r.error.message), 'error'); st.loading = false; return; }
       st.summary = r.data || {}; st._aggMode = null;
       try { await tagSections([].concat(st.summary['ราย CLO'] || [], st.summary['รายวิชาที่ต้องติดตาม'] || [])); } catch (e2) { }
+      // CLO รหัสเดียวกันที่แยกทฤษฎี/ทดลอง ต้องนับเป็นข้อเดียว ไม่งั้นถูกนับซ้ำในผลรวมและราย PLO
+      try {
+        st.summary['ราย CLO'] = await mergeSummaryRows(st.summary['ราย CLO'] || []);
+        st.summary['รายวิชาที่ต้องติดตาม'] = await mergeSummaryRows(st.summary['รายวิชาที่ต้องติดตาม'] || []);
+      } catch (e3) { console.warn('รวมส่วนไม่สำเร็จ:', e3 && e3.message); }
       st.loading = false;
       if (!quiet && typeof showToast === 'function') showToast('คำนวณเสร็จแล้ว');
     } catch (e) {
@@ -927,7 +932,7 @@
         : r['บรรลุ'] === false ? '<i data-lucide="x" class="w-3.5 h-3.5 inline text-red-600"></i>' : '';
       return '<div class="mb-3">'
         + '<div class="flex items-baseline gap-2 mb-1">'
-        + '<span class="text-xs text-gray-700 flex-1 truncate" title="' + esc(label(r) + (st.view === 'clo' && r.__sec ? ' [' + r.__sec + ']' : '')) + '">' + esc(label(r)) + (st.view === 'clo' ? secChip(r.__sec) : '') + '</span>'
+        + '<span class="text-xs text-gray-700 flex-1 truncate" title="' + esc(label(r) + (st.view === 'clo' && r.__sec ? ' [' + r.__sec + ']' : '')) + '">' + esc(label(r)) + (st.view === 'clo' ? secBadge(r) : '') + '</span>'
         + '<span class="text-xs font-semibold ' + b.text + ' whitespace-nowrap">' + okMark + ' ' + fx(pct) + '%</span>'
         + '<span class="text-[11px] ' + b.text + ' whitespace-nowrap">' + esc((r['ระดับ'] || {}).label || '') + '</span>'
         + '</div>'
@@ -978,7 +983,7 @@
         + rows.map(function (r) {
             return '<tr class="border-t border-gray-50">'
               + '<td class="px-3 py-2.5"><span class="font-mono text-xs text-gray-400">' + esc(r['รหัสวิชา']) + '</span> ' + esc(r['รายวิชา']) + '</td>'
-              + '<td class="px-3 py-2.5 whitespace-nowrap">' + esc(r['CLO']) + secChip(r.__sec) + '</td>'
+              + '<td class="px-3 py-2.5 whitespace-nowrap">' + esc(r['CLO']) + secBadge(r) + '</td>'
               + '<td class="px-3 py-2.5">' + esc(r['PLO']) + '</td>'
               + '<td class="px-3 py-2.5 text-center">' + esc(r['ชั้นปี']) + '</td>'
               + '<td class="px-3 py-2.5 text-center whitespace-nowrap">' + esc(r['ภาคเรียน']) + '/' + esc(r['ปีการศึกษา']) + '</td>'
@@ -1051,6 +1056,139 @@
       + '</div>';
   }
 
+  /* ================= รวมผลของ CLO รหัสเดียวกันที่อยู่คนละส่วน =================
+     รายวิชาทฤษฎีและทดลอง (หรือทฤษฎีและปฏิบัติ) แยก CLO รหัสเดียวกันเป็นสองแถว
+     เวลารายงานผลการบรรลุต้องนับเป็น CLO เดียว ไม่งั้น CLO หนึ่งข้อจะถูกนับสองครั้ง
+     และนักศึกษาที่ผ่านทฤษฎีแต่ตกทดลอง จะดูเหมือนผ่านครึ่งหนึ่ง ทั้งที่ควรตัดสินเป็นข้อเดียว
+
+     วิธีรวม : คิดแต่ละส่วนเป็นร้อยละของคะแนนเต็มส่วนนั้น แล้วถ่วงด้วยตัวคูณรายส่วน
+               ของรายวิชา (ตัวเดียวกับที่ใช้ตัดเกรด เช่น 3(2-2-5) → ทฤษฎี×2 ทดลอง×1)
+               เกณฑ์ผ่านก็ถ่วงด้วยน้ำหนักเดียวกัน เพราะแต่ละส่วนตั้งเกณฑ์ไว้ไม่เท่ากัน
+     รวมเฉพาะเมื่อ PLO ตรงกัน — ถ้าผูกคนละ PLO ถือว่าเป็นคนละเรื่อง ไม่รวม */
+  var _secWCache = {};
+  function secWeightOf(code, year, sem, sec) {
+    var k = [s(code), s(year), s(sem)].join('|');
+    var cfg = _secWCache[k];
+    if (!cfg) {
+      cfg = _secWCache[k] = courseCfg(get('plo_clo').filter(function (c) {
+        return s(c.subject_code) === s(code) && s(c.academic_year) === s(year) && s(c.semester) === s(sem);
+      }));
+    }
+    return secMultOf(cfg, normSec(sec));
+  }
+  function mergeKeyOf(r) {
+    return [s(r['รหัสวิชา']) || s(r['รายวิชา']), s(r['ปีการศึกษา']), s(r['ภาคเรียน']), s(r['CLO'])].join('|');
+  }
+  // จัดกลุ่มแถวที่รวมได้ · คืน [{key, rows}] เรียงตามลำดับเดิม
+  function mergeGroups(rows) {
+    var g = {}, order = [];
+    (rows || []).forEach(function (r) {
+      var k = mergeKeyOf(r);
+      if (!g[k]) { g[k] = []; order.push(k); }
+      g[k].push(r);
+    });
+    return order.map(function (k) { return { key: k, rows: g[k] }; });
+  }
+  function samePlo(list) {
+    var p = s(list[0]['PLO']);
+    return list.every(function (r) { return s(r['PLO']) === p; });
+  }
+  function secLabelOf(list) {
+    return list.map(function (r) { return s(r.__sec); }).filter(Boolean).join(' + ');
+  }
+  /* รวมแถวผลรายบุคคล — แต่ละแถวมีคะแนนของนักศึกษาคนนั้นอยู่แล้ว จึงรวมได้ตรง ๆ
+     (แถวจะมีก็ต่อเมื่อมีคะแนนแล้ว ถ้ากรอกมาส่วนเดียวจะเหลือแถวเดียว ไม่เข้าเงื่อนไขรวม) */
+  function mergeStudentRows(rows) {
+    var out = [];
+    mergeGroups(rows).forEach(function (grp) {
+      var list = grp.rows;
+      if (list.length < 2 || !samePlo(list)) { out = out.concat(list); return; }
+      var num = 0, den = 0, pnum = 0;
+      list.forEach(function (r) {
+        var max = n(r['คะแนนเต็ม']) || 100;
+        var w = secWeightOf(s(r['รหัสวิชา']), s(r['ปีการศึกษา']), s(r['ภาคเรียน']), r.__sec);
+        num += (n(r['คะแนน']) / max * 100) * w;
+        pnum += (n(r['เกณฑ์ผ่าน']) / max * 100) * w;
+        den += w;
+      });
+      var pct = den ? num / den : 0, cut = den ? pnum / den : 0;
+      var m = Object.assign({}, list[0]);
+      m['คะแนน'] = Math.round(pct * 100) / 100;
+      m['คะแนนเต็ม'] = 100;
+      m['เกณฑ์ผ่าน'] = Math.round(cut * 100) / 100;
+      m['ผ่าน'] = pct >= cut - 1e-9;
+      m.__sec = '';
+      m.__merged = secLabelOf(list);
+      out.push(m);
+    });
+    return out;
+  }
+
+  /* รวมแถวสรุป (ซึ่งเก็บเป็น "จำนวนคน" ไม่ใช่คะแนนรายคน)
+     ต้องดึงคะแนนดิบของ CLO คู่นั้นมาตัดสินรายคนก่อน แล้วค่อยนับใหม่
+     เฉลี่ยร้อยละของสองส่วนตรง ๆ ไม่ได้ เพราะคนละคนกันอาจผ่านคนละส่วน
+     นักศึกษาที่มีคะแนนแค่ส่วนเดียว จะยังตัดสินไม่ได้ จึงไม่ถูกนับในข้อที่รวมแล้ว */
+  async function mergeSummaryRows(rows) {
+    var groups = mergeGroups(rows).filter(function (g) { return g.rows.length > 1 && samePlo(g.rows); });
+    if (!groups.length) return rows;
+    var ids = [], byRow = [];
+    groups.forEach(function (g) {
+      var cands = [];
+      g.rows.forEach(function (r) {
+        var c = rowCands(r).filter(function (x) { return secOf(x) === s(r.__sec); })[0] || rowCands(r)[0];
+        if (c) { cands.push({ row: r, clo: c }); if (ids.indexOf(cloNum(c)) < 0) ids.push(cloNum(c)); }
+      });
+      if (cands.length === g.rows.length) byRow.push({ g: g, cands: cands });
+    });
+    if (!byRow.length) return rows;
+    var raw = await rpcTry('ems_plo_scores', { clo_ids: ids });
+    if (raw.error) throw new Error(raw.error.message);
+    var sc = {};
+    (raw.data || []).forEach(function (x) { (sc[x.clo_id] = sc[x.clo_id] || {})[s(x.student_id)] = x.score; });
+
+    var replaced = {};
+    byRow.forEach(function (item) {
+      var cands = item.cands, first = item.g.rows[0];
+      var stuSet = {};
+      cands.forEach(function (c) { Object.keys(sc[cloNum(c.clo)] || {}).forEach(function (sid) { stuSet[sid] = (stuSet[sid] || 0) + 1; }); });
+      var tot = 0, pass = 0;
+      Object.keys(stuSet).forEach(function (sid) {
+        if (stuSet[sid] < cands.length) return;                 // ยังมีคะแนนไม่ครบทุกส่วน
+        var num = 0, den = 0, pnum = 0, ok = true;
+        cands.forEach(function (c) {
+          var v = (sc[cloNum(c.clo)] || {})[sid];
+          if (v === null || v === undefined || s(v) === '') { ok = false; return; }
+          var max = n(c.clo.max_score) || 100;
+          var w = secWeightOf(s(c.clo.subject_code), s(c.clo.academic_year), s(c.clo.semester), secOf(c.clo));
+          num += (n(v) / max * 100) * w;
+          pnum += (n(c.clo.pass_score) / max * 100) * w;
+          den += w;
+        });
+        if (!ok || !den) return;
+        tot++;
+        if (num / den >= pnum / den - 1e-9) pass++;
+      });
+      var m = Object.assign({}, first);
+      m['ผลการประเมิน'] = tot;
+      if (m['นักศึกษา'] != null) m['นักศึกษา'] = tot;
+      m['ผ่าน'] = pass;
+      m['ไม่ผ่าน'] = tot - pass;
+      m['ร้อยละบรรลุ'] = tot ? Math.round(pass / tot * 10000) / 100 : 0;
+      if (m['เกณฑ์'] != null) m['บรรลุ'] = m['ร้อยละบรรลุ'] >= n(m['เกณฑ์']);
+      m.__sec = '';
+      m.__merged = secLabelOf(item.g.rows);
+      replaced[item.g.key] = m;
+    });
+
+    var out = [], done = {};
+    rows.forEach(function (r) {
+      var k = mergeKeyOf(r);
+      if (replaced[k]) { if (!done[k]) { done[k] = 1; out.push(replaced[k]); } return; }
+      out.push(r);
+    });
+    return out;
+  }
+
   /* ================= นักศึกษาที่ควรกำกับติดตาม =================
      รวมผลราย CLO ของทุกคนในขอบเขตที่เลือก แล้วเรียงคนที่ผ่านน้อยที่สุดขึ้นก่อน
      เกณฑ์ : ร้อยละ CLO ที่ผ่าน ต่ำกว่าเส้นที่ตั้งไว้ (ค่าเริ่มต้น 60% เท่าเกณฑ์ผ่านรายวิชา)
@@ -1105,21 +1243,43 @@
     var stuById = {};
     get('student').forEach(function (x) { stuById[s(x.student_id)] = x; });
     var lv = s(state().stuLevel);
-    var agg = {};
+    /* รวมคะแนนรายคนก่อน โดยยุบ CLO รหัสเดียวกันที่อยู่คนละส่วนให้เหลือข้อเดียว
+       ไม่งั้นวิชาทฤษฎีและทดลองจะถูกนับสองเท่าของวิชาทฤษฎีล้วน */
+    var cell = {};   // รหัสนักศึกษา|รหัสวิชา|ปี|ภาค|CLO → ส่วนย่อยที่มีคะแนน
     (raw || []).forEach(function (row) {
       var c = byId[String(row.clo_id)]; if (!c) return;
       var sid = s(row.student_id); if (!sid) return;
       var stu = stuById[sid];
       if (lv && s(stu && stu.year_level) !== lv) return;
       if (stu && typeof isActiveStudent === 'function' && !isActiveStudent(stu)) return;
-      var passCut = s(c.pass_score) === '' ? null : n(c.pass_score);
-      var sc = (row.score === null || row.score === undefined || s(row.score) === '') ? null : n(row.score);
-      if (sc === null || passCut === null) return;             // ยังไม่มีคะแนน = ไม่นำมาตัดสิน
-      var a = agg[sid] || (agg[sid] = { sid: sid, name: s(stu && stu.name), level: s(stu && stu.year_level), tot: 0, pass: 0, plo: {} });
-      var pk = toParentPlo(s(c.plo_code), axes) || s(c.plo_code);
-      var g = a.plo[pk] || (a.plo[pk] = { tot: 0, pass: 0 });
-      a.tot++; g.tot++;
-      if (sc >= passCut) { a.pass++; g.pass++; }
+      if (s(c.pass_score) === '') return;                                   // ยังไม่ตั้งเกณฑ์ผ่าน
+      if (row.score === null || row.score === undefined || s(row.score) === '') return;   // ยังไม่กรอกคะแนน
+      var k = [sid, s(c.subject_code), s(c.academic_year), s(c.semester), s(c.clo_code)].join('|');
+      (cell[k] = cell[k] || { sid: sid, stu: stu, parts: [] }).parts.push({ c: c, v: n(row.score) });
+    });
+    var agg = {};
+    Object.keys(cell).forEach(function (k) {
+      var e = cell[k], parts = e.parts;
+      var plos = parts.map(function (x) { return toParentPlo(s(x.c.plo_code), axes) || s(x.c.plo_code); });
+      var same = plos.every(function (x) { return x === plos[0]; });
+      var sets = same ? [parts] : parts.map(function (x) { return [x]; });   // ผูกคนละ PLO = ไม่รวม
+      sets.forEach(function (set) {
+        var num = 0, den = 0, pnum = 0;
+        set.forEach(function (x) {
+          var max = n(x.c.max_score) || 100;
+          var w = secWeightOf(s(x.c.subject_code), s(x.c.academic_year), s(x.c.semester), secOf(x.c));
+          num += (x.v / max * 100) * w;
+          pnum += (n(x.c.pass_score) / max * 100) * w;
+          den += w;
+        });
+        if (!den) return;
+        var stu = e.stu;
+        var a = agg[e.sid] || (agg[e.sid] = { sid: e.sid, name: s(stu && stu.name), level: s(stu && stu.year_level), tot: 0, pass: 0, plo: {} });
+        var pk = toParentPlo(s(set[0].c.plo_code), axes) || s(set[0].c.plo_code);
+        var g = a.plo[pk] || (a.plo[pk] = { tot: 0, pass: 0 });
+        a.tot++; g.tot++;
+        if (num / den >= pnum / den - 1e-9) { a.pass++; g.pass++; }
+      });
     });
     var cut = watchCut();
     return Object.keys(agg).map(function (k) {
@@ -1360,7 +1520,7 @@
               var p2 = sc / full * 100, c2 = ps / full * 100;
               var bb2 = r['ผ่าน'] ? BAND.emerald : BAND.red;
               return '<tr class="border-t border-gray-50">'
-                + '<td class="px-3 py-1.5 whitespace-nowrap">' + esc(r['CLO']) + secChip(r.__sec) + '</td>'
+                + '<td class="px-3 py-1.5 whitespace-nowrap">' + esc(r['CLO']) + secBadge(r) + '</td>'
                 + '<td class="px-3 py-1.5 text-xs text-gray-500">' + esc(r['PLO'] || '') + '</td>'
                 + '<td class="px-3 py-1.5"><div class="flex items-center gap-2">' + bar(p2, c2, bb2, 'flex-1" style="min-width:6rem')
                 + '<span class="text-xs tabular-nums text-gray-800 whitespace-nowrap" style="min-width:5.5rem;text-align:right">'
@@ -1426,6 +1586,8 @@
       if (r.error) { showToast('ค้นหาไม่สำเร็จ: ' + r.error.message, 'error'); return; }
       st.stuResult = r.data || null;
       try { if (st.stuResult) await tagStudentSections(st.stuResult['ราย CLO'], sid); } catch (e2) { }
+      // รวม CLO รหัสเดียวกันที่อยู่คนละส่วนให้เหลือข้อเดียว ก่อนนำไปคิดทุกตัวเลขในหน้านี้
+      if (st.stuResult) st.stuResult = Object.assign({}, st.stuResult, { 'ราย CLO': mergeStudentRows(st.stuResult['ราย CLO'] || []) });
       var allowS = viewSubjectFilter();
       if (st.stuResult && allowS) {
         var rowsS = (st.stuResult['ราย CLO'] || []).filter(allowS), okS = rowsS.filter(function (x) { return x['ผ่าน']; }).length;
@@ -1445,6 +1607,15 @@
        • รหัสเดียวกันอยู่หลายส่วน (เช่น CLO 1.1.2 ทฤษฎี + ทดลอง) → นับผลของแต่ละ CLO จากตารางคะแนน
          แล้วจับคู่ด้วยจำนวน "ผ่าน / ทั้งหมด" (รายบุคคลจับคู่ด้วยคะแนน)
          ถ้าตัวเลขเท่ากันทุกประการ แถวเหล่านั้นแสดงผลเหมือนกัน จึงสลับป้ายกันได้โดยไม่ผิดความหมาย */
+  /* ป้ายบอกว่าแถวนี้เป็นผลรวมของหลายส่วน (ทฤษฎี + ทดลอง)
+     ต้องบอกให้เห็น ไม่งั้นผู้อ่านจะนึกว่าเป็นคะแนนของส่วนใดส่วนหนึ่ง */
+  function secBadge(r) {
+    if (r && r.__merged) {
+      return '<span class="inline-block px-1.5 py-0 rounded-md border border-gray-200 bg-gray-50 text-gray-600 text-[10px] font-medium align-middle ml-1" title="รวมผลของ '
+        + esc(r.__merged) + ' เป็นข้อเดียว">' + esc(r.__merged) + '</span>';
+    }
+    return secChip(r && r.__sec);
+  }
   function secChip(x) {
     if (!x) return '';
     var cls = x === 'ทฤษฎี' ? 'bg-sky-50 text-sky-700 border-sky-100' : x === 'ทดลอง' ? 'bg-violet-50 text-violet-700 border-violet-100' : 'bg-amber-50 text-amber-700 border-amber-100';

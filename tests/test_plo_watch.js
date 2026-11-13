@@ -71,6 +71,14 @@ function box(st, canView) {
     ${grab('function radarAxes(cur)')}
     ${grab('function toParentPlo(code, axes)')}
     ${grab('function normSemKey(v)')}
+    ${grab('function normSec(v)')}
+    ${grab('function secOf(c)')}
+    ${SRC.match(/var DEF_GRADES = \[[\s\S]*?\];/)[0]}
+    ${SRC.match(/var DEF_CFG = \{[\s\S]*?\};/)[0]}
+    ${grab('function courseCfg(clos)')}
+    ${grab('function secMultOf(cfg, sec)')}
+    ${grab('function secWeightOf(code, year, sem, sec)')}
+    var _secWCache = {};
     ${SRC.match(/var WATCH_LEVELS = \[[\s\S]*?\];/)[0]}
     ${grab('function watchLevel(pct)')}
     ${grab('function watchCut()')}
