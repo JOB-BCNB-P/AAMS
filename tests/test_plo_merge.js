@@ -189,6 +189,20 @@ const row = (clo, sec, plo, score, cut) => ({
   t('ทั้งสองตารางใช้แถบชุดเดียวกัน', () =>
     assert.ok((SRC.match(/barHTML\(/g) || []).length >= 3, 'ยังมีที่วาดแถบเองอยู่'));
 
+  console.log('\n[5] การ์ดภาพรวมต้องตรงกับตารางราย CLO');
+  t('ยุบส่วนแล้วต้องคิดภาพรวมใหม่ ไม่ใช้ตัวเลขดิบจากเซิร์ฟเวอร์', () => {
+    const g = grab('function filteredSummary()');
+    assert.ok(g.includes('!st._merged'), 'ไม่มีตัวกรองแล้วยังคืนตัวเลขดิบ ทั้งที่ยุบส่วนไปแล้ว');
+  });
+  t('ตั้งธงเมื่อมีการยุบจริงเท่านั้น', () => {
+    const g = grab('async function mergeSummaryRows(rows)');
+    assert.ok(g.includes('out.length !== rows.length') && g.includes('_merged = true'), 'ไม่ได้บอกว่ามีการยุบ');
+  });
+  t('ล้างธงทุกครั้งที่โหลดสรุปใหม่', () => {
+    const g = grab('window.ploLoad = async function (quiet)');
+    assert.ok(/_merged = false/.test(g), 'ธงค้างข้ามการโหลด');
+  });
+
   t('ไฟล์ทั้งไฟล์ยังแปลผ่าน', () => { new vm.Script(SRC); });
 
   console.log('\n' + (fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');

@@ -453,7 +453,7 @@
       });
       var t = document.getElementById('loadingToast'); if (t) t.remove();
       if (r.error) { showToast('โหลดไม่สำเร็จ: ' + friendlyErr(r.error.message), 'error'); st.loading = false; return; }
-      st.summary = r.data || {}; st._aggMode = null;
+      st.summary = r.data || {}; st._aggMode = null; st._merged = false;
       try { await tagSections([].concat(st.summary['ราย CLO'] || [], st.summary['รายวิชาที่ต้องติดตาม'] || [])); } catch (e2) { }
       // CLO รหัสเดียวกันที่แยกทฤษฎี/ทดลอง ต้องนับเป็นข้อเดียว ไม่งั้นถูกนับซ้ำในผลรวมและราย PLO
       try {
@@ -1186,6 +1186,7 @@
       if (replaced[k]) { if (!done[k]) { done[k] = 1; out.push(replaced[k]); } return; }
       out.push(r);
     });
+    if (out.length !== rows.length) state()._merged = true;
     return out;
   }
 
@@ -1796,7 +1797,10 @@
     var st = state(), sum = st.summary || {};
     var allow = viewSubjectFilter();
     var useSubj = !!(s(st.subj) && s(st.year) && s(st.sem));
-    if (!useSubj && !allow) return sum;
+    /* ไม่มีตัวกรองเลยก็ยังต้องคิดใหม่ ถ้ามี CLO ที่ถูกยุบส่วน (ทฤษฎี+ทดลอง) ไปแล้ว
+       ไม่งั้นการ์ดภาพรวมจะยังใช้ตัวเลขดิบจากเซิร์ฟเวอร์ ซึ่งนับ CLO ข้อเดียวเป็นสองครั้ง
+       และไม่ตรงกับตาราง "ราย CLO" ที่อยู่หน้าเดียวกัน */
+    if (!useSubj && !allow && !st._merged) return sum;
     var mode = st._aggMode || (st._aggMode = aggMode(sum));
     var keep = function (r) { return (!useSubj || rowSubjMatch(r, st.subj)) && (!allow || allow(r)); };
     var clo = (sum['ราย CLO'] || []).filter(keep);
