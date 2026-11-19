@@ -1809,6 +1809,59 @@ form.ems-stepped > * + * { margin-top: 0; }
 /* เส้นคั่นแถวให้บางลง ตารางยาว ๆ จะได้ไม่ดูเป็นตาราง ๆ จนลายตา */
 .ems-main .bg-white.rounded-2xl tbody tr.border-t { border-top-color: rgba(191, 219, 254, .55); }
 
+/* ---- ตารางแบบแถวเป็นการ์ด (จอตั้งแต่แท็บเล็ตขึ้นไป) ----
+   ใช้เฉพาะตารางที่ app-patch.js ตรวจแล้วว่าโครงสร้างเรียบง่าย
+   (หัวตารางชั้นเดียว ไม่มี colspan/rowspan จำนวนช่องตรงกันทุกแถว)
+   คือ data-ems-cards="1" ตารางซับซ้อนและตารางที่มีคอลัมน์ตรึงจะไม่โดน
+   จอเล็กกว่านี้ยังใช้การ์ดใบละแถวของเดิม */
+@media (min-width: 641px) {
+  .ems-main .bg-white.rounded-2xl table[data-ems-cards="1"] {
+    border-collapse: separate;
+    border-spacing: 0 .4rem;
+  }
+  .ems-main .bg-white.rounded-2xl table[data-ems-cards="1"] thead tr,
+  .ems-main .bg-white.rounded-2xl table[data-ems-cards="1"] thead th {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+  }
+  .ems-main .bg-white.rounded-2xl table[data-ems-cards="1"] thead th {
+    padding-top: 0; padding-bottom: .4rem;
+    font-size: .75rem; font-weight: 500; color: #64748b;
+  }
+  .ems-main .bg-white.rounded-2xl table[data-ems-cards="1"] tbody td {
+    background-color: #fff;
+    border: 0;
+    padding-top: .7rem; padding-bottom: .7rem;
+  }
+  .ems-main .bg-white.rounded-2xl table[data-ems-cards="1"] tbody td:first-child {
+    border-top-left-radius: .625rem; border-bottom-left-radius: .625rem;
+  }
+  .ems-main .bg-white.rounded-2xl table[data-ems-cards="1"] tbody td:last-child {
+    border-top-right-radius: .625rem; border-bottom-right-radius: .625rem;
+  }
+  /* แถวที่ชี้เมาส์ ต้องทาที่ช่อง เพราะ border-collapse: separate ทำให้สีพื้นของแถวไม่ปรากฏ */
+  .ems-main .bg-white.rounded-2xl table[data-ems-cards="1"] tbody tr:hover td {
+    background-color: #f5faff;
+  }
+  /* แถวที่โค้ดเดิมทาสีไว้เอง (เน้น/เตือน) ต้องชนะสีขาวข้างบน
+     จับเฉพาะคลาส bg- ที่เป็นของแถวจริง ไม่ใช่ hover:bg- หรือ odd:bg- ซึ่งเป็นสถานะ */
+  .ems-main .bg-white.rounded-2xl table[data-ems-cards="1"] tbody tr[class^="bg-"] td,
+  .ems-main .bg-white.rounded-2xl table[data-ems-cards="1"] tbody tr[class*=" bg-"] td {
+    background-color: transparent;
+  }
+}
+
+/* ---- ตัวเลขร้อยละพร้อมแถบในช่องตาราง ---- */
+.ems-pct { display: inline-flex; align-items: center; gap: .5rem; white-space: nowrap; }
+.ems-pct > b { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 2.75rem; text-align: right; }
+.ems-pct > .ems-pct-bar {
+  width: 5.5rem; height: .375rem; border-radius: 999px;
+  background: rgba(148, 163, 184, .22); overflow: hidden; flex: none;
+}
+.ems-pct > .ems-pct-bar > span { display: block; height: 100%; border-radius: 999px; }
+@media (max-width: 640px) { .ems-pct > .ems-pct-bar { width: 3.5rem; } }
+
 /* ---- ผู้ใช้ที่ตั้งค่าลดความโปร่งแสงของระบบปฏิบัติการ ---- */
 @media (prefers-reduced-transparency: reduce) {
   .ems-header,

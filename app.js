@@ -1962,6 +1962,19 @@ function filterSelectHTML(o) {
   </div>`;
 }
 
+// ตัวเลขร้อยละพร้อมแถบสั้น ๆ ในช่องตาราง — อ่านเทียบกันได้เร็วกว่าตัวเลขเปล่า
+// tone : green | amber | red | blue  (ผู้เรียกเป็นคนตัดสินเกณฑ์เอง)
+function pctCell(p, tone) {
+  const C = {
+    green: ['text-green-600', '#22c55e'], amber: ['text-amber-600', '#f59e0b'],
+    red: ['text-red-600', '#ef4444'], blue: ['text-blue-600', '#3b82f6']
+  };
+  const c = C[tone] || C.blue;
+  const v = Math.max(0, Math.min(100, Number(p) || 0));
+  return '<span class="ems-pct"><b class="' + c[0] + '">' + p + '%</b>'
+    + '<span class="ems-pct-bar"><span style="width:' + v + '%;background:' + c[1] + '"></span></span></span>';
+}
+
 // สัดส่วนของตัวเลขเทียบกับฐาน ใช้เป็น opts ของ statCard
 // ฐานเป็น 0 หรือไม่รู้ฐาน จะคืนวัตถุว่าง การ์ดก็แสดงแค่ตัวเลขเหมือนเดิม
 function statOf(n, total, unit) {
@@ -2183,7 +2196,7 @@ function studentRetentionAnalyticsHTML() {
     const transfer = inB.filter(s => norm(s.status) === 'ขอโอนย้ายสถานศึกษา').length;
     const grad = inB.filter(isGraduate).length;
     const stayPct = admitted ? Math.round((admitted - resign - transfer) / admitted * 1000) / 10 : 0;
-    const pctColor = stayPct >= 90 ? 'text-green-600' : stayPct >= 80 ? 'text-amber-600' : 'text-red-600';
+    const pctTone = stayPct >= 90 ? 'green' : stayPct >= 80 ? 'amber' : 'red';
     return `<tr class="border-t hover:bg-gray-50">
       <td class="px-3 py-2 font-medium">${cohortLabel(b)}</td>
       <td class="px-3 py-2 text-center font-semibold text-primary">${admitted}</td>
@@ -2192,7 +2205,7 @@ function studentRetentionAnalyticsHTML() {
       <td class="px-3 py-2 text-center">${resign}</td>
       <td class="px-3 py-2 text-center">${transfer}</td>
       <td class="px-3 py-2 text-center text-blue-600">${grad}</td>
-      <td class="px-3 py-2 text-center font-bold ${pctColor}">${stayPct}%</td>
+      <td class="px-3 py-2 text-center">${pctCell(stayPct, pctTone)}</td>
     </tr>`;
   }).join('');
   const cohortTable = `<div class="overflow-x-auto"><table class="w-full text-sm">
