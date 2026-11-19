@@ -964,7 +964,42 @@
       + '<span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-gray-200 text-gray-500">'
       + '<span style="width:2px;height:11px;background:#6b7280;display:inline-block"></span>เส้นเกณฑ์บรรลุ</span></div>';
 
-    return section('อัตราการบรรลุ', toggle + legend + (st.view === 'clo' ? cloGrouped(rows) : '<div class="mt-1">' + bars + '</div>'));
+    /* แท่งแนวตั้ง ใช้เฉพาะมุมมองที่ชื่อสั้นและจำนวนแท่งไม่มาก (PLO / ชั้นปี)
+       เทียบความสูงด้วยตาได้ทันทีในภาพเดียว เหมาะกับผู้บริหาร
+       มุมมองราย CLO ยังเป็นแนวนอน เพราะชื่อยาวจนวางใต้แท่งไม่ได้ */
+    var vbars = function () {
+      var crits = rows.map(function (r) { return r['เกณฑ์'] != null ? n(r['เกณฑ์']) : null; })
+        .filter(function (x) { return x != null; });
+      var oneCrit = crits.length === rows.length && crits.every(function (x) { return x === crits[0]; }) ? crits[0] : null;
+      var cells = rows.map(function (r) {
+        var b = bandOf(r['ระดับ']);
+        var cnt = r['นักศึกษา'] != null ? n(r['นักศึกษา']) : n(r['ผลการประเมิน']);
+        var has = cnt > 0;
+        var pct = n(r['ร้อยละบรรลุ']);
+        var lab = st.view === 'ylo' ? 'ปี ' + s(r['ชั้นปี']) : s(r['PLO']).replace('PLO', 'PLO ');
+        var tip = lab + (has
+          ? ' · ' + fx(pct) + '% · ผ่าน ' + s(r['ผ่าน']) + ' จาก ' + cnt
+            + ((r['ระดับ'] || {}).label ? ' · ' + (r['ระดับ'] || {}).label : '')
+          : ' · ยังไม่มีผลการประเมิน');
+        return '<div class="vbar" title="' + esc(tip) + '">'
+          + '<span class="vbar-val ' + (has ? b.text : 'text-gray-400') + '">' + (has ? fx(pct, 0) + '%' : '—') + '</span>'
+          + '<div class="vbar-track">'
+          + (has
+              ? '<div class="vbar-fill" style="--h:' + Math.max(2, Math.min(100, pct)) + '%;background:' + b.bar + '"></div>'
+              : '<div class="vbar-none"></div>')
+          + '</div>'
+          + '<span class="vbar-lab">' + esc(lab) + '</span></div>';
+      }).join('');
+      return '<div class="vbar-wrap' + (oneCrit != null ? ' has-crit' : '') + '"'
+        + (oneCrit != null ? ' style="--critN:' + (Math.min(100, oneCrit) / 100).toFixed(4) + '"' : '')
+        + (oneCrit != null ? ' data-crit="เกณฑ์ ' + fx(oneCrit, 0) + '%"' : '') + '>'
+        + cells + '</div>';
+    };
+
+    var body = st.view === 'clo' ? cloGrouped(rows)
+      : (rows.length <= 14 ? vbars() + '<div class="mt-4">' + bars + '</div>'
+                           : '<div class="mt-1">' + bars + '</div>');
+    return section('อัตราการบรรลุ', toggle + legend + body);
   }
 
   function watchTable() {
