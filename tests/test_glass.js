@@ -151,9 +151,11 @@ const GLASS_AT = CSS.indexOf('ชั้นธีมกระจก (Glassmorphis
     assert.ok(/rgba\(241,\s*245,\s*249,\s*\.8\)/.test(C) && /#94a3b8/.test(C),
       'ช่องที่กรอกไม่ได้ยังดูเหมือนกรอกได้');
   });
-  t('ไอคอนการ์ดตัวเลขมีเงารับกับพื้นกระจก', () =>
-    assert.ok(/\.card-stat > \.flex > \.rounded-xl[\s\S]{0,140}box-shadow/.test(C),
-      'ไอคอนแบนติดการ์ด'));
+  t('การ์ดตัวเลขมีป้ายกำกับ ตัวเลขใหญ่ และช่องไอคอนขนาดคงที่', () => {
+    assert.ok(/\.card-stat \.stat-label/.test(C), 'ไม่มีสไตล์ป้ายกำกับ');
+    assert.ok(/\.card-stat \.stat-value[\s\S]{0,200}font-weight:\s*700/.test(C), 'ตัวเลขไม่เด่น');
+    assert.ok(/\.stat-ico[\s\S]{0,160}width:\s*2\.5rem/.test(C), 'ไอคอนไม่มีขนาดคงที่ การ์ดจะสูงไม่เท่ากัน');
+  });
   t('แถวตารางมีสถานะชี้เมาส์ แต่ไม่กลืนหัวตาราง', () => {
     assert.ok(/tbody tr:hover[\s\S]{0,120}rgba\(239,\s*246,\s*255/.test(C), 'ไม่มีสถานะชี้เมาส์ของแถว');
     assert.ok(/thead tr\.bg-surface th:first-child[\s\S]{0,120}border-top-left-radius/.test(C),

@@ -32,7 +32,7 @@ const env = {
 };
 const G = new Function(...Object.keys(env),
   [grab(APP, 'function svgDonut(segments, centerLabel)'), grab(APP, 'function animBarRows(items)'),
-   grab(APP, 'function statCard(icon, label, value, unit, color)')].join('\n')
+   grab(APP, 'function statCard(icon, label, value, unit, color, opts)')].join('\n')
   + '; return { svgDonut, animBarRows, statCard };')(...Object.values(env));
 
 t('การ์ดตัวเลข : ข้อความที่เรนเดอร์ออกมาเป็นค่าจริง ไม่ใช่ศูนย์', () => {

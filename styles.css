@@ -1733,10 +1733,42 @@ form.ems-stepped > * + * { margin-top: 0; }
   background-color: rgba(255, 255, 255, .62);
 }
 
-/* ---- การ์ดตัวเลขสรุป (statCard) ---- */
-.ems-main .card-stat > .flex > .rounded-xl {
-  box-shadow: 0 8px 16px -8px rgba(23, 56, 117, .55);
+/* ---- การ์ดตัวเลขสรุป (statCard) ----
+   ป้ายกำกับอยู่บน ตัวเลขใหญ่กลางการ์ด ไอคอนอยู่มุมขวาเป็นพื้นอ่อน
+   บรรทัดคำอธิบายและแถบความคืบหน้าเป็นของเสริม ใส่เมื่อส่ง opts มาเท่านั้น */
+.ems-main .card-stat .stat-ico,
+#modalContainer .card-stat .stat-ico {
+  width: 2.5rem; height: 2.5rem; border-radius: .75rem; flex: none;
+  display: flex; align-items: center; justify-content: center;
 }
+.card-stat .stat-label { font-size: .8125rem; color: #64748b; line-height: 1.35; }
+.card-stat .stat-value {
+  margin-top: .375rem; font-size: 1.875rem; font-weight: 700;
+  color: #1e293b; line-height: 1.15; letter-spacing: -.02em;
+}
+.card-stat .stat-unit { font-size: .8125rem; font-weight: 400; color: #64748b; margin-left: .25rem; }
+.card-stat .stat-sub { margin-top: .25rem; font-size: .75rem; color: #64748b; }
+.card-stat .stat-bar {
+  margin-top: .75rem; height: .375rem; border-radius: 999px;
+  background: rgba(148, 163, 184, .22); overflow: hidden;
+}
+.card-stat .stat-bar > span {
+  display: block; height: 100%; border-radius: 999px;
+  transition: width .6s cubic-bezier(.22, 1, .36, 1);
+}
+
+/* การ์ดเน้น หนึ่งใบต่อหนึ่งหน้า ใช้บอกตัวเลขที่สำคัญที่สุด */
+.ems-main .card-stat-accent {
+  background: linear-gradient(145deg, #1e6fd9, #4ea3f5) !important;
+  border-color: transparent !important;
+  backdrop-filter: none !important;
+  box-shadow: 0 14px 30px -16px rgba(30, 111, 217, .95) !important;
+}
+.card-stat-accent .stat-label,
+.card-stat-accent .stat-sub,
+.card-stat-accent .stat-unit { color: rgba(255, 255, 255, .88); }
+.card-stat-accent .stat-value { color: #fff; }
+.card-stat-accent .stat-bar { background: rgba(255, 255, 255, .3); }
 
 /* ---- ช่องกรอกข้อมูล ----
    ไม่แตะ checkbox / radio / ปุ่มอัปโหลด เพราะเป็นตัวควบคุมของเบราว์เซอร์ */

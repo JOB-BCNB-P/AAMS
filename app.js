@@ -1962,8 +1962,48 @@ function filterSelectHTML(o) {
   </div>`;
 }
 
-function statCard(icon, label, value, unit, color) {
-  return `<div class="card-stat bg-white rounded-2xl p-5 border border-blue-100"><div class="flex items-center gap-4"><div class="w-12 h-12 ${color} rounded-xl flex items-center justify-center"><i data-lucide="${icon}" class="w-6 h-6 text-white"></i></div><div><p class="text-sm text-gray-500">${label}</p><p class="text-2xl font-bold text-gray-800"><span class="count-up" data-count-up="${String(value).replace(/[^0-9.-]/g, '')}">${value}</span> <span class="text-sm font-normal text-gray-500">${unit}</span></p></div></div></div>`;
+// สัดส่วนของตัวเลขเทียบกับฐาน ใช้เป็น opts ของ statCard
+// ฐานเป็น 0 หรือไม่รู้ฐาน จะคืนวัตถุว่าง การ์ดก็แสดงแค่ตัวเลขเหมือนเดิม
+function statOf(n, total, unit) {
+  const t = Number(total) || 0;
+  if (!t) return {};
+  const p = Math.max(0, Math.min(100, (Number(n) || 0) * 100 / t));
+  return { sub: 'จาก ' + t.toLocaleString('th-TH') + ' ' + (unit || '') + ' · ' + p.toFixed(1) + '%', pct: p };
+}
+
+function statCard(icon, label, value, unit, color, opts) {
+  // opts = { sub:'บรรทัดคำอธิบายใต้ตัวเลข', pct:0-100 (แถบความคืบหน้า), accent:true (การ์ดเน้น พื้นไล่สีฟ้า) }
+  const o = opts || {};
+  // จับคู่สีจากคลาสเดิมที่ทุกเมนูส่งเข้ามา → พื้นไอคอนอ่อน ไอคอนสีเข้ม แถบสีเดียวกัน
+  const TONE = {
+    'bg-blue-500':    { soft: '#eff6ff', ico: '#2563eb', bar: '#3b82f6', num: '' },
+    'bg-sky-500':     { soft: '#f0f9ff', ico: '#0284c7', bar: '#38bdf8', num: '' },
+    'bg-primary':     { soft: '#eff6ff', ico: '#1e6fd9', bar: '#2c8ced', num: '' },
+    'bg-emerald-500': { soft: '#ecfdf5', ico: '#059669', bar: '#10b981', num: '#047857' },
+    'bg-green-500':   { soft: '#f0fdf4', ico: '#16a34a', bar: '#22c55e', num: '#15803d' },
+    'bg-amber-500':   { soft: '#fffbeb', ico: '#d97706', bar: '#f59e0b', num: '#b45309' },
+    'bg-yellow-500':  { soft: '#fefce8', ico: '#ca8a04', bar: '#eab308', num: '#a16207' },
+    'bg-red-500':     { soft: '#fef2f2', ico: '#dc2626', bar: '#ef4444', num: '#b91c1c' },
+    'bg-purple-500':  { soft: '#faf5ff', ico: '#9333ea', bar: '#a855f7', num: '' }
+  };
+  const t = TONE[String(color || '').trim()] || { soft: '#eff6ff', ico: '#1e6fd9', bar: '#2c8ced', num: '' };
+  const num = String(value).replace(/[^0-9.-]/g, '');
+  const esc = (x) => String(x == null ? '' : x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const pct = (o.pct === 0 || o.pct) ? Math.max(0, Math.min(100, Number(o.pct) || 0)) : null;
+  const acc = !!o.accent;
+
+  const ico = acc
+    ? `<div class="stat-ico" style="background:rgba(255,255,255,.22)"><i data-lucide="${icon}" class="w-5 h-5" style="color:#fff"></i></div>`
+    : `<div class="stat-ico" style="background:${t.soft}"><i data-lucide="${icon}" class="w-5 h-5" style="color:${t.ico}"></i></div>`;
+  const numStyle = acc ? '' : (t.num ? ` style="color:${t.num}"` : '');
+  const sub = o.sub ? `<p class="stat-sub">${esc(o.sub)}</p>` : '';
+  const bar = pct === null ? '' :
+    `<div class="stat-bar" role="img" aria-label="${pct.toFixed(1)}%"><span style="width:${pct}%;background:${acc ? 'rgba(255,255,255,.85)' : t.bar}"></span></div>`;
+
+  return `<div class="card-stat${acc ? ' card-stat-accent' : ''} bg-white rounded-2xl p-5 border border-blue-100">`
+    + `<div class="flex items-start justify-between gap-3"><p class="stat-label">${esc(label)}</p>${ico}</div>`
+    + `<p class="stat-value"${numStyle}><span class="count-up" data-count-up="${num}">${esc(value)}</span>`
+    + `<span class="stat-unit">${esc(unit)}</span></p>${sub}${bar}</div>`;
 }
 
 // ======================== ANALYTICS HELPERS (เพิ่มเติม) ========================
@@ -6012,13 +6052,13 @@ function engResultsPage() {
       ${engPdfAllowed() ? `<div class="flex justify-end mb-3"><button type="button" onclick="engSummaryPdf()" class="px-3 py-1.5 rounded-xl border border-red-400 text-red-600 text-sm hover:bg-red-50"><i data-lucide="file-down" class="w-4 h-4 inline mr-1"></i>ส่งออก PDF</button></div>` : ''}
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div class="relative group cursor-pointer" onclick="showEngStudentList('pass')" title="คลิกเพื่อดูรายชื่อผู้สอบผ่าน">
-          ${statCard('check-circle', 'สอบผ่าน', passedCount, 'คน', 'bg-green-500')}
-          <span class="absolute right-4 top-4 text-[11px] text-primary flex items-center gap-1 pointer-events-none"><i data-lucide="list" class="w-3.5 h-3.5"></i>ดูรายชื่อ</span>
+          ${statCard('check-circle', 'สอบผ่าน', passedCount, 'คน', 'bg-green-500', statOf(passedCount, passedCount + notPassedCount, 'คน'))}
+          <span class="absolute right-4 bottom-4 text-[11px] text-primary flex items-center gap-1 pointer-events-none"><i data-lucide="list" class="w-3.5 h-3.5"></i>ดูรายชื่อ</span>
           ${tooltipHtml}
         </div>
         <div class="relative group cursor-pointer" onclick="showEngStudentList('fail')" title="คลิกเพื่อดูรายชื่อผู้ที่ยังไม่ผ่าน">
-          ${statCard('x-circle', 'ยังไม่ผ่าน', notPassedCount, 'คน', 'bg-red-500')}
-          <span class="absolute right-4 top-4 text-[11px] text-primary flex items-center gap-1 pointer-events-none"><i data-lucide="list" class="w-3.5 h-3.5"></i>ดูรายชื่อ</span>
+          ${statCard('x-circle', 'ยังไม่ผ่าน', notPassedCount, 'คน', 'bg-red-500', statOf(notPassedCount, passedCount + notPassedCount, 'คน'))}
+          <span class="absolute right-4 bottom-4 text-[11px] text-primary flex items-center gap-1 pointer-events-none"><i data-lucide="list" class="w-3.5 h-3.5"></i>ดูรายชื่อ</span>
           ${tooltipHtml}
         </div>
       </div>
@@ -10064,10 +10104,10 @@ function trackingPage() {
     const pending = dataForStats.length - completed - inProgress;
 
     statsSection = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
-      ${statCard('alert-circle', 'ยังไม่ส่ง', notSubmitted.length, 'วิชา', 'bg-red-500')}
-      ${statCard('clock', 'รอดำเนินการ', pending, 'วิชา', 'bg-yellow-500')}
-      ${statCard('loader', 'กำลังดำเนินการ', inProgress, 'วิชา', 'bg-blue-500')}
-      ${statCard('check-circle', 'เสร็จสิ้น', completed, 'วิชา', 'bg-green-500')}
+      ${statCard('alert-circle', 'ยังไม่ส่ง', notSubmitted.length, 'วิชา', 'bg-red-500', statOf(notSubmitted.length, subjectsFiltered.length, 'วิชา'))}
+      ${statCard('clock', 'รอดำเนินการ', pending, 'วิชา', 'bg-yellow-500', statOf(pending, dataForStats.length, 'วิชา'))}
+      ${statCard('loader', 'กำลังดำเนินการ', inProgress, 'วิชา', 'bg-blue-500', statOf(inProgress, dataForStats.length, 'วิชา'))}
+      ${statCard('check-circle', 'เสร็จสิ้น', completed, 'วิชา', 'bg-green-500', statOf(completed, dataForStats.length, 'วิชา'))}
     </div>`;
     const submitted = subjectsFiltered.filter(s => isTracked(s));
     if (notSubmitted.length) {
@@ -10321,10 +10361,10 @@ function resultTrackingPage() {
     const pending = dataForStats.length - completed - inProgress;
 
     statsSection = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
-      ${statCard('alert-circle', 'ยังไม่ส่ง', notSubmitted.length, 'วิชา', 'bg-red-500')}
-      ${statCard('clock', 'รอดำเนินการ', pending, 'วิชา', 'bg-yellow-500')}
-      ${statCard('loader', 'กำลังดำเนินการ', inProgress, 'วิชา', 'bg-blue-500')}
-      ${statCard('check-circle', 'เสร็จสิ้น', completed, 'วิชา', 'bg-green-500')}
+      ${statCard('alert-circle', 'ยังไม่ส่ง', notSubmitted.length, 'วิชา', 'bg-red-500', statOf(notSubmitted.length, subjectsFiltered.length, 'วิชา'))}
+      ${statCard('clock', 'รอดำเนินการ', pending, 'วิชา', 'bg-yellow-500', statOf(pending, dataForStats.length, 'วิชา'))}
+      ${statCard('loader', 'กำลังดำเนินการ', inProgress, 'วิชา', 'bg-blue-500', statOf(inProgress, dataForStats.length, 'วิชา'))}
+      ${statCard('check-circle', 'เสร็จสิ้น', completed, 'วิชา', 'bg-green-500', statOf(completed, dataForStats.length, 'วิชา'))}
     </div>`;
     const submitted = subjectsFiltered.filter(s => isTracked(s));
     if (notSubmitted.length) {
@@ -10492,10 +10532,10 @@ function gradeTrackingPage() {
     const pending = dataForStats.length - completed - inProgress;
 
     statsSection = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
-      ${statCard('alert-circle', 'ยังไม่ส่งเกรด', notSubmitted.length, 'วิชา', 'bg-red-500')}
-      ${statCard('clock', 'รอดำเนินการ', pending, 'วิชา', 'bg-yellow-500')}
-      ${statCard('loader', 'กำลังดำเนินการ', inProgress, 'วิชา', 'bg-blue-500')}
-      ${statCard('check-circle', 'เสร็จสิ้น', completed, 'วิชา', 'bg-green-500')}
+      ${statCard('alert-circle', 'ยังไม่ส่งเกรด', notSubmitted.length, 'วิชา', 'bg-red-500', statOf(notSubmitted.length, subjectsFiltered.length, 'วิชา'))}
+      ${statCard('clock', 'รอดำเนินการ', pending, 'วิชา', 'bg-yellow-500', statOf(pending, dataForStats.length, 'วิชา'))}
+      ${statCard('loader', 'กำลังดำเนินการ', inProgress, 'วิชา', 'bg-blue-500', statOf(inProgress, dataForStats.length, 'วิชา'))}
+      ${statCard('check-circle', 'เสร็จสิ้น', completed, 'วิชา', 'bg-green-500', statOf(completed, dataForStats.length, 'วิชา'))}
     </div>`;
     if (notSubmitted.length) {
       notSubmittedSection = `<div class="bg-red-50 rounded-2xl p-4 border border-red-200 mb-4">
@@ -10656,10 +10696,10 @@ function fileTrackingPage() {
     const pending = dataForStats.length - completed - inProgress;
 
     statsSection = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
-      ${statCard('alert-circle', 'ยังไม่ส่งแฟ้ม', notSubmitted.length, 'วิชา', 'bg-red-500')}
-      ${statCard('clock', 'รอดำเนินการ', pending, 'วิชา', 'bg-yellow-500')}
-      ${statCard('loader', 'กำลังดำเนินการ', inProgress, 'วิชา', 'bg-blue-500')}
-      ${statCard('check-circle', 'เสร็จสิ้น', completed, 'วิชา', 'bg-green-500')}
+      ${statCard('alert-circle', 'ยังไม่ส่งแฟ้ม', notSubmitted.length, 'วิชา', 'bg-red-500', statOf(notSubmitted.length, subjectsFiltered.length, 'วิชา'))}
+      ${statCard('clock', 'รอดำเนินการ', pending, 'วิชา', 'bg-yellow-500', statOf(pending, dataForStats.length, 'วิชา'))}
+      ${statCard('loader', 'กำลังดำเนินการ', inProgress, 'วิชา', 'bg-blue-500', statOf(inProgress, dataForStats.length, 'วิชา'))}
+      ${statCard('check-circle', 'เสร็จสิ้น', completed, 'วิชา', 'bg-green-500', statOf(completed, dataForStats.length, 'วิชา'))}
     </div>`;
     if (notSubmitted.length) {
       notSubmittedSection = `<div class="bg-red-50 rounded-2xl p-4 border border-red-200 mb-4">
