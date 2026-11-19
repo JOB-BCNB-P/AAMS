@@ -395,16 +395,17 @@
   /* ป้ายชื่อช่องกรอง พร้อมเลขบอกลำดับว่าต้องเลือกอันไหนก่อน
      ใช้ชุดเดียวกันทั้งแท็บผลการบรรลุรวมและรายบุคคล จะได้อ่านแบบเดียวกัน
      ช่องที่ไม่มีเลข = เลือกหรือไม่เลือกก็ได้ ไม่ได้บังคับลำดับ */
-  function stepLabel(no, label, note) {
+  // done = เลือกค่าแล้ว แสดงเป็นวงกลมเขียวติดเครื่องหมายถูก จะได้กวาดตาเห็นว่าเหลือขั้นไหน
+  function stepLabel(no, label, note, done) {
     return '<label class="flex items-center gap-1.5 text-xs text-gray-600 mb-1">'
-      + (no ? '<span class="w-4 h-4 rounded-full bg-primaryLight text-primary flex items-center justify-center text-[10px] font-bold">' + no + '</span>' : '')
+      + (no ? '<span class="ems-ministep' + (done ? ' is-done' : '') + '">' + (done ? '' : no) + '</span>' : '')
       + esc(label) + (note ? ' <span class="text-gray-400">' + esc(note) + '</span>' : '') + '</label>';
   }
 
   function filterBar() {
     var st = state();
     var sel = function (label, key, opts, blank, no, note) {
-      return '<div>' + stepLabel(no, label, note)
+      return '<div>' + stepLabel(no, label, note, !!s(st[key]))
         + '<select onchange="ploSet(\'' + key + '\',this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm">'
         + (blank ? '<option value="">' + esc(blank) + '</option>' : '')
         + opts.map(function (o) {
@@ -1389,7 +1390,7 @@
     if (st.stuYear === undefined) st.stuYear = st.year;
     if (st.stuSem === undefined) st.stuSem = st.sem;
     var sel = function (label, key, opts, blank, no) {
-      return '<div>' + stepLabel(no, label)
+      return '<div>' + stepLabel(no, label, '', !!s(st[key]))
         + '<select onchange="ploStuSet(\'' + key + '\',this.value)" class="border border-gray-200 rounded-xl px-3 py-2 text-sm max-w-[16rem]">'
         + '<option value="">' + esc(blank) + '</option>'
         + opts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (s(st[key]) === s(o[0]) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('')
@@ -2103,9 +2104,9 @@
   /* กรอบขั้นตอนมีหมายเลข — ใช้ชุดสไตล์เดียวกับฟอร์มเพิ่มข้อมูลหน้าอื่น (steps.js / styles.css .ems-step)
      state: done = เสร็จแล้ว (เลขสีเขียว ✓) · active = ขั้นที่ต้องทำต่อ · wait = ยังทำไม่ได้ · opt = ไม่บังคับ */
   function step(no, title, sub, inner, state, final) {
-    var cls = 'ems-step' + (state === 'done' ? ' is-done' : '') + (state === 'active' ? ' is-active' : '')
+    var cls = 'ems-step' + (state === 'done' ? ' is-done' : '') + (state === 'active' ? ' is-active' : '') + (state === 'wait' ? ' is-wait' : '')
       + (final ? ' ems-step-final' : '');
-    return '<section class="' + cls + '"' + (state === 'wait' ? ' style="opacity:.6"' : '') + '>'
+    return '<section class="' + cls + '">'
       + '<div class="ems-step-head"><span class="ems-step-no" aria-hidden="true">' + no + '</span>'
       + '<div class="min-w-0"><p class="ems-step-title">' + esc(title) + '</p>'
       + (sub ? '<p class="ems-step-sub">' + esc(sub) + '</p>' : '') + '</div></div>'

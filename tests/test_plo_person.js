@@ -190,7 +190,7 @@ const PLOS = [1, 2, 3].map(i => ({ curriculum_year: '2565', plo_code: 'PLO' + i,
     assert.ok(g.indexOf("'รุ่นนักศึกษา'") > g.indexOf('summarySubjSelect()'), 'ควรอยู่ท้ายสุด ไม่แทรกกลางเลขขั้น');
   });
   t('ป้ายเลขขั้นใช้ฟังก์ชันเดียว ไม่เขียนซ้ำสองที่', () => {
-    const g = grab('function stepLabel(no, label, note)');
+    const g = grab('function stepLabel(no, label, note, done)');
     assert.ok(g.includes('no ?'), 'ไม่รองรับช่องที่ไม่มีเลข');
     assert.ok((SRC.match(/stepLabel\(/g) || []).length >= 4, 'ยังมีที่เขียนป้ายเองอยู่');
   });

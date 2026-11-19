@@ -570,8 +570,8 @@
 
   /* ================= ขั้นตอนมีหมายเลข + แจ้งรายวิชาที่ยังไม่สร้างแบบประเมิน ================= */
   function evStep(no, title, sub, inner, stt, final) {
-    var cls = 'ems-step' + (stt === 'done' ? ' is-done' : '') + (stt === 'active' ? ' is-active' : '') + (final ? ' ems-step-final' : '');
-    return '<section class="' + cls + '"' + (stt === 'wait' ? ' style="opacity:.6"' : '') + '>'
+    var cls = 'ems-step' + (stt === 'done' ? ' is-done' : '') + (stt === 'active' ? ' is-active' : '') + (stt === 'wait' ? ' is-wait' : '') + (final ? ' ems-step-final' : '');
+    return '<section class="' + cls + '">'
       + '<div class="ems-step-head"><span class="ems-step-no" aria-hidden="true">' + no + '</span>'
       + '<div class="min-w-0"><p class="ems-step-title">' + esc(title) + '</p>'
       + (sub ? '<p class="ems-step-sub">' + sub + '</p>' : '') + '</div></div>'

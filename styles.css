@@ -1415,7 +1415,17 @@ form.ems-stepped > * + * { margin-top: 0; }
   box-shadow: 0 0 0 0 rgba(30, 111, 186, 0);
   transition: background-color 200ms cubic-bezier(.4, 0, .2, 1), box-shadow 200ms cubic-bezier(.4, 0, .2, 1), color 200ms;
 }
-.ems-step.is-active .ems-step-no { box-shadow: 0 0 0 4px rgba(30, 111, 186, .18); }
+.ems-step.is-active .ems-step-no {
+  background: linear-gradient(135deg, #1e6fd9, #4ea3f5);
+  box-shadow: 0 0 0 4px rgba(30, 111, 186, .18), 0 6px 14px -8px rgba(30, 111, 217, .9);
+}
+/* ขั้นที่ยังไม่ถึง : เดิมใช้ opacity ทั้งบล็อก ทำให้ตัวอักษรคอนทราสต์ต่ำจนอ่านยาก
+   เปลี่ยนเป็นใช้สีเทาที่ยังอ่านออก และคงความคมของตัวอักษรไว้ */
+.ems-step.is-wait .ems-step-no {
+  background: #e2e8f0; color: #64748b; box-shadow: none;
+}
+.ems-step.is-wait .ems-step-title { color: #64748b; font-weight: 600; }
+.ems-step.is-wait .ems-step-sub { color: #94a3b8; }
 .ems-step.is-done .ems-step-no { background: #059669; color: transparent; }
 .ems-step.is-done .ems-step-no::after {
   content: "";
@@ -1888,6 +1898,22 @@ form.ems-stepped > * + * { margin-top: 0; }
 .dnt-row .dnt-label { flex: 1; min-width: 0; color: #475569; }
 .dnt-row .dnt-val { color: #1e293b; font-weight: 600; font-variant-numeric: tabular-nums; }
 .dnt-row .dnt-pct { color: #94a3b8; width: 2.5rem; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---- เลขขั้นตอนเล็กหน้าช่องตัวกรอง ----
+   วงกลมโปร่งมีเส้นขอบ เลือกค่าแล้วเปลี่ยนเป็นเขียวติดเครื่องหมายถูก */
+.ems-ministep {
+  position: relative; flex: none;
+  width: 1.125rem; height: 1.125rem; border-radius: 9999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: .625rem; font-weight: 700;
+  color: #1e6fd9; background: #fff; border: 1.5px solid #bfdbfe;
+}
+.ems-ministep.is-done { background: #10b981; border-color: #10b981; }
+.ems-ministep.is-done::after {
+  content: ""; width: .25rem; height: .5rem;
+  border: solid #fff; border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg);
+}
 
 /* ---- ผู้ใช้ที่ตั้งค่าลดความโปร่งแสงของระบบปฏิบัติการ ---- */
 @media (prefers-reduced-transparency: reduce) {
