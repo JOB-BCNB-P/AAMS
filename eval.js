@@ -2311,9 +2311,9 @@
       showModal('อัตราการตอบ — ' + esc(s(f.subject_name)),
         '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">'
         + statCard('users', 'นักศึกษาในรายวิชา', stus.length, 'คน', 'bg-blue-500')
-        + statCard('check-circle', 'ประเมินแล้ว', nDone, 'คน', 'bg-emerald-500')
+        + statCard('check-circle', 'ประเมินแล้ว', nDone, 'คน', 'bg-emerald-500', Object.assign({ accent: true }, statOf(nDone, stus.length, 'คน')))
         + statCard('percent', 'คิดเป็น', pct, '%', 'bg-sky-500')
-        + statCard('file-text', 'บันทึกร่างค้างไว้', nDraft, 'คน', 'bg-amber-500')
+        + statCard('file-text', 'บันทึกร่างค้างไว้', nDraft, 'คน', 'bg-amber-500', statOf(nDraft, stus.length, 'คน'))
         + '</div>'
         + (nImport ? '<p class="text-xs text-gray-500 mb-3">มีคำตอบที่นำเข้าจากไฟล์เดิมอีก ' + nImport + ' ชุด (ไม่นับรวมในอัตราการตอบข้างบน)</p>' : '')
         + '<p class="text-sm font-semibold text-gray-700 mb-2">ยังไม่ประเมิน (' + waiting.length + ' คน)</p>'
@@ -2629,7 +2629,7 @@
 
     return '<div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">'
       + statCard('users', 'ผู้ตอบ', d.n, 'คน', 'bg-blue-500')
-      + statCard('calculator', 'ค่าเฉลี่ยรวมทุกด้าน', fx(main), bandOf(main)[1], 'bg-emerald-500')
+      + statCard('calculator', 'ค่าเฉลี่ยรวมทุกด้าน', fx(main), bandOf(main)[1], 'bg-emerald-500', { accent: true, sub: 'จากคะแนนเต็ม 5.00', pct: Number(main) / 5 * 100 })
       + statCard('sigma', 'SD รวมทุกด้าน', fx(ovI.sd), s(d.sd_mode) === 'population' ? '(n)' : '(n−1)', 'bg-sky-500')
       + statCard('layers', 'จำนวนด้านที่ประเมิน', dims.length, 'ด้าน', 'bg-purple-500')
       + '</div>'
@@ -2735,7 +2735,7 @@
 
       + '<div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">'
       + statCard('book-open', 'รายวิชาที่นำมาคิด', d.courses || 0, 'วิชา', 'bg-blue-500')
-      + statCard('calculator', 'ค่าเฉลี่ยรวมทุกวิชา', fx(ov.mean), bandOf(ov.mean)[1], 'bg-emerald-500')
+      + statCard('calculator', 'ค่าเฉลี่ยรวมทุกวิชา', fx(ov.mean), bandOf(ov.mean)[1], 'bg-emerald-500', { accent: true, sub: 'จากคะแนนเต็ม 5.00', pct: Number(ov.mean) / 5 * 100 })
       + statCard('sigma', 'SD รวมทุกวิชา', fx(ov.sd), '(n−1)', 'bg-sky-500')
       + statCard('list-checks', 'จำนวนคำตอบ', ov.n || 0, 'คำตอบ', 'bg-purple-500')
       + '</div>'
@@ -3221,8 +3221,8 @@
     var cmt = (comments || []);
     return '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">'
       + (own
-        ? statCard('user-check', 'ค่าเฉลี่ยของคุณ (ด้านอาจารย์ผู้สอน)', fx(own.mean), bandOf(own.mean)[1], 'bg-emerald-500')
-        : statCard('book-open', 'ค่าเฉลี่ยรวมของรายวิชา', fx(main), bandOf(main)[1], 'bg-emerald-500'))
+        ? statCard('user-check', 'ค่าเฉลี่ยของคุณ (ด้านอาจารย์ผู้สอน)', fx(own.mean), bandOf(own.mean)[1], 'bg-emerald-500', { accent: true, sub: 'จากคะแนนเต็ม 5.00', pct: Number(own.mean) / 5 * 100 })
+        : statCard('book-open', 'ค่าเฉลี่ยรวมของรายวิชา', fx(main), bandOf(main)[1], 'bg-emerald-500', { accent: true, sub: 'จากคะแนนเต็ม 5.00', pct: Number(main) / 5 * 100 }))
       + statCard('users', 'ผู้ตอบ', d.n, 'คน', 'bg-blue-500')
       + statCard('calculator', 'ค่าเฉลี่ยรวมทุกด้านของรายวิชา', fx(main), bandOf(main)[1], 'bg-sky-500')
       + '</div>'
@@ -3445,8 +3445,8 @@
       '<div class="space-y-3">'
       + '<div class="grid grid-cols-2 sm:grid-cols-3 gap-3">'
       + statCard('users', 'ชุดคำตอบในไฟล์', data.length, 'ราย', 'bg-blue-500')
-      + statCard('check-circle', 'คอลัมน์ที่จับคู่ได้', cols.length, 'คอลัมน์', 'bg-emerald-500')
-      + statCard('alert-triangle', 'คอลัมน์ที่ข้าม', skipped.length, 'คอลัมน์', 'bg-amber-500')
+      + statCard('check-circle', 'คอลัมน์ที่จับคู่ได้', cols.length, 'คอลัมน์', 'bg-emerald-500', statOf(cols.length, cols.length + skipped.length, 'คอลัมน์'))
+      + statCard('alert-triangle', 'คอลัมน์ที่ข้าม', skipped.length, 'คอลัมน์', 'bg-amber-500', statOf(skipped.length, cols.length + skipped.length, 'คอลัมน์'))
       + '</div>'
       + '<div class="flex flex-wrap gap-1">' + Object.keys(byDim).map(function (k) {
         return badge((DIM_NAME[k] || k) + ' ' + byDim[k] + ' คอลัมน์', 'bg-blue-50 text-blue-700');

@@ -1841,7 +1841,7 @@ function dashboardPage() {
     const _canEditHr = APP.currentUser && (APP.currentUser.role === 'admin' || APP.currentUser.role === 'academic');
     stats = `
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-      ${statCard('users', 'จำนวนนักศึกษาทั้งหมด', activeStudents(students).length, 'คน', 'bg-blue-500')}
+      ${statCard('users', 'จำนวนนักศึกษาทั้งหมด', activeStudents(students).length, 'คน', 'bg-blue-500', { accent: true, sub: 'กำลังศึกษาอยู่ในปัจจุบัน' })}
       ${statCard('briefcase', 'จำนวนอาจารย์ (ปฏิบัติงาน)', activeTeachers.length, 'คน', 'bg-emerald-500')}
       ${statCard('graduation-cap', 'อาจารย์ลาศึกษาต่อ', studyLeaveCount, 'คน', 'bg-purple-500')}
       ${specialTeacherCard}
@@ -4268,9 +4268,9 @@ function gpaxByStudentCardHTML() {
     <div class="px-5 pb-5">
       ${gpaxYearFilterHTML()}
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-        ${statCard('users', 'GPAx เฉลี่ยของกลุ่ม', avg === null ? '-' : avg.toFixed(2), '', 'bg-blue-500')}
-        ${statCard('alert-triangle', 'GPAx ต่ำกว่า 2.30 (เฝ้าระวัง)', atRisk, 'คน', 'bg-red-500')}
-        ${statCard('award', 'GPAx 3.50 ขึ้นไป', honor, 'คน', 'bg-emerald-500')}
+        ${statCard('users', 'GPAx เฉลี่ยของกลุ่ม', avg === null ? '-' : avg.toFixed(2), '', 'bg-blue-500', avg === null ? {} : { accent: true, sub: 'จากคะแนนเต็ม 4.00', pct: avg / 4 * 100 })}
+        ${statCard('alert-triangle', 'GPAx ต่ำกว่า 2.30 (เฝ้าระวัง)', atRisk, 'คน', 'bg-red-500', statOf(atRisk, withGpax.length, 'คน'))}
+        ${statCard('award', 'GPAx 3.50 ขึ้นไป', honor, 'คน', 'bg-emerald-500', statOf(honor, withGpax.length, 'คน'))}
       </div>
 
       <p class="text-sm font-semibold text-gray-600 mb-2">จำนวนนักศึกษาแยกตามช่วง GPAx
@@ -6082,7 +6082,7 @@ function engResultsPage() {
       ${engPdfAllowed() ? `<div class="flex justify-end mb-3"><button type="button" onclick="engSummaryPdf()" class="px-3 py-1.5 rounded-xl border border-red-400 text-red-600 text-sm hover:bg-red-50"><i data-lucide="file-down" class="w-4 h-4 inline mr-1"></i>ส่งออก PDF</button></div>` : ''}
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div class="relative group cursor-pointer" onclick="showEngStudentList('pass')" title="คลิกเพื่อดูรายชื่อผู้สอบผ่าน">
-          ${statCard('check-circle', 'สอบผ่าน', passedCount, 'คน', 'bg-green-500', statOf(passedCount, passedCount + notPassedCount, 'คน'))}
+          ${statCard('check-circle', 'สอบผ่าน', passedCount, 'คน', 'bg-green-500', Object.assign({ accent: true }, statOf(passedCount, passedCount + notPassedCount, 'คน')))}
           <span class="absolute right-4 bottom-4 text-[11px] text-primary flex items-center gap-1 pointer-events-none"><i data-lucide="list" class="w-3.5 h-3.5"></i>ดูรายชื่อ</span>
           ${tooltipHtml}
         </div>
@@ -6111,8 +6111,8 @@ function engResultsPage() {
   ${noSelectionMsg || `<div class="bg-white rounded-2xl border border-blue-100 p-4 mb-4">
     <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-2"><i data-lucide="file-text" class="w-5 h-5 text-primary"></i>รายละเอียดผลสอบรายบุคคล</h3>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-      ${statCard('check-circle', 'ผ่าน', data.filter(e => e.eng_status === 'ผ่าน').length, 'ครั้ง', 'bg-green-500')}
-      ${statCard('x-circle', 'ไม่ผ่าน', data.filter(e => e.eng_status === 'ไม่ผ่าน').length, 'ครั้ง', 'bg-red-500')}
+      ${statCard('check-circle', 'ผ่าน', data.filter(e => e.eng_status === 'ผ่าน').length, 'ครั้ง', 'bg-green-500', Object.assign({ accent: true }, statOf(data.filter(e => e.eng_status === 'ผ่าน').length, data.length, 'ครั้ง')))}
+      ${statCard('x-circle', 'ไม่ผ่าน', data.filter(e => e.eng_status === 'ไม่ผ่าน').length, 'ครั้ง', 'bg-red-500', statOf(data.filter(e => e.eng_status === 'ไม่ผ่าน').length, data.length, 'ครั้ง'))}
     </div>
   </div>
   <div class="bg-white rounded-2xl border border-blue-100 overflow-hidden">
@@ -15973,7 +15973,7 @@ function surveyAnalysisHTML(resps, qs) {
 
   let h = `<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
     ${statCard('users', 'จำนวนผู้ตอบ', resps.length, 'คน', 'bg-blue-500')}
-    ${statCard('bar-chart-3', 'ค่าเฉลี่ยรวม (μ)', grand.mean.toFixed(2), '/ 5.00', 'bg-emerald-500')}
+    ${statCard('bar-chart-3', 'ค่าเฉลี่ยรวม (μ)', grand.mean.toFixed(2), '/ 5.00', 'bg-emerald-500', { accent: true, sub: 'จากคะแนนเต็ม 5.00', pct: grand.mean / 5 * 100 })}
     <div class="bg-white rounded-2xl p-4 border border-blue-100 flex items-center gap-3">
       <div class="w-11 h-11 rounded-xl ${grandInt.c} flex items-center justify-center"><i data-lucide="award" class="w-6 h-6"></i></div>
       <div><p class="text-xs text-gray-500">ระดับความพึงพอใจ (AUN-QA)</p><p class="text-lg font-bold text-gray-800">${grandInt.t}</p><p class="text-xs text-gray-500">S.D. = ${grand.sd.toFixed(2)} · ${(grand.mean / 5 * 100).toFixed(1)}%</p></div></div>
