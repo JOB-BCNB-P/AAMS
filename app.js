@@ -2332,13 +2332,13 @@ function studentRetentionAnalyticsHTML() {
       <div class="flex justify-between text-xs"><span class="text-blue-600 font-semibold">♂ ชาย ${g.M}</span><span class="text-pink-600 font-semibold">♀ หญิง ${g.F}</span></div>
     </div>`;
   }).join('');
-
-  return `<details id="retentionCard"${detailsOpen('retentionCard')} ontoggle="rememberDetails(this)" class="bg-white rounded-2xl border border-blue-100 mb-4">
-    <summary class="cursor-pointer select-none p-5 flex items-center justify-between">
-      <span class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="activity" class="w-5 h-5 text-primary"></i>อัตราการคงอยู่ของนักศึกษา <span class="text-sm font-normal text-green-600">(คงอยู่รวม ${retentionPct}%)</span> <span class="text-xs font-normal text-gray-400">— คลิกเพื่อดู</span></span>
-      <span class="text-xs text-gray-400 flex items-center gap-1">ยุบ/เปิด <i data-lucide="chevron-down" class="chev w-5 h-5"></i></span>
-    </summary>
-    <div class="px-5 pb-5 fade-in">
+  // กางไว้เสมอ ไม่ต้องกดเปิด เพราะเป็นข้อมูลที่ผู้บริหารดูทุกครั้งที่เข้าหน้าหลัก
+  return `<section id="retentionCard" class="bg-white rounded-2xl border border-blue-100 mb-4">
+    <div class="p-5 pb-0 flex items-center justify-between gap-3 flex-wrap">
+      <span class="font-bold text-gray-800 flex items-center gap-2"><i data-lucide="activity" class="w-5 h-5 text-primary"></i>อัตราการคงอยู่ของนักศึกษา</span>
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 text-sm font-semibold">คงอยู่รวม ${retentionPct}%</span>
+    </div>
+    <div class="px-5 pb-5 pt-4">
       ${yearSelector}
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div><p class="text-sm font-semibold text-gray-600 mb-3">สัดส่วนการคงอยู่ (ไม่รวมผู้สำเร็จการศึกษา)</p>${donut}</div>
@@ -2359,7 +2359,7 @@ function studentRetentionAnalyticsHTML() {
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">${yrGenderRows}</div>
       </div>
     </div>
-  </details>`;
+  </section>`;
 }
 
 // ======================== STUDENTS ========================

@@ -64,5 +64,21 @@ t('ไม่มีสีไหนตกไปใช้สีเริ่มต�
     'สีเหล่านี้จะกลายเป็นฟ้าหมดโดยไม่มีอะไรฟ้อง : ' + miss.join(' '));
 });
 
+console.log('\n[5] แผงที่ต้องกางไว้เสมอ');
+t('อัตราการคงอยู่ของนักศึกษาไม่ใช่แผงยุบ/ขยายแล้ว', () => {
+  const src = fs.readFileSync(P + 'app.js', 'utf8');
+  assert.ok(/<section id="retentionCard"/.test(src), 'ยังเป็นแผงที่ต้องกดเปิด');
+  assert.ok(!/<details id="retentionCard"/.test(src), 'ยังเหลือแท็ก details เดิม');
+  const i = src.indexOf('<section id="retentionCard"');
+  const seg = src.slice(i, i + 2600);
+  assert.ok(!/<summary/.test(seg), 'ยังเหลือหัวแบบกดเปิด');
+  assert.ok(/<\/section>/.test(seg), 'ปิดแท็กไม่ตรงกัน หน้าจะเพี้ยนทั้งหน้า');
+});
+t('ตัวเลขคงอยู่รวมยังอยู่ให้เห็นทันที', () => {
+  const src = fs.readFileSync(P + 'app.js', 'utf8');
+  const i = src.indexOf('<section id="retentionCard"');
+  assert.ok(/คงอยู่รวม \$\{retentionPct\}%/.test(src.slice(i, i + 1200)), 'ตัวเลขสรุปหายไปจากหัวแผง');
+});
+
 console.log('\n' + (fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
 process.exit(fail ? 1 : 0);
