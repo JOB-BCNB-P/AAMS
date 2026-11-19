@@ -994,6 +994,12 @@
             t.setAttribute('data-ems-cards', 'skip'); return;
           }
           if (names[c]) cells[c].setAttribute('data-label', names[c]);
+          // ช่องที่ข้อความยาว หรือมีหลายบรรทัดในตัวเอง ถ้าบีบให้อยู่ครึ่งขวาจะหักกลางคำ
+          // ติดธงไว้ให้ CSS จัดเป็นบรรทัดเต็มเมื่อแปลงเป็นการ์ดบนมือถือ
+          var txt = (cells[c].textContent || '').trim();
+          if (txt.length > 24 || cells[c].querySelector('p, div')) {
+            cells[c].classList.add('ems-cell-long');
+          }
         }
         done++;
       }

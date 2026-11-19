@@ -1389,9 +1389,10 @@
         + '<td class="px-2 py-2 text-center"><span class="ems-rank" style="background:' + lvl.bar + '" title="' + esc(lvl.label) + '">' + (i + 1) + '</span></td>'
         + '<td class="px-2 py-2"><p class="text-sm text-gray-800">' + esc(x.name || '-') + '</p>'
         + '<p class="font-mono text-[11px] text-gray-400">' + esc(x.sid) + ' · ชั้นปี ' + esc(x.level || '-') + '</p></td>'
-        + '<td class="px-2 py-2 w-40"><div class="flex items-center gap-2">'
-        + '<div class="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden"><div style="width:' + Math.max(2, Math.min(100, x.pct)) + '%;background:' + lvl.bar + '" class="h-2 rounded-full"></div></div>'
-        + '<span class="text-sm font-semibold tabular-nums">' + fx(x.pct, 0) + '%</span></div></td>'
+        // ใช้โครงเดียวกับตัวเลขร้อยละในตารางอื่น แถบจึงมีความกว้างคงที่
+        // ไม่ยุบหายตอนตารางเปลี่ยนเป็นการ์ดใบละแถวบนมือถือ
+        + '<td class="px-2 py-2"><span class="ems-pct"><b>' + fx(x.pct, 0) + '%</b>'
+        + '<span class="ems-pct-bar"><span style="width:' + Math.max(2, Math.min(100, x.pct)) + '%;background:' + lvl.bar + '"></span></span></span></td>'
         + '<td class="px-2 py-2 text-center text-xs text-gray-600 whitespace-nowrap">' + (x.tot - x.pass) + ' / ' + x.tot + '</td>'
         + '<td class="px-2 py-2">' + (chips || '<span class="text-[11px] text-gray-400">-</span>') + '</td>'
         + '<td class="px-2 py-2 text-center"><span class="px-2 py-0.5 rounded-full border text-[11px] ' + lvl.cls + '">' + esc(lvl.label) + '</span></td>'
@@ -1401,7 +1402,7 @@
 
     var table = '<div class="overflow-x-auto"><table class="w-full text-sm">'
       + '<thead><tr class="bg-surface text-left">'
-      + '<th class="px-2 py-2 font-semibold text-center w-10">#</th>'
+      + '<th class="px-2 py-2 font-semibold text-center w-10">ลำดับ</th>'
       + '<th class="px-2 py-2 font-semibold">นักศึกษา</th>'
       + '<th class="px-2 py-2 font-semibold">ร้อยละ CLO ที่ผ่าน</th>'
       + '<th class="px-2 py-2 font-semibold text-center whitespace-nowrap">CLO ไม่ผ่าน</th>'
