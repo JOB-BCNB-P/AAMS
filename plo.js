@@ -24,13 +24,14 @@
 
   // สีระดับคุณภาพ — ตรวจผ่านเครื่องมือตรวจสีสำหรับผู้มีภาวะตาบอดสีแล้ว
   // ทุกแท่งมีตัวเลขและชื่อระดับกำกับเสมอ ไม่ใช้สีสื่อความหมายเพียงอย่างเดียว
+  // g1/g2 = คู่สีไล่ระดับของการ์ดเน้น ใช้สีของระดับเดิม จะได้ยังบอกสถานะไปในตัว
   var BAND = {
-    red:     { bar: '#ef4444', bg: 'bg-red-50',     text: 'text-red-700',     ring: 'border-red-200' },
-    amber:   { bar: '#f59e0b', bg: 'bg-amber-50',   text: 'text-amber-700',   ring: 'border-amber-200' },
-    sky:     { bar: '#0ea5e9', bg: 'bg-sky-50',     text: 'text-sky-700',     ring: 'border-sky-200' },
-    emerald: { bar: '#10b981', bg: 'bg-emerald-50', text: 'text-emerald-700', ring: 'border-emerald-200' }
+    red:     { bar: '#ef4444', bg: 'bg-red-50',     text: 'text-red-700',     ring: 'border-red-200',     g1: '#e11d48', g2: '#fb7185' },
+    amber:   { bar: '#f59e0b', bg: 'bg-amber-50',   text: 'text-amber-700',   ring: 'border-amber-200',   g1: '#d97706', g2: '#fbbf24' },
+    sky:     { bar: '#0ea5e9', bg: 'bg-sky-50',     text: 'text-sky-700',     ring: 'border-sky-200',     g1: '#0284c7', g2: '#38bdf8' },
+    emerald: { bar: '#10b981', bg: 'bg-emerald-50', text: 'text-emerald-700', ring: 'border-emerald-200', g1: '#059669', g2: '#34d399' }
   };
-  var GREY = { bar: '#9ca3af', bg: 'bg-gray-50', text: 'text-gray-600', ring: 'border-gray-200' };
+  var GREY = { bar: '#9ca3af', bg: 'bg-gray-50', text: 'text-gray-600', ring: 'border-gray-200', g1: '#64748b', g2: '#94a3b8' };
   function bandOf(o) { return (o && BAND[o.color]) || GREY; }
 
   function esc(v) {
@@ -891,11 +892,15 @@
         + '<p class="text-2xl font-bold mt-1">' + value + '</p>'
         + (sub ? '<p class="text-xs text-gray-500 mt-0.5">' + sub + '</p>' : '') + '</div>';
     };
+    // ใบแรกคือตัวเลขที่สำคัญที่สุดของหน้า จึงเน้นด้วยพื้นไล่สี
+    // สีมาจากระดับการบรรลุ ไม่ใช่สีตายตัว การ์ดจึงยังบอกสถานะไปในตัว
+    var accent = '<div class="rounded-2xl p-4 ems-accent" style="--g1:' + b.g1 + ';--g2:' + b.g2 + '">'
+      + '<p class="text-xs">' + esc('ร้อยละการบรรลุภาพรวม') + '</p>'
+      + '<p class="text-3xl font-bold mt-1">' + fx(pct) + '%</p>'
+      + '<p class="text-xs mt-1 ems-accent-chip">ระดับ ' + esc((ov['ระดับ'] || {}).label || '-') + '</p>'
+      + '<div class="ems-accent-bar"><span style="width:' + Math.max(0, Math.min(100, pct)) + '%"></span></div></div>';
     return '<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">'
-      + card('ร้อยละการบรรลุภาพรวม',
-          '<span class="' + b.text + '">' + fx(pct) + '%</span>',
-          '<span class="' + b.text + ' font-medium">ระดับ ' + esc((ov['ระดับ'] || {}).label || '-') + '</span>',
-          b.bg + ' ' + b.ring)
+      + accent
       + card('ผลการประเมินทั้งหมด', esc(ov['ผลการประเมินทั้งหมด']),
           'ผ่าน ' + esc(ov['ผ่าน']) + ' · ไม่ผ่าน ' + esc(ov['ไม่ผ่าน']))
       + card('จำนวนนักศึกษา', esc(ov['จำนวนนักศึกษา']), 'ที่มีคะแนนบันทึกไว้')
@@ -912,12 +917,14 @@
     var rows = (st.summary || {})[key] || [];
 
     var toggle = '<div class="flex flex-wrap items-center gap-2 mb-4">'
+      + '<div class="ems-switch" role="group">'
       + VIEWS.map(function (v) {
           var on = st.view === v[0];
-          return '<button onclick="ploSet(\'view\',\'' + v[0] + '\')" class="px-3 py-1.5 rounded-lg text-xs transition '
-            + (on ? 'bg-primary text-white' : 'border border-gray-200 text-gray-600 hover:bg-surface') + '">'
-            + esc(v[1]) + '</button>';
+          return '<button type="button" onclick="ploSet(\'view\',\'' + v[0] + '\')"'
+            + ' aria-pressed="' + (on ? 'true' : 'false') + '"'
+            + ' class="ems-switch-btn' + (on ? ' is-on' : '') + '">' + esc(v[1]) + '</button>';
         }).join('')
+      + '</div>'
       + '<span class="text-xs text-gray-400 ml-auto">' + rows.length + ' รายการ</span></div>';
 
     if (!rows.length) return section('อัตราการบรรลุ', toggle + hint('ไม่มีข้อมูลในมุมมองนี้'));
@@ -1379,7 +1386,7 @@
         return '<span class="inline-block px-1.5 py-0.5 rounded-md bg-red-50 text-red-600 text-[11px] mr-1">' + esc(pk) + '</span>';
       }).join('') + (x.badPlo.length > 3 ? '<span class="text-[11px] text-gray-400">+' + (x.badPlo.length - 3) + '</span>' : '');
       return '<tr class="border-t border-gray-50 hover:bg-surface">'
-        + '<td class="px-2 py-2 text-center text-xs text-gray-400">' + (i + 1) + '</td>'
+        + '<td class="px-2 py-2 text-center"><span class="ems-rank" style="background:' + lvl.bar + '" title="' + esc(lvl.label) + '">' + (i + 1) + '</span></td>'
         + '<td class="px-2 py-2"><p class="text-sm text-gray-800">' + esc(x.name || '-') + '</p>'
         + '<p class="font-mono text-[11px] text-gray-400">' + esc(x.sid) + ' · ชั้นปี ' + esc(x.level || '-') + '</p></td>'
         + '<td class="px-2 py-2 w-40"><div class="flex items-center gap-2">'
@@ -1662,14 +1669,17 @@
 
   function secBadge(r) {
     if (r && r.__merged) {
-      return '<span class="inline-block px-1.5 py-0 rounded-md border border-gray-200 bg-gray-50 text-gray-600 text-[10px] font-medium align-middle ml-1" title="รวมผลของ '
+      return '<span class="inline-block px-1.5 py-0 rounded-md border border-indigo-100 bg-indigo-50 text-indigo-700 text-[10px] font-medium align-middle ml-1" title="รวมผลของ '
         + esc(r.__merged) + ' เป็นข้อเดียว">' + esc(r.__merged) + '</span>';
     }
     return secChip(r && r.__sec);
   }
   function secChip(x) {
     if (!x) return '';
-    var cls = x === 'ทฤษฎี' ? 'bg-sky-50 text-sky-700 border-sky-100' : x === 'ทดลอง' ? 'bg-violet-50 text-violet-700 border-violet-100' : 'bg-amber-50 text-amber-700 border-amber-100';
+    // หมายเหตุ : เคยใช้ bg-violet-* ซึ่งไม่มีอยู่ใน tailwind.css ที่ build ไว้ ชิปจึงไม่มีสีเลย
+    var cls = x === 'ทฤษฎี' ? 'bg-sky-50 text-sky-700 border-sky-100'
+      : x === 'ทดลอง' ? 'bg-rose-50 text-rose-700 border-rose-100'
+      : 'bg-amber-50 text-amber-700 border-amber-100';
     return '<span class="inline-block px-1.5 py-0 rounded-md border text-[10px] font-medium align-middle ml-1 ' + cls + '">' + esc(x) + '</span>';
   }
   function rowCands(r) {
@@ -2051,7 +2061,7 @@
   function secBadge(c) {
     var x = secOf(c);
     if (!x) return '';
-    var cls = x === 'ทฤษฎี' ? 'bg-sky-50 text-sky-700' : x === 'ทดลอง' ? 'bg-violet-50 text-violet-700' : 'bg-amber-50 text-amber-700';
+    var cls = x === 'ทฤษฎี' ? 'bg-sky-50 text-sky-700' : x === 'ทดลอง' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700';
     return ' <span class="px-1.5 py-0.5 rounded-md text-[10px] font-normal align-middle ' + cls + '">' + esc(x) + '</span>';
   }
   // ส่วนที่รายวิชานี้มี — อ่านจากประเภทรายวิชา (theory_practice) ของรายวิชาที่เปิดสอน

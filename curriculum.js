@@ -27,7 +27,7 @@
     I: { label: 'Introduce', th: 'เริ่มเรียนรู้', cls: 'bg-sky-100 text-sky-700' },
     R: { label: 'Reinforce', th: 'ฝึกซ้ำให้ชำนาญ', cls: 'bg-amber-100 text-amber-700' },
     M: { label: 'Master', th: 'เชี่ยวชาญ', cls: 'bg-emerald-100 text-emerald-700' },
-    P: { label: 'Practice', th: 'ฝึกปฏิบัติ', cls: 'bg-violet-100 text-violet-700' }
+    P: { label: 'Practice', th: 'ฝึกปฏิบัติ', cls: 'bg-indigo-100 text-indigo-700' }
   };
 
   function esc(v) {

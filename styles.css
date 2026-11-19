@@ -1964,6 +1964,58 @@ form.ems-stepped > * + * { margin-top: 0; }
 }
 @media (max-width: 640px) { .vbar-track { height: 5.5rem; } }
 
+/* ---- การ์ดเน้น (สีมาจากข้อมูล ส่งมาทาง --g1/--g2) ---- */
+.ems-accent {
+  background: linear-gradient(145deg, var(--g1, #1e6fd9), var(--g2, #4ea3f5));
+  color: #fff;
+  border: 1px solid transparent;
+  box-shadow: 0 14px 30px -16px var(--g1, #1e6fd9);
+}
+.ems-accent p { color: #fff; }
+.ems-accent > p:first-child { color: rgba(255, 255, 255, .88); }
+.ems-accent-chip {
+  display: inline-block;
+  background: rgba(255, 255, 255, .2);
+  border-radius: 999px;
+  padding: .125rem .5rem;
+}
+.ems-accent-bar {
+  margin-top: .625rem; height: .375rem; border-radius: 999px;
+  background: rgba(255, 255, 255, .3); overflow: hidden;
+}
+.ems-accent-bar > span {
+  display: block; height: 100%; border-radius: 999px;
+  background: rgba(255, 255, 255, .9);
+}
+
+/* ---- ปุ่มเลื่อนสลับมุมมอง ----
+   ปุ่มแยกกันทำให้ไม่รู้ว่าเป็นตัวเลือกชุดเดียวกัน รวมไว้ในกรอบเดียวแทน */
+.ems-switch {
+  display: inline-flex; gap: .125rem; padding: .1875rem;
+  background: rgba(226, 232, 240, .65);
+  border-radius: .625rem;
+}
+.ems-switch-btn {
+  padding: .3125rem .75rem; border-radius: .5rem;
+  font-size: .75rem; color: #475569; background: transparent; border: 0;
+  cursor: pointer; white-space: nowrap;
+  transition: background-color 160ms, color 160ms, box-shadow 160ms;
+}
+.ems-switch-btn:hover { color: #1e6fd9; }
+.ems-switch-btn.is-on {
+  background: #fff; color: #1e6fd9; font-weight: 600;
+  box-shadow: 0 1px 3px rgba(23, 56, 117, .14);
+}
+.ems-switch-btn:focus-visible { outline: 2px solid #1e6fd9; outline-offset: 1px; }
+
+/* ---- เลขลำดับในรายการที่เรียงตามความรุนแรง ---- */
+.ems-rank {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.375rem; height: 1.375rem; border-radius: 9999px;
+  color: #fff; font-size: .6875rem; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---- ผู้ใช้ที่ตั้งค่าลดความโปร่งแสงของระบบปฏิบัติการ ---- */
 @media (prefers-reduced-transparency: reduce) {
   .ems-header,
