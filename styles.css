@@ -1528,6 +1528,171 @@ form.ems-stepped > * + * { margin-top: 0; }
 /* ---- ตัวเลขที่นับขึ้น ---- */
 .count-up { font-variant-numeric: tabular-nums; }
 
+/* ================================================================
+   ชั้นธีมกระจก (Glassmorphism) โทนฟ้า-ขาว — ระดับโครงหน้า
+   ----------------------------------------------------------------
+   เพิ่มทับสไตล์เดิมเป็นชั้นบนสุด ไม่แตะโครงสร้าง HTML และไม่แตะไฟล์ .js
+   หลักการ
+     1) ย้ายพื้นหลังไล่สีจาก .ems-main ไปไว้ที่ .ems-body ให้เป็นฉากหลังนิ่ง
+     2) วางก้อนสีฟุ้งไว้หลังสุด เพื่อให้การ์ดโปร่งแสงมีอะไรให้มองทะลุ
+     3) ทำแถบบน แถบเมนู และการ์ดในเนื้อหา ให้โปร่งแสง + เบลอฉากหลัง
+   เครื่องที่ไม่รองรับ backdrop-filter จะได้พื้นทึบอ่านง่ายตามเดิม (@supports ท้ายบล็อก)
+   ================================================================ */
+:root {
+  --glass-bg: rgba(255, 255, 255, .72);
+  --glass-bg-soft: rgba(255, 255, 255, .55);
+  --glass-line: rgba(255, 255, 255, .78);
+  --glass-blur: blur(16px) saturate(145%);
+  --glass-shadow: 0 10px 28px -14px rgba(23, 56, 117, .3), 0 2px 7px -4px rgba(23, 56, 117, .12);
+}
+
+/* ---- ฉากหลังของทั้งหน้า ---- */
+.ems-body {
+  position: relative;
+  background: linear-gradient(170deg, #ffffff 0%, #eaf4ff 48%, #dcecff 100%);
+}
+
+/* ก้อนสีฟุ้ง — อยู่หลังสุดและกดไม่โดน */
+.ems-body::before,
+.ems-body::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.ems-body::before {
+  width: 30rem;
+  height: 30rem;
+  background: rgba(44, 140, 237, .22);
+  top: -9rem;
+  right: 8rem;
+}
+
+.ems-body::after {
+  width: 26rem;
+  height: 26rem;
+  background: rgba(125, 190, 255, .32);
+  bottom: -8rem;
+  left: 20%;
+}
+
+/* เนื้อหาและเมนูต้องอยู่เหนือก้อนสี */
+.ems-body > .sidebar,
+.ems-body > .ems-main,
+.ems-body > #sidebarOverlay { position: relative; z-index: 1; }
+
+/* พื้นหลังเดิมของเนื้อหาถูกย้ายไปที่ .ems-body แล้ว */
+.ems-main {
+  background-color: transparent;
+  background-image: none;
+}
+
+/* ---- แถบบน ---- */
+.ems-header {
+  background: rgba(255, 255, 255, .74);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid rgba(219, 234, 254, .9);
+}
+
+/* ---- แถบเมนูข้าง ---- */
+.sidebar {
+  background: rgba(255, 255, 255, .68);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-right: 1px solid rgba(219, 234, 254, .9);
+}
+
+/* จอเล็กเมนูเป็นลิ้นชักทับเนื้อหา ต้องทึบกว่าปกติ ไม่งั้นอ่านทะลุรายการข้างหลัง */
+@media (max-width: 1023.98px) {
+  .sidebar { background: rgba(255, 255, 255, .95); }
+}
+
+/* ---- การ์ดในเนื้อหา ----
+   จับจากรูปแบบที่ใช้ทั่วระบบอยู่แล้ว (bg-white + rounded-2xl)
+   จึงไม่ต้องไล่แก้คลาสในไฟล์ .js ทีละจุด */
+.ems-main .bg-white.rounded-2xl {
+  background-color: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-color: var(--glass-line);
+  box-shadow: var(--glass-shadow);
+}
+
+/* การ์ดซ้อนในการ์ด — เบลอชั้นเดียวพอ ซ้อนหลายชั้นทั้งหนักเครื่องและอ่านยาก */
+.ems-main .bg-white.rounded-2xl .bg-white.rounded-2xl,
+.ems-main .bg-white.rounded-2xl .bg-white.rounded-xl {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background-color: rgba(255, 255, 255, .8);
+  box-shadow: none;
+}
+
+/* กล่องลอยและแผงแจ้งเตือน — โปร่งน้อยกว่าการ์ด เพราะต้องอ่านทีละอย่าง */
+#modalContainer .bg-white.rounded-2xl,
+#notifPanel {
+  background-color: rgba(255, 255, 255, .88);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
+  border-color: var(--glass-line);
+}
+
+/* ---- ตารางในการ์ดแก้ว ----
+   หัวตารางที่ตรึงไว้ (sticky) ต้องทึบเสมอ ไม่งั้นแถวที่เลื่อนผ่านจะทะลุขึ้นมา */
+.ems-main .bg-white.rounded-2xl thead .bg-surface,
+.ems-main .bg-white.rounded-2xl thead th.bg-surface,
+.ems-main .bg-white.rounded-2xl thead .sticky {
+  background-color: #eef5ff;
+}
+
+/* คอลัมน์แรกที่ตรึงไว้ในตารางกรอกคะแนน ต้องทึบขาว ไม่งั้นเห็นตัวเลขวิ่งทะลุ */
+.ems-main .bg-white.rounded-2xl tbody .sticky.bg-white,
+.ems-main .ems-tablewrap tbody .sticky.bg-white {
+  background-color: #fff;
+}
+
+/* ---- พิมพ์ออกกระดาษ : ตัดความโปร่งแสงทิ้งทั้งหมด ---- */
+@media print {
+  .ems-body { background: #fff; }
+  .ems-body::before,
+  .ems-body::after { display: none; }
+  .ems-header,
+  .sidebar,
+  .ems-main .bg-white.rounded-2xl,
+  #modalContainer .bg-white.rounded-2xl {
+    background-color: #fff !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
+}
+
+/* ---- เครื่องที่ไม่รองรับการเบลอฉากหลัง ----
+   ให้พื้นทึบไปเลย ดีกว่าปล่อยให้ตัวหนังสือซ้อนกับพื้นหลังจนอ่านไม่ออก */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .ems-header,
+  .sidebar { background: #fff; }
+  .ems-main .bg-white.rounded-2xl { background-color: #fff; }
+  #modalContainer .bg-white.rounded-2xl,
+  #notifPanel { background-color: #fff; }
+}
+
+/* ---- ผู้ใช้ที่ตั้งค่าลดความโปร่งแสงของระบบปฏิบัติการ ---- */
+@media (prefers-reduced-transparency: reduce) {
+  .ems-header,
+  .sidebar { background: #fff; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .ems-main .bg-white.rounded-2xl {
+    background-color: #fff;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .ems-body::before,
+  .ems-body::after { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
