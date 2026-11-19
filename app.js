@@ -2088,35 +2088,52 @@ function rememberDetails(el) { try { if (!APP._openCards) APP._openCards = {}; A
 function detailsOpen(id) { return (APP._openCards && APP._openCards[id]) ? ' open' : ''; }
 
 // กราฟวงกลม (SVG) — เอาเมาส์ชี้เซกเมนต์เพื่อดูจำนวน/เปอร์เซ็นต์ + เอฟเฟคหมุนตอนโหลด
-function svgDonut(segments, centerLabel) {
+function svgDonut(segments, centerLabel, opts) {
+  // opts = { center:'84.5%' (ข้อความกลางวงแทนผลรวม), sub:'คำอธิบายใต้ตัวเลขกลางวง' }
+  const o = opts || {};
   const total = segments.reduce((s, x) => s + (parseFloat(x.value) || 0), 0);
   const r = 42, C = 2 * Math.PI * r; let acc = 0;
-  const ring = total ? segments.filter(s => (parseFloat(s.value) || 0) > 0).map(s => {
+  const shown = segments.filter(s => (parseFloat(s.value) || 0) > 0);
+  // เว้นช่องว่างบาง ๆ ระหว่างส่วน ให้แยกส่วนออกจากกันได้ด้วยตา ไม่ต้องพึ่งสีอย่างเดียว
+  // มีส่วนเดียวไม่ต้องเว้น ไม่งั้นวงจะขาดโดยไม่มีเหตุผล
+  const gap = shown.length > 1 ? Math.min(3, C * 0.012) : 0;
+  const ring = total ? shown.map(s => {
     const v = parseFloat(s.value) || 0; const len = v / total * C; const off = -acc; acc += len;
     const pct = Math.round(v / total * 100);
+    // ส่วนที่เล็กมากต้องยังมองเห็น ไม่งั้นผู้ใช้จะนึกว่าไม่มีข้อมูลในหมวดนั้นเลย
+    // ความยาวขั้นต่ำอาจล้ำส่วนถัดไปเล็กน้อย แต่ตำแหน่งเริ่มของทุกส่วนยังคำนวณจากค่าจริง
+    const draw = Math.max(2, len - gap);
     // --dash คือความยาวเส้นสุดท้าย · --dc คือเส้นรอบวง CSS ใช้สองค่านี้ลากเส้นจาก 0 จนเต็ม
-    const dash = `${len.toFixed(2)} ${(C - len).toFixed(2)}`;
-    return `<circle class="donut-seg" cx="60" cy="60" r="${r}" fill="none" stroke="${s.color}" stroke-width="20" stroke-dasharray="${dash}" stroke-dashoffset="${off.toFixed(2)}" style="--dash:${dash};--dc:${C.toFixed(2)}"><title>${s.label}: ${v} คน (${pct}%)</title></circle>`;
-  }).join('') : `<circle cx="60" cy="60" r="${r}" fill="none" stroke="#e5e7eb" stroke-width="20"></circle>`;
-  const legend = segments.map(s => { const v = parseFloat(s.value) || 0; const pct = total ? Math.round(v / total * 100) : 0; return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px"><span style="width:13px;height:13px;border-radius:3px;background:${s.color};flex-shrink:0"></span><span class="dnt-label" style="flex:1;color:#475569">${s.label}</span><b class="dnt-val" style="color:#1e293b">${v}</b><span class="dnt-pct" style="color:#94a3b8;width:40px;text-align:right">${pct}%</span></div>`; }).join('');
+    const dash = `${draw.toFixed(2)} ${(C - draw).toFixed(2)}`;
+    return `<circle class="donut-seg" cx="60" cy="60" r="${r}" fill="none" stroke="${s.color}" stroke-width="18" stroke-dasharray="${dash}" stroke-dashoffset="${off.toFixed(2)}" style="--dash:${dash};--dc:${C.toFixed(2)}"><title>${s.label}: ${v} คน (${pct}%)</title></circle>`;
+  }).join('') : `<circle cx="60" cy="60" r="${r}" fill="none" stroke="#e5e7eb" stroke-width="18"></circle>`;
+  const legend = segments.map(s => { const v = parseFloat(s.value) || 0; const pct = total ? Math.round(v / total * 100) : 0; return `<div class="dnt-row"><span class="dnt-dot" style="background:${s.color}"></span><span class="dnt-label">${s.label}</span><b class="dnt-val">${v}</b><span class="dnt-pct">${pct}%</span></div>`; }).join('');
+  const ctr = o.center != null
+    ? `<span class="dnt-center" style="font-size:24px;font-weight:700;color:#1e6fba">${o.center}</span>`
+    : `<span class="dnt-center count-up" data-count-up="${total || 0}" style="font-size:26px;font-weight:700;color:#1e6fba">${total || 0}</span>`;
   return `<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
     <div class="donut-wrap pie-spin" style="width:150px;height:150px;flex-shrink:0;position:relative">
       <svg viewBox="0 0 120 120" width="150" height="150" style="transform:rotate(-90deg)">${ring}</svg>
-      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none"><span class="dnt-center count-up" data-count-up="${total || 0}" style="font-size:26px;font-weight:700;color:#1e6fba">${total || 0}</span><span class="dnt-sub" style="font-size:11px;color:#94a3b8">${centerLabel || 'รวม'}</span></div>
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none">${ctr}<span class="dnt-sub" style="font-size:11px;color:#94a3b8">${o.sub || centerLabel || 'รวม'}</span></div>
     </div>
     <div style="flex:1;min-width:180px">${legend}</div>
   </div>`;
 }
 
 // กราฟแท่งแนวนอน (มีอนิเมชันโตจากซ้าย→ขวา) — items: {label,value,color}
-function animBarRows(items) {
+function animBarRows(items, opts) {
+  // opts = { dot:false ปิดจุดสีหน้าชื่อ, suffix:'วิชา' ต่อท้ายตัวเลข }
+  const o = opts || {};
   const max = Math.max(1, ...items.map(i => parseFloat(i.value) || 0));
   return items.map(i => {
     const w = Math.round((parseFloat(i.value) || 0) / max * 100);
     const num = parseFloat(i.value);
+    const col = i.color || '#1e6fba';
+    const dot = (o.dot === false) ? '' : `<span class="dnt-dot" style="background:${col}"></span>`;
+    const suf = o.suffix ? `<span class="bar-suffix">${o.suffix}</span>` : '';
     return `<div class="bar-row">
-      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span class="dnt-label" style="color:#475569">${i.label}</span><b class="dnt-val${isFinite(num) ? ' count-up' : ''}"${isFinite(num) ? ' data-count-up="' + num + '"' : ''} style="color:#1e293b">${i.value || 0}</b></div>
-      <div class="bar-track" style="background:#eef2f7;border-radius:7px;height:18px;overflow:hidden"><div class="grow-bar" style="--tw:${w}%;height:100%;background:${i.color || '#1e6fba'};border-radius:7px"></div></div>
+      <div class="bar-head"><span class="dnt-label">${dot}${i.label}</span><b class="dnt-val${isFinite(num) ? ' count-up' : ''}"${isFinite(num) ? ' data-count-up="' + num + '"' : ''}>${i.value || 0}</b>${suf}</div>
+      <div class="bar-track"><div class="grow-bar" style="--tw:${w}%;background:${col}"></div></div>
     </div>`;
   }).join('');
 }

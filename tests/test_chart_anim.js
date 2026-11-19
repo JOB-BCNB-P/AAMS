@@ -31,7 +31,7 @@ const env = {
   htmlEsc: v => String(v == null ? '' : v).replace(/"/g, '&quot;')
 };
 const G = new Function(...Object.keys(env),
-  [grab(APP, 'function svgDonut(segments, centerLabel)'), grab(APP, 'function animBarRows(items)'),
+  [grab(APP, 'function svgDonut(segments, centerLabel, opts)'), grab(APP, 'function animBarRows(items, opts)'),
    grab(APP, 'function statCard(icon, label, value, unit, color, opts)')].join('\n')
   + '; return { svgDonut, animBarRows, statCard };')(...Object.values(env));
 
@@ -65,6 +65,42 @@ t('กราฟแท่ง : ความกว้างสุดท้าย�
 t('กราฟแท่ง : ค่าที่ไม่ใช่ตัวเลข ต้องไม่ถูกสั่งให้นับ', () => {
   const h = G.animBarRows([{ label: 'ก', value: '-' }]);
   assert.ok(!h.includes('data-count-up'), 'ค่าที่ไม่ใช่ตัวเลขจะถูกแปลงเป็น NaN');
+});
+
+t('โดนัท : หลายส่วนต้องเว้นช่องให้แยกออกจากกัน ส่วนเดียวต้องไม่ขาด', () => {
+  const one = G.svgDonut([{ label: 'ก', value: 5, color: '#0a0' }], 'คน');
+  const d1 = parseFloat(one.match(/--dash:([\d.]+)/)[1]);
+  const dc = parseFloat(one.match(/--dc:([\d.]+)/)[1]);
+  assert.ok(Math.abs(d1 - dc) < 0.6, 'มีส่วนเดียวแต่วงขาด · ' + d1 + ' จาก ' + dc);
+  const two = G.svgDonut([{ label: 'ก', value: 1, color: '#0a0' }, { label: 'ข', value: 1, color: '#a00' }], 'คน');
+  const ds = [...two.matchAll(/--dash:([\d.]+)/g)].map(m => parseFloat(m[1]));
+  assert.ok(ds[0] < dc / 2 - 0.5, 'ไม่ได้เว้นช่องระหว่างส่วน');
+});
+t('โดนัท : ส่วนที่เล็กมากต้องไม่ถูกช่องว่างกินจนหาย', () => {
+  const h = G.svgDonut([{ label: 'ใหญ่', value: 999, color: '#0a0' }, { label: 'เล็ก', value: 1, color: '#a00' }], 'คน');
+  const ds = [...h.matchAll(/--dash:([\d.]+)/g)].map(m => parseFloat(m[1]));
+  assert.ok(ds[1] >= 1.5, 'ส่วนเล็กหายไปจากวง ผู้ใช้จะนึกว่าไม่มีข้อมูล · ' + ds[1]);
+});
+t('โดนัท : สั่งข้อความกลางวงเองได้ และต้องไม่ถูกตัวนับแตะ', () => {
+  const h = G.svgDonut([{ label: 'ก', value: 3, color: '#0a0' }], 'คน', { center: '84.5%', sub: 'สอบผ่าน' });
+  assert.ok(h.includes('84.5%'), 'ไม่ได้ใช้ข้อความที่สั่ง');
+  assert.ok(!/dnt-center count-up/.test(h), 'ตัวนับจะแปลงข้อความเป็นตัวเลขเปล่า');
+  assert.ok(h.includes('สอบผ่าน'), 'คำอธิบายใต้ตัวเลขหาย');
+});
+t('กราฟแท่ง : มีจุดสีนำหน้าชื่อ และปิดได้', () => {
+  assert.ok(G.animBarRows([{ label: 'ก', value: 1, color: '#123456' }]).includes('dnt-dot'), 'ไม่มีจุดสี');
+  assert.ok(!G.animBarRows([{ label: 'ก', value: 1 }], { dot: false }).includes('dnt-dot'), 'ปิดจุดสีไม่ได้');
+});
+t('กราฟแท่ง : หน่วยต่อท้ายใส่ได้ และไม่ไปปนกับตัวเลขที่ถูกนับ', () => {
+  const h = G.animBarRows([{ label: 'ก', value: 18, color: '#0a0' }], { suffix: 'วิชา' });
+  assert.ok(h.includes('bar-suffix'), 'ไม่มีหน่วย');
+  assert.ok(/data-count-up="18"[^>]*>18</.test(h), 'หน่วยปนเข้าไปในตัวเลขที่ถูกนับ');
+});
+t('สไตล์ของกราฟอยู่ในไฟล์ CSS ไม่ได้ฝังในสตริง', () => {
+  ['.bar-track', '.bar-head', '.dnt-row', '.dnt-dot'].forEach(c =>
+    assert.ok(CSS.includes(c + ' {') || CSS.includes(c + ',') || CSS.includes(c + ' >'),
+      'ไม่มีสไตล์ ' + c + ' กราฟจะกลายเป็นข้อความเปล่า'));
+  assert.ok(/\.bar-track \{[\s\S]{0,160}border-radius/.test(CSS), 'รางแท่งไม่มีความโค้ง');
 });
 
 console.log('\n[2] ตัวนับตัวเลข');

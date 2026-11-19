@@ -1862,6 +1862,33 @@ form.ems-stepped > * + * { margin-top: 0; }
 .ems-pct > .ems-pct-bar > span { display: block; height: 100%; border-radius: 999px; }
 @media (max-width: 640px) { .ems-pct > .ems-pct-bar { width: 3.5rem; } }
 
+/* ---- กราฟแท่งแนวนอนและรายการสถานะ ----
+   เดิมสไตล์ฝังอยู่ในสตริง HTML ย้ายมาไว้ที่นี่เพื่อให้ปรับได้ที่เดียว */
+.bar-row + .bar-row { margin-top: .875rem; }
+.bar-head {
+  display: flex; align-items: baseline; gap: .5rem;
+  font-size: .8125rem; margin-bottom: .375rem;
+}
+.bar-head .dnt-label { flex: 1; min-width: 0; color: #475569; display: inline-flex; align-items: center; gap: .5rem; }
+.bar-head .dnt-val { color: #1e293b; font-weight: 600; font-variant-numeric: tabular-nums; }
+.bar-head .bar-suffix { color: #94a3b8; font-size: .75rem; }
+.bar-track {
+  height: .5rem; border-radius: 999px;
+  background: rgba(148, 163, 184, .2); overflow: hidden;
+}
+.bar-track > .grow-bar { height: 100%; border-radius: 999px; }
+
+/* ---- รายการประกอบกราฟวงกลม ---- */
+.dnt-row {
+  display: flex; align-items: center; gap: .5rem;
+  font-size: .8125rem; padding: .3rem 0;
+}
+.dnt-row + .dnt-row { border-top: 1px solid rgba(226, 232, 240, .7); }
+.dnt-dot { width: .5rem; height: .5rem; border-radius: 50%; flex: none; }
+.dnt-row .dnt-label { flex: 1; min-width: 0; color: #475569; }
+.dnt-row .dnt-val { color: #1e293b; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dnt-row .dnt-pct { color: #94a3b8; width: 2.5rem; text-align: right; font-variant-numeric: tabular-nums; }
+
 /* ---- ผู้ใช้ที่ตั้งค่าลดความโปร่งแสงของระบบปฏิบัติการ ---- */
 @media (prefers-reduced-transparency: reduce) {
   .ems-header,
