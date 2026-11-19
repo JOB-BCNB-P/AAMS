@@ -1678,7 +1678,104 @@ form.ems-stepped > * + * { margin-top: 0; }
   .ems-main .bg-white.rounded-2xl { background-color: #fff; }
   #modalContainer .bg-white.rounded-2xl,
   #notifPanel { background-color: #fff; }
+  .ems-main input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  .ems-main select,
+  .ems-main textarea { background-color: #fff; }
+  .ems-main button.border.border-gray-200,
+  .ems-main button.border.border-primary { background-color: #fff; }
 }
+
+/* ================================================================
+   ชั้นธีมกระจก (ต่อ) — ส่วนประกอบภายในหน้า ใช้ได้ทุกเมนู
+   ----------------------------------------------------------------
+   จับจากคลาสที่ระบบใช้อยู่แล้วทั้งหมด จึงไม่ต้องแก้ไฟล์ .js
+   ================================================================ */
+
+/* ---- เมนูที่กำลังเปิดอยู่ ---- */
+#sidebarNav .nav-item.bg-primaryLight.text-primary {
+  background: linear-gradient(135deg, #1e6fd9, #4ea3f5);
+  color: #fff;
+  box-shadow: 0 8px 18px -10px rgba(30, 111, 217, .95);
+}
+
+#sidebarNav .nav-item.bg-primaryLight.text-primary i,
+#sidebarNav .nav-item.bg-primaryLight.text-primary svg { color: #fff; }
+
+/* เมนูย่อยใช้พื้นฟ้าอ่อน ไม่ต้องเข้มเท่าเมนูหลัก จะได้แยกระดับออก */
+#sidebarNav .dropdown-menu .nav-item.bg-primaryLight.text-primary {
+  background: rgba(44, 140, 237, .14);
+  color: #1e6fd9;
+  box-shadow: none;
+}
+
+/* ---- ปุ่มหลัก ---- */
+.ems-main button.bg-primary,
+#modalContainer button.bg-primary {
+  background: linear-gradient(135deg, #1e6fd9, #4ea3f5);
+  box-shadow: 0 8px 18px -10px rgba(30, 111, 217, .9);
+  border-color: transparent;
+}
+
+.ems-main button.bg-primary:hover,
+#modalContainer button.bg-primary:hover {
+  background: linear-gradient(135deg, #1a63c4, #3f98ef);
+}
+
+.ems-main button.bg-primary:disabled,
+#modalContainer button.bg-primary:disabled {
+  background: #9dc4ef;
+  box-shadow: none;
+}
+
+/* ปุ่มรองที่เป็นพื้นขาว/เทา — ให้โปร่งเข้าชุดกับการ์ด */
+.ems-main button.border.border-gray-200,
+.ems-main button.border.border-primary {
+  background-color: rgba(255, 255, 255, .62);
+}
+
+/* ---- การ์ดตัวเลขสรุป (statCard) ---- */
+.ems-main .card-stat > .flex > .rounded-xl {
+  box-shadow: 0 8px 16px -8px rgba(23, 56, 117, .55);
+}
+
+/* ---- ช่องกรอกข้อมูล ----
+   ไม่แตะ checkbox / radio / ปุ่มอัปโหลด เพราะเป็นตัวควบคุมของเบราว์เซอร์ */
+.ems-main input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.ems-main select,
+.ems-main textarea,
+#modalContainer input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+#modalContainer select,
+#modalContainer textarea {
+  background-color: rgba(255, 255, 255, .72);
+  border-color: rgba(191, 219, 254, .9);
+}
+
+.ems-main input:focus,
+.ems-main select:focus,
+.ems-main textarea:focus,
+#modalContainer input:focus,
+#modalContainer select:focus,
+#modalContainer textarea:focus {
+  background-color: #fff;
+  border-color: #60a5fa;
+}
+
+/* ช่องที่ปิดใช้งานต้องดูต่างจากช่องปกติชัด ๆ ไม่งั้นผู้ใช้กดแล้วงงว่าทำไมไม่ตอบสนอง */
+.ems-main input:disabled,
+.ems-main select:disabled,
+.ems-main textarea:disabled {
+  background-color: rgba(241, 245, 249, .8);
+  color: #94a3b8;
+}
+
+/* ---- ตารางในการ์ดแก้ว ---- */
+.ems-main .bg-white.rounded-2xl thead tr.bg-surface th:first-child { border-top-left-radius: .75rem; }
+.ems-main .bg-white.rounded-2xl thead tr.bg-surface th:last-child { border-top-right-radius: .75rem; }
+
+.ems-main .bg-white.rounded-2xl tbody tr:hover { background-color: rgba(239, 246, 255, .7); }
+
+/* เส้นคั่นแถวให้บางลง ตารางยาว ๆ จะได้ไม่ดูเป็นตาราง ๆ จนลายตา */
+.ems-main .bg-white.rounded-2xl tbody tr.border-t { border-top-color: rgba(191, 219, 254, .55); }
 
 /* ---- ผู้ใช้ที่ตั้งค่าลดความโปร่งแสงของระบบปฏิบัติการ ---- */
 @media (prefers-reduced-transparency: reduce) {
@@ -1689,6 +1786,11 @@ form.ems-stepped > * + * { margin-top: 0; }
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
+  .ems-main input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  .ems-main select,
+  .ems-main textarea { background-color: #fff; }
+  .ems-main button.border.border-gray-200,
+  .ems-main button.border.border-primary { background-color: #fff; }
   .ems-body::before,
   .ems-body::after { display: none; }
 }
