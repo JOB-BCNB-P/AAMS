@@ -50,5 +50,19 @@ FILES.forEach(f => {
   });
 });
 
+console.log('\n[4] ทุกสีที่ส่งให้การ์ดต้องมีในตารางสี');
+t('ไม่มีสีไหนตกไปใช้สีเริ่มต้นเงียบ ๆ', () => {
+  const app = fs.readFileSync(P + 'app.js', 'utf8');
+  const tone = app.slice(app.indexOf('const TONE = {'), app.indexOf('};', app.indexOf('const TONE = {')));
+  const used = new Set();
+  FILES.forEach(f => {
+    const src = fs.readFileSync(P + f, 'utf8');
+    for (const m of src.matchAll(/'(bg-[a-z]+-500)'/g)) used.add(m[1]);
+  });
+  const miss = [...used].filter(c => !tone.includes("'" + c + "'"));
+  assert.strictEqual(miss.length, 0,
+    'สีเหล่านี้จะกลายเป็นฟ้าหมดโดยไม่มีอะไรฟ้อง : ' + miss.join(' '));
+});
+
 console.log('\n' + (fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
 process.exit(fail ? 1 : 0);

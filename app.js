@@ -1997,7 +1997,13 @@ function statCard(icon, label, value, unit, color, opts) {
     'bg-amber-500':   { soft: '#fffbeb', ico: '#d97706', bar: '#f59e0b', num: '#b45309' },
     'bg-yellow-500':  { soft: '#fefce8', ico: '#ca8a04', bar: '#eab308', num: '#a16207' },
     'bg-red-500':     { soft: '#fef2f2', ico: '#dc2626', bar: '#ef4444', num: '#b91c1c' },
-    'bg-purple-500':  { soft: '#faf5ff', ico: '#9333ea', bar: '#a855f7', num: '' }
+    'bg-purple-500':  { soft: '#faf5ff', ico: '#9333ea', bar: '#a855f7', num: '' },
+    'bg-indigo-500':  { soft: '#eef2ff', ico: '#4f46e5', bar: '#6366f1', num: '' },
+    'bg-teal-500':    { soft: '#f0fdfa', ico: '#0d9488', bar: '#14b8a6', num: '' },
+    'bg-cyan-500':    { soft: '#ecfeff', ico: '#0891b2', bar: '#06b6d4', num: '' },
+    'bg-rose-500':    { soft: '#fff1f2', ico: '#e11d48', bar: '#f43f5e', num: '#be123c' },
+    'bg-orange-500':  { soft: '#fff7ed', ico: '#ea580c', bar: '#f97316', num: '#c2410c' },
+    'bg-lime-500':    { soft: '#f7fee7', ico: '#65a30d', bar: '#84cc16', num: '#4d7c0f' }
   };
   const t = TONE[String(color || '').trim()] || { soft: '#eff6ff', ico: '#1e6fd9', bar: '#2c8ced', num: '' };
   const num = String(value).replace(/[^0-9.-]/g, '');
@@ -7459,7 +7465,7 @@ function practicumSitesPage() {
   // การ์ดนับตามที่กรองอยู่ จะได้ตรงกับตารางที่เห็น
   const cards = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
     ${statCard('building-2', 'จำนวนแหล่งฝึกปฏิบัติ' + (selYear ? ' (ปี ' + selYear + ')' : ''),
-      countDistinctField(data, 'site_name'), 'แห่ง', 'bg-teal-500')}
+      countDistinctField(data, 'site_name'), 'แห่ง', 'bg-teal-500', { accent: true, sub: 'ที่มีการส่งนักศึกษาไปฝึก' })}
     ${statCard('user-check', 'พยาบาลพี่เลี้ยง/อาจารย์พี่เลี้ยง' + (selYear ? ' (ปี ' + selYear + ')' : ''),
       countDistinctField(data, 'mentor', true), 'คน', 'bg-rose-500')}
     ${statCard('book-open', 'รายวิชาที่มีการฝึกปฏิบัติ' + (selYear ? ' (ปี ' + selYear + ')' : ''),
@@ -10137,7 +10143,7 @@ function trackingPage() {
       ${statCard('alert-circle', 'ยังไม่ส่ง', notSubmitted.length, 'วิชา', 'bg-red-500', statOf(notSubmitted.length, subjectsFiltered.length, 'วิชา'))}
       ${statCard('clock', 'รอดำเนินการ', pending, 'วิชา', 'bg-yellow-500', statOf(pending, dataForStats.length, 'วิชา'))}
       ${statCard('loader', 'กำลังดำเนินการ', inProgress, 'วิชา', 'bg-blue-500', statOf(inProgress, dataForStats.length, 'วิชา'))}
-      ${statCard('check-circle', 'เสร็จสิ้น', completed, 'วิชา', 'bg-green-500', statOf(completed, dataForStats.length, 'วิชา'))}
+      ${statCard('check-circle', 'เสร็จสิ้น', completed, 'วิชา', 'bg-green-500', Object.assign({ accent: true }, statOf(completed, dataForStats.length, 'วิชา')))}
     </div>`;
     const submitted = subjectsFiltered.filter(s => isTracked(s));
     if (notSubmitted.length) {
@@ -10394,7 +10400,7 @@ function resultTrackingPage() {
       ${statCard('alert-circle', 'ยังไม่ส่ง', notSubmitted.length, 'วิชา', 'bg-red-500', statOf(notSubmitted.length, subjectsFiltered.length, 'วิชา'))}
       ${statCard('clock', 'รอดำเนินการ', pending, 'วิชา', 'bg-yellow-500', statOf(pending, dataForStats.length, 'วิชา'))}
       ${statCard('loader', 'กำลังดำเนินการ', inProgress, 'วิชา', 'bg-blue-500', statOf(inProgress, dataForStats.length, 'วิชา'))}
-      ${statCard('check-circle', 'เสร็จสิ้น', completed, 'วิชา', 'bg-green-500', statOf(completed, dataForStats.length, 'วิชา'))}
+      ${statCard('check-circle', 'เสร็จสิ้น', completed, 'วิชา', 'bg-green-500', Object.assign({ accent: true }, statOf(completed, dataForStats.length, 'วิชา')))}
     </div>`;
     const submitted = subjectsFiltered.filter(s => isTracked(s));
     if (notSubmitted.length) {
@@ -10565,7 +10571,7 @@ function gradeTrackingPage() {
       ${statCard('alert-circle', 'ยังไม่ส่งเกรด', notSubmitted.length, 'วิชา', 'bg-red-500', statOf(notSubmitted.length, subjectsFiltered.length, 'วิชา'))}
       ${statCard('clock', 'รอดำเนินการ', pending, 'วิชา', 'bg-yellow-500', statOf(pending, dataForStats.length, 'วิชา'))}
       ${statCard('loader', 'กำลังดำเนินการ', inProgress, 'วิชา', 'bg-blue-500', statOf(inProgress, dataForStats.length, 'วิชา'))}
-      ${statCard('check-circle', 'เสร็จสิ้น', completed, 'วิชา', 'bg-green-500', statOf(completed, dataForStats.length, 'วิชา'))}
+      ${statCard('check-circle', 'เสร็จสิ้น', completed, 'วิชา', 'bg-green-500', Object.assign({ accent: true }, statOf(completed, dataForStats.length, 'วิชา')))}
     </div>`;
     if (notSubmitted.length) {
       notSubmittedSection = `<div class="bg-red-50 rounded-2xl p-4 border border-red-200 mb-4">
@@ -10729,7 +10735,7 @@ function fileTrackingPage() {
       ${statCard('alert-circle', 'ยังไม่ส่งแฟ้ม', notSubmitted.length, 'วิชา', 'bg-red-500', statOf(notSubmitted.length, subjectsFiltered.length, 'วิชา'))}
       ${statCard('clock', 'รอดำเนินการ', pending, 'วิชา', 'bg-yellow-500', statOf(pending, dataForStats.length, 'วิชา'))}
       ${statCard('loader', 'กำลังดำเนินการ', inProgress, 'วิชา', 'bg-blue-500', statOf(inProgress, dataForStats.length, 'วิชา'))}
-      ${statCard('check-circle', 'เสร็จสิ้น', completed, 'วิชา', 'bg-green-500', statOf(completed, dataForStats.length, 'วิชา'))}
+      ${statCard('check-circle', 'เสร็จสิ้น', completed, 'วิชา', 'bg-green-500', Object.assign({ accent: true }, statOf(completed, dataForStats.length, 'วิชา')))}
     </div>`;
     if (notSubmitted.length) {
       notSubmittedSection = `<div class="bg-red-50 rounded-2xl p-4 border border-red-200 mb-4">
@@ -11203,8 +11209,8 @@ function leaveRiskTableHTML(sc) {
     </summary>
     <div class="px-5 pb-5">
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-        ${statCard('octagon-alert', 'เกินเกณฑ์แล้ว (ตั้งแต่ 20%)', over, 'รายการ', 'bg-red-500')}
-        ${statCard('alert-triangle', 'ใกล้เกินเกณฑ์ (15–19%)', near, 'รายการ', 'bg-amber-500')}
+        ${statCard('octagon-alert', 'เกินเกณฑ์แล้ว (ตั้งแต่ 20%)', over, 'รายการ', 'bg-red-500', Object.assign({ accent: true }, statOf(over, risky.length, 'รายการ')))}
+        ${statCard('alert-triangle', 'ใกล้เกินเกณฑ์ (15–19%)', near, 'รายการ', 'bg-amber-500', statOf(near, risky.length, 'รายการ'))}
       </div>
       ${risky.length ? `<div class="border border-gray-100 rounded-xl overflow-hidden">
         <div class="overflow-auto" style="max-height:420px"><table class="w-full text-sm">
