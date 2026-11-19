@@ -694,7 +694,10 @@
       var lb = pt(a, R + 24), anchor = lb[0] > CX + 6 ? 'start' : (lb[0] < CX - 6 ? 'end' : 'middle');
       g += '<text x="' + (Math.round(lb[0])) + '" y="' + (Math.round(lb[1]) + 4) + '" text-anchor="' + anchor + '" font-size="11" fill="#6b7280">PLO ' + esc(axes[a].no) + '</text>';
     }
-    var fillOp = series.length <= 2 ? 0.28 : (series.length === 3 ? 0.2 : 0.13);
+    // ใยแมงมุมหลายปีอ่านจาก "เส้นรอบรูป" ไม่ใช่พื้นที่ พื้นทึบจึงมีแต่โทษ
+    // สองชั้นที่ทับกันที่ 0.28 จะรวมกันเป็นราว 0.48 ของสีผสม ออกมาเป็นน้ำตาลขุ่น
+    // ปีเดียวยังทาพื้นได้เต็มที่ เพราะไม่มีอะไรไปทับ
+    var fillOp = series.length <= 1 ? 0.22 : (series.length === 2 ? 0.10 : 0.07);
     series.forEach(function (sr, si) {
       var col = RADAR_COLORS[si % RADAR_COLORS.length];
       var dash = RADAR_DASH[si % RADAR_DASH.length];
