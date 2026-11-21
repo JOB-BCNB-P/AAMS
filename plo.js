@@ -1394,7 +1394,16 @@
         + 'ไม่มีนักศึกษาที่ต่ำกว่าเกณฑ์ ' + cut + '% ในขอบเขตที่เลือก — แสดงผลรายคนทั้งหมด ' + all.length + ' คนแทน</p>'
       : '';
 
-    var show = st.stuWatchAll ? base : base.slice(0, 10);
+    // แบ่งหน้าทีละ 10 คน ใช้ตัวแบ่งหน้าชุดเดียวกับหน้าอื่นของระบบ (มีปุ่มหน้าแรก/หน้าสุดท้าย)
+    // เปลี่ยนตัวกรองหรือขอบเขตเมื่อไร ให้กลับไปหน้าแรกเสมอ ไม่งั้นจะค้างอยู่หน้าที่ไม่มีข้อมูลแล้ว
+    var PER = 10;
+    var pgKey = [key, cut, listAll ? 'all' : 'bad'].join('|');
+    if (st._listKey !== pgKey) { st._listKey = pgKey; st.stuPage = 1; }
+    var pages = Math.ceil(base.length / PER) || 1;
+    var page = Math.min(Math.max(1, n(st.stuPage) || 1), pages);
+    st.stuPage = page;
+    var from = (page - 1) * PER;
+    var show = base.slice(from, from + PER);
     var rowsHtml = show.map(function (x, i) {
       // โหมดดูทั้งหมดจะมีคนที่ถึงเกณฑ์ปนอยู่ด้วย ต้องไม่ติดป้ายว่าควรติดตาม
       var lvl = x.pct >= cut
@@ -1404,7 +1413,7 @@
         return '<span class="inline-block px-1.5 py-0.5 rounded-md bg-red-50 text-red-600 text-[11px] mr-1">' + esc(pk) + '</span>';
       }).join('') + (x.badPlo.length > 3 ? '<span class="text-[11px] text-gray-400">+' + (x.badPlo.length - 3) + '</span>' : '');
       return '<tr class="border-t border-gray-50 hover:bg-surface">'
-        + '<td class="px-2 py-2 text-center"><span class="ems-rank" style="background:' + lvl.bar + '" title="' + esc(lvl.label) + '">' + (i + 1) + '</span></td>'
+        + '<td class="px-2 py-2 text-center"><span class="ems-rank" style="background:' + lvl.bar + '" title="' + esc(lvl.label) + '">' + (from + i + 1) + '</span></td>'
         + '<td class="px-2 py-2"><p class="text-sm text-gray-800">' + esc(x.name || '-') + '</p>'
         + '<p class="font-mono text-[11px] text-gray-400">' + esc(x.sid) + ' · ชั้นปี ' + esc(x.level || '-') + '</p></td>'
         // ใช้โครงเดียวกับตัวเลขร้อยละในตารางอื่น แถบจึงมีความกว้างคงที่
@@ -1427,9 +1436,11 @@
       + '<th class="px-2 py-2 font-semibold">PLO ที่ยังไม่บรรลุ</th>'
       + '<th class="px-2 py-2 font-semibold text-center">ระดับ</th>'
       + '<th class="px-2 py-2"></th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>'
-      + (base.length > show.length
-          ? '<button type="button" onclick="ploSet(\'stuWatchAll\',true)" class="mt-2 text-xs text-primary hover:underline">ดูครบทั้ง ' + base.length + ' คน</button>'
-          : (st.stuWatchAll && base.length > 10 ? '<button type="button" onclick="ploSet(\'stuWatchAll\',false)" class="mt-2 text-xs text-gray-500 hover:underline">ย่อรายการ</button>' : ''));
+      + (base.length > PER
+          ? '<p class="text-[11px] text-gray-500 mt-2">แสดง ' + (from + 1) + '–' + (from + show.length)
+            + ' จาก ' + base.length + ' คน</p>'
+            + (typeof paginationHTML === 'function' ? paginationHTML(base.length, PER, page, 'ploListPage') : '')
+          : '');
 
     return panel(head + sum + note + table
       + '<p class="text-[11px] text-gray-400 mt-2">นับเฉพาะ CLO ที่กรอกคะแนนแล้วและมีเกณฑ์ผ่าน · '
@@ -1441,10 +1452,19 @@
   window.ploListScope = function (v) {
     var st = state();
     st.stuListAll = !!s(v);
-    st.stuWatchAll = false;          // สลับขอบเขตแล้วเริ่มนับ 10 แถวแรกใหม่
+    st.stuPage = 1;                  // สลับขอบเขตแล้วกลับไปหน้าแรก
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
   };
-  window.ploWatchCut = function (v) { state().stuWatchPct = n(v) || 60; if (typeof renderCurrentPage === 'function') renderCurrentPage(); };
+  window.ploListPage = function (p) {
+    state().stuPage = Math.max(1, n(p) || 1);
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  };
+  window.ploWatchCut = function (v) {
+    var st = state();
+    st.stuWatchPct = n(v) || 60;
+    st.stuPage = 1;                  // เปลี่ยนเกณฑ์แล้วรายชื่อเปลี่ยน ต้องกลับไปหน้าแรก
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  };
   window.ploWatchRetry = function () { _watch = {}; if (typeof renderCurrentPage === 'function') renderCurrentPage(); };
   window.ploWatchOpen = function (sid) {
     var st = state();

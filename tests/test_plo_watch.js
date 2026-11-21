@@ -170,10 +170,31 @@ const find = (rs, sid) => rs.filter(x => x.sid === sid)[0];
       assert.ok(pn.includes(x), 'ขาดตัวเลข ' + x));
     assert.ok(pn.indexOf('sum') < pn.indexOf('table'), 'ตารางมาก่อนแถบสรุป');
   });
-  t('ย่อรายการไว้ 10 คนแรก ไม่ถมหน้าจอ', () => {
-    assert.ok(pn.includes('base.slice(0, 10)'), 'แสดงทั้งหมดทันที');
-    assert.ok(pn.includes('ดูครบทั้ง'), 'ไม่มีปุ่มขยาย');
+  t('แบ่งหน้าทีละ 10 คน ไม่ถมหน้าจอ', () => {
+    assert.ok(/var PER = 10;/.test(pn), 'ไม่ได้จำกัดจำนวนต่อหน้า');
+    assert.ok(/base\.slice\(from, from \+ PER\)/.test(pn), 'ไม่ได้ตัดตามหน้า');
+    assert.ok(/paginationHTML\(base\.length, PER, page, 'ploListPage'\)/.test(pn),
+      'ไม่ได้ใช้ตัวแบ่งหน้าชุดเดียวกับหน้าอื่นของระบบ');
   });
+  t('มีปุ่มหน้าแรกและหน้าสุดท้าย', () => {
+    const APPJS = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    const g = APPJS.slice(APPJS.indexOf('function paginationHTML('), APPJS.indexOf('function filterBar('));
+    assert.ok(/title="หน้าแรก"/.test(g) && /title="หน้าสุดท้าย"/.test(g), 'ขาดปุ่มกระโดดหัว-ท้าย');
+    assert.ok(/title="ก่อนหน้า"/.test(g) && /title="ถัดไป"/.test(g), 'ขาดปุ่มเลื่อนทีละหน้า');
+  });
+  t('เลขลำดับต่อเนื่องข้ามหน้า ไม่เริ่ม 1 ใหม่ทุกหน้า', () =>
+    assert.ok(/\(from \+ i \+ 1\)/.test(pn), 'หน้า 2 จะขึ้นลำดับ 1 ใหม่'));
+  t('บอกว่ากำลังดูช่วงไหนจากทั้งหมดเท่าไร', () =>
+    assert.ok(/แสดง ' \+ \(from \+ 1\)/.test(pn), 'ไม่รู้ว่าอยู่ช่วงไหนของรายชื่อ'));
+  t('เปลี่ยนตัวกรอง เกณฑ์ หรือขอบเขต ต้องกลับไปหน้าแรก', () => {
+    assert.ok(/st\._listKey !== pgKey.*st\.stuPage = 1/.test(pn.replace(/\n/g, ' ')),
+      'ค้างอยู่หน้าที่ไม่มีข้อมูลแล้ว');
+    assert.ok(/st\.stuPage = 1;/.test(grab("window.ploListScope = function (v)")), 'สลับขอบเขตแล้วไม่รีเซ็ตหน้า');
+    assert.ok(/st\.stuPage = 1;/.test(grab("window.ploWatchCut = function (v)")), 'เปลี่ยนเกณฑ์แล้วไม่รีเซ็ตหน้า');
+  });
+  t('หน้าที่เกินช่วงถูกดึงกลับมาในช่วงที่มีจริง', () =>
+    assert.ok(/Math\.min\(Math\.max\(1, n\(st\.stuPage\) \|\| 1\), pages\)/.test(pn),
+      'ใส่เลขหน้าเกินแล้วตารางจะว่าง'));
   t('ไม่มีใครต่ำกว่าเกณฑ์ ก็บอกให้ชัด ไม่ใช่ตารางว่าง', () =>
     assert.ok(pn.includes('ไม่มีนักศึกษาที่ต่ำกว่าเกณฑ์'), 'ตารางว่างโดยไม่อธิบาย'));
   t('อธิบายวิธีนับไว้ท้ายตาราง', () => {
@@ -219,13 +240,9 @@ t('ไม่มีใครต่ำกว่าเกณฑ์ ต้องไ�
 t('คนที่ถึงเกณฑ์ต้องไม่ถูกติดป้ายว่าควรติดตาม', () =>
   assert.ok(/x\.pct >= cut[\s\S]{0,140}ถึงเกณฑ์/.test(SRC),
     'โหมดดูทั้งหมดจะติดป้ายผิดให้คนที่ผ่านแล้ว'));
-t('ปุ่มดูครบนับจากรายชื่อชุดที่กำลังแสดง ไม่ใช่เฉพาะคนที่ต่ำกว่าเกณฑ์', () =>
-  assert.ok(/base\.length > show\.length/.test(SRC) && /ดูครบทั้ง ' \+ base\.length/.test(SRC),
-    'จำนวนในปุ่มจะไม่ตรงกับรายชื่อจริง'));
-t('สลับขอบเขตแล้วเริ่มนับสิบแถวแรกใหม่', () => {
-  const g = grab("window.ploListScope = function (v)");
-  assert.ok(/st\.stuWatchAll = false;/.test(g), 'สลับแล้วยังค้างสถานะกางทั้งหมดของชุดเดิม');
-});
+t('ตัวแบ่งหน้าและจำนวนรวมนับจากชุดที่กำลังแสดง', () =>
+  assert.ok(/base\.length > PER/.test(SRC) && /จาก ' \+ base\.length \+ ' คน/.test(SRC),
+    'จำนวนที่บอกจะไม่ตรงกับรายชื่อจริง'));
 
 console.log('\n' + (fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
   process.exit(fail ? 1 : 0);
