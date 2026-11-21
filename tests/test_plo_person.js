@@ -203,6 +203,25 @@ const PLOS = [1, 2, 3].map(i => ({ curriculum_year: '2565', plo_code: 'PLO' + i,
     assert.ok(!SRC.includes('studentDatalist'), 'ยังมีโค้ดเดิมค้างอยู่'));
   t('ไฟล์ทั้งไฟล์ยังแปลผ่าน', () => { new vm.Script(SRC); });
 
-  console.log('\n' + (fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
+  console.log('\n[ล้าง] ปุ่มล้างต้องล้างช่องค้นหาด้วย');
+t('ปุ่มล้างเรียกตัวเดียวกับการค้นหาด้วยค่าว่าง', () => {
+  assert.ok(/onclick="ploFindStudent\(\\'\\'\)"/.test(SRC),
+    'ยังใช้ ploSet(stuResult,null) ซึ่งล้างแต่ผล ชื่อในช่องค้นหาจะค้างอยู่');
+  assert.ok(!/ploSet\(\\'stuResult\\',null\)/.test(SRC), 'ยังเหลือวิธีเดิมอยู่');
+});
+t('ค่าว่างล้างทั้งข้อความและผล แล้ววาดหน้าใหม่', () => {
+  const g = grab('window.ploFindStudent = async function (q)');
+  assert.ok(/st\.stuQuery = q;/.test(g), 'ไม่ได้เก็บข้อความที่พิมพ์');
+  assert.ok(/if \(!q\) \{ st\.stuResult = null; renderCurrentPage\(\); return; \}/.test(g),
+    'ส่งค่าว่างแล้วไม่ได้ล้างผล');
+});
+t('ปุ่มล้างขึ้นเมื่อมีข้อความในช่อง ไม่ใช่เฉพาะตอนมีผล', () =>
+  assert.ok(/\(res \|\| s\(st\.stuQuery\)\)/.test(SRC),
+    'พิมพ์แล้วหาไม่เจอ จะไม่มีปุ่มให้ล้าง ชื่อเดิมค้างอยู่'));
+t('ช่องค้นหาแสดงค่าจาก state เสมอ ล้างแล้วจึงว่างจริง', () =>
+  assert.ok(/id="ploStuSearch" type="text" value="' \+ esc\(st\.stuQuery\)/.test(SRC),
+    'ช่องค้นหาไม่ได้ผูกกับ state ล้างแล้วตัวอักษรจะยังอยู่'));
+
+console.log('\n' + (fail ? '✗' : '✓') + ' ผ่าน ' + pass + ' ข้อ  ไม่ผ่าน ' + fail + ' ข้อ');
   process.exit(fail ? 1 : 0);
 })();

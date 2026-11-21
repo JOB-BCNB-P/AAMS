@@ -1474,7 +1474,11 @@
       + '<div class="flex items-center gap-2 mt-5">'
       + '<button onclick="ploFindStudent(document.getElementById(\'ploStuSearch\').value)" '
       + 'class="px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-surface">ดูผล</button>'
-      + (res ? '<button onclick="ploSet(\'stuResult\',null)" class="px-3 py-2 rounded-xl text-sm text-gray-400 hover:text-gray-600">ล้าง</button>' : '')
+      // ล้างทั้งผลและข้อความในช่องค้นหา ไม่งั้นชื่อเดิมค้างอยู่จนเข้าใจผิดว่ายังเลือกคนนั้นอยู่
+      // แสดงปุ่มเมื่อมีข้อความในช่องด้วย ไม่ใช่เฉพาะตอนมีผล เผื่อพิมพ์แล้วหาไม่เจอจะได้ล้างได้
+      + ((res || s(st.stuQuery))
+          ? '<button type="button" onclick="ploFindStudent(\'\')" class="px-3 py-2 rounded-xl text-sm text-gray-400 hover:text-gray-600">ล้าง</button>'
+          : '')
       + '</div></div>';
 
     var wrap = function (inner) {
