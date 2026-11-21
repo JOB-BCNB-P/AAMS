@@ -164,8 +164,10 @@ function env(role, me, extra) {
       assert.strictEqual(env(r, A).canPushGrade(), false, r + ' ยังส่งเกรดได้'));
   });
   t('ปุ่มและฟังก์ชันใช้ด่านเดียวกัน', () => {
-    assert.ok(/\(canPushGrade\(\)\s*\n?\s*\?\s*'<button type="button" onclick="ploGradePush\(\)/.test(SRC)
-      || SRC.replace(/\s+/g, ' ').includes('(canPushGrade() ? \'<button type="button" onclick="ploGradePush()'), 'ปุ่มยังใช้ canEdit');
+    // ปุ่มอยู่หลังด่านสองชั้น : ส่งไปแล้วหรือยัง แล้วจึงดูสิทธิ์
+    const flat = SRC.replace(/\s+/g, ' ');
+    assert.ok(flat.includes("canPushGrade() ? '<button type=\"button\" onclick=\"ploGradePush()"),
+      'ปุ่มส่งเกรดไม่ได้อยู่หลัง canPushGrade');
     const g = grab('window.ploGradePush = async function ()');
     assert.ok(g.includes('if (!canPushGrade())'), 'ฟังก์ชันส่งเกรดไม่ได้ตรวจสิทธิ์ใหม่');
   });

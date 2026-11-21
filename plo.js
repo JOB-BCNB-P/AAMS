@@ -3363,9 +3363,14 @@
         }).join('') + '</tbody></table></div>';
     return summary + table
       + '<div class="flex flex-wrap items-center gap-2 mt-3">'
-      + (canPushGrade()
-          ? '<button type="button" onclick="ploGradePush()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-white text-sm hover:bg-primaryDark"><i data-lucide="send" class="w-4 h-4"></i>ส่งเกรดเข้าหน้าผลการเรียน (' + nDone + ' คน)</button>'
-          : '<span class="text-[11px] text-gray-500 inline-flex items-center gap-1"><i data-lucide="lock" class="w-3.5 h-3.5"></i>ส่งเกรดเข้าหน้าผลการเรียนได้เฉพาะผู้ดูแลระบบ · งานทะเบียน · รองผู้อำนวยการด้านวิชาการ</span>')
+      + (gradeSent()
+          ? '<span class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-sm" '
+            + 'title="รายวิชานี้มีเกรดอยู่ในหน้าผลการเรียนแล้ว จึงไม่มีปุ่มส่งซ้ำ">'
+            + '<i data-lucide="check-circle-2" class="w-4 h-4"></i>ส่งเกรดเข้าหน้าผลการเรียนแล้ว'
+            + (gradedCount() ? ' (' + gradedCount() + ' คน)' : '') + '</span>'
+          : canPushGrade()
+            ? '<button type="button" onclick="ploGradePush()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-white text-sm hover:bg-primaryDark"><i data-lucide="send" class="w-4 h-4"></i>ส่งเกรดเข้าหน้าผลการเรียน (' + nDone + ' คน)</button>'
+            : '<span class="text-[11px] text-gray-500 inline-flex items-center gap-1"><i data-lucide="lock" class="w-3.5 h-3.5"></i>ส่งเกรดเข้าหน้าผลการเรียนได้เฉพาะผู้ดูแลระบบ · งานทะเบียน · รองผู้อำนวยการด้านวิชาการ</span>')
       + '<button type="button" onclick="ploXlsxTemplate()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-600 text-emerald-700 text-sm bg-white hover:bg-emerald-50"><i data-lucide="file-spreadsheet" class="w-4 h-4"></i>แบบบันทึกคะแนน Excel</button>'
       + '<button type="button" onclick="ploGradeCsv()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-600 text-emerald-700 text-sm bg-white hover:bg-emerald-50"><i data-lucide="download" class="w-4 h-4"></i>ดาวน์โหลดสรุปคะแนนและเกรด (CSV)</button>'
       + '<button type="button" onclick="ploCourseCfgEdit()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm bg-white hover:bg-gray-50"><i data-lucide="settings-2" class="w-4 h-4"></i>แก้ช่วงคะแนนเกรด</button>'
@@ -3395,12 +3400,34 @@
        • มีเกรดอยู่แล้วและต่างกัน  → เปลี่ยนเฉพาะเมื่อติ๊ก "เขียนทับ"
      อ่านแถวเดิมสดจากฐานข้อมูลทุกครั้ง ไม่พึ่งข้อมูลที่ค้างในเบราว์เซอร์
      ================================================================ */
+  /* รายวิชานี้มีเกรดอยู่ในหน้าผลการเรียนแล้วหรือยัง
+     ใช้คู่ ปีการศึกษา + ภาคการศึกษา + รหัสวิชา ตรงกับที่ ploGradePush ใช้จับคู่
+     _gradeSent คือธงของรอบนี้ เผื่อเพิ่งส่งไปแล้วแต่ข้อมูลในเครื่องยังไม่ได้โหลดใหม่ */
+  var _gradeSent = {};
+  function gradeKey() { var st = state(); return [s(st.eYear), semKey(st.eSem), s(st.eSubject)].join('|'); }
+  function gradedCount() {
+    var st = state();
+    if (!s(st.eSubject)) return 0;
+    var cnt = 0;
+    get('grade').forEach(function (row) {
+      if (s(row.subject_code) !== s(st.eSubject)) return;
+      var ex = row.extra || {};
+      var yr = s(row.academic_year != null ? row.academic_year : ex.academic_year);
+      var sm = row.semester != null ? row.semester : ex.semester;
+      if (yr !== s(st.eYear) || semKey(sm) !== semKey(st.eSem)) return;
+      if (s(row.grade != null ? row.grade : ex.grade)) cnt++;
+    });
+    return cnt;
+  }
+  function gradeSent() { return gradedCount() > 0 || !!_gradeSent[gradeKey()]; }
+
   function semKey(v) { var x = s(v); return (x.indexOf('ร้อน') >= 0 || x === '3') ? '3' : x.replace(/\D/g, '') || x; }
   function creditsOf(subj) { var m = s(subj && subj.credits).match(/\d+(\.\d+)?/); return m ? Number(m[0]) : 3; }
 
   window.ploGradePush = async function () {
     var st = state(), g = st._gradeRes;
     if (!canPushGrade()) { showToast('ส่งเกรดเข้าหน้าผลการเรียนได้เฉพาะผู้ดูแลระบบ งานทะเบียน และรองผู้อำนวยการด้านวิชาการ', 'error'); return; }
+    if (gradeSent()) { showToast('รายวิชานี้ส่งเกรดเข้าหน้าผลการเรียนไปแล้ว ถ้าต้องแก้เกรด ให้แก้ที่หน้าผลการเรียน', 'error'); return; }
     if (!g) { showToast('ยังไม่มีผลสรุปเกรด — โหลดคะแนนในขั้นที่ 5 ก่อน', 'error'); return; }
     var ready = g.res.filter(function (r) { return r.complete && r.g; });
     if (!ready.length) { showToast('ยังไม่มีนักศึกษาที่คะแนนครบและตัดเกรดได้', 'error'); return; }
@@ -3483,8 +3510,10 @@
     }
     st._gradePush = null;
     closeModal();
+    if (ok > 0) _gradeSent[gradeKey()] = true;
     if (fail) showToast('ส่งเกรดสำเร็จ ' + ok + ' รายการ · ไม่สำเร็จ ' + fail + (err ? ' (' + err + ')' : ''), 'error');
     else showToast('ส่งเกรดเข้าหน้าผลการเรียนแล้ว ' + ok + ' รายการ');
+    if (ok > 0 && typeof renderCurrentPage === 'function') renderCurrentPage();
   };
 
   /* ================================================================
