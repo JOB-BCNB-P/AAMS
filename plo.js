@@ -1351,9 +1351,20 @@
     var cutSel = '<select onchange="ploWatchCut(this.value)" class="border border-gray-200 rounded-lg px-2 py-1 text-xs">'
       + [50, 60, 70, 80].map(function (v) { return '<option value="' + v + '"' + (cut === v ? ' selected' : '') + '>ต่ำกว่า ' + v + '%</option>'; }).join('')
       + '</select>';
+    // เลือกได้ว่าจะดูเฉพาะคนที่ต่ำกว่าเกณฑ์ หรือดูทั้งชั้นปี/ขอบเขตที่เลือกทั้งหมด
+    // ไม่ต้องเจาะจงรายคนก่อนก็เห็นผลได้
+    var allMode = !!state().stuListAll;
+    var scopeSw = '<div class="ems-switch" role="group">'
+      + [['', 'ต่ำกว่าเกณฑ์'], ['1', 'ทั้งหมด']].map(function (o) {
+          var on = (o[0] === '1') === allMode;
+          return '<button type="button" onclick="ploListScope(\'' + o[0] + '\')" aria-pressed="' + (on ? 'true' : 'false')
+            + '" class="ems-switch-btn' + (on ? ' is-on' : '') + '">' + esc(o[1]) + '</button>';
+        }).join('') + '</div>';
     var head = '<div class="flex flex-wrap items-center justify-between gap-2 mb-1">'
-      + '<p class="font-semibold text-gray-800 text-sm"><i data-lucide="user-x" class="w-4 h-4 inline mr-1 text-red-500"></i>นักศึกษาที่ควรกำกับติดตาม</p>'
-      + '<div class="flex items-center gap-2"><span class="text-xs text-gray-500">เกณฑ์</span>' + cutSel + '</div></div>';
+      + '<p class="font-semibold text-gray-800 text-sm"><i data-lucide="user-x" class="w-4 h-4 inline mr-1 text-red-500"></i>'
+      + (allMode ? 'ผลรายคนในขอบเขตที่เลือก' : 'นักศึกษาที่ควรกำกับติดตาม') + '</p>'
+      + '<div class="flex flex-wrap items-center gap-2">' + scopeSw
+      + '<span class="text-xs text-gray-500">เกณฑ์</span>' + cutSel + '</div></div>';
 
     if (c.loading) return panel(head + hint('กำลังรวบรวมผลของนักศึกษาในขอบเขตที่เลือก...'));
     if (c.err) return panel(head + '<p class="text-xs text-red-500">โหลดไม่สำเร็จ · ' + esc(c.err)
@@ -1374,14 +1385,21 @@
             + '<p class="text-xl font-bold ' + x[3] + ' mt-0.5">' + esc(x[1]) + '</p></div>';
         }).join('') + '</div>';
 
-    if (!bad.length) {
-      return panel(head + sum + '<p class="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">'
-        + 'ไม่มีนักศึกษาที่ต่ำกว่าเกณฑ์ ' + cut + '% ในขอบเขตที่เลือก</p>');
-    }
+    // ไม่มีใครต่ำกว่าเกณฑ์ ก็ยังแสดงรายชื่อทั้งหมดให้ดู ไม่ปล่อยหน้าว่าง
+    var autoAll = !bad.length;
+    var listAll = allMode || autoAll;
+    var base = listAll ? all : bad;
+    var note = autoAll && !allMode
+      ? '<p class="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 mb-3">'
+        + 'ไม่มีนักศึกษาที่ต่ำกว่าเกณฑ์ ' + cut + '% ในขอบเขตที่เลือก — แสดงผลรายคนทั้งหมด ' + all.length + ' คนแทน</p>'
+      : '';
 
-    var show = st.stuWatchAll ? bad : bad.slice(0, 10);
+    var show = st.stuWatchAll ? base : base.slice(0, 10);
     var rowsHtml = show.map(function (x, i) {
-      var lvl = watchLevel(x.pct);
+      // โหมดดูทั้งหมดจะมีคนที่ถึงเกณฑ์ปนอยู่ด้วย ต้องไม่ติดป้ายว่าควรติดตาม
+      var lvl = x.pct >= cut
+        ? { label: 'ถึงเกณฑ์', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', bar: '#10b981' }
+        : watchLevel(x.pct);
       var chips = x.badPlo.slice(0, 3).map(function (pk) {
         return '<span class="inline-block px-1.5 py-0.5 rounded-md bg-red-50 text-red-600 text-[11px] mr-1">' + esc(pk) + '</span>';
       }).join('') + (x.badPlo.length > 3 ? '<span class="text-[11px] text-gray-400">+' + (x.badPlo.length - 3) + '</span>' : '');
@@ -1409,17 +1427,23 @@
       + '<th class="px-2 py-2 font-semibold">PLO ที่ยังไม่บรรลุ</th>'
       + '<th class="px-2 py-2 font-semibold text-center">ระดับ</th>'
       + '<th class="px-2 py-2"></th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>'
-      + (bad.length > show.length
-          ? '<button type="button" onclick="ploSet(\'stuWatchAll\',true)" class="mt-2 text-xs text-primary hover:underline">ดูทั้งหมด ' + bad.length + ' คน</button>'
-          : (st.stuWatchAll && bad.length > 10 ? '<button type="button" onclick="ploSet(\'stuWatchAll\',false)" class="mt-2 text-xs text-gray-500 hover:underline">ย่อรายการ</button>' : ''));
+      + (base.length > show.length
+          ? '<button type="button" onclick="ploSet(\'stuWatchAll\',true)" class="mt-2 text-xs text-primary hover:underline">ดูครบทั้ง ' + base.length + ' คน</button>'
+          : (st.stuWatchAll && base.length > 10 ? '<button type="button" onclick="ploSet(\'stuWatchAll\',false)" class="mt-2 text-xs text-gray-500 hover:underline">ย่อรายการ</button>' : ''));
 
-    return panel(head + sum + table
+    return panel(head + sum + note + table
       + '<p class="text-[11px] text-gray-400 mt-2">นับเฉพาะ CLO ที่กรอกคะแนนแล้วและมีเกณฑ์ผ่าน · '
       + '"PLO ที่ยังไม่บรรลุ" คือ PLO ที่ผ่าน CLO ในข้อนั้นต่ำกว่าเกณฑ์ ' + cut + '%</p>');
   }
   function panel(inner) {
     return '<div class="rounded-2xl border border-blue-100 bg-white p-4 mb-5">' + inner + '</div>';
   }
+  window.ploListScope = function (v) {
+    var st = state();
+    st.stuListAll = !!s(v);
+    st.stuWatchAll = false;          // สลับขอบเขตแล้วเริ่มนับ 10 แถวแรกใหม่
+    if (typeof renderCurrentPage === 'function') renderCurrentPage();
+  };
   window.ploWatchCut = function (v) { state().stuWatchPct = n(v) || 60; if (typeof renderCurrentPage === 'function') renderCurrentPage(); };
   window.ploWatchRetry = function () { _watch = {}; if (typeof renderCurrentPage === 'function') renderCurrentPage(); };
   window.ploWatchOpen = function (sid) {
