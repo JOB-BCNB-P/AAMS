@@ -2986,8 +2986,11 @@
      คีย์ "course_cfg" — อาจารย์ผู้สอนแก้ได้ (สิทธิ์เดียวกับ CLO) ไม่ต้องสร้างตารางใหม่
      อ่านจาก CLO ข้อใดก็ได้ที่มีค่า (ทุกข้อถูกเขียนพร้อมกันเสมอ)
      ================================================================ */
+  // ช่วงเกรดมาตรฐานของวิทยาลัย มี D+ และ D ครบ ใช้เป็นค่าตั้งต้นของทุกรายวิชา
   var DEF_GRADES = [['A', 80], ['B+', 75], ['B', 70], ['C+', 65], ['C', 60], ['D+', 55], ['D', 50], ['F', 0]];
-  var DEF_CFG = { passPct: '60', grades: [['A', 80], ['B+', 75], ['B', 70], ['C+', 65], ['C', 60], ['F', 0]] };
+  // บางรายวิชาตัดเกรดโดยไม่มี D+ / D (ต่ำกว่า C เป็น F) เก็บไว้เป็นชุดสำเร็จรูปให้เลือก
+  var NO_D_GRADES = [['A', 80], ['B+', 75], ['B', 70], ['C+', 65], ['C', 60], ['F', 0]];
+  var DEF_CFG = { passPct: '60', grades: DEF_GRADES };
 
   function courseCfg(clos) {
     var raw = null;
@@ -3215,8 +3218,8 @@
         }).join('') + '</tbody></table>'
       + '<div class="flex flex-wrap gap-2 mt-2">'
       + '<button type="button" onclick="ploCfgGradeAdd()" class="px-2.5 py-1 border rounded-lg text-xs">+ เพิ่มเกรด</button>'
-      + '<button type="button" onclick="ploCfgPreset(\'std\')" class="px-2.5 py-1 border rounded-lg text-xs">A–F (A≥80 … C≥60)</button>'
-      + '<button type="button" onclick="ploCfgPreset(\'full\')" class="px-2.5 py-1 border rounded-lg text-xs">มี D+/D (≥55/≥50)</button></div>'
+      + '<button type="button" onclick="ploCfgPreset(\'full\')" class="px-2.5 py-1 border rounded-lg text-xs">มาตรฐาน A–F (มี D+ ≥55 · D ≥50)</button>'
+      + '<button type="button" onclick="ploCfgPreset(\'nod\')" class="px-2.5 py-1 border rounded-lg text-xs">ไม่มี D+/D (ต่ำกว่า C เป็น F)</button></div>'
       + '<p class="text-[11px] text-gray-500 mt-1">เรียงจากมากไปน้อยให้อัตโนมัติ · เกรดสุดท้ายควรตั้ง 0 (เช่น F)</p></div>'
       + '<div class="flex justify-end gap-2 pt-2 border-t">'
       + '<button type="button" onclick="closeModal()" class="px-4 py-1.5 border rounded-lg text-sm">ยกเลิก</button>'
@@ -3265,7 +3268,7 @@
   window.ploCfgGradeAdd = function () { var d = state()._cfgDraft; if (!d) return; d.grades.push(['', 0]); cfgDraw(); };
   window.ploCfgPreset = function (k) {
     var d = state()._cfgDraft; if (!d) return;
-    d.grades = (k === 'full' ? DEF_GRADES : DEF_CFG.grades).map(function (g) { return [g[0], g[1]]; });
+    d.grades = (k === 'nod' ? NO_D_GRADES : DEF_GRADES).map(function (g) { return [g[0], g[1]]; });
     cfgDraw();
   };
   window.ploCfgSave = async function () {
@@ -3373,7 +3376,12 @@
     });
     st._gradeRes = { secs: secs, secW: secW, W: W, mult: mult, Weff: Weff, useMult: useMult, res: res, cfg: cfg, subj: subj };
     var nDone = studs.length - incomplete;
-    var gCls = function (g) { return g === 'F' ? 'bg-red-50 text-red-700' : /^A/.test(g) ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-primary'; };
+    var gCls = function (g) {
+      return g === 'F' ? 'bg-red-50 text-red-700'
+        : /^D/.test(g) ? 'bg-amber-50 text-amber-700'
+        : /^A/.test(g) ? 'bg-emerald-50 text-emerald-700'
+        : 'bg-blue-50 text-primary';
+    };
     var summary = '<div class="overflow-x-auto mb-3"><table class="text-sm border border-gray-100 rounded-xl"><thead><tr class="bg-surface">'
       + '<th class="px-3 py-1.5 text-left">เกรด</th><th class="px-3 py-1.5 text-left">ช่วงคะแนน</th><th class="px-3 py-1.5">จำนวน (คน)</th><th class="px-3 py-1.5">ร้อยละ</th></tr></thead><tbody>'
       + cfg.grades.map(function (g, i) {
