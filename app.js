@@ -10046,6 +10046,29 @@ function servicesPage() {
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">${annCard}${ticketCard}</div>`;
 }
 
+// แจ้งเตือนผู้ดูแลระบบทางอีเมลเมื่อมีเรื่องแจ้งปัญหาใหม่
+// ใช้อีเมลแทน LINE เพราะ LINE นับโควตาตามจำนวนผู้รับ และการ broadcast
+// จะถึงเพื่อนทุกคนของ OA ซึ่งรวมนักศึกษา เรื่องของคนหนึ่งจะหลุดถึงคนอื่น
+// ฝั่งเซิร์ฟเวอร์เป็นคนหาว่าใครคือผู้ดูแล เบราว์เซอร์กำหนดปลายทางไม่ได้
+async function notifyTicketMail(ticketId) {
+  if (!ticketId) return { isOk: false, error: 'ไม่ทราบเลขที่เรื่อง' };
+  try {
+    const { data, error } = await GSheetDB.client().functions.invoke('ticket-notify', {
+      body: { ticket_id: ticketId }
+    });
+    if (error) {
+      let detail = (error && error.message) || 'แจ้งเตือนทางอีเมลไม่สำเร็จ';
+      try { const j = await error.context.json(); if (j && j.error) detail = j.error; } catch (e) { }
+      return { isOk: false, error: detail };
+    }
+    if (data && data.skipped) return { isOk: false, error: String(data.skipped) };
+    if (data && data.isOk === false) return { isOk: false, error: data.error || 'แจ้งเตือนทางอีเมลไม่สำเร็จ' };
+    return { isOk: true };
+  } catch (e) {
+    return { isOk: false, error: String((e && e.message) || e) };
+  }
+}
+
 function showAddTicketModal() {
   showModal('แจ้งปัญหาการใช้งาน', `
     <form id="addTicketForm" class="space-y-3">
@@ -10075,7 +10098,14 @@ function showAddTicketModal() {
       };
       fd.forEach((v, k) => obj[k] = v);
       const r = await GSheetDB.create(obj);
-      if (r.isOk) { showToast('ส่งเรื่องถึงผู้ดูแลระบบแล้ว'); closeModal(); renderCurrentPage(); }
+      if (r.isOk) {
+        const mail = await notifyTicketMail(r.rowIndex);
+        showToast('ส่งเรื่องถึงผู้ดูแลระบบแล้ว' + (mail.isOk ? ' · แจ้งเตือนทางอีเมลแล้ว' : ''));
+        // อีเมลแจ้งเตือนล้มเหลวไม่ทำให้การแจ้งปัญหาล้มไปด้วย เรื่องถูกบันทึกแล้ว
+        // ผู้ดูแลยังเห็นในระบบได้ แค่ไม่ได้อีเมลเท่านั้น
+        if (!mail.isOk && mail.error) console.warn('[ticket-notify]', mail.error);
+        closeModal(); renderCurrentPage();
+      }
       else showToast('ส่งไม่สำเร็จ: ' + (r.error || ''), 'error');
     });
   };
